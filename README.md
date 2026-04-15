@@ -141,4 +141,4 @@ implementations are the right trade at this scale.
 
 ## License
 
-TBD — add before publishing.
+MIT. See [`LICENSE`](LICENSE).

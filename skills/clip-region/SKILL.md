@@ -1,6 +1,7 @@
 ---
 name: clip-region
 description: Spatially subset a gridded Rhiza Envelope Zarr to a named region or explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a country or custom bounding box before downstream aggregation or plotting.
+license: MIT
 compatibility: Requires Python 3.10+ and uv.
 ---
 

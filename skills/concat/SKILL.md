@@ -1,6 +1,7 @@
 ---
 name: concat
 description: Concatenate two or more Rhiza Envelope Zarr stores along a named dimension, optionally assigning coordinate values to the new axis. Use when combining ensemble members, stitching time windows, or merging per-country fetches into a single dataset.
+license: MIT
 compatibility: Requires Python 3.10+ and uv.
 ---
 

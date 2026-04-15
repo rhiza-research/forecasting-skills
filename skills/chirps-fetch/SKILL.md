@@ -1,6 +1,7 @@
 ---
 name: chirps-fetch
 description: Fetch live CHIRPS precipitation observations for a date range and write a Rhiza Envelope Zarr. Use when a task needs recent CHIRPS rainfall data, e.g. to compare against a forecast or stations.
+license: MIT
 compatibility: Requires Python 3.12+ and uv. Credentials for CHIRPS are read from the environment or .netrc.
 ---
 

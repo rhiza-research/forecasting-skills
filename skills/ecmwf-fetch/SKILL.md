@@ -1,6 +1,7 @@
 ---
 name: ecmwf-fetch
 description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and region, writing a Rhiza Envelope Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting.
+license: MIT
 compatibility: Requires Python 3.10+ and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_API_URL, ECMWF_API_KEY, ECMWF_API_EMAIL in the environment.
 ---
 

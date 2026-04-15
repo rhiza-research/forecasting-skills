@@ -1,6 +1,7 @@
 ---
 name: imerg-fetch
 description: Fetch live IMERG satellite precipitation for a date range and write a Rhiza Envelope Zarr. Use when a task needs recent half-hourly/daily IMERG rainfall, e.g. for station vs. satellite comparison or verification.
+license: MIT
 compatibility: Requires Python 3.12+ and uv. Requires EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment (or .netrc equivalent).
 ---
 

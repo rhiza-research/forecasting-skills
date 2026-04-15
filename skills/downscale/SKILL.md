@@ -1,6 +1,7 @@
 ---
 name: downscale
 description: Spatially coarsen a Rhiza Envelope Zarr by an integer factor or to a target resolution, using a choice of aggregation methods. Use when a task needs to reduce the spatial resolution of any gridded dataset (forecast, satellite, reanalysis) to match another grid or to speed up downstream steps.
+license: MIT
 compatibility: Requires Python 3.10+ and uv.
 ---
 
