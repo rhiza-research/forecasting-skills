@@ -1,5 +1,14 @@
 # Rhiza Skills
 
+> ⚠️ **Under active development — not production ready.**
+>
+> These skills are an early experiment in tool composition for weather/climate
+> data pipelines. Interfaces, envelope schema, and skill boundaries may change
+> without notice. Fetchers hit real APIs and require credentials; middle-
+> pipeline skills have only been smoke-tested on small synthetic data. Do not
+> use in any automated workflow you rely on, and do not assume outputs are
+> scientifically validated. Expect breakage.
+
 A set of composable [Agent Skills](https://agentskills.io) for building
 weather/climate data pipelines from an LLM-driven agent. Skills are either
 source-specific I/O (fetchers, email egress) or generic operators that work on
@@ -32,37 +41,37 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 
 ## Install
 
-These skills live at <https://github.com/rhiza-research/skills>. Install them
+These skills live at <https://github.com/rhiza-research/forecasting-skills>. Install them
 with [skillkit](https://github.com/rohitg00/skillkit) — no local install
 needed, `npx` runs the latest skillkit on demand (add `@latest` to always
 pull the newest):
 
 ```bash
 # List what skillkit discovers in the repo
-npx skillkit install rhiza-research/skills --list
+npx skillkit install rhiza-research/forecasting-skills --list
 
 # Install all 11 skills to the current project
-npx skillkit install rhiza-research/skills --all --yes
+npx skillkit install rhiza-research/forecasting-skills --all --yes
 
 # Install globally so any project can use them
-npx skillkit install rhiza-research/skills --all --yes --global
+npx skillkit install rhiza-research/forecasting-skills --all --yes --global
 
 # Target a specific agent (otherwise skillkit installs for every agent it detects)
-npx skillkit install rhiza-research/skills --all --yes --agent claude-code
+npx skillkit install rhiza-research/forecasting-skills --all --yes --agent claude-code
 
 # Install just a subset
-npx skillkit install rhiza-research/skills --skill=ecmwf-fetch
-npx skillkit install rhiza-research/skills --skills=clip-region,plot,email-report
+npx skillkit install rhiza-research/forecasting-skills --skill=ecmwf-fetch
+npx skillkit install rhiza-research/forecasting-skills --skills=clip-region,plot,email-report
 
 # Overwrite an existing install
-npx skillkit install rhiza-research/skills --all --yes --force
+npx skillkit install rhiza-research/forecasting-skills --all --yes --force
 ```
 
 Pin in a manifest for team / reproducible use:
 
 ```bash
 npx skillkit manifest init
-npx skillkit manifest add rhiza-research/skills
+npx skillkit manifest add rhiza-research/forecasting-skills
 npx skillkit manifest install
 ```
 
