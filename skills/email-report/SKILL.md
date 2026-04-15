@@ -16,7 +16,7 @@ Produces an RFC 5322 message (`.eml`) from the provided metadata and attachments
 ## Usage
 
 ```
-uv run scripts/email.py --from SENDER --to "a@x,b@y" --subject "..." \
+uv run scripts/compose.py --from SENDER --to "a@x,b@y" --subject "..." \
     --body-file BODY.txt --output <mail.eml> [--attach f1 f2 ...] \
     [--reply-to ADDR] [--cc "c@z,..."]
 ```
@@ -39,7 +39,7 @@ A single `.eml` file on disk. It includes multipart/mixed boundaries, correctly 
 ## Example
 
 ```bash
-uv run scripts/email.py --from "Sender <sender@example.com>" \
+uv run scripts/compose.py --from "Sender <sender@example.com>" \
     --to "recipient1@example.com,recipient2@example.com" \
     --subject "Daily Outlook" --body-file body.txt \
     --attach /tmp/weekly.png /tmp/dekadal.png \

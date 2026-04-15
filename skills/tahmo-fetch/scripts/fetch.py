@@ -193,6 +193,13 @@ def main() -> None:
         longitude=("station_id", meta.loc[ds["station_id"].values, "longitude"].values),
         country=("station_id", meta.loc[ds["station_id"].values, "country"].values),
     )
+    ds["latitude"].attrs.update(
+        standard_name="latitude", units="degrees_north", axis="Y"
+    )
+    ds["longitude"].attrs.update(
+        standard_name="longitude", units="degrees_east", axis="X"
+    )
+    ds["time"].attrs.update(standard_name="time", axis="T")
     ds.attrs.update(
         rhiza_source="tahmo",
         rhiza_date=args.end,

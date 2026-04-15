@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#   "cf-xarray",
 #   "xarray",
 #   "zarr",
 #   "matplotlib",
@@ -14,15 +15,11 @@ import sys
 from pathlib import Path
 
 
-LAT_ALIASES = ("latitude", "lat", "y")
-LON_ALIASES = ("longitude", "lon", "x")
-
-
-def _pick_dim(obj, candidates):
-    for name in candidates:
-        if name in obj.dims:
-            return name
-    return None
+def _cf_dim(obj, cf_name):
+    try:
+        return obj.cf[cf_name].name
+    except KeyError:
+        return None
 
 
 def _parse_index(spec):
@@ -66,6 +63,7 @@ def main() -> None:
     import matplotlib
 
     matplotlib.use("Agg")
+    import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import xarray as xr
 
@@ -87,11 +85,11 @@ def main() -> None:
 
     fig, ax = plt.subplots(figsize=(10, 6))
     if args.style == "heatmap":
-        lat_dim = _pick_dim(da, LAT_ALIASES)
-        lon_dim = _pick_dim(da, LON_ALIASES)
+        lat_dim = _cf_dim(da, "latitude")
+        lon_dim = _cf_dim(da, "longitude")
         if lat_dim is None or lon_dim is None:
             print(
-                f"Error: heatmap requires lat/lon dims; got {list(da.dims)}.",
+                f"Error: heatmap requires lat/lon coords; got {list(da.dims)}.",
                 file=sys.stderr,
             )
             sys.exit(2)
@@ -102,7 +100,7 @@ def main() -> None:
         ax.set_xlabel(lon_dim)
         ax.set_ylabel(lat_dim)
     else:
-        step_dim = "step" if "step" in da.dims else _pick_dim(da, ("time",))
+        step_dim = "step" if "step" in da.dims else _cf_dim(da, "time")
         if step_dim is None:
             print(
                 f"Error: timeseries needs 'step' or 'time'; got {list(da.dims)}.",

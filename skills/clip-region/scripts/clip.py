@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#   "cf-xarray",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -27,16 +28,6 @@ REGIONS = {
     "angola": (-5, 12, -18, 24),
 }
 
-LAT_ALIASES = ("latitude", "lat", "y")
-LON_ALIASES = ("longitude", "lon", "x")
-
-
-def _pick_dim(ds, candidates):
-    for name in candidates:
-        if name in ds.dims:
-            return name
-    return None
-
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
@@ -61,6 +52,7 @@ def main() -> None:
         n, w, s, e = REGIONS[args.region]
         region_label = args.region
 
+    import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
 
     src = Path(args.input)
@@ -72,11 +64,16 @@ def main() -> None:
     if args.dims:
         lat_dim, lon_dim = [x.strip() for x in args.dims.split(",")]
     else:
-        lat_dim = _pick_dim(ds, LAT_ALIASES)
-        lon_dim = _pick_dim(ds, LON_ALIASES)
-    if lat_dim is None or lon_dim is None:
-        print(f"Error: no lat/lon dim found in {list(ds.dims)}.", file=sys.stderr)
-        sys.exit(2)
+        try:
+            lat_dim = ds.cf["latitude"].name
+            lon_dim = ds.cf["longitude"].name
+        except KeyError:
+            print(
+                f"Error: could not identify lat/lon coords via CF metadata or name "
+                f"heuristics in {list(ds.coords)}. Pass --dims to override.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     lat_ascending = ds[lat_dim].values[0] < ds[lat_dim].values[-1]
     lat_slice = slice(s, n) if lat_ascending else slice(n, s)

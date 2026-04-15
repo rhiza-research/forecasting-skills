@@ -33,6 +33,7 @@ Skills may stamp these on the Zarr root for traceability. None are required for 
 
 ## Conventions
 
+- Spatial and time coords should carry CF `standard_name`, `units`, and `axis` attrs (`latitude`/`degrees_north`/`Y`, `longitude`/`degrees_east`/`X`, `time`/—/`T`). Fetchers stamp these on write; generic middle skills use [cf-xarray](https://cf-xarray.readthedocs.io/) to identify coords via those attrs and fall back to name heuristics (`lat`/`lon`/`y`/`x`) when attrs are missing.
 - Data variable units should follow CF where possible (`m` for precipitation, `K` or `degC` for temperature).
 - Output stores are written with `consolidated=True`.
 - Missing data is encoded as NaN, not a sentinel value.

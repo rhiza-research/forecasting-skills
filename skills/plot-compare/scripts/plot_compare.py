@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#   "cf-xarray",
 #   "xarray",
 #   "zarr",
 #   "matplotlib",
@@ -14,15 +15,11 @@ import sys
 from pathlib import Path
 
 
-LAT_ALIASES = ("latitude", "lat", "y")
-LON_ALIASES = ("longitude", "lon", "x")
-
-
-def _pick_dim(obj, candidates):
-    for name in candidates:
-        if name in obj.dims:
-            return name
-    return None
+def _cf_dim(obj, cf_name):
+    try:
+        return obj.cf[cf_name].name
+    except KeyError:
+        return None
 
 
 def _pick_time_dim(ds, override):
@@ -59,6 +56,7 @@ def main() -> None:
     import matplotlib
 
     matplotlib.use("Agg")
+    import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import numpy as np
     import xarray as xr
@@ -97,10 +95,17 @@ def main() -> None:
     da_a = ds_a[variable]
     da_b = ds_b[variable]
 
+    # Identify spatial dims via CF metadata (falls back to name heuristics).
+    a_lat = _cf_dim(da_a, "latitude")
+    a_lon = _cf_dim(da_a, "longitude")
+    b_lat = _cf_dim(da_b, "latitude")
+    b_lon = _cf_dim(da_b, "longitude")
+    spatial_dims = {a_lat, a_lon, b_lat, b_lon} - {None}
+
     # Reduce non-time, non-spatial, non-station dims to a single slice (e.g. number=0).
     def _flatten(da, time_dim):
         for d in list(da.dims):
-            if d in (time_dim, "station_id", *LAT_ALIASES, *LON_ALIASES):
+            if d == time_dim or d == "station_id" or d in spatial_dims:
                 continue
             da = da.mean(d) if d == "number" else da.isel({d: 0}, drop=True)
         return da
@@ -137,8 +142,8 @@ def main() -> None:
                     s=30,
                 )
             else:
-                lat_dim = _pick_dim(sel, LAT_ALIASES)
-                lon_dim = _pick_dim(sel, LON_ALIASES)
+                lat_dim = _cf_dim(sel, "latitude")
+                lon_dim = _cf_dim(sel, "longitude")
                 im = sel.transpose(lat_dim, lon_dim).plot.pcolormesh(
                     ax=ax,
                     x=lon_dim,

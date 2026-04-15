@@ -40,6 +40,26 @@ def _require_env() -> None:
         sys.exit(2)
 
 
+def _stamp_cf_attrs(ds):
+    """Stamp CF standard_name/units/axis on spatial + time coords (non-destructive)."""
+    for name in ("latitude", "lat", "y"):
+        if name in ds.coords:
+            ds[name].attrs.setdefault("standard_name", "latitude")
+            ds[name].attrs.setdefault("units", "degrees_north")
+            ds[name].attrs.setdefault("axis", "Y")
+            break
+    for name in ("longitude", "lon", "x"):
+        if name in ds.coords:
+            ds[name].attrs.setdefault("standard_name", "longitude")
+            ds[name].attrs.setdefault("units", "degrees_east")
+            ds[name].attrs.setdefault("axis", "X")
+            break
+    if "time" in ds.coords:
+        ds["time"].attrs.setdefault("standard_name", "time")
+        ds["time"].attrs.setdefault("axis", "T")
+    return ds
+
+
 def _retrieve(server, date: str, area: str, forecast_type: str, target: Path) -> None:
     request = {
         "class": "s2",
@@ -100,6 +120,7 @@ def main() -> None:
             rhiza_area_NWSE=area,
             rhiza_date=args.date,
         )
+        _stamp_cf_attrs(ds)
         for v in ds.variables:
             ds[v].encoding = {}
 

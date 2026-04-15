@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#   "cf-xarray",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -12,17 +13,6 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-
-
-LAT_ALIASES = ("latitude", "lat", "y")
-LON_ALIASES = ("longitude", "lon", "x")
-
-
-def _pick_dim(ds, candidates):
-    for name in candidates:
-        if name in ds.dims:
-            return name
-    return None
 
 
 def _grid_spacing(ds, dim):
@@ -74,6 +64,7 @@ def main() -> None:
     p.add_argument("--variable", help="Restrict to a single data variable")
     args = p.parse_args()
 
+    import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
 
     src = Path(args.input)
@@ -91,11 +82,13 @@ def main() -> None:
             )
             sys.exit(2)
     else:
-        lat_dim = _pick_dim(ds, LAT_ALIASES)
-        lon_dim = _pick_dim(ds, LON_ALIASES)
-        if lat_dim is None or lon_dim is None:
+        try:
+            lat_dim = ds.cf["latitude"].name
+            lon_dim = ds.cf["longitude"].name
+        except KeyError:
             print(
-                f"Error: could not autodetect lat/lon dims in {list(ds.dims)}.",
+                f"Error: could not identify lat/lon coords via CF metadata or name "
+                f"heuristics in {list(ds.coords)}. Pass --dims to override.",
                 file=sys.stderr,
             )
             sys.exit(2)

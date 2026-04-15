@@ -65,7 +65,7 @@ def main() -> None:
     out.write_bytes(bytes(msg))
     print(
         f"Wrote: {args.output} ({len(msg.get_payload())} parts, "
-        f"{sum(1 for _ in out.open('rb'))} bytes)",
+        f"{out.stat().st_size} bytes)",
         file=sys.stderr,
     )
 

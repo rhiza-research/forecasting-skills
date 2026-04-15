@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#   "cf-xarray",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -81,6 +82,7 @@ def main() -> None:
     p.add_argument("--time-dim")
     args = p.parse_args()
 
+    import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
 
     src = Path(args.input)
@@ -97,13 +99,20 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(2)
-    elif "time" in ds.dims:
-        dim = "time"
-    elif "step" in ds.dims:
-        dim = "step"
     else:
-        print(f"Error: no 'time' or 'step' dim in {list(ds.dims)}", file=sys.stderr)
-        sys.exit(2)
+        # CF "T" axis first (finds wall-clock time even when named unusually),
+        # then `step` (forecast lead time — timedelta64, not CF T).
+        try:
+            dim = ds.cf["time"].name
+        except KeyError:
+            dim = "step" if "step" in ds.dims else None
+        if dim is None or dim not in ds.dims:
+            print(
+                f"Error: no time/step dim identified in {list(ds.dims)}. "
+                f"Pass --time-dim to override.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     print(
         f"Aggregating dim={dim} period={args.period} method={args.method}",
