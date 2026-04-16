@@ -3,6 +3,13 @@ name: tahmo-fetch
 description: Fetch TAHMO station observations for one or more African countries and write a Rhiza Envelope Zarr (station-dim schema). Use when a task needs in-situ station rainfall/temperature/humidity/pressure, e.g. to compare against gridded satellite or forecast data.
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Installs the TAHMO Python SDK directly from GitHub (git+https://github.com/rhiza-research/tahmo-api) via uv script metadata. Requires TAHMO_API_USERNAME and TAHMO_API_PASSWORD in the environment.
+metadata:
+  openclaw:
+    requires:
+      env:
+        - TAHMO_API_USERNAME
+        - TAHMO_API_PASSWORD
+    primaryEnv: TAHMO_API_USERNAME
 ---
 
 # tahmo-fetch
