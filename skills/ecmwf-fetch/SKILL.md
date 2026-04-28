@@ -6,6 +6,8 @@ compatibility: Requires Python 3.10+ and uv. Requires the eccodes system library
 metadata:
   openclaw:
     requires:
+      bins:
+        - uv
       env:
         - ECMWF_API_URL
         - ECMWF_API_KEY

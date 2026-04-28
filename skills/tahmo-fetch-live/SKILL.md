@@ -1,20 +1,35 @@
 ---
-name: tahmo-fetch
-description: Fetch TAHMO station observations for one or more African countries and write a Rhiza Envelope Zarr (station-dim schema). Use when a task needs in-situ station rainfall/temperature/humidity/pressure, e.g. to compare against gridded satellite or forecast data.
+name: tahmo-fetch-live
+description: Fetch TAHMO station observations directly from the TAHMO REST API for one or more African countries and write a station-schema Rhiza Envelope Zarr. This is the ONLY working live-TAHMO path today — sheerwater's `tahmo-fetch` is cache-only and cannot fetch fresh station data. Use when a task needs precip / temperature / humidity / pressure observations for any date range that may not be in sheerwater's pre-populated cache.
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Installs the TAHMO Python SDK directly from GitHub (git+https://github.com/rhiza-research/tahmo-api) via uv script metadata. Requires TAHMO_API_USERNAME and TAHMO_API_PASSWORD in the environment.
 metadata:
   openclaw:
     requires:
+      bins:
+        - uv
       env:
         - TAHMO_API_USERNAME
         - TAHMO_API_PASSWORD
     primaryEnv: TAHMO_API_USERNAME
 ---
 
-# tahmo-fetch
+# tahmo-fetch-live
 
 Downloads TAHMO station observations via the TAHMO SDK for the requested countries and date range. For each `(time, variable)` it picks the best-quality sensor (lowest TAHMO quality flag, filtering to flags <= 2), then resamples to daily (sum for `precip`, mean for `temperature`/`humidity`/`pressure`), and writes a station-schema Zarr store.
+
+## How this differs from sheerwater's `tahmo-fetch`
+
+Sheerwater also exposes a `tahmo-fetch` skill, but its underlying `tahmo_deployment` and `tahmo_station_cleaned` functions are stubs that raise `RuntimeError` whenever the cache misses. Live API access is not implemented in sheerwater yet (see TODO in `sheerwater.data.tahmo`). That means sheerwater's `tahmo-fetch` only returns whatever a separate ingest job has pre-populated.
+
+This skill is the live API path. Use it when:
+
+- You need TAHMO data for any date range that may not be in sheerwater's cache (e.g. recent or out-of-range dates).
+- You have your own TAHMO_API_USERNAME / TAHMO_API_PASSWORD.
+
+If both skills are installed and you don't know whether the cache covers your range, prefer this one — it always works as long as you have credentials.
+
+When sheerwater implements its live TAHMO path, this skill becomes redundant and will be removed.
 
 ## When to use
 

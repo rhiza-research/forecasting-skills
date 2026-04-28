@@ -1,13 +1,32 @@
 ---
-name: downscale
-description: Spatially coarsen a Rhiza Envelope Zarr by an integer factor or to a target resolution, using a choice of aggregation methods. Use when a task needs to reduce the spatial resolution of any gridded dataset (forecast, satellite, reanalysis) to match another grid or to speed up downstream steps.
+name: downscale-coarsen
+description: Spatially coarsen a Rhiza Envelope Zarr by an integer FACTOR (e.g. 10× coarser) or to a TARGET RESOLUTION in degrees (e.g. ~0.25°), using a choice of aggregation methods. Use when you want "N times coarser than what I have" without picking a named target grid. For grid-to-grid regridding (e.g. global0_25 → global1_5), use the sheerwater `regrid` skill instead.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - uv
 ---
 
-# downscale
+# downscale-coarsen
 
 Source-agnostic spatial coarsening: aggregates `factor x factor` cells (or cells covering `target-resolution` degrees) along the detected latitude/longitude dims using a caller-chosen reducer. Works on any gridded Rhiza Envelope Zarr regardless of source.
+
+## How this differs from sheerwater's `regrid`
+
+Sheerwater has a `regrid` skill that targets named grids (`global0_25`, `global1_5`, `global0_1`, etc.) using xarray-regrid with linear / nearest / cubic / conservative / most-common methods. That's the right pick when your goal is "land on the same grid as some other dataset I'm comparing against".
+
+This skill takes a different input: an integer factor or an approximate target spacing in degrees. It uses `xarray.coarsen` (not regridding), so the output cell centers are simple multiples of the input cell centers — no interpolation between grids. That's the right pick when your goal is "make this 10× coarser, I don't care which named grid I land on".
+
+If both skills are installed, route by what you specify:
+
+- "I want grid `global1_5`" → sheerwater `regrid`.
+- "I want this conservatively regridded onto a known grid" → sheerwater `regrid`.
+- "I want a factor of 10× coarser" or "approximately 0.25°" without picking a named grid → this skill.
+
+When sheerwater adds coarsen-by-factor as a sibling (see TODO in `sheerwater.utils.data_utils.regrid`), this skill becomes redundant and will be removed.
 
 ## When to use
 
