@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling", "skills-runner"]
+build-backend = "hatchling.build"
+
+[project]
+name = "forecasting-skills"
+version = "0.1.0"
+requires-python = ">=3.11"
+dynamic = ["dependencies", "scripts"]
+
+[tool.hatch.metadata.hooks.skills-runner]
+cli = "forecasting-skills"
+
+[tool.hatch.build.hooks.skills-runner]
+
+[tool.uv.sources]
+skills-runner = { git = "https://github.com/tescalada/skills-runner" }

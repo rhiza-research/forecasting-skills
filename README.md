@@ -41,10 +41,40 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 
 ## Install
 
-These skills live at <https://github.com/rhiza-research/forecasting-skills>. Install them
-with [skillkit](https://github.com/rohitg00/skillkit) — no local install
-needed, `npx` runs the latest skillkit on demand (add `@latest` to always
-pull the newest):
+These skills live at <https://github.com/rhiza-research/forecasting-skills>.
+There are two ways to use them.
+
+### As a CLI tool
+
+For ad-hoc command-line use (no agent involved), install the skills as a
+single `forecasting-skills` binary:
+
+```bash
+# One-shot, no install — list available skills
+uvx --from git+https://github.com/rhiza-research/forecasting-skills forecasting-skills
+
+# Run one
+uvx --from git+https://github.com/rhiza-research/forecasting-skills forecasting-skills <skill> [args]
+```
+
+Or install once and invoke directly:
+
+```bash
+uv tool install git+https://github.com/rhiza-research/forecasting-skills
+forecasting-skills                          # list
+forecasting-skills <skill> [args]           # run one
+```
+
+Each skill's PEP 723 inline dependency block is resolved by `uv run --script`
+on each invocation, so the runner itself contributes no Python deps to the
+script's runtime environment.
+
+### As agent skills
+
+For use by an LLM agent (Claude Code, etc.), install the `SKILL.md` files
+into your project with [skillkit](https://github.com/rohitg00/skillkit) — no
+local install needed, `npx` runs the latest skillkit on demand (add `@latest`
+to always pull the newest):
 
 ```bash
 # List what skillkit discovers in the repo
