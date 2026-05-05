@@ -100,6 +100,7 @@ def main() -> None:
                 ftp.close()
 
         da = xr.concat(arrs, dim="time")
+        da = da.sortby("lat", ascending=True)
         da.name = "precip"
         da.attrs["units"] = "mm/day"
         da.attrs["standard_name"] = "lwe_thickness_of_precipitation_amount"
