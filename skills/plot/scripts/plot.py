@@ -84,19 +84,44 @@ def _step_dim(da):
 
 
 def _format_step(value):
-    arr = None
-    try:
-        import numpy as np
+    import numpy as np
 
-        arr = np.asarray(value)
-    except Exception:
-        return str(value)
+    arr = np.asarray(value)
     if arr.dtype.kind == "M":
         return str(arr)[:16]
     if arr.dtype.kind == "m":
         days = arr.astype("timedelta64[D]").astype(int)
         return f"+{days}d"
     return str(value)
+
+
+def _panel_title(da, sdim, step_value, all_steps):
+    """Match panel_plot_variable: '<start> until <end>' from time + step.
+
+    Falls back to '<sdim>=<step>' when the dataset lacks the coords needed
+    to construct a date range (no `time` coord, or `step` not a timedelta).
+    """
+    import numpy as np
+
+    fallback = f"{sdim}={_format_step(step_value)}"
+    if "time" not in da.coords:
+        return fallback
+    step_arr = np.asarray(all_steps)
+    if step_arr.dtype.kind != "m":
+        return fallback
+    try:
+        time_val = np.asarray(da["time"].values)
+        first = step_arr[0]
+        if step_value == first:
+            start = time_val
+            end = time_val + np.asarray(step_value)
+        else:
+            dt = step_arr[1] - step_arr[0] if step_arr.size > 1 else np.asarray(step_value) - first
+            end = time_val + np.asarray(step_value)
+            start = end - dt
+        return f"{str(start)[:16]} until {str(end)[:16]}"
+    except Exception:
+        return fallback
 
 
 def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
@@ -191,7 +216,8 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
             )
         if s is not None:
             ax.set_title(
-                f"{sdim}={_format_step(s)}", fontsize=int(fontsize * 0.8)
+                _panel_title(da, sdim, s, steps),
+                fontsize=int(fontsize * 0.8),
             )
 
     for j in range(num_steps, len(axes)):
