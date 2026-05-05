@@ -86,6 +86,10 @@ def main() -> None:
             combine="by_coords",
         )
         ds = ds[["precipitation"]].rename({"precipitation": "precip"})
+        # CMR's temporal filter is overlap-based and can return granules just
+        # outside [start, end]; trim to exact requested bounds to match the
+        # prior sheerwater @timeseries() post-process.
+        ds = ds.sel(time=slice(args.start, args.end))
         ds = ds.drop_attrs()
         ds.attrs.update(rhiza_source="imerg", rhiza_date=args.end)
         _stamp_cf_attrs(ds)
