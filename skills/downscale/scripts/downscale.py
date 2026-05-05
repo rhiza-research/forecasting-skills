@@ -3,9 +3,9 @@
 # dependencies = [
 #   "cf-xarray",
 #   "xarray",
+#   "xarray-regrid",
 #   "zarr",
 #   "numpy",
-#   "scipy",
 # ]
 # ///
 """Linear regridding for Rhiza Envelope Zarr stores."""
@@ -73,6 +73,7 @@ def main() -> None:
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
+    import xarray_regrid  # noqa: F401 — registers the .regrid accessor
 
     src = Path(args.input)
     if not src.exists():
@@ -120,18 +121,19 @@ def main() -> None:
 
     new_lat = _target_coord(ds[lat_dim].values, factor * _grid_spacing(ds, lat_dim))
     new_lon = _target_coord(ds[lon_dim].values, factor * _grid_spacing(ds, lon_dim))
+    target = xr.Dataset(
+        coords={
+            lat_dim: (lat_dim, new_lat, dict(ds[lat_dim].attrs)),
+            lon_dim: (lon_dim, new_lon, dict(ds[lon_dim].attrs)),
+        }
+    )
 
     print(
         f"Regridding {lat_dim},{lon_dim} by factor {factor} (linear): "
         f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
-    out_ds = ds.interp({lat_dim: new_lat, lon_dim: new_lon}, method="linear")
-
-    # interp rebuilds the lat/lon coords from numpy arrays, dropping their
-    # CF attrs; restore them so downstream skills can still resolve via cf-xarray.
-    for d in (lat_dim, lon_dim):
-        out_ds[d].attrs = dict(ds[d].attrs)
+    out_ds = ds.regrid.linear(target)
 
     out_ds.attrs = {
         **ds.attrs,
