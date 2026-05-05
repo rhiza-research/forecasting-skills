@@ -5,9 +5,10 @@
 #   "xarray",
 #   "zarr",
 #   "numpy",
+#   "scipy",
 # ]
 # ///
-"""Generic spatial coarsening for Rhiza Envelope Zarr stores."""
+"""Linear regridding for Rhiza Envelope Zarr stores."""
 
 import argparse
 import shutil
@@ -45,6 +46,18 @@ def _factor_from_target(ds, lat_dim, lon_dim, target_res):
     return factor
 
 
+def _target_coord(coord, new_spacing):
+    import numpy as np
+
+    vmin = float(np.min(coord))
+    vmax = float(np.max(coord))
+    n = int(np.floor((vmax - vmin) / new_spacing)) + 1
+    target = vmin + new_spacing * np.arange(n)
+    if coord[0] > coord[-1]:
+        target = target[::-1]
+    return target
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", "-i", required=True)
@@ -54,12 +67,6 @@ def main() -> None:
     grp.add_argument(
         "--target-resolution", type=float, help="Target grid spacing in degrees"
     )
-    p.add_argument(
-        "--method", default="mean", choices=["mean", "sum", "max", "min", "median"]
-    )
-    p.add_argument("--boundary", default="trim", choices=["trim", "pad"])
-    p.add_argument("--skipna", dest="skipna", action="store_true", default=True)
-    p.add_argument("--no-skipna", dest="skipna", action="store_false")
     p.add_argument("--dims", help="Override as LAT,LON dim names")
     p.add_argument("--variable", help="Restrict to a single data variable")
     args = p.parse_args()
@@ -111,21 +118,25 @@ def main() -> None:
             sys.exit(2)
         ds = ds[[args.variable]]
 
+    new_lat = _target_coord(ds[lat_dim].values, factor * _grid_spacing(ds, lat_dim))
+    new_lon = _target_coord(ds[lon_dim].values, factor * _grid_spacing(ds, lon_dim))
+
     print(
-        f"Coarsening {lat_dim},{lon_dim} by factor {factor} "
-        f"method={args.method} boundary={args.boundary} skipna={args.skipna}",
+        f"Regridding {lat_dim},{lon_dim} by factor {factor} (linear): "
+        f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
-    coarsened_obj = ds.coarsen(
-        {lat_dim: factor, lon_dim: factor}, boundary=args.boundary
-    )
-    reducer = getattr(coarsened_obj, args.method)
-    kwargs = {"skipna": args.skipna} if args.method != "sum" else {}
-    out_ds = reducer(**kwargs) if kwargs else reducer()
+    out_ds = ds.interp({lat_dim: new_lat, lon_dim: new_lon}, method="linear")
+
+    # interp rebuilds the lat/lon coords from numpy arrays, dropping their
+    # CF attrs; restore them so downstream skills can still resolve via cf-xarray.
+    for d in (lat_dim, lon_dim):
+        out_ds[d].attrs = dict(ds[d].attrs)
+
     out_ds.attrs = {
         **ds.attrs,
         "rhiza_downscale_factor": factor,
-        "rhiza_downscale_method": args.method,
+        "rhiza_downscale_method": "linear",
     }
     for v in out_ds.variables:
         out_ds[v].encoding = {}
