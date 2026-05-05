@@ -8,12 +8,17 @@ compatibility: Requires Python 3.10+ and uv.
 # plot
 
 Source-agnostic single-dataset visualization. Two styles:
-- `heatmap` — 2D map. Auto-reduces higher-dimensional arrays to `(lat, lon)` by averaging `number` and selecting the first slice along `step`/`time` (override with `--index`).
+- `heatmap` — CartoPy `PlateCarree` map with country/coastline boundaries. If
+  the input has a `step` (or `time`) dimension, panels are laid out one per
+  step (up to 4 columns; rows added as needed) with a shared color scale and a
+  horizontal colorbar spanning all panels at the bottom. Ensemble members
+  (`number` dim) are averaged before plotting. Use `--index` to override the
+  default reduction for any other extra dim.
 - `timeseries` — 1D profile. Averages across all non-time dims.
 
 ## When to use
 
-- Producing a quick-look map for any gridded envelope.
+- Producing a quick-look forecast map panel for any gridded envelope.
 - Producing a time/step profile for a gridded or station envelope.
 
 For two-dataset comparisons, use the `plot-compare` skill.
@@ -23,7 +28,9 @@ For two-dataset comparisons, use the `plot-compare` skill.
 ```
 uv run scripts/plot.py --input <in.zarr> --output <out.png> \
     [--variable NAME] [--style heatmap|timeseries] \
-    [--colormap NAME] [--title TEXT] [--index DIM=POS,...]
+    [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
+    [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
+    [--cities JSON_OR_PATH] [--fontsize N]
 ```
 
 ### Arguments
@@ -33,7 +40,15 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
 - `--style` — `heatmap` (default) or `timeseries`.
 - `--colormap` — matplotlib colormap name (default `viridis`).
 - `--title` — optional plot title.
-- `--index` — dim selections like `step=3,number=0` to override the default slice choice for `heatmap`.
+- `--index` — dim selections like `step=3,number=0`. For `heatmap`, applied
+  before panel layout: e.g. `--index step=2` reduces to a single-panel map at
+  step 2; otherwise all steps are panelled.
+- `--extent` — heatmap map extent as `lon_min,lon_max,lat_min,lat_max`.
+  Defaults to the data bounds.
+- `--cities` — heatmap city overlay. Inline JSON like
+  `'{"Windhoek": [-22.55, 17.08]}'` or a path to such a JSON file. Off by
+  default.
+- `--fontsize` — base font size for titles/colorbar label (default 16).
 
 ### Output
 
@@ -41,12 +56,22 @@ A PNG at `--output`.
 
 ## Examples
 
+Multi-step forecast panel:
 ```bash
-uv run scripts/plot.py -i /tmp/ecmwf_kenya.zarr -o /tmp/ecmwf.png \
+uv run scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
     --variable tp --style heatmap --colormap magma --title "S2S precip"
 ```
 
+Single-step map with cities and an explicit extent:
 ```bash
-uv run scripts/plot.py -i /tmp/ecmwf_kenya.zarr -o /tmp/ts.png \
+uv run scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf_step0.png \
+    --variable tp --index step=0 \
+    --extent 11,29,-30,-15 \
+    --cities '{"Windhoek": [-22.55, 17.08]}'
+```
+
+Time series:
+```bash
+uv run scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ts.png \
     --variable tp --style timeseries
 ```
