@@ -30,6 +30,11 @@ Both the control (`cf`) and perturbed (`pf`) retrievals use:
 | ghana | 12/-4/4/2 |
 | senegal | 17/-17.5/12/-11 |
 | ethiopia | 16/32/2/49 |
+| namibia | -15/10/-31/27 |
+| botswana | -15/18/-28/31 |
+| zambia | -6/20/-20/35 |
+| madagascar | -10/42/-27/52 |
+| angola | -5/12/-18/24 |
 
 ## Retrieval time
 
