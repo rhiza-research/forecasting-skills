@@ -117,6 +117,11 @@ def main() -> None:
     fc = pt_fc.values
     mc = pt_mc.values
 
+    lat_dim = _cf_dim(pt_fc, "latitude")
+    lon_dim = _cf_dim(pt_fc, "longitude")
+    snapped_lat = float(pt_fc[lat_dim].values) if lat_dim else args.lat
+    snapped_lon = float(pt_fc[lon_dim].values) if lon_dim else args.lon
+
     time_steps = np.arange(n_steps)
     ensemble_mean = np.mean(fc, axis=0)
 
@@ -130,29 +135,9 @@ def main() -> None:
     pos_fc = time_steps - 0.2
     pos_mc = time_steps + 0.2
 
-    ax.bxp(
-        fc_outer,
-        positions=pos_fc,
-        widths=0.4,
-        showfliers=False,
-        patch_artist=True,
-        boxprops=dict(facecolor="cyan", alpha=1),
-        medianprops=dict(color="black", linewidth=1.5),
-        whiskerprops=dict(color="gray", linewidth=2),
-        capprops=dict(color="black", linewidth=1, alpha=0),
-    )
-    ax.bxp(
-        mc_outer,
-        positions=pos_mc,
-        widths=0.4,
-        showfliers=False,
-        patch_artist=True,
-        boxprops=dict(facecolor="red", alpha=1),
-        medianprops=dict(color="black", linewidth=1.5),
-        whiskerprops=dict(color="gray", linewidth=2),
-        capprops=dict(color="black", linewidth=1, alpha=0),
-    )
-
+    # Reference draws the extreme/inner box first, then the IQR/outer box on top
+    # at width 0.4 with visible black caps — the caps appear as horizontal lines
+    # at p25 and p75 since whiskers are zero-length.
     ax.bxp(
         fc_inner,
         positions=pos_fc,
@@ -176,13 +161,39 @@ def main() -> None:
         capprops=dict(color="gray", linewidth=1, alpha=0),
     )
 
+    ax.bxp(
+        fc_outer,
+        positions=pos_fc,
+        widths=0.4,
+        showfliers=False,
+        patch_artist=True,
+        boxprops=dict(facecolor="cyan", alpha=1),
+        medianprops=dict(color="black", linewidth=1.5),
+        whiskerprops=dict(color="gray", linewidth=2),
+        capprops=dict(color="black", linewidth=1),
+    )
+    ax.bxp(
+        mc_outer,
+        positions=pos_mc,
+        widths=0.4,
+        showfliers=False,
+        patch_artist=True,
+        boxprops=dict(facecolor="red", alpha=1),
+        medianprops=dict(color="black", linewidth=1.5),
+        whiskerprops=dict(color="gray", linewidth=2),
+        capprops=dict(color="black", linewidth=1),
+    )
+
     ax.plot(time_steps, ensemble_mean, color="black", linewidth=1.2)
 
     ax.set_xticks(time_steps)
     ax.set_xticklabels([f"T+{t + 1}" for t in time_steps])
     ax.set_xlabel("Forecast step")
     ax.set_ylabel(variable)
-    ax.set_title(args.title or f"Mediogram: {variable} at lat={args.lat}, lon={args.lon}")
+    ax.set_title(
+        args.title
+        or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}"
+    )
     ax.grid(True, linestyle="--", alpha=0.6)
 
     handles = [
