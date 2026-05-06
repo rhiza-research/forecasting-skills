@@ -11,8 +11,6 @@
 
 import argparse
 import ftplib
-import gzip
-import io
 import shutil
 import sys
 import tempfile
@@ -24,7 +22,7 @@ import rioxarray  # noqa: F401 — registers .rio accessor
 import xarray as xr
 
 CHIRPS_FTP_HOST = "ftp.chc.ucsb.edu"
-CHIRPS_FTP_DIR = "/pub/org/chc/products/CHIRPS-2.0/prelim/global_daily/tifs/p05"
+CHIRPS_FTP_DIR = "/pub/org/chc/products/CHIRPS/v3.0/daily/prelim/sat"
 CHIRPS_NODATA = -9999.0
 
 
@@ -38,13 +36,11 @@ def _daterange(start: str, end: str):
 
 
 def _download_day_tif(ftp: ftplib.FTP, day: date, dest_dir: Path) -> Path:
-    name = f"chirps-v2.0.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif.gz"
+    name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
     ftp.cwd(f"{CHIRPS_FTP_DIR}/{day.year:04d}")
-    buf = io.BytesIO()
-    ftp.retrbinary(f"RETR {name}", buf.write)
-    out = dest_dir / name[:-3]
-    with gzip.GzipFile(fileobj=io.BytesIO(buf.getvalue())) as gz, open(out, "wb") as f:
-        shutil.copyfileobj(gz, f)
+    out = dest_dir / name
+    with open(out, "wb") as f:
+        ftp.retrbinary(f"RETR {name}", f.write)
     return out
 
 
