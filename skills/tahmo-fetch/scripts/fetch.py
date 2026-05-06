@@ -64,6 +64,14 @@ DAILY_AGG = {
     "humidity": "mean",
     "pressure": "mean",
 }
+# CF (units, standard_name) for each output data variable. TAHMO's datahub
+# returns relative humidity in percent; the SDK applies no unit conversion.
+VAR_CF = {
+    "precip": ("mm/day", "lwe_precipitation_rate"),
+    "temperature": ("degC", "air_temperature"),
+    "humidity": ("%", "relative_humidity"),
+    "pressure": ("kPa", "air_pressure"),
+}
 
 
 def _require_env() -> tuple[str, str]:
@@ -115,7 +123,9 @@ def _station_frame(api, station_id: str, start: str, end: str):
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument(
-        "--country", action="append", required=True,
+        "--country",
+        action="append",
+        required=True,
         help="Country name (pass once per country)",
     )
     p.add_argument("--start", required=True)
@@ -196,6 +206,9 @@ def main() -> None:
     ds["time"].attrs.update(standard_name="time", axis="T")
     ds["station_id"].attrs.update(cf_role="timeseries_id", long_name="TAHMO station identifier")
     ds["country"].attrs.update(long_name="country name")
+    for var, (units, std_name) in VAR_CF.items():
+        if var in ds.data_vars:
+            ds[var].attrs.update(units=units, standard_name=std_name)
     ds.attrs.update(
         rhiza_source="tahmo",
         rhiza_date=args.end,

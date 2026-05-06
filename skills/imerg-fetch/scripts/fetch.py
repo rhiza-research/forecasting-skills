@@ -89,6 +89,11 @@ def main() -> None:
         ds = ds.sel(time=slice(args.start, args.end))
         ds = ds.drop_attrs()
         ds.attrs.update(rhiza_source="imerg", rhiza_date=args.end)
+        ds["precip"].attrs.update(
+            units="mm/day",
+            standard_name="lwe_precipitation_rate",
+            long_name="IMERG daily precipitation",
+        )
         _stamp_cf_attrs(ds)
         for v in ds.variables:
             ds[v].encoding = {}
