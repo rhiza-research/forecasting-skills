@@ -135,7 +135,7 @@ uv run tahmo-fetch/scripts/fetch.py \
     --output /tmp/tahmo.zarr
 
 uv run plot-compare/scripts/plot_compare.py \
-    --a /tmp/tahmo.zarr --b /tmp/imerg_dekadal.zarr --variable precip \
+    -i /tmp/tahmo.zarr -i /tmp/imerg_dekadal.zarr --variable precip \
     --output /tmp/sat_vs_stations.png
 
 uv run email-report/scripts/email.py \

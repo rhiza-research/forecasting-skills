@@ -119,7 +119,10 @@ def _station_frame(api, station_id: str, start: str, end: str):
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--country", required=True, help="Comma-separated country names")
+    p.add_argument(
+        "--country", action="append", required=True,
+        help="Country name (pass once per country)",
+    )
     p.add_argument("--start", required=True)
     p.add_argument("--end", required=True)
     p.add_argument("--output", "-o", required=True)
@@ -140,7 +143,7 @@ def main() -> None:
     import pandas as pd
     import xarray as xr
 
-    countries = [c.strip() for c in args.country.split(",")]
+    countries = list(args.country)
     unknown = [c for c in countries if c not in COUNTRY_CODE]
     if unknown:
         print(

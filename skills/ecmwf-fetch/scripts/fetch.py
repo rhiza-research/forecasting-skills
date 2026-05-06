@@ -91,29 +91,29 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--date", required=True)
     p.add_argument("--region", choices=sorted(REGIONS))
-    p.add_argument("--area", help="N/W/S/E bbox overriding --region")
+    p.add_argument("--bbox", help="N/W/S/E bbox overriding --region")
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
-    if not args.area and not args.region:
-        print("Error: one of --region or --area is required.", file=sys.stderr)
+    if not args.bbox and not args.region:
+        print("Error: one of --region or --bbox is required.", file=sys.stderr)
         sys.exit(2)
-    area = args.area or REGIONS[args.region]
+    bbox = args.bbox or REGIONS[args.region]
     _require_env()
 
     import xarray as xr
     from ecmwfapi import ECMWFDataServer
 
-    print(f"Fetching ECMWF S2S for area={area} date={args.date}", file=sys.stderr)
+    print(f"Fetching ECMWF S2S for bbox={bbox} date={args.date}", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="ecmwf-fetch-") as tmpdir:
         tmp = Path(tmpdir)
         server = ECMWFDataServer()
         cf_grib = tmp / "cf.grib"
         pf_grib = tmp / "pf.grib"
         print("Retrieving cf...", file=sys.stderr)
-        _retrieve(server, args.date, area, "cf", cf_grib)
+        _retrieve(server, args.date, bbox, "cf", cf_grib)
         print("Retrieving pf...", file=sys.stderr)
-        _retrieve(server, args.date, area, "pf", pf_grib)
+        _retrieve(server, args.date, bbox, "pf", pf_grib)
 
         print("Decoding GRIB and writing Zarr...", file=sys.stderr)
         cf = xr.open_dataset(cf_grib, engine="cfgrib").assign_coords(number=0)
@@ -122,7 +122,7 @@ def main() -> None:
         ds.attrs.update(
             rhiza_source="ecmwf-s2s",
             rhiza_region=args.region or "",
-            rhiza_area_NWSE=area,
+            rhiza_area_NWSE=bbox,
             rhiza_date=args.date,
         )
         _stamp_cf_attrs(ds)

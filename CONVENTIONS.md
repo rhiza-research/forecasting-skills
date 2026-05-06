@@ -47,6 +47,11 @@ standalone single-file scripts. The convention is enforced by review.
 
 ## Rules
 
+- **Multi-value parameters use repeated flags, not comma-separated values.** A
+  skill that takes multiple values for the same concept repeats the flag
+  (`-i a.zarr -i b.zarr`, `--country Kenya --country Uganda`) rather than
+  accepting `a,b,c`. Applies beyond `--input`: any new multi-value flag follows
+  the same form.
 - **No backwards-compat aliasing.** If a flag name changes, change every caller
   in the same PR. There are no external callers to preserve.
 - **No shared helper module.** Each skill declares its own `ArgumentParser`.

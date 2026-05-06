@@ -30,7 +30,7 @@ uv run scripts/downscale.py --input <in.zarr> --output <out.zarr> \
 - `--factor`, `-f` — integer coarsening factor (>= 2). Mutually exclusive with `--target-resolution`. Target spacing = `factor` × input spacing.
 - `--target-resolution` — target spacing in degrees; factor is derived from the input grid spacing.
 - `--dims` — comma-separated lat,lon dim names. Defaults autodetect among `latitude/lat/y` and `longitude/lon/x`.
-- `--variable` — restrict to a single data variable. Default: regrid all.
+- `--variable`, `-v` — restrict to a single data variable. Default: regrid all.
 
 ### Output
 

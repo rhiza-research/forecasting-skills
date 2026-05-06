@@ -32,8 +32,8 @@ uv run scripts/fetch.py --date YYYY-MM-DD --region <region> --output <path.zarr>
 
 ### Arguments
 - `--date` — forecast init date (ISO).
-- `--region` — one of: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`, `angola`. Matches the named regions accepted by `clip-region`. For an explicit bbox, use `--area N/W/S/E` instead.
-- `--area` — optional; `N/W/S/E` decimal degrees. Overrides `--region` if both are given.
+- `--region` — one of: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`, `angola`. Matches the named regions accepted by `clip-region`. For an explicit bbox, use `--bbox N/W/S/E` instead.
+- `--bbox` — optional; `N/W/S/E` decimal degrees. Overrides `--region` if both are given.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
 ### Output
@@ -47,7 +47,7 @@ uv run scripts/fetch.py --date 2026-02-15 --region africa --output /tmp/ecmwf.za
 ```
 
 ```bash
-uv run scripts/fetch.py --date 2026-02-15 --area 7/32/-6/43 --output /tmp/ecmwf_kenya.zarr
+uv run scripts/fetch.py --date 2026-02-15 --bbox 7/32/-6/43 --output /tmp/ecmwf_kenya.zarr
 ```
 
 See [references/REFERENCE.md](references/REFERENCE.md) for the exact MARS request parameters and how retrieval time scales with area.

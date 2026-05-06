@@ -24,11 +24,11 @@ Downloads TAHMO station observations via the TAHMO SDK for the requested countri
 ## Usage
 
 ```
-uv run scripts/fetch.py --country K,G,... --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
+uv run scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
-- `--country` — comma-separated country names. Supported: Kenya, Ghana, Senegal, Ethiopia, Burkina Faso, Benin, DR Congo, Côte d'Ivoire, Cameroon, Lesotho, Madagascar, Mali, Malawi, Mozambique, Niger, Nigeria, Rwanda, Chad, Togo, Tanzania, Uganda, South Africa, Zambia, Zimbabwe.
+- `--country` — country name (pass once per country). Supported: Kenya, Ghana, Senegal, Ethiopia, Burkina Faso, Benin, DR Congo, Côte d'Ivoire, Cameroon, Lesotho, Madagascar, Mali, Malawi, Mozambique, Niger, Nigeria, Rwanda, Chad, Togo, Tanzania, Uganda, South Africa, Zambia, Zimbabwe.
 - `--start`, `--end` — inclusive date range (ISO).
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
@@ -39,6 +39,6 @@ Zarr with dims `(time, station_id)`, coords `latitude(station_id)`, `longitude(s
 ## Example
 
 ```bash
-uv run scripts/fetch.py --country Kenya,Ghana --start 2026-01-01 --end 2026-02-15 \
+uv run scripts/fetch.py --country Kenya --country Ghana --start 2026-01-01 --end 2026-02-15 \
     --output /tmp/tahmo.zarr
 ```
