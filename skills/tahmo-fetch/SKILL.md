@@ -34,7 +34,7 @@ uv run scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD
 
 ### Output
 
-Zarr with dims `(time, station_id)`, coords `latitude(station_id)`, `longitude(station_id)`, `country(station_id)`, and data variables `precip` (mm/day), `temperature` (°C), `humidity` (fraction), `pressure` (kPa) — whichever variables the stations report. Stamped with `rhiza_source=tahmo`.
+Zarr with dims `(time, station_id)`, coords `latitude(station_id)`, `longitude(station_id)`, `country(station_id)`, and data variables `precip` (mm/day), `temperature` (°C), `humidity` (%), `pressure` (kPa) — whichever variables the stations report. Stamped with `rhiza_source=tahmo`.
 
 ## Example
 

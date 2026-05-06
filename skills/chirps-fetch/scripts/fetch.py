@@ -99,7 +99,7 @@ def main() -> None:
         da = da.sortby("lat", ascending=True)
         da.name = "precip"
         da.attrs["units"] = "mm/day"
-        da.attrs["standard_name"] = "lwe_thickness_of_precipitation_amount"
+        da.attrs["standard_name"] = "lwe_precipitation_rate"
         da.attrs["long_name"] = "CHIRPS daily precipitation"
 
         ds = da.to_dataset()

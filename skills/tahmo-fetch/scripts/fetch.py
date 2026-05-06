@@ -64,14 +64,17 @@ DAILY_AGG = {
     "humidity": "mean",
     "pressure": "mean",
 }
-# CF standard_name per envelope variable. Verified against the CF standard
-# name table v93. `units` and `long_name` are pulled live from
-# api.getVariables() so they track whatever TAHMO is actually returning.
-CF_STANDARD_NAMES = {
-    "precip": "lwe_thickness_of_precipitation_amount",
-    "temperature": "air_temperature",
-    "humidity": "relative_humidity",
-    "pressure": "air_pressure",
+# CF metadata per envelope variable as (standard_name, units_override).
+# Standard names are verified against the CF standard name table v93. Units
+# are pulled live from api.getVariables() so they track whatever TAHMO is
+# actually returning, except for `precip`: the raw TAHMO shortcode reports
+# in "mm" per measurement, and our daily sum aggregation produces mm-per-day
+# which is the rate label that pairs with lwe_precipitation_rate.
+CF_META = {
+    "precip": ("lwe_precipitation_rate", "mm/day"),
+    "temperature": ("air_temperature", None),
+    "humidity": ("relative_humidity", None),
+    "pressure": ("air_pressure", None),
 }
 
 
@@ -212,17 +215,17 @@ def main() -> None:
     short_code_for = {v: k for k, v in VAR_MAP.items()}
     for canonical in ds.data_vars:
         short = short_code_for.get(canonical)
-        meta = var_meta.get(short, {}) if short else {}
+        api_meta = var_meta.get(short, {}) if short else {}
+        std_name, units_override = CF_META.get(canonical, (None, None))
         attrs = {}
-        units = meta.get("units")
+        if std_name:
+            attrs["standard_name"] = std_name
+        units = units_override or api_meta.get("units")
         if units:
             attrs["units"] = units
-        description = meta.get("description")
+        description = api_meta.get("description")
         if description:
             attrs["long_name"] = description
-        std = CF_STANDARD_NAMES.get(canonical)
-        if std:
-            attrs["standard_name"] = std
         if attrs:
             ds[canonical].attrs.update(attrs)
     ds.attrs.update(
