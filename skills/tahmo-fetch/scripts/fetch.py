@@ -23,7 +23,6 @@ import shutil
 import sys
 from pathlib import Path
 
-
 COUNTRY_CODE = {
     "Burkina Faso": "BF",
     "Benin": "BJ",
@@ -84,18 +83,14 @@ def _station_frame(api, station_id: str, start: str, end: str):
     import pandas as pd
 
     try:
-        raw = api.getRawData(
-            station=station_id, startDate=start, endDate=end, dataset="controlled"
-        )
+        raw = api.getRawData(station=station_id, startDate=start, endDate=end, dataset="controlled")
     except Exception as exc:
         print(f"{station_id}: skipped ({exc})", file=sys.stderr)
         return None
     if raw is None or len(raw) == 0:
         return None
 
-    raw["time"] = pd.to_datetime(raw["time"], format="mixed", utc=True).dt.tz_convert(
-        None
-    )
+    raw["time"] = pd.to_datetime(raw["time"], format="mixed", utc=True).dt.tz_convert(None)
     keep_vars = set(VAR_MAP.keys())
     raw = raw[raw["variable"].isin(keep_vars)]
     if "quality" in raw.columns:
@@ -196,16 +191,10 @@ def main() -> None:
         longitude=("station_id", meta.loc[ds["station_id"].values, "longitude"].values),
         country=("station_id", meta.loc[ds["station_id"].values, "country"].values),
     )
-    ds["latitude"].attrs.update(
-        standard_name="latitude", units="degrees_north", axis="Y"
-    )
-    ds["longitude"].attrs.update(
-        standard_name="longitude", units="degrees_east", axis="X"
-    )
+    ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
+    ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
     ds["time"].attrs.update(standard_name="time", axis="T")
-    ds["station_id"].attrs.update(
-        cf_role="timeseries_id", long_name="TAHMO station identifier"
-    )
+    ds["station_id"].attrs.update(cf_role="timeseries_id", long_name="TAHMO station identifier")
     ds["country"].attrs.update(long_name="country name")
     ds.attrs.update(
         rhiza_source="tahmo",

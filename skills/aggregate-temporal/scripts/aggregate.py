@@ -47,9 +47,7 @@ def _aggregate_step(ds, period, method):
     window = pd.Timedelta(days=days).to_timedelta64()
     steps = ds["step"].values
     if steps.dtype.kind != "m":
-        print(
-            f"Error: 'step' dim must be timedelta64, got {steps.dtype}", file=sys.stderr
-        )
+        print(f"Error: 'step' dim must be timedelta64, got {steps.dtype}", file=sys.stderr)
         sys.exit(2)
     max_step = steps.max()
     edges = np.arange(0, max_step + window, window, dtype=steps.dtype)
@@ -75,9 +73,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--input", "-i", required=True)
     p.add_argument("--output", "-o", required=True)
-    p.add_argument(
-        "--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"]
-    )
+    p.add_argument("--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"])
     p.add_argument("--method", default="sum", choices=["sum", "mean", "max", "min"])
     p.add_argument("--time-dim")
     args = p.parse_args()

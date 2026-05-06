@@ -19,7 +19,6 @@ from pathlib import Path
 import earthaccess
 import xarray as xr
 
-
 SHORTNAMES = {
     "late": "GPM_3IMERGDL",
     "final": "GPM_3IMERGDF",
@@ -67,9 +66,7 @@ def main() -> None:
         temporal=(args.start, args.end),
     )
     if not results:
-        raise RuntimeError(
-            f"No IMERG {args.version} granules found in {args.start}..{args.end}"
-        )
+        raise RuntimeError(f"No IMERG {args.version} granules found in {args.start}..{args.end}")
     print(f"Found {len(results)} granules", file=sys.stderr)
 
     out = Path(args.output)

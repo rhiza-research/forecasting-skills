@@ -64,8 +64,7 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(bytes(msg))
     print(
-        f"Wrote: {args.output} ({len(msg.get_payload())} parts, "
-        f"{out.stat().st_size} bytes)",
+        f"Wrote: {args.output} ({len(msg.get_payload())} parts, {out.stat().st_size} bytes)",
         file=sys.stderr,
     )
 

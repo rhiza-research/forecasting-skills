@@ -64,9 +64,7 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     grp = p.add_mutually_exclusive_group(required=True)
     grp.add_argument("--factor", "-f", type=int)
-    grp.add_argument(
-        "--target-resolution", type=float, help="Target grid spacing in degrees"
-    )
+    grp.add_argument("--target-resolution", type=float, help="Target grid spacing in degrees")
     p.add_argument("--dims", help="Override as LAT,LON dim names")
     p.add_argument("--variable", "-v", help="Restrict to a single data variable")
     args = p.parse_args()

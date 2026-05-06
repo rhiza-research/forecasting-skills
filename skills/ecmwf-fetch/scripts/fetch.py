@@ -17,7 +17,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 REGIONS = {
     "africa": "23/-20/-37/59",
     "kenya": "7/32/-6/43",
@@ -34,14 +33,10 @@ REGIONS = {
 
 def _require_env() -> None:
     missing = [
-        v
-        for v in ("ECMWF_API_URL", "ECMWF_API_KEY", "ECMWF_API_EMAIL")
-        if not os.environ.get(v)
+        v for v in ("ECMWF_API_URL", "ECMWF_API_KEY", "ECMWF_API_EMAIL") if not os.environ.get(v)
     ]
     if missing:
-        print(
-            f"Error: missing required env var(s): {', '.join(missing)}", file=sys.stderr
-        )
+        print(f"Error: missing required env var(s): {', '.join(missing)}", file=sys.stderr)
         sys.exit(2)
 
 

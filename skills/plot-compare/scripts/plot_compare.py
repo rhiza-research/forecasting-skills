@@ -23,11 +23,18 @@ import argparse
 import sys
 from pathlib import Path
 
-
 # Shared categorical colormap and BoundaryNorm for precipitation (mm).
 PRECIP_COLORS = [
-    "#bdbdbd", "wheat", "lightgreen", "green",
-    "lightblue", "blue", "yellow", "orange", "red", "purple",
+    "#bdbdbd",
+    "wheat",
+    "lightgreen",
+    "green",
+    "lightblue",
+    "blue",
+    "yellow",
+    "orange",
+    "red",
+    "purple",
 ]
 PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
 
@@ -91,8 +98,14 @@ def _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax):
     lats = ds["latitude"].values
     lons = ds["longitude"].values
     return ax.scatter(
-        lons, lats, c=sel.values,
-        cmap=cmap, norm=norm, vmin=vmin, vmax=vmax, s=30,
+        lons,
+        lats,
+        c=sel.values,
+        cmap=cmap,
+        norm=norm,
+        vmin=vmin,
+        vmax=vmax,
+        s=30,
     )
 
 
@@ -100,8 +113,13 @@ def _grid_panel(ax, sel, cmap, norm, vmin, vmax):
     lat_dim = _cf_dim(sel, "latitude")
     lon_dim = _cf_dim(sel, "longitude")
     return sel.transpose(lat_dim, lon_dim).plot.pcolormesh(
-        ax=ax, x=lon_dim, y=lat_dim,
-        cmap=cmap, norm=norm, vmin=vmin, vmax=vmax,
+        ax=ax,
+        x=lon_dim,
+        y=lat_dim,
+        cmap=cmap,
+        norm=norm,
+        vmin=vmin,
+        vmax=vmax,
         add_colorbar=False,
     )
 
@@ -118,8 +136,10 @@ def _ax_bounds(ds, variable):
     import numpy as np
 
     return (
-        float(np.nanmin(lons)), float(np.nanmax(lons)),
-        float(np.nanmin(lats)), float(np.nanmax(lats)),
+        float(np.nanmin(lons)),
+        float(np.nanmax(lons)),
+        float(np.nanmin(lats)),
+        float(np.nanmax(lats)),
     )
 
 
@@ -135,7 +155,7 @@ def main() -> None:
         "--colormap",
         default=None,
         help="matplotlib colormap name. When omitted, the categorical "
-             "precipitation colormap with BoundaryNorm is used.",
+        "precipitation colormap with BoundaryNorm is used.",
     )
     p.add_argument("--title")
     p.add_argument("--panels", type=int, default=3)
@@ -181,8 +201,7 @@ def main() -> None:
     td_b = _pick_time_dim(ds_b, args.time_dim)
     if td_a is None or td_b is None:
         print(
-            f"Error: both inputs need a time/step dim. A: {list(ds_a.dims)}  "
-            f"B: {list(ds_b.dims)}",
+            f"Error: both inputs need a time/step dim. A: {list(ds_a.dims)}  B: {list(ds_b.dims)}",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -260,7 +279,9 @@ def main() -> None:
             ax.set_title(f"{label}: {title_t}", fontsize=9)
             if boundaries is not None:
                 boundaries.boundary.plot(
-                    edgecolor="grey", linewidth=1.0, ax=ax,
+                    edgecolor="grey",
+                    linewidth=1.0,
+                    ax=ax,
                 )
             if col != 0:
                 ax.set_ylabel("")
@@ -286,14 +307,20 @@ def main() -> None:
         ax.set_xlabel("lon" if col == n // 2 else "")
 
     fig.colorbar(
-        sc_top, ax=top_axes,
+        sc_top,
+        ax=top_axes,
         label=f"{top[3]} {variable}",
-        shrink=0.6, fraction=0.02, pad=0.02,
+        shrink=0.6,
+        fraction=0.02,
+        pad=0.02,
     )
     fig.colorbar(
-        im_bottom, ax=bottom_axes,
+        im_bottom,
+        ax=bottom_axes,
         label=f"{bottom[3]} {variable}",
-        shrink=0.6, fraction=0.02, pad=0.02,
+        shrink=0.6,
+        fraction=0.02,
+        pad=0.02,
     )
 
     out = Path(args.output)
