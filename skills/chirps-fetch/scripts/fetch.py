@@ -1,34 +1,69 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "sheerwater",
 #   "xarray",
 #   "zarr",
 #   "numpy",
+#   "rioxarray",
 # ]
 # ///
-"""Fetch CHIRPS live precipitation and write a Rhiza Envelope Zarr."""
+"""Fetch CHIRPS prelim precipitation from FTP and write a Rhiza Envelope Zarr."""
 
 import argparse
+import ftplib
 import shutil
 import sys
+import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
+import rioxarray  # noqa: F401 — registers .rio accessor
+import xarray as xr
 
-def _stamp_cf_attrs(ds):
-    """Stamp CF standard_name/units/axis on spatial + time coords (non-destructive)."""
-    for name in ("latitude", "lat", "y"):
-        if name in ds.coords:
-            ds[name].attrs.setdefault("standard_name", "latitude")
-            ds[name].attrs.setdefault("units", "degrees_north")
-            ds[name].attrs.setdefault("axis", "Y")
-            break
-    for name in ("longitude", "lon", "x"):
-        if name in ds.coords:
-            ds[name].attrs.setdefault("standard_name", "longitude")
-            ds[name].attrs.setdefault("units", "degrees_east")
-            ds[name].attrs.setdefault("axis", "X")
-            break
+CHIRPS_FTP_HOST = "ftp.chc.ucsb.edu"
+CHIRPS_FTP_DIR = "/pub/org/chc/products/CHIRPS/v3.0/daily/prelim/sat"
+CHIRPS_NODATA = -9999.0
+
+
+def _daterange(start: str, end: str):
+    s = date.fromisoformat(start)
+    e = date.fromisoformat(end)
+    d = s
+    while d <= e:
+        yield d
+        d += timedelta(days=1)
+
+
+def _download_day_tif(ftp: ftplib.FTP, day: date, dest_dir: Path) -> Path:
+    name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
+    ftp.cwd(f"{CHIRPS_FTP_DIR}/{day.year:04d}")
+    out = dest_dir / name
+    with open(out, "wb") as f:
+        ftp.retrbinary(f"RETR {name}", f.write)
+    return out
+
+
+def _open_day(tif: Path, day: date) -> xr.DataArray:
+    da = rioxarray.open_rasterio(tif, masked=False).squeeze("band", drop=True)
+    da = da.where(da != CHIRPS_NODATA)
+    da = da.rename({"y": "lat", "x": "lon"})
+    if "spatial_ref" in da.coords:
+        da = da.drop_vars("spatial_ref")
+    da.attrs = {}
+    da = da.expand_dims(time=[np.datetime64(day.isoformat(), "ns")])
+    return da
+
+
+def _stamp_cf_attrs(ds: xr.Dataset) -> xr.Dataset:
+    if "lat" in ds.coords:
+        ds["lat"].attrs.setdefault("standard_name", "latitude")
+        ds["lat"].attrs.setdefault("units", "degrees_north")
+        ds["lat"].attrs.setdefault("axis", "Y")
+    if "lon" in ds.coords:
+        ds["lon"].attrs.setdefault("standard_name", "longitude")
+        ds["lon"].attrs.setdefault("units", "degrees_east")
+        ds["lon"].attrs.setdefault("axis", "X")
     if "time" in ds.coords:
         ds["time"].attrs.setdefault("standard_name", "time")
         ds["time"].attrs.setdefault("axis", "T")
@@ -42,27 +77,44 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
-    from sheerwater.data.chirps import chirps_raw_live
+    print(f"Fetching CHIRPS prelim {args.start} -> {args.end}", file=sys.stderr)
 
-    print(f"Fetching CHIRPS {args.start} -> {args.end}", file=sys.stderr)
-    ds = chirps_raw_live(
-        args.start, args.end, recompute=False, cache_mode="local_overwrite"
-    )
-    ds = ds.drop_attrs()
-    ds.attrs.update(
-        rhiza_source="chirps",
-        rhiza_date=args.end,
-    )
-    _stamp_cf_attrs(ds)
-    for v in ds.variables:
-        ds[v].encoding = {}
+    with tempfile.TemporaryDirectory(prefix="chirps_") as tmpdir:
+        tmp = Path(tmpdir)
+        ftp = ftplib.FTP(CHIRPS_FTP_HOST, timeout=60)
+        ftp.login()
+        try:
+            arrs = []
+            for day in _daterange(args.start, args.end):
+                print(f"  {day.isoformat()}", file=sys.stderr)
+                tif = _download_day_tif(ftp, day, tmp)
+                arrs.append(_open_day(tif, day))
+        finally:
+            try:
+                ftp.quit()
+            except ftplib.all_errors:
+                ftp.close()
 
-    out = Path(args.output)
-    if out.exists():
-        shutil.rmtree(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    ds.to_zarr(out, mode="w", consolidated=True)
-    print(f"Wrote: {args.output}", file=sys.stderr)
+        da = xr.concat(arrs, dim="time")
+        da = da.sortby("lat", ascending=True)
+        da.name = "precip"
+        da.attrs["units"] = "mm/day"
+        da.attrs["standard_name"] = "lwe_thickness_of_precipitation_amount"
+        da.attrs["long_name"] = "CHIRPS daily precipitation"
+
+        ds = da.to_dataset()
+        ds.attrs["rhiza_source"] = "chirps"
+        ds.attrs["rhiza_date"] = args.end
+        _stamp_cf_attrs(ds)
+        for v in ds.variables:
+            ds[v].encoding = {}
+
+        out = Path(args.output)
+        if out.exists():
+            shutil.rmtree(out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        ds.to_zarr(out, mode="w", consolidated=True)
+        print(f"Wrote: {args.output}", file=sys.stderr)
 
 
 if __name__ == "__main__":
