@@ -30,7 +30,7 @@ def _reduce(grouped, method):
         "mean": grouped.mean,
         "max": grouped.max,
         "min": grouped.min,
-    }[method]()
+    }[method](keep_attrs=True)
 
 
 def _aggregate_step(ds, period, method):

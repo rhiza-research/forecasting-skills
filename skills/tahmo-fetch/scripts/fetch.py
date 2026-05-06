@@ -64,13 +64,17 @@ DAILY_AGG = {
     "humidity": "mean",
     "pressure": "mean",
 }
-# CF (units, standard_name) for each output data variable. TAHMO's datahub
-# returns relative humidity in percent; the SDK applies no unit conversion.
-VAR_CF = {
-    "precip": ("mm/day", "lwe_precipitation_rate"),
-    "temperature": ("degC", "air_temperature"),
-    "humidity": ("%", "relative_humidity"),
-    "pressure": ("kPa", "air_pressure"),
+# CF metadata per envelope variable as (standard_name, units_override).
+# Standard names are verified against the CF standard name table v93. Units
+# are pulled live from api.getVariables() so they track whatever TAHMO is
+# actually returning, except for `precip`: the raw TAHMO shortcode reports
+# in "mm" per measurement, and our daily sum aggregation produces mm-per-day
+# which is the rate label that pairs with lwe_precipitation_rate.
+CF_META = {
+    "precip": ("lwe_precipitation_rate", "mm/day"),
+    "temperature": ("air_temperature", None),
+    "humidity": ("relative_humidity", None),
+    "pressure": ("air_pressure", None),
 }
 
 
@@ -161,6 +165,8 @@ def main() -> None:
     api.setCredentials(username, password)
     stations_raw = api.getStations()
     stations = pd.json_normalize(list(stations_raw.values()), sep="_")
+    # Discover units / description from TAHMO so we don't hard-code them.
+    var_meta = api.getVariables()
 
     frames = []
     meta_rows = []
@@ -206,9 +212,22 @@ def main() -> None:
     ds["time"].attrs.update(standard_name="time", axis="T")
     ds["station_id"].attrs.update(cf_role="timeseries_id", long_name="TAHMO station identifier")
     ds["country"].attrs.update(long_name="country name")
-    for var, (units, std_name) in VAR_CF.items():
-        if var in ds.data_vars:
-            ds[var].attrs.update(units=units, standard_name=std_name)
+    short_code_for = {v: k for k, v in VAR_MAP.items()}
+    for canonical in ds.data_vars:
+        short = short_code_for.get(canonical)
+        api_meta = var_meta.get(short, {}) if short else {}
+        std_name, units_override = CF_META.get(canonical, (None, None))
+        attrs = {}
+        if std_name:
+            attrs["standard_name"] = std_name
+        units = units_override or api_meta.get("units")
+        if units:
+            attrs["units"] = units
+        description = api_meta.get("description")
+        if description:
+            attrs["long_name"] = description
+        if attrs:
+            ds[canonical].attrs.update(attrs)
     ds.attrs.update(
         rhiza_source="tahmo",
         rhiza_date=args.end,
