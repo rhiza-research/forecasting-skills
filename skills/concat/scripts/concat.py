@@ -58,7 +58,7 @@ def main() -> None:
                     file=sys.stderr,
                 )
                 sys.exit(2)
-            dss = [d.expand_dims({args.dim: [v]}) for d, v in zip(dss, coord_vals)]
+            dss = [d.expand_dims({args.dim: [v]}) for d, v in zip(dss, coord_vals, strict=True)]
         else:
             dss = [d.expand_dims(args.dim) for d in dss]
 

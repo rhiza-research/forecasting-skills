@@ -14,7 +14,6 @@ import shutil
 import sys
 from pathlib import Path
 
-
 REGIONS = {
     "africa": (23, -20, -37, 59),
     "kenya": (7, 32, -6, 43),

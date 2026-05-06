@@ -135,9 +135,7 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
 
     lon_vals = np.asarray(da[lon_dim].values)
     if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-        da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(
-            lon_dim
-        )
+        da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
 
     sdim = _step_dim(da)
     if sdim is None or da.sizes.get(sdim, 1) == 1:
@@ -227,9 +225,7 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
         fig.suptitle(title, fontsize=fontsize)
     fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
-    cbar = fig.colorbar(
-        contour, cax=cbar_ax, orientation="horizontal", fraction=5
-    )
+    cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", fraction=5)
     units = da.attrs.get("units", "")
     label = da.name or "value"
     if units:

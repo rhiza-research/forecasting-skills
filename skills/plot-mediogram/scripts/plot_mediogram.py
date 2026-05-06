@@ -190,10 +190,7 @@ def main() -> None:
     ax.set_xticklabels([f"T+{t + 1}" for t in time_steps])
     ax.set_xlabel("Forecast step")
     ax.set_ylabel(variable)
-    ax.set_title(
-        args.title
-        or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}"
-    )
+    ax.set_title(args.title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
     ax.grid(True, linestyle="--", alpha=0.6)
 
     handles = [
