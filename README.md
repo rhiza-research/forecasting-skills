@@ -157,6 +157,14 @@ The generic middle skills rely on a shared Zarr shape — gridded
 produce an envelope; consumers only rely on dims, coords, data variables and
 `rhiza_*` attrs, never on per-variable codec encoding.
 
+## CLI flag conventions
+
+Each skill ships its own argparse CLI, but they share canonical flag names so
+common parameters (`--input` / `-o`, `--region`, `--bbox`, `--start` / `--end`,
+etc.) mean the same thing wherever they appear. See
+[`CONVENTIONS.md`](CONVENTIONS.md) for the full mapping of concept → canonical
+flag.
+
 ## Credentials
 
 Fetchers read credentials from environment variables (or `.netrc` where
