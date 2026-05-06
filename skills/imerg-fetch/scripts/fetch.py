@@ -1,7 +1,8 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "sheerwater",
+#   "earthaccess",
+#   "h5netcdf",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -12,7 +13,17 @@
 import argparse
 import shutil
 import sys
+import tempfile
 from pathlib import Path
+
+import earthaccess
+import xarray as xr
+
+
+SHORTNAMES = {
+    "late": "GPM_3IMERGDL",
+    "final": "GPM_3IMERGDF",
+}
 
 
 def _stamp_cf_attrs(ds):
@@ -40,36 +51,54 @@ def main() -> None:
     p.add_argument("--start", required=True, help="Start date YYYY-MM-DD (inclusive)")
     p.add_argument("--end", required=True, help="End date YYYY-MM-DD (inclusive)")
     p.add_argument("--output", "-o", required=True)
-    p.add_argument("--version", default="late", choices=["early", "late", "final"])
+    p.add_argument("--version", default="late", choices=list(SHORTNAMES))
     args = p.parse_args()
 
-    from sheerwater.data.imerg import imerg_raw_live
+    shortname = SHORTNAMES[args.version]
+    print(
+        f"Fetching IMERG {args.version} ({shortname}) {args.start} -> {args.end}",
+        file=sys.stderr,
+    )
 
-    print(f"Fetching IMERG {args.version} {args.start} -> {args.end}", file=sys.stderr)
-    ds = imerg_raw_live(
-        args.start,
-        args.end,
-        version=args.version,
-        cache_mode="local_overwrite",
-        delayed=False,
-        recompute=True,
+    earthaccess.login()
+    results = earthaccess.search_data(
+        short_name=shortname,
+        cloud_hosted=True,
+        temporal=(args.start, args.end),
     )
-    if "precipitation" in ds.data_vars:
-        ds = ds.rename({"precipitation": "precip"})
-    ds = ds.drop_attrs()
-    ds.attrs.update(
-        rhiza_source="imerg",
-        rhiza_date=args.end,
-    )
-    _stamp_cf_attrs(ds)
-    for v in ds.variables:
-        ds[v].encoding = {}
+    if not results:
+        raise RuntimeError(
+            f"No IMERG {args.version} granules found in {args.start}..{args.end}"
+        )
+    print(f"Found {len(results)} granules", file=sys.stderr)
 
     out = Path(args.output)
     if out.exists():
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    ds.to_zarr(out, mode="w", consolidated=True)
+
+    with tempfile.TemporaryDirectory(prefix="imerg-fetch-") as td:
+        files = earthaccess.download(results, local_path=td)
+        ds = xr.open_mfdataset(
+            files,
+            engine="h5netcdf",
+            group="Grid",
+            combine="by_coords",
+        )
+        ds = ds[["precipitation"]].rename({"precipitation": "precip"})
+        # CMR's temporal filter is overlap-based and can return granules just
+        # outside [start, end]; trim to exact requested bounds to match the
+        # prior sheerwater @timeseries() post-process.
+        ds = ds.sel(time=slice(args.start, args.end))
+        ds = ds.drop_attrs()
+        ds.attrs.update(rhiza_source="imerg", rhiza_date=args.end)
+        _stamp_cf_attrs(ds)
+        for v in ds.variables:
+            ds[v].encoding = {}
+
+        # Materialize before the temp dir vanishes — open_mfdataset is lazy.
+        ds.load().to_zarr(out, mode="w", consolidated=True)
+
     print(f"Wrote: {args.output}", file=sys.stderr)
 
 

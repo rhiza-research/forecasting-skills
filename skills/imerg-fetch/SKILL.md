@@ -2,12 +2,19 @@
 name: imerg-fetch
 description: Fetch live IMERG satellite precipitation for a date range and write a Rhiza Envelope Zarr. Use when a task needs recent half-hourly/daily IMERG rainfall, e.g. for station vs. satellite comparison or verification.
 license: MIT
-compatibility: Requires Python 3.12+ and uv. Requires EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment (or .netrc equivalent).
+compatibility: Requires Python 3.12+ and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
+metadata:
+  openclaw:
+    requires:
+      env:
+        - EARTHDATA_USERNAME
+        - EARTHDATA_PASSWORD
+    primaryEnv: EARTHDATA_USERNAME
 ---
 
 # imerg-fetch
 
-Downloads IMERG late-release precipitation for the requested date range and writes a global-grid Zarr store. The IMERG late release runs ~4 days behind realtime; callers typically shift the requested end date accordingly.
+Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess` for the requested date range and writes a global-grid Zarr store. The IMERG late release runs ~4 days behind realtime; callers typically shift the requested end date accordingly.
 
 ## When to use
 
@@ -16,12 +23,13 @@ Downloads IMERG late-release precipitation for the requested date range and writ
 ## Usage
 
 ```
-uv run scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
+uv run scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr> [--version late|final]
 ```
 
 ### Arguments
 - `--start`, `--end` — inclusive date range (ISO).
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
+- `--version` — `late` (default; ~4 days behind realtime, `GPM_3IMERGDL`) or `final` (`GPM_3IMERGDF`).
 
 ### Output
 
