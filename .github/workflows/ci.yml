@@ -19,25 +19,29 @@ jobs:
       - run: uvx ruff format --check
       - run: uvx ruff check
 
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          matrix=$(find skills -mindepth 3 -maxdepth 3 -path '*/scripts/*' -name '*.py' \
+            | sort \
+            | jq -R -s -c 'split("\n") | map(select(length > 0)) | map(split("/") | {skill: .[1], script: .[3]})')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "$matrix"
+
   script-help:
+    needs: discover
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { skill: aggregate-temporal, script: aggregate.py }
-          - { skill: chirps-fetch,       script: fetch.py }
-          - { skill: clip-region,        script: clip.py }
-          - { skill: concat,             script: concat.py }
-          - { skill: downscale,          script: downscale.py }
-          - { skill: ecmwf-fetch,        script: fetch.py }
-          - { skill: email-report,       script: compose.py }
-          - { skill: imerg-fetch,        script: fetch.py }
-          - { skill: plot,               script: plot.py }
-          - { skill: plot-compare,       script: plot_compare.py }
-          - { skill: plot-mediogram,     script: plot_mediogram.py }
-          - { skill: tahmo-fetch,        script: fetch.py }
+        include: ${{ fromJSON(needs.discover.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v8.1.0
