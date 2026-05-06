@@ -68,7 +68,7 @@ def main() -> None:
         "--target-resolution", type=float, help="Target grid spacing in degrees"
     )
     p.add_argument("--dims", help="Override as LAT,LON dim names")
-    p.add_argument("--variable", help="Restrict to a single data variable")
+    p.add_argument("--variable", "-v", help="Restrict to a single data variable")
     args = p.parse_args()
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor

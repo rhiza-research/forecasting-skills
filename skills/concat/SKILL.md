@@ -18,12 +18,12 @@ Source-agnostic concatenation along a named dim. Inputs must share all other dim
 ## Usage
 
 ```
-uv run scripts/concat.py --inputs a.zarr,b.zarr,... --dim DIM --output <out.zarr> \
+uv run scripts/concat.py -i a.zarr -i b.zarr [-i ...] --dim DIM --output <out.zarr> \
     [--coords V1,V2,...]
 ```
 
 ### Arguments
-- `--inputs` — comma-separated list of input Zarr paths (order is preserved).
+- `--input`, `-i` — input Zarr (pass once per input; order is preserved). At least two are required.
 - `--dim` — dimension name to concatenate along.
 - `--coords` — optional comma-separated coord values to assign to the new dim. Length must match number of inputs; only used when `--dim` does not already exist on inputs.
 - `--output`, `-o` — output Zarr.
@@ -35,5 +35,5 @@ A single Zarr with the concat dim extended. Attrs from the first input are prese
 ## Example
 
 ```bash
-uv run scripts/concat.py --inputs /tmp/cf.zarr,/tmp/pf.zarr --dim number --output /tmp/ens.zarr
+uv run scripts/concat.py -i /tmp/cf.zarr -i /tmp/pf.zarr --dim number --output /tmp/ens.zarr
 ```

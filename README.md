@@ -135,7 +135,7 @@ uv run tahmo-fetch/scripts/fetch.py \
     --output /tmp/tahmo.zarr
 
 uv run plot-compare/scripts/plot_compare.py \
-    --a /tmp/tahmo.zarr --b /tmp/imerg_dekadal.zarr --variable precip \
+    -i /tmp/tahmo.zarr -i /tmp/imerg_dekadal.zarr --variable precip \
     --output /tmp/sat_vs_stations.png
 
 uv run email-report/scripts/email.py \
@@ -156,6 +156,14 @@ The generic middle skills rely on a shared Zarr shape — gridded
 `(time, station_id)` — documented in [`ENVELOPE.md`](ENVELOPE.md). Fetchers
 produce an envelope; consumers only rely on dims, coords, data variables and
 `rhiza_*` attrs, never on per-variable codec encoding.
+
+## CLI flag conventions
+
+Each skill ships its own argparse CLI, but they share canonical flag names so
+common parameters (`--input` / `-o`, `--region`, `--bbox`, `--start` / `--end`,
+etc.) mean the same thing wherever they appear. See
+[`CONVENTIONS.md`](CONVENTIONS.md) for the full mapping of concept → canonical
+flag.
 
 ## Credentials
 

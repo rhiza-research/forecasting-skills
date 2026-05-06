@@ -125,8 +125,10 @@ def _ax_bounds(ds, variable):
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--a", required=True, help="First Zarr input")
-    p.add_argument("--b", required=True, help="Second Zarr input")
+    p.add_argument(
+        "--input", "-i", action="append", required=True,
+        help="Input Zarr; pass exactly twice (first = A, second = B)",
+    )
     p.add_argument("--output", "-o", required=True)
     p.add_argument("--variable", "-v")
     p.add_argument(
@@ -140,6 +142,14 @@ def main() -> None:
     p.add_argument("--time-dim")
     args = p.parse_args()
 
+    if len(args.input) != 2:
+        print(
+            f"Error: --input must be passed exactly twice; got {len(args.input)}.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    path_a, path_b = args.input
+
     import matplotlib
 
     matplotlib.use("Agg")
@@ -150,13 +160,13 @@ def main() -> None:
     from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap
     from matplotlib.gridspec import GridSpec
 
-    for pth in (args.a, args.b):
+    for pth in (path_a, path_b):
         if not Path(pth).exists():
             print(f"Error: {pth} not found.", file=sys.stderr)
             sys.exit(2)
 
-    ds_a = xr.open_zarr(args.a, consolidated=False)
-    ds_b = xr.open_zarr(args.b, consolidated=False)
+    ds_a = xr.open_zarr(path_a, consolidated=False)
+    ds_b = xr.open_zarr(path_b, consolidated=False)
 
     variable = args.variable or (list(ds_a.data_vars)[0] if ds_a.data_vars else None)
     if variable is None or variable not in ds_a or variable not in ds_b:
@@ -202,8 +212,8 @@ def main() -> None:
     da_b = _flatten(da_b, td_b)
 
     # Decide row layout: when exactly one is station-schema, put it on top.
-    label_a = Path(args.a).name
-    label_b = Path(args.b).name
+    label_a = Path(path_a).name
+    label_b = Path(path_b).name
     a_station = _is_station(ds_a)
     b_station = _is_station(ds_b)
     if b_station and not a_station:

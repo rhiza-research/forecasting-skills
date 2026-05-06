@@ -29,7 +29,10 @@ def _coerce(values):
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--inputs", required=True, help="Comma-separated Zarr paths")
+    p.add_argument(
+        "--input", "-i", action="append", required=True,
+        help="Input Zarr (repeat the flag for each input; need at least 2)",
+    )
     p.add_argument("--dim", required=True)
     p.add_argument("--coords", help="Comma-separated coord values for the new dim")
     p.add_argument("--output", "-o", required=True)
@@ -37,7 +40,7 @@ def main() -> None:
 
     import xarray as xr
 
-    paths = [Path(s.strip()) for s in args.inputs.split(",") if s.strip()]
+    paths = [Path(s) for s in args.input]
     if len(paths) < 2:
         print("Error: need at least 2 inputs.", file=sys.stderr)
         sys.exit(2)

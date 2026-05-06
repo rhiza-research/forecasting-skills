@@ -30,13 +30,13 @@ country boundary overlay (Natural Earth, fetched and cached via
 ## Usage
 
 ```
-uv run scripts/plot_compare.py --a <a.zarr> --b <b.zarr> --output <out.png> \
+uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--colormap NAME] [--title TEXT] \
     [--panels N] [--time-dim DIM]
 ```
 
 ### Arguments
-- `--a`, `--b` — the two Zarr inputs. Station-schema is allowed on either.
+- `--input`, `-i` — pass exactly twice. The first input is row A, the second is row B. Station-schema is allowed on either.
 - `--output`, `-o` — PNG path.
 - `--variable` — variable name (must be present in both inputs; default: first var in A).
 - `--colormap` — matplotlib colormap. When omitted, the categorical
@@ -58,7 +58,7 @@ leftmost panel of each row.
 ## Example
 
 ```bash
-uv run scripts/plot_compare.py --a /tmp/tahmo.zarr --b /tmp/imerg_dekadal.zarr \
+uv run scripts/plot_compare.py -i /tmp/tahmo.zarr -i /tmp/imerg_dekadal.zarr \
     --variable precip --output /tmp/sat_vs_station.png \
     --title "IMERG vs TAHMO dekadal"
 ```
