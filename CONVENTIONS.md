@@ -45,6 +45,12 @@ standalone single-file scripts. The convention is enforced by review.
 | Spatial dim-name override | `--dims` | `LAT,LON` | Comma-separated names of the latitude and longitude dims when they're not auto-detectable. |
 | Time-dim override | `--time-dim` | string | Name of the time-like dim when not auto-detectable. Distinct from `--dims`, which is spatial only. |
 
+### Bias correction
+
+| Concept | Flag | Value shape | Notes |
+| --- | --- | --- | --- |
+| Q-Q mapping reference | `--qq-reference` | path | Optional reference Zarr whose distribution the skill maps the operation's output onto. Empirical-CDF mapping per grid cell along `--time-dim`. The reference must already be on the post-operation lat/lon grid. |
+
 ## Rules
 
 - **Multi-value parameters use repeated flags, not comma-separated values.** A

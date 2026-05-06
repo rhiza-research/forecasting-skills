@@ -8,7 +8,7 @@
 #   "numpy",
 # ]
 # ///
-"""Linear regridding for Rhiza Envelope Zarr stores."""
+"""Linear regridding for Rhiza Envelope Zarr stores, with optional post-regrid q-q mapping."""
 
 import argparse
 import shutil
@@ -58,6 +58,48 @@ def _target_coord(coord, new_spacing):
     return target
 
 
+def _empirical_qmap_1d(model, ref):
+    import numpy as np
+
+    out = np.full(model.shape, np.nan, dtype=float)
+    m_valid = ~np.isnan(model)
+    r_valid = ~np.isnan(ref)
+    if not m_valid.any() or not r_valid.any():
+        return out
+    sorted_ref = np.sort(ref[r_valid])
+    sorted_model = np.sort(model[m_valid])
+    n_m = sorted_model.size
+    n_r = sorted_ref.size
+    ranks = np.searchsorted(sorted_model, model[m_valid], side="right")
+    quants = np.clip((ranks - 0.5) / n_m, 0.0, 1.0)
+    ref_q = (np.arange(n_r) + 0.5) / n_r
+    out[m_valid] = np.interp(quants, ref_q, sorted_ref)
+    return out
+
+
+def _qmap_dataarray(model_da, ref_da, time_dim):
+    import xarray as xr
+
+    ref_renamed = ref_da.rename({time_dim: "_qq_ref_time"})
+    return xr.apply_ufunc(
+        _empirical_qmap_1d,
+        model_da,
+        ref_renamed,
+        input_core_dims=[[time_dim], ["_qq_ref_time"]],
+        output_core_dims=[[time_dim]],
+        vectorize=True,
+        output_dtypes=[float],
+    )
+
+
+def _coords_match(a, b, atol=1e-6):
+    import numpy as np
+
+    if a.shape != b.shape:
+        return False
+    return bool(np.allclose(a, b, atol=atol, rtol=0))
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", "-i", required=True)
@@ -67,6 +109,20 @@ def main() -> None:
     grp.add_argument("--target-resolution", type=float, help="Target grid spacing in degrees")
     p.add_argument("--dims", help="Override as LAT,LON dim names")
     p.add_argument("--variable", "-v", help="Restrict to a single data variable")
+    p.add_argument(
+        "--qq-reference",
+        help=(
+            "Optional path to a reference Zarr. When given, applies empirical "
+            "quantile mapping per grid cell along --time-dim, mapping the "
+            "regridded values to the reference distribution. Reference must be "
+            "on the post-regrid lat/lon grid."
+        ),
+    )
+    p.add_argument(
+        "--time-dim",
+        default="time",
+        help="Time dimension used as the sample axis for q-q mapping (default: time).",
+    )
     args = p.parse_args()
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
@@ -138,6 +194,69 @@ def main() -> None:
         "rhiza_downscale_factor": factor,
         "rhiza_downscale_method": "linear",
     }
+
+    if args.qq_reference:
+        ref_path = Path(args.qq_reference)
+        if not ref_path.exists():
+            print(f"Error: --qq-reference {ref_path} not found.", file=sys.stderr)
+            sys.exit(2)
+        ref_ds = xr.open_zarr(ref_path, consolidated=False)
+        time_dim = args.time_dim
+        if time_dim not in out_ds.dims:
+            print(
+                f"Error: regridded output has no '{time_dim}' dim "
+                f"(have {list(out_ds.dims)}); pass --time-dim.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if time_dim not in ref_ds.dims:
+            print(
+                f"Error: --qq-reference has no '{time_dim}' dim "
+                f"(have {list(ref_ds.dims)}); pass --time-dim.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        for d in (lat_dim, lon_dim):
+            if d not in ref_ds.dims:
+                print(
+                    f"Error: --qq-reference missing '{d}' dim (have {list(ref_ds.dims)}).",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            if not _coords_match(out_ds[d].values, ref_ds[d].values):
+                print(
+                    f"Error: --qq-reference '{d}' coords do not match the "
+                    f"regridded grid. Reference must be on the post-regrid lat/lon.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        shared = [v for v in out_ds.data_vars if v in ref_ds.data_vars]
+        if not shared:
+            print(
+                f"Error: --qq-reference shares no variables with the regridded "
+                f"output (out: {list(out_ds.data_vars)}, ref: {list(ref_ds.data_vars)}).",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        for v in out_ds.data_vars:
+            if v not in shared:
+                print(
+                    f"Warning: variable '{v}' not in --qq-reference; passing through unmapped.",
+                    file=sys.stderr,
+                )
+        print(
+            f"Q-Q mapping (empirical) {shared} along '{time_dim}': "
+            f"model n={out_ds.sizes[time_dim]}, ref n={ref_ds.sizes[time_dim]}",
+            file=sys.stderr,
+        )
+        ref_aligned = ref_ds.assign_coords({lat_dim: out_ds[lat_dim], lon_dim: out_ds[lon_dim]})
+        for v in shared:
+            mapped = _qmap_dataarray(out_ds[v], ref_aligned[v], time_dim)
+            mapped.attrs = dict(out_ds[v].attrs)
+            out_ds[v] = mapped
+        out_ds.attrs["rhiza_downscale_qq_method"] = "empirical"
+        out_ds.attrs["rhiza_downscale_qq_reference"] = str(ref_path)
+
     for v in out_ds.variables:
         out_ds[v].encoding = {}
 
