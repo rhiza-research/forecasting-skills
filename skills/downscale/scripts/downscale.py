@@ -3,11 +3,12 @@
 # dependencies = [
 #   "cf-xarray",
 #   "xarray",
+#   "xarray-regrid",
 #   "zarr",
 #   "numpy",
 # ]
 # ///
-"""Generic spatial coarsening for Rhiza Envelope Zarr stores."""
+"""Linear regridding for Rhiza Envelope Zarr stores."""
 
 import argparse
 import shutil
@@ -45,6 +46,18 @@ def _factor_from_target(ds, lat_dim, lon_dim, target_res):
     return factor
 
 
+def _target_coord(coord, new_spacing):
+    import numpy as np
+
+    vmin = float(np.min(coord))
+    vmax = float(np.max(coord))
+    n = int(np.floor((vmax - vmin) / new_spacing)) + 1
+    target = vmin + new_spacing * np.arange(n)
+    if coord[0] > coord[-1]:
+        target = target[::-1]
+    return target
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", "-i", required=True)
@@ -54,18 +67,13 @@ def main() -> None:
     grp.add_argument(
         "--target-resolution", type=float, help="Target grid spacing in degrees"
     )
-    p.add_argument(
-        "--method", default="mean", choices=["mean", "sum", "max", "min", "median"]
-    )
-    p.add_argument("--boundary", default="trim", choices=["trim", "pad"])
-    p.add_argument("--skipna", dest="skipna", action="store_true", default=True)
-    p.add_argument("--no-skipna", dest="skipna", action="store_false")
     p.add_argument("--dims", help="Override as LAT,LON dim names")
     p.add_argument("--variable", help="Restrict to a single data variable")
     args = p.parse_args()
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
+    import xarray_regrid  # noqa: F401 — registers the .regrid accessor
 
     src = Path(args.input)
     if not src.exists():
@@ -111,21 +119,26 @@ def main() -> None:
             sys.exit(2)
         ds = ds[[args.variable]]
 
+    new_lat = _target_coord(ds[lat_dim].values, factor * _grid_spacing(ds, lat_dim))
+    new_lon = _target_coord(ds[lon_dim].values, factor * _grid_spacing(ds, lon_dim))
+    target = xr.Dataset(
+        coords={
+            lat_dim: (lat_dim, new_lat, dict(ds[lat_dim].attrs)),
+            lon_dim: (lon_dim, new_lon, dict(ds[lon_dim].attrs)),
+        }
+    )
+
     print(
-        f"Coarsening {lat_dim},{lon_dim} by factor {factor} "
-        f"method={args.method} boundary={args.boundary} skipna={args.skipna}",
+        f"Regridding {lat_dim},{lon_dim} by factor {factor} (linear): "
+        f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
-    coarsened_obj = ds.coarsen(
-        {lat_dim: factor, lon_dim: factor}, boundary=args.boundary
-    )
-    reducer = getattr(coarsened_obj, args.method)
-    kwargs = {"skipna": args.skipna} if args.method != "sum" else {}
-    out_ds = reducer(**kwargs) if kwargs else reducer()
+    out_ds = ds.regrid.linear(target)
+
     out_ds.attrs = {
         **ds.attrs,
         "rhiza_downscale_factor": factor,
-        "rhiza_downscale_method": args.method,
+        "rhiza_downscale_method": "linear",
     }
     for v in out_ds.variables:
         out_ds[v].encoding = {}
