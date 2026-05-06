@@ -32,10 +32,10 @@ breaks an envelope claim. `note` = passes but with a caveat worth recording.
 |---|---|---|---|---|
 | `ecmwf-fetch`      | n/a  | note | n/a       | pass    |
 | `chirps-fetch`     | n/a  | pass | n/a       | pass    |
-| `imerg-fetch`      | n/a  | fail | n/a       | **fail** |
-| `tahmo-fetch`      | n/a  | fail | n/a       | **fail** |
+| `imerg-fetch`      | n/a  | pass¹ | n/a      | pass    |
+| `tahmo-fetch`      | n/a  | pass¹ | n/a      | pass    |
 | `clip-region`      | pass | pass | pass      | pass    |
-| `aggregate-temporal` | pass | fail | pass    | **fail** |
+| `aggregate-temporal` | pass | pass¹ | pass   | pass    |
 | `downscale`        | pass | pass | pass      | pass    |
 | `concat`           | pass | pass | pass      | pass    |
 | `plot`             | pass | n/a  | pass      | pass    |
@@ -43,7 +43,9 @@ breaks an envelope claim. `note` = passes but with a caveat worth recording.
 | `plot-mediogram`   | pass | n/a  | note      | pass    |
 | `email-report`     | n/a  | n/a  | n/a       | n/a     |
 
-3 fail, 1 n/a, 8 pass (2 with notes).
+¹ Originally fail; fixed in this PR. See per-skill detail.
+
+11 pass (3 fixed in this PR, 2 with pre-existing notes), 1 n/a.
 
 ## Per-skill detail
 
@@ -72,41 +74,42 @@ it. Not blocking; recorded as a downstream brittleness.
 variable. `.encoding = {}` cleared (line 109–110). `rhiza_source` and
 `rhiza_date` set. Fully compliant.
 
-### `imerg-fetch` — **fail** (data-variable CF metadata)
+### `imerg-fetch` — pass (fixed in this PR)
 
-`scripts/fetch.py:93` calls `ds = ds.drop_attrs()` after the rename, which
-strips both root and per-variable attrs. The script then re-applies coord CF
-attrs via `_stamp_cf_attrs` and root `rhiza_*` attrs (lines 94–95) but **never
-re-stamps `units` or `standard_name` on the `precip` data variable**. After
-the rename of `precipitation` → `precip`, the resulting Zarr has a `precip`
-variable with no CF metadata at all.
+Originally failed. `scripts/fetch.py:93` calls `ds = ds.drop_attrs()` after the
+rename, stripping both root and per-variable attrs. The script then re-applied
+coord CF attrs and root `rhiza_*` attrs but never re-stamped `units` /
+`standard_name` on the `precip` data variable. The resulting Zarr had a
+`precip` variable with no CF metadata, breaking the envelope claim that "data
+variable units should follow CF where possible" and leaving consumers (e.g.
+`plot`'s colorbar) with an empty unit label.
 
-That breaks the envelope's "Data variable units should follow CF where
-possible" claim and means consumers (e.g. `plot`, which reads
-`da.attrs.get("units")` for the colorbar) get an empty unit label when the
-input is IMERG.
+**Fix in this PR**: after `_stamp_cf_attrs(ds)` and the root `rhiza_*` update,
+stamp `ds["precip"].attrs` with `units = "mm/day"`, `standard_name =
+"lwe_thickness_of_precipitation_amount"` (matching the convention already used
+for `chirps-fetch`), and `long_name = "IMERG daily precipitation"`. The
+GPM_3IMERGDF / GPM_3IMERGDL products report the daily-mean precipitation rate
+in mm/day per the GES DISC product specification.
 
-Fix sketch: after `drop_attrs()`, set `ds["precip"].attrs.update(units="mm/hr",
-standard_name="lwe_precipitation_rate", long_name="IMERG precipitation rate")`
-(units pending verification of the specific shortname — `GPM_3IMERGDL` is
-mm/hr per the IMERG L3 product spec; confirm before stamping).
+### `tahmo-fetch` — pass (fixed in this PR)
 
-### `tahmo-fetch` — **fail** (data-variable CF metadata)
+Originally failed. `scripts/fetch.py:196–214` stamped CF attrs on `latitude`,
+`longitude`, `time`, `station_id` (`cf_role = "timeseries_id"`, the CF DSG
+convention) and set `featureType = "timeSeries"` on the root — correct for the
+station envelope — but the data variables (`precip`, `temperature`,
+`humidity`, `pressure`) never received `units` or `standard_name`. The
+aggregations are done in pandas on raw TAHMO values whose units are not
+recorded on the resulting xarray variables. Same envelope violation as
+`imerg-fetch`.
 
-`scripts/fetch.py:196–214` stamps CF attrs on `latitude`, `longitude`, `time`,
-`station_id` (with `cf_role = "timeseries_id"`, the CF DSG convention) and
-sets `featureType = "timeSeries"` on the root. That is correct for the station
-envelope.
-
-But the actual data variables (`precip`, `temperature`, `humidity`,
-`pressure`) **never get `units` or `standard_name`**. The aggregations are
-done in pandas (sum / mean) on raw TAHMO values whose units are mm,
-°C, %, hPa — none of which are recorded on the resulting xarray variables.
-This is the same envelope violation as `imerg-fetch`.
-
-Fix sketch: after `xr.Dataset.from_dataframe(df)` (line 190), iterate the data
-variables and stamp the appropriate CF metadata (`mm`/`degC`/`%`/`hPa`,
-matching CF standard names where they exist).
+**Fix in this PR**: call `api.getVariables()` once (the TAHMO SDK already
+exposes a metadata endpoint that returns each shortcode's `units` and
+`description`) and use the returned values directly to stamp `units` and
+`long_name` on each canonical envelope variable. Pulling from the API rather
+than hard-coding keeps the Zarr in sync with whatever TAHMO actually returns.
+A small static `CF_STANDARD_NAMES` map adds CF-table-verified standard names
+(`lwe_thickness_of_precipitation_amount`, `air_temperature`,
+`relative_humidity`, `air_pressure`) on top.
 
 ### `clip-region` — pass
 
@@ -121,28 +124,21 @@ default), and root attrs are explicitly merged (`sub.attrs = {**ds.attrs,
 "rhiza_region": ...}`). `.encoding = {}` cleared. CF metadata that was on the
 input is therefore also on the output.
 
-### `aggregate-temporal` — **fail** (data-variable attrs lost on reduce)
+### `aggregate-temporal` — pass (fixed in this PR)
 
-Input handling is fine: `ds.cf["time"].name` for time-axis ID with a `step`
-fallback for forecast lead-time aggregation (line 105–115), and a
-`--time-dim` escape hatch.
+Originally failed. Input handling was fine — `ds.cf["time"].name` with a
+`step` fallback and a `--time-dim` escape — but the reduce helper at
+`scripts/aggregate.py:27–33` called `grouped.sum() / mean() / max() / min()`
+without `keep_attrs=True`. xarray reductions drop per-variable attrs by
+default, so root attrs were restored manually (`out_ds.attrs = {**ds.attrs,
+"rhiza_aggregation": ...}`) but per-variable `units` / `standard_name` were
+not. A chain like `chirps-fetch → aggregate-temporal → plot` ended up with no
+unit label on the plot even though the fetcher had set `units = "mm/day"`.
 
-Output is the problem. The reduce helper at `scripts/aggregate.py:27–33`
-calls `grouped.sum() / mean() / max() / min()` **without `keep_attrs=True`**.
-xarray's reductions drop per-variable attrs by default (this is the documented
-behavior — see `xarray.set_options(keep_attrs=...)` and the `keep_attrs`
-parameter on every reduce method). Root attrs are restored manually
-(`out_ds.attrs = {**ds.attrs, "rhiza_aggregation": ...}`) but per-variable
-`units` / `standard_name` are not.
-
-Result: a chain like `chirps-fetch → aggregate-temporal → plot` produces a
-plot with no unit label even though the fetcher set `units = "mm/day"`. This
-is a concrete envelope violation, not just a theoretical one.
-
-Fix sketch: either pass `keep_attrs=True` into each reduce call, or wrap the
-aggregation in `xr.set_options(keep_attrs=True):`. Apply the same to the
-custom `_aggregate_step` path, which uses `_reduce(...)` internally and so
-inherits the same loss.
+**Fix in this PR**: pass `keep_attrs=True` into the single dispatch in
+`_reduce()`. The `_aggregate_step` path also routes through `_reduce()`, so
+the one change covers both the `time` (xarray resample) and `step` (custom
+window) paths.
 
 ### `downscale` — pass
 
@@ -196,12 +192,13 @@ defaults to the first `data_var`. Within its narrow domain it is fine.
 Not a Zarr producer or consumer; composes an `.eml` from a body and arbitrary
 attachments.
 
-## Failures filed as new cards
+## Failures fixed in this PR
 
-- `imerg-fetch` does not stamp CF metadata on the `precip` data variable.
-- `tahmo-fetch` does not stamp CF metadata on its data variables.
-- `aggregate-temporal` drops per-variable attrs through `groupby/resample`
-  reductions because reductions are called without `keep_attrs=True`.
+All three originally-failing skills are fixed in the same PR as the audit:
 
-Each is filed as a follow-up card under "Part 1: Skills Development" and
-linked from this PR's review thread.
+- `imerg-fetch` — stamps `units` / `standard_name` / `long_name` on `precip`
+  after `drop_attrs()`.
+- `tahmo-fetch` — pulls per-variable units / descriptions from
+  `api.getVariables()` and adds CF standard names from a small verified map.
+- `aggregate-temporal` — passes `keep_attrs=True` into the reduce dispatch so
+  per-variable attrs survive both the resample and step-window paths.
