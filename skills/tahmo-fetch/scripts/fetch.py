@@ -200,10 +200,15 @@ def main() -> None:
         standard_name="longitude", units="degrees_east", axis="X"
     )
     ds["time"].attrs.update(standard_name="time", axis="T")
+    ds["station_id"].attrs.update(
+        cf_role="timeseries_id", long_name="TAHMO station identifier"
+    )
+    ds["country"].attrs.update(long_name="country name")
     ds.attrs.update(
         rhiza_source="tahmo",
         rhiza_date=args.end,
         rhiza_region=",".join(countries),
+        featureType="timeSeries",
     )
     for v in ds.variables:
         ds[v].encoding = {}
