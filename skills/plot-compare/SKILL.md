@@ -32,7 +32,7 @@ country boundary overlay (Natural Earth, fetched and cached via
 ```
 uv run scripts/plot_compare.py --a <a.zarr> --b <b.zarr> --output <out.png> \
     [--variable NAME] [--colormap NAME] [--title TEXT] \
-    [--panels N] [--time-dim DIM] [--agg dekadal|weekly]
+    [--panels N] [--time-dim DIM]
 ```
 
 ### Arguments
@@ -45,12 +45,8 @@ uv run scripts/plot_compare.py --a <a.zarr> --b <b.zarr> --output <out.png> \
   `BoundaryNorm` over `[0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]`
   mm is used.
 - `--title` — figure title.
-- `--panels` — number of panels per row (default 3). Ignored when `--agg` is set.
+- `--panels` — number of panels per row (default 3).
 - `--time-dim` — override the time axis. Defaults to `time` if present, else `step`.
-- `--agg` — `dekadal` (3 panels, 10-day window) or `weekly` (4 panels,
-  7-day window). Sets panel count and labels each panel title with
-  the start/end date of the aggregation window. The skill does not
-  itself roll the data; pass appropriately aggregated inputs.
 
 ### Output
 
@@ -64,5 +60,5 @@ leftmost panel of each row.
 ```bash
 uv run scripts/plot_compare.py --a /tmp/tahmo.zarr --b /tmp/imerg_dekadal.zarr \
     --variable precip --output /tmp/sat_vs_station.png \
-    --title "IMERG vs TAHMO dekadal" --agg dekadal
+    --title "IMERG vs TAHMO dekadal"
 ```

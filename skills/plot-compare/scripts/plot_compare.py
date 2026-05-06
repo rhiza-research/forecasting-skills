@@ -21,7 +21,6 @@ normalization are used across both rows.
 
 import argparse
 import sys
-from datetime import timedelta
 from pathlib import Path
 
 
@@ -52,26 +51,6 @@ def _pick_time_dim(ds, override):
 
 def _is_station(ds):
     return "station_id" in ds.dims
-
-
-def _agg_config(agg):
-    if agg == "dekadal":
-        return 10, 3
-    if agg == "weekly":
-        return 7, 4
-    raise ValueError(f"invalid --agg: {agg!r} (expected 'dekadal' or 'weekly')")
-
-
-def _format_window(t, agg_days):
-    """Render '<start>\\nto <end>' label for an aggregation window starting at t."""
-    import pandas as pd
-
-    try:
-        start = pd.Timestamp(t).date()
-    except (TypeError, ValueError):
-        return str(t)
-    end = start + timedelta(days=agg_days - 1)
-    return f"{start.isoformat()}\nto {end.isoformat()}"
 
 
 def _format_single(t):
@@ -159,13 +138,6 @@ def main() -> None:
     p.add_argument("--title")
     p.add_argument("--panels", type=int, default=3)
     p.add_argument("--time-dim")
-    p.add_argument(
-        "--agg",
-        choices=("dekadal", "weekly"),
-        help="When set, fixes panel count (3 dekadal / 4 weekly), labels "
-             "panel titles with the start/end date of the aggregation "
-             "window, and overrides --panels.",
-    )
     args = p.parse_args()
 
     import matplotlib
@@ -205,12 +177,7 @@ def main() -> None:
         )
         sys.exit(2)
 
-    if args.agg:
-        agg_days, n = _agg_config(args.agg)
-    else:
-        agg_days = None
-        n = args.panels
-    n = min(n, ds_a.sizes[td_a], ds_b.sizes[td_b])
+    n = min(args.panels, ds_a.sizes[td_a], ds_b.sizes[td_b])
     if n < 1:
         print("Error: no overlapping panels to plot.", file=sys.stderr)
         sys.exit(1)
@@ -275,10 +242,7 @@ def main() -> None:
             ax = axes[col]
             sel = da.isel({td: first + col})
             t_val = da[td].values[first + col]
-            if agg_days:
-                title_t = _format_window(t_val, agg_days)
-            else:
-                title_t = _format_single(t_val)
+            title_t = _format_single(t_val)
             if is_station:
                 last_im = _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax)
             else:
