@@ -223,7 +223,9 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
     for j in range(num_steps, len(axes)):
         axes[j].set_visible(False)
 
-    fig.tight_layout()
+    if title:
+        fig.suptitle(title, fontsize=fontsize)
+    fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
     cbar = fig.colorbar(
         contour, cax=cbar_ax, orientation="horizontal", fraction=5
@@ -233,9 +235,6 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
     if units:
         label = f"{label} [{units}]"
     cbar.set_label(label, fontsize=fontsize)
-
-    if title:
-        fig.suptitle(title, fontsize=fontsize)
 
     return fig
 
