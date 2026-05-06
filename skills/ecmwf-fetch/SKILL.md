@@ -32,7 +32,7 @@ uv run scripts/fetch.py --date YYYY-MM-DD --region <region> --output <path.zarr>
 
 ### Arguments
 - `--date` — forecast init date (ISO).
-- `--region` — one of: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`. For an explicit bbox, use `--area N/W/S/E` instead.
+- `--region` — one of: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`, `angola`. Matches the named regions accepted by `clip-region`. For an explicit bbox, use `--area N/W/S/E` instead.
 - `--area` — optional; `N/W/S/E` decimal degrees. Overrides `--region` if both are given.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
