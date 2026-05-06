@@ -64,6 +64,15 @@ DAILY_AGG = {
     "humidity": "mean",
     "pressure": "mean",
 }
+# CF standard_name per envelope variable. Verified against the CF standard
+# name table v93. `units` and `long_name` are pulled live from
+# api.getVariables() so they track whatever TAHMO is actually returning.
+CF_STANDARD_NAMES = {
+    "precip": "lwe_thickness_of_precipitation_amount",
+    "temperature": "air_temperature",
+    "humidity": "relative_humidity",
+    "pressure": "air_pressure",
+}
 
 
 def _require_env() -> tuple[str, str]:
@@ -151,6 +160,8 @@ def main() -> None:
     api.setCredentials(username, password)
     stations_raw = api.getStations()
     stations = pd.json_normalize(list(stations_raw.values()), sep="_")
+    # Discover units / description from TAHMO so we don't hard-code them.
+    var_meta = api.getVariables()
 
     frames = []
     meta_rows = []
@@ -196,6 +207,22 @@ def main() -> None:
     ds["time"].attrs.update(standard_name="time", axis="T")
     ds["station_id"].attrs.update(cf_role="timeseries_id", long_name="TAHMO station identifier")
     ds["country"].attrs.update(long_name="country name")
+    short_code_for = {v: k for k, v in VAR_MAP.items()}
+    for canonical in ds.data_vars:
+        short = short_code_for.get(canonical)
+        meta = var_meta.get(short, {}) if short else {}
+        attrs = {}
+        units = meta.get("units")
+        if units:
+            attrs["units"] = units
+        description = meta.get("description")
+        if description:
+            attrs["long_name"] = description
+        std = CF_STANDARD_NAMES.get(canonical)
+        if std:
+            attrs["standard_name"] = std
+        if attrs:
+            ds[canonical].attrs.update(attrs)
     ds.attrs.update(
         rhiza_source="tahmo",
         rhiza_date=args.end,
