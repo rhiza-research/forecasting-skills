@@ -1,0 +1,55 @@
+# CLI flag conventions
+
+Skills in this repo are independent single-file scripts, but they often expose
+the same conceptual parameter under their own argparse CLI. To make skills easy
+to compose and easy to work on, **a flag that does the same thing on different
+skills must have the same name**.
+
+This document is the canonical mapping. When you add or change a CLI, match
+these names. New concepts that aren't covered here should be added to this file
+in the same PR that introduces them.
+
+There are no shared helpers and no lint enforcing this — skills must remain
+standalone single-file scripts. The convention is enforced by review.
+
+## Canonical names
+
+### Inputs and outputs
+
+| Concept | Flag | Value shape | Notes |
+| --- | --- | --- | --- |
+| Single input Zarr | `--input` / `-i` | path | Required for skills that consume one Zarr. |
+| Single output | `--output` / `-o` | path | Required for skills that produce a Zarr or other artifact. |
+| Multiple inputs | `--input` / `-i`, repeated | path | Repeat the flag once per input: `-i a.zarr -i b.zarr`. Order is preserved. Skills that compare or concatenate multiple Zarrs use this form. |
+| Two semantically named inputs | use a domain name (e.g. `--forecast`, `--mclimate`) | path | Use named flags only when the inputs have fixed, non-interchangeable roles AND the role name carries meaning. For symmetric or arbitrary inputs (concat, plot-compare), use `--input` repeated. |
+
+### Region and bounding box
+
+| Concept | Flag | Value shape | Notes |
+| --- | --- | --- | --- |
+| Named region | `--region` | string from a per-skill fixed list | Skills that ship a hard-coded region table use `--region` and validate via argparse `choices=`. |
+| Explicit bbox | `--bbox` | `N/W/S/E` decimal degrees | Slash-separated four floats. When a skill accepts both `--region` and `--bbox`, `--bbox` overrides. |
+
+### Time
+
+| Concept | Flag | Value shape | Notes |
+| --- | --- | --- | --- |
+| Date range | `--start` / `--end` | `YYYY-MM-DD` (inclusive) | Used by archive fetchers covering a span of dates. |
+| Single date | `--date` | `YYYY-MM-DD` | Used when a skill operates on one timestamp (e.g. an init date for a forecast). |
+
+### Variables and dimensions
+
+| Concept | Flag | Value shape | Notes |
+| --- | --- | --- | --- |
+| Variable selector | `--variable` / `-v` | string | Restricts an operation to one data variable in a multi-variable Zarr. |
+| Spatial dim-name override | `--dims` | `LAT,LON` | Comma-separated names of the latitude and longitude dims when they're not auto-detectable. |
+| Time-dim override | `--time-dim` | string | Name of the time-like dim when not auto-detectable. Distinct from `--dims`, which is spatial only. |
+
+## Rules
+
+- **No backwards-compat aliasing.** If a flag name changes, change every caller
+  in the same PR. There are no external callers to preserve.
+- **No shared helper module.** Each skill declares its own `ArgumentParser`.
+  Don't introduce `_args.py` or any cross-skill import.
+- **Don't reuse a canonical name for a different concept.** If you need a new
+  concept, pick a new name and add it here.
