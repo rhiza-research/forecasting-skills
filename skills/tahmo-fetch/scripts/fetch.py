@@ -123,7 +123,9 @@ def _station_frame(api, station_id: str, start: str, end: str):
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument(
-        "--country", action="append", required=True,
+        "--country",
+        action="append",
+        required=True,
         help="Country name (pass once per country)",
     )
     p.add_argument("--start", required=True)

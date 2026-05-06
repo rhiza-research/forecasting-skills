@@ -30,7 +30,10 @@ def _coerce(values):
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--input", "-i", action="append", required=True,
+        "--input",
+        "-i",
+        action="append",
+        required=True,
         help="Input Zarr (repeat the flag for each input; need at least 2)",
     )
     p.add_argument("--dim", required=True)

@@ -146,7 +146,10 @@ def _ax_bounds(ds, variable):
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--input", "-i", action="append", required=True,
+        "--input",
+        "-i",
+        action="append",
+        required=True,
         help="Input Zarr; pass exactly twice (first = A, second = B)",
     )
     p.add_argument("--output", "-o", required=True)
