@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8
+      - run: uvx ruff format --check
+      - run: uvx ruff check
+
+  script-help:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { skill: aggregate-temporal, script: aggregate.py }
+          - { skill: chirps-fetch,       script: fetch.py }
+          - { skill: clip-region,        script: clip.py }
+          - { skill: concat,             script: concat.py }
+          - { skill: downscale,          script: downscale.py }
+          - { skill: ecmwf-fetch,        script: fetch.py }
+          - { skill: email-report,       script: compose.py }
+          - { skill: imerg-fetch,        script: fetch.py }
+          - { skill: plot,               script: plot.py }
+          - { skill: plot-compare,       script: plot_compare.py }
+          - { skill: plot-mediogram,     script: plot_mediogram.py }
+          - { skill: tahmo-fetch,        script: fetch.py }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+      - run: uv run --script skills/${{ matrix.skill }}/scripts/${{ matrix.script }} --help
