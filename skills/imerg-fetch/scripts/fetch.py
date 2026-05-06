@@ -90,6 +90,13 @@ def main() -> None:
         ds = ds.drop_attrs()
         ds.attrs.update(rhiza_source="imerg", rhiza_date=args.end)
         _stamp_cf_attrs(ds)
+        # GPM_3IMERGDF/DL `precipitation` is the daily-mean rate in mm/day
+        # (the half-hourly mm/hr field multiplied by 24 in production).
+        ds["precip"].attrs.update(
+            units="mm/day",
+            standard_name="lwe_thickness_of_precipitation_amount",
+            long_name="IMERG daily precipitation",
+        )
         for v in ds.variables:
             ds[v].encoding = {}
 
