@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uvx ruff format --check
       - run: uvx ruff check
 
@@ -40,7 +40,7 @@ jobs:
           - { skill: tahmo-fetch,        script: fetch.py }
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: true
       - run: uv run --script skills/${{ matrix.skill }}/scripts/${{ matrix.script }} --help
