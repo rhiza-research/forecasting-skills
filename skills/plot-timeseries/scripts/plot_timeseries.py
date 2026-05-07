@@ -31,9 +31,7 @@ def _cf_dim(obj, cf_name):
 def _pick_time_dim(da, override):
     if override:
         if override not in da.dims:
-            raise ValueError(
-                f"--time-dim '{override}' not in dims {list(da.dims)}."
-            )
+            raise ValueError(f"--time-dim '{override}' not in dims {list(da.dims)}.")
         return override
     if "time" in da.dims:
         return "time"
@@ -43,8 +41,7 @@ def _pick_time_dim(da, override):
     if cf and cf in da.dims:
         return cf
     raise ValueError(
-        f"Could not identify a time-like dim in {list(da.dims)}; "
-        "pass --time-dim explicitly."
+        f"Could not identify a time-like dim in {list(da.dims)}; pass --time-dim explicitly."
     )
 
 
@@ -83,9 +80,7 @@ def main() -> None:
 
     datasets = [xr.open_zarr(pth, consolidated=False) for pth in args.input]
 
-    variable = args.variable or (
-        list(datasets[0].data_vars)[0] if datasets[0].data_vars else None
-    )
+    variable = args.variable or (list(datasets[0].data_vars)[0] if datasets[0].data_vars else None)
     if variable is None:
         print(
             f"Error: no usable variable in {args.input[0]}.",
@@ -95,8 +90,7 @@ def main() -> None:
     for pth, ds in zip(args.input, datasets, strict=True):
         if variable not in ds:
             print(
-                f"Error: variable '{variable}' missing from {pth}. "
-                f"Available: {list(ds.data_vars)}",
+                f"Error: variable '{variable}' missing from {pth}. Available: {list(ds.data_vars)}",
                 file=sys.stderr,
             )
             sys.exit(2)
