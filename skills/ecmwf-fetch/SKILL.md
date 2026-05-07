@@ -2,20 +2,19 @@
 name: ecmwf-fetch
 description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and region, writing a Rhiza Envelope Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting.
 license: MIT
-compatibility: Requires Python 3.10+ and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_API_URL, ECMWF_API_KEY, ECMWF_API_EMAIL in the environment.
+compatibility: Requires Python 3.10+ and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 metadata:
   openclaw:
     requires:
       env:
-        - ECMWF_API_URL
-        - ECMWF_API_KEY
-        - ECMWF_API_EMAIL
-    primaryEnv: ECMWF_API_KEY
+        - ECMWF_DATASTORES_URL
+        - ECMWF_DATASTORES_KEY
+    primaryEnv: ECMWF_DATASTORES_KEY
 ---
 
 # ecmwf-fetch
 
-Retrieves S2S total precipitation (MARS param 228228) from the ECMWF archive, concatenates the control forecast (`cf`, number=0) and perturbed ensemble (`pf`, numbers 1..100) along the `number` dimension, and writes a consolidated Zarr store.
+Retrieves S2S total precipitation from the ECMWF Data Store (ECDS) `s2s-forecasts` collection via `ecmwf-datastores-client`. Submits the control and perturbed retrievals in parallel, concatenates the control forecast (`number=0`) and perturbed ensemble (`number=1..100`) along the `number` dimension, and writes a consolidated Zarr store.
 
 ## When to use
 
@@ -50,4 +49,4 @@ uv run scripts/fetch.py --date 2026-02-15 --region africa --output /tmp/ecmwf.za
 uv run scripts/fetch.py --date 2026-02-15 --bbox 7/32/-6/43 --output /tmp/ecmwf_kenya.zarr
 ```
 
-See [references/REFERENCE.md](references/REFERENCE.md) for the exact MARS request parameters and how retrieval time scales with area.
+See [references/REFERENCE.md](references/REFERENCE.md) for the exact ECDS request parameters and how retrieval time scales with area.

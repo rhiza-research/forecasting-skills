@@ -1,25 +1,24 @@
 # ecmwf-fetch reference
 
-## MARS request
+## ECDS request
 
-Both the control (`cf`) and perturbed (`pf`) retrievals use:
+Both the control and perturbed retrievals target the `s2s-forecasts` collection on the ECMWF Data Store (ECDS). Shared request body:
 
 | Key | Value |
 |---|---|
-| class | s2 |
-| dataset | s2s |
-| expver | prod |
-| levtype | sfc |
-| model | glob |
-| origin | ecmf |
-| param | 228228 (total precipitation, m) |
-| step | 0/168/240/336/480/504/672/720/840/960/1008 |
-| stream | enfo |
-| time | 00:00:00 |
-| area | N/W/S/E bbox |
-| type | `cf` or `pf` |
+| origin | `ecmwf` |
+| level_type | `single_level` |
+| variable | `["total_precipitation"]` |
+| year | `[YYYY]` (from `--date`) |
+| month | `[MM]` (from `--date`) |
+| day | `[DD]` (from `--date`) |
+| time | `["00:00"]` |
+| leadtime_hour | `["0","168","240","336","480","504","672","720","840","960","1008"]` |
+| forecast_type | `control_forecast` or `perturbed_forecast` |
+| area | `[N, W, S, E]` |
+| data_format | `grib` |
 
-`pf` additionally sets `number: 1/to/100`.
+`forecast_type=perturbed_forecast` returns all 100 ensemble members in one retrieval — there is no per-member subsetting field on this collection.
 
 ## Named regions
 
@@ -38,4 +37,4 @@ Both the control (`cf`) and perturbed (`pf`) retrievals use:
 
 ## Retrieval time
 
-MARS retrievals are asynchronous and can take from a few minutes to over an hour. Bigger bboxes and more ensemble members queue longer. Control-only retrievals are an order of magnitude faster than perturbed ensemble retrievals.
+ECDS retrievals are queued and can take from a few minutes to over an hour. Bigger bboxes and the perturbed retrieval (all 100 members) queue longer than the control. The skill submits cf and pf concurrently via `client.submit()` so the overall wall time is bounded by the slower of the two.
