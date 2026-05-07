@@ -17,10 +17,34 @@ xarray-regrid. ``(0.25, 0.0)`` aligns with sheerwater's ``global0_25``;
 """
 
 import argparse
+import json
 import math
 import shutil
 import sys
 from pathlib import Path
+
+
+def _upstream_inputs(zarr_path: Path) -> str | None:
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            return ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return None
+
+
+def _cache_hit(out: Path, inputs: dict) -> bool:
+    if not out.exists():
+        return False
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(out, consolidated=False) as ds:
+            cached = ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return False
+    return cached == json.dumps(inputs, sort_keys=True)
 
 
 def _target_axis(coord_vals, resolution: float, offset: float):
@@ -67,6 +91,21 @@ def main() -> None:
     if args.target_resolution <= 0:
         print("Error: --target-resolution must be > 0.", file=sys.stderr)
         sys.exit(2)
+
+    inputs = {
+        "target_resolution": args.target_resolution,
+        "offset": args.offset,
+        "variable": args.variable,
+        "dims": args.dims,
+        "input": _upstream_inputs(Path(args.input)),
+    }
+    out = Path(args.output)
+    if _cache_hit(out, inputs):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping regrid.",
+            file=sys.stderr,
+        )
+        return
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
@@ -129,11 +168,11 @@ def main() -> None:
         "rhiza_regrid_resolution": args.target_resolution,
         "rhiza_regrid_offset": args.offset,
         "rhiza_regrid_method": "linear",
+        "rhiza_inputs": json.dumps(inputs, sort_keys=True),
     }
     for v in out_ds.variables:
         out_ds[v].encoding = {}
 
-    out = Path(args.output)
     if out.exists():
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)

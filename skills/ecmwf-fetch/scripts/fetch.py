@@ -13,6 +13,7 @@
 
 import argparse
 import datetime as dt
+import json
 import os
 import shutil
 import sys
@@ -43,6 +44,20 @@ def _require_env() -> None:
     if missing:
         print(f"Error: missing required env var(s): {', '.join(missing)}", file=sys.stderr)
         sys.exit(2)
+
+
+def _cache_hit(out: Path, inputs: dict) -> bool:
+    """Return True if the zarr at `out` was produced by these same inputs."""
+    if not out.exists():
+        return False
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(out, consolidated=True) as ds:
+            cached = ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return False
+    return cached == json.dumps(inputs, sort_keys=True)
 
 
 def _stamp_cf_attrs(ds):
@@ -120,6 +135,16 @@ def main() -> None:
         area = [float(x) for x in args.bbox.split("/")]
     else:
         area = REGIONS[args.region]
+
+    inputs = {"date": args.date, "area": area}
+    out = Path(args.output)
+    if _cache_hit(out, inputs):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping fetch.",
+            file=sys.stderr,
+        )
+        return
+
     _require_env()
 
     import xarray as xr
@@ -157,12 +182,12 @@ def main() -> None:
             rhiza_region=args.region or "",
             rhiza_area_NWSE="/".join(str(x) for x in area),
             rhiza_date=args.date,
+            rhiza_inputs=json.dumps(inputs, sort_keys=True),
         )
         _stamp_cf_attrs(ds)
         for v in ds.variables:
             ds[v].encoding = {}
 
-        out = Path(args.output)
         if out.exists():
             shutil.rmtree(out)
         out.parent.mkdir(parents=True, exist_ok=True)

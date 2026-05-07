@@ -18,6 +18,7 @@ TAHMO_API_USERNAME and TAHMO_API_PASSWORD.
 """
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -124,6 +125,20 @@ def _station_frame(api, station_id: str, start: str, end: str):
     return daily
 
 
+def _cache_hit(out: Path, inputs: dict) -> bool:
+    """Return True if the zarr at `out` was produced by these same inputs."""
+    if not out.exists():
+        return False
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(out, consolidated=True) as ds:
+            cached = ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return False
+    return cached == json.dumps(inputs, sort_keys=True)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument(
@@ -136,6 +151,19 @@ def main() -> None:
     p.add_argument("--end", required=True)
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
+
+    inputs = {
+        "country": sorted(args.country),
+        "start": args.start,
+        "end": args.end,
+    }
+    out = Path(args.output)
+    if _cache_hit(out, inputs):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping fetch.",
+            file=sys.stderr,
+        )
+        return
 
     username, password = _require_env()
 
@@ -232,12 +260,12 @@ def main() -> None:
         rhiza_source="tahmo",
         rhiza_date=args.end,
         rhiza_region=",".join(countries),
+        rhiza_inputs=json.dumps(inputs, sort_keys=True),
         featureType="timeSeries",
     )
     for v in ds.variables:
         ds[v].encoding = {}
 
-    out = Path(args.output)
     if out.exists():
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)
