@@ -92,7 +92,7 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(2)
-    for pth, ds in zip(args.input, datasets):
+    for pth, ds in zip(args.input, datasets, strict=True):
         if variable not in ds:
             print(
                 f"Error: variable '{variable}' missing from {pth}. "
@@ -105,7 +105,7 @@ def main() -> None:
     units = None
     first_tdim = None
 
-    for pth, ds in zip(args.input, datasets):
+    for pth, ds in zip(args.input, datasets, strict=True):
         da = ds[variable]
         try:
             tdim = _pick_time_dim(da, args.time_dim)
