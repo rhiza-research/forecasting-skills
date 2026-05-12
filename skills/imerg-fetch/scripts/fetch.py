@@ -11,6 +11,7 @@
 """Fetch IMERG live precipitation and write a Rhiza Envelope Zarr."""
 
 import argparse
+import json
 import shutil
 import sys
 import tempfile
@@ -23,6 +24,18 @@ SHORTNAMES = {
     "late": "GPM_3IMERGDL",
     "final": "GPM_3IMERGDF",
 }
+
+
+def _cache_hit(out: Path, inputs: dict) -> bool:
+    """Return True if the zarr at `out` was produced by these same inputs."""
+    if not out.exists():
+        return False
+    try:
+        with xr.open_zarr(out, consolidated=True) as ds:
+            cached = ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return False
+    return cached == json.dumps(inputs, sort_keys=True)
 
 
 def _stamp_cf_attrs(ds):
@@ -54,6 +67,15 @@ def main() -> None:
     args = p.parse_args()
 
     shortname = SHORTNAMES[args.version]
+    inputs = {"start": args.start, "end": args.end, "version": args.version}
+    out = Path(args.output)
+    if _cache_hit(out, inputs):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping fetch.",
+            file=sys.stderr,
+        )
+        return
+
     print(
         f"Fetching IMERG {args.version} ({shortname}) {args.start} -> {args.end}",
         file=sys.stderr,
@@ -69,7 +91,6 @@ def main() -> None:
         raise RuntimeError(f"No IMERG {args.version} granules found in {args.start}..{args.end}")
     print(f"Found {len(results)} granules", file=sys.stderr)
 
-    out = Path(args.output)
     if out.exists():
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -88,7 +109,11 @@ def main() -> None:
         # prior sheerwater @timeseries() post-process.
         ds = ds.sel(time=slice(args.start, args.end))
         ds = ds.drop_attrs()
-        ds.attrs.update(rhiza_source="imerg", rhiza_date=args.end)
+        ds.attrs.update(
+            rhiza_source="imerg",
+            rhiza_date=args.end,
+            rhiza_inputs=json.dumps(inputs, sort_keys=True),
+        )
         ds["precip"].attrs.update(
             units="mm/day",
             standard_name="lwe_precipitation_rate",

@@ -11,6 +11,7 @@
 
 import argparse
 import ftplib
+import json
 import shutil
 import sys
 import tempfile
@@ -24,6 +25,18 @@ import xarray as xr
 CHIRPS_FTP_HOST = "ftp.chc.ucsb.edu"
 CHIRPS_FTP_DIR = "/pub/org/chc/products/CHIRPS/v3.0/daily/prelim/sat"
 CHIRPS_NODATA = -9999.0
+
+
+def _cache_hit(out: Path, inputs: dict) -> bool:
+    """Return True if the zarr at `out` was produced by these same inputs."""
+    if not out.exists():
+        return False
+    try:
+        with xr.open_zarr(out, consolidated=True) as ds:
+            cached = ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return False
+    return cached == json.dumps(inputs, sort_keys=True)
 
 
 def _daterange(start: str, end: str):
@@ -77,6 +90,15 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
+    inputs = {"start": args.start, "end": args.end}
+    out = Path(args.output)
+    if _cache_hit(out, inputs):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping fetch.",
+            file=sys.stderr,
+        )
+        return
+
     print(f"Fetching CHIRPS prelim {args.start} -> {args.end}", file=sys.stderr)
 
     with tempfile.TemporaryDirectory(prefix="chirps_") as tmpdir:
@@ -105,11 +127,11 @@ def main() -> None:
         ds = da.to_dataset()
         ds.attrs["rhiza_source"] = "chirps"
         ds.attrs["rhiza_date"] = args.end
+        ds.attrs["rhiza_inputs"] = json.dumps(inputs, sort_keys=True)
         _stamp_cf_attrs(ds)
         for v in ds.variables:
             ds[v].encoding = {}
 
-        out = Path(args.output)
         if out.exists():
             shutil.rmtree(out)
         out.parent.mkdir(parents=True, exist_ok=True)

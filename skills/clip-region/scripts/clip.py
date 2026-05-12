@@ -10,6 +10,7 @@
 """Spatially subset a gridded Rhiza Envelope Zarr."""
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -26,6 +27,30 @@ REGIONS = {
     "madagascar": (-10, 42, -27, 52),
     "angola": (-5, 12, -18, 24),
 }
+
+
+def _upstream_inputs(zarr_path: Path) -> str | None:
+    """Read upstream `rhiza_inputs` so this step's cache key chains to upstream changes."""
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            return ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return None
+
+
+def _cache_hit(out: Path, inputs: dict) -> bool:
+    if not out.exists():
+        return False
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(out, consolidated=False) as ds:
+            cached = ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return False
+    return cached == json.dumps(inputs, sort_keys=True)
 
 
 def main() -> None:
@@ -50,6 +75,19 @@ def main() -> None:
     else:
         n, w, s, e = REGIONS[args.region]
         region_label = args.region
+
+    inputs = {
+        "bbox_NWSE": [float(n), float(w), float(s), float(e)],
+        "dims": args.dims,
+        "input": _upstream_inputs(Path(args.input)),
+    }
+    out = Path(args.output)
+    if _cache_hit(out, inputs):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping clip.",
+            file=sys.stderr,
+        )
+        return
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
@@ -87,11 +125,14 @@ def main() -> None:
         )
         sys.exit(1)
 
-    sub.attrs = {**ds.attrs, "rhiza_region": str(region_label)}
+    sub.attrs = {
+        **ds.attrs,
+        "rhiza_region": str(region_label),
+        "rhiza_inputs": json.dumps(inputs, sort_keys=True),
+    }
     for v in sub.variables:
         sub[v].encoding = {}
 
-    out = Path(args.output)
     if out.exists():
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)

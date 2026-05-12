@@ -16,12 +16,36 @@ expressed as timedelta64 and aggregates each.
 """
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
+
+
+def _upstream_inputs(zarr_path: Path) -> str | None:
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            return ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return None
+
+
+def _cache_hit(out: Path, inputs: dict) -> bool:
+    if not out.exists():
+        return False
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(out, consolidated=False) as ds:
+            cached = ds.attrs.get("rhiza_inputs")
+    except Exception:
+        return False
+    return cached == json.dumps(inputs, sort_keys=True)
 
 
 def _reduce(grouped, method):
@@ -78,6 +102,20 @@ def main() -> None:
     p.add_argument("--time-dim")
     args = p.parse_args()
 
+    inputs = {
+        "period": args.period,
+        "method": args.method,
+        "time_dim": args.time_dim,
+        "input": _upstream_inputs(Path(args.input)),
+    }
+    out = Path(args.output)
+    if _cache_hit(out, inputs):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping aggregate.",
+            file=sys.stderr,
+        )
+        return
+
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
 
@@ -121,11 +159,14 @@ def main() -> None:
         resampled = ds.resample({dim: RESAMPLE_FREQ[args.period]})
         out_ds = _reduce(resampled, args.method)
 
-    out_ds.attrs = {**ds.attrs, "rhiza_aggregation": f"{args.period}-{args.method}"}
+    out_ds.attrs = {
+        **ds.attrs,
+        "rhiza_aggregation": f"{args.period}-{args.method}",
+        "rhiza_inputs": json.dumps(inputs, sort_keys=True),
+    }
     for v in out_ds.variables:
         out_ds[v].encoding = {}
 
-    out = Path(args.output)
     if out.exists():
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)
