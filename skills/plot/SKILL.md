@@ -55,7 +55,9 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
 
 ### Output
 
-A PNG at `--output`.
+A PNG at `--output`. The colorbar label resolves from variable attrs:
+`long_name` → `GRIB_name` → bare variable name → `"value"`, suffixed
+with `[units]` when the `units` attr is present.
 
 ## Examples
 
