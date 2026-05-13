@@ -20,7 +20,18 @@ on the top row to match the canonical "stations vs. satellite" layout.
 A shared categorical precipitation colormap with `BoundaryNorm` is the
 default so values are visually comparable across rows. An admin-1
 country boundary overlay (Natural Earth, fetched and cached via
-`cartopy`) is drawn on every panel.
+`cartopy`) is drawn on every panel. The polygon overlay is spatially
+*clipped* to the gridded input's bbox (`gdf.clip(box(*bbox))`), so
+polygons that straddle the bbox edge are truncated at the edge rather
+than rendered whole and neighboring regions never extend beyond the
+base.
+
+For station-vs-gridded pairs, the station input's time axis is
+aggregated to the gridded input's time bins when the station grid is
+finer (e.g. daily station observations against weekly or dekadal
+gridded accumulations). Both rows always share the gridded input's
+spatial extent so the figure is centered on the gridded base; station
+points outside that extent are clipped by matplotlib.
 
 ## When to use
 
@@ -32,7 +43,7 @@ country boundary overlay (Natural Earth, fetched and cached via
 ```
 uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--colormap NAME] [--title TEXT] \
-    [--panels N] [--time-dim DIM]
+    [--panels N] [--time-dim DIM] [--overlay-resample {sum,mean,max,min}]
 ```
 
 ### Arguments
@@ -47,6 +58,32 @@ uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
 - `--title` — figure title.
 - `--panels` — number of panels per row (default 3).
 - `--time-dim` — override the time axis. Defaults to `time` if present, else `step`.
+- `--overlay-resample` — aggregation rule (`sum`, `mean`, `max`, `min`;
+  default `sum`) applied when one input is station-schema and its time
+  grid is finer than the gridded input's. For each gridded bin **end**
+  `t` and bin width `w` (median of `diff(gridded_time)`), station
+  values where `t - w < station_time <= t` are aggregated and assigned
+  back to `t`. This matches `aggregate-temporal`'s left-open
+  right-closed bucket convention so the resampled overlay aligns with
+  the base's inclusive-end labels. Generic — works for any
+  station-vs-gridded combination; for accumulating variables
+  (precipitation, radiation) use `sum`; for intensive variables
+  (temperature) use `mean`. Coarser-than-base station inputs are left
+  untouched.
+
+### Behavior
+
+- **Time-bin alignment.** When the station overlay has a finer time
+  grid than the gridded base, the overlay is aggregated to the base's
+  bins per `--overlay-resample` before plotting. Both rows then share
+  the same time-bin labels.
+- **Admin-polygon clipping.** The Natural Earth admin-1 GeoDataFrame
+  is spatially clipped (`gdf.clip(box(*gridded_bbox))`) so polygons
+  that straddle the bbox edge are truncated at the edge rather than
+  rendered whole. Empty geometries produced by the clip are dropped.
+- **Shared spatial extent.** Both rows' `set_xlim`/`set_ylim` come
+  from the gridded input's lat/lon bounds, not from each row's own
+  data bounds. Station scatter points outside that extent are clipped.
 
 ### Output
 
@@ -60,5 +97,6 @@ leftmost panel of each row.
 ```bash
 uv run scripts/plot_compare.py -i /tmp/tahmo.zarr -i /tmp/imerg_dekadal.zarr \
     --variable precip --output /tmp/sat_vs_station.png \
-    --title "IMERG vs TAHMO dekadal"
+    --title "IMERG vs TAHMO dekadal" \
+    --overlay-resample sum
 ```

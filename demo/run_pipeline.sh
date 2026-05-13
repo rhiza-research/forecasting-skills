@@ -56,10 +56,10 @@ for COUNTRY in "${COUNTRIES[@]}"; do
 
     forecasting-skills tahmo-fetch --country "$COUNTRY" --start "$START_DATE" --end "$END_DATE" --output "$d/tahmo.zarr"
 
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_weekly.zarr"   --variable precip -o "$d/imerg_${COUNTRY}_weekly.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_dekadal.zarr"  --variable precip -o "$d/imerg_${COUNTRY}_dekadal.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_weekly.zarr"  --variable precip -o "$d/chirps_${COUNTRY}_weekly.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_dekadal.zarr" --variable precip -o "$d/chirps_${COUNTRY}_dekadal.png"
+    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_weekly.zarr"   --variable precip --overlay-resample sum --panels 4 -o "$d/imerg_${COUNTRY}_weekly.png"
+    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_dekadal.zarr"  --variable precip --overlay-resample sum             -o "$d/imerg_${COUNTRY}_dekadal.png"
+    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_weekly.zarr"  --variable precip --overlay-resample sum --panels 4 -o "$d/chirps_${COUNTRY}_weekly.png"
+    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_dekadal.zarr" --variable precip --overlay-resample sum             -o "$d/chirps_${COUNTRY}_dekadal.png"
 
     forecasting-skills email-report \
         --from "$COUNTRY Data Share <demo@example.com>" \

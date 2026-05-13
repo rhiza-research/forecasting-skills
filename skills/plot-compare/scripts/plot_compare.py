@@ -7,6 +7,7 @@
 #   "matplotlib",
 #   "numpy",
 #   "pandas",
+#   "shapely>=2.1",
 #   "xarray",
 #   "zarr",
 # ]
@@ -60,21 +61,38 @@ def _is_station(ds):
     return "station_id" in ds.dims
 
 
-def _format_single(t):
+def _format_single(t, bin_width=None):
+    """Render a time-bin label.
+
+    When ``bin_width`` is a ``pandas.Timedelta``, format as
+    ``YYYY-MM-DD to YYYY-MM-DD`` with ``t`` as the bin start. Otherwise
+    fall back to a single ISO date.
+    """
     import pandas as pd
 
     try:
-        return pd.Timestamp(t).date().isoformat()
+        start = pd.Timestamp(t)
     except (TypeError, ValueError):
         return str(t)
+    if bin_width is None:
+        return start.date().isoformat()
+    try:
+        end = start + bin_width
+    except (TypeError, ValueError):
+        return start.date().isoformat()
+    return f"{start.date().isoformat()} to {end.date().isoformat()}"
 
 
-def _load_admin_boundaries():
+def _load_admin_boundaries(bbox=None):
     """Natural Earth admin-1 boundaries via cartopy downloader.
 
     Returns a GeoDataFrame, or None if the dependency or download is
     unavailable. The cartopy downloader handles the canonical URL and
-    on-disk caching.
+    on-disk caching. When ``bbox`` is provided as
+    ``(xmin, ymin, xmax, ymax)``, the GeoDataFrame is spatially
+    *clipped* to the bbox: polygons that straddle the bbox edge are
+    truncated at the edge rather than rendered whole, so neighboring
+    regions never extend beyond the gridded base.
     """
     try:
         import cartopy.io.shapereader as shpreader
@@ -85,13 +103,90 @@ def _load_admin_boundaries():
             category="cultural",
             name="admin_1_states_provinces",
         )
-        return gpd.read_file(shp_path)
+        gdf = gpd.read_file(shp_path)
     except Exception as exc:
         print(
             f"Warning: admin boundaries unavailable ({exc}); skipping overlay.",
             file=sys.stderr,
         )
         return None
+    if bbox is not None:
+        try:
+            from shapely.geometry import box
+
+            xmin, ymin, xmax, ymax = bbox
+            clip_geom = box(xmin, ymin, xmax, ymax)
+            try:
+                gdf = gdf.clip(clip_geom)
+            except Exception:
+                # Older geopandas may not expose .clip cleanly; fall back
+                # to a shapely intersection on each geometry.
+                gdf = gdf.copy()
+                gdf["geometry"] = gdf.geometry.intersection(clip_geom)
+            gdf = gdf[~gdf.geometry.is_empty & gdf.geometry.notna()]
+        except Exception as exc:
+            print(
+                f"Warning: could not clip admin boundaries to bbox ({exc}); "
+                "drawing unclipped overlay.",
+                file=sys.stderr,
+            )
+    return gdf
+
+
+def _resample_to_bins(da, time_dim, base_times, bin_width, agg):
+    """Resample ``da`` along ``time_dim`` to ``base_times`` using ``agg``.
+
+    ``base_times`` is a 1-D array of bin-end values (inclusive); ``bin_width``
+    is the (pandas Timedelta) width applied uniformly. For each base time
+    ``t``, values where ``t - bin_width < source_time <= t`` are aggregated.
+    This matches ``aggregate-temporal``'s left-open right-closed bucket
+    convention so the resampled overlay aligns with the gridded base's
+    inclusive-end labels. The returned DataArray's time coord equals
+    ``base_times`` exactly (the ``IntervalIndex`` from ``groupby_bins``
+    is dropped).
+    """
+    import numpy as np
+    import pandas as pd
+
+    base_times = pd.to_datetime(np.asarray(base_times))
+    edges = [base_times[0] - bin_width] + list(base_times)
+    grouped = da.groupby_bins(time_dim, bins=edges, right=True)
+    if agg == "sum":
+        out = grouped.sum()
+    elif agg == "mean":
+        out = grouped.mean()
+    elif agg == "max":
+        out = grouped.max()
+    elif agg == "min":
+        out = grouped.min()
+    else:
+        raise ValueError(f"unknown --overlay-resample agg: {agg}")
+    bin_dim = f"{time_dim}_bins"
+    # Replace the IntervalIndex bin coord with the original base times.
+    out = out.rename({bin_dim: time_dim})
+    out = out.assign_coords({time_dim: base_times.values})
+    return out
+
+
+def _median_bin_width(time_values):
+    """Return median spacing of a 1-D time coord as a pandas Timedelta.
+
+    Returns ``None`` when the array has fewer than two values or cannot
+    be coerced to datetimes.
+    """
+    import numpy as np
+    import pandas as pd
+
+    arr = np.asarray(time_values)
+    if arr.size < 2:
+        return None
+    try:
+        diffs = np.diff(pd.to_datetime(arr).values)
+    except (TypeError, ValueError):
+        return None
+    if diffs.size == 0:
+        return None
+    return pd.Timedelta(pd.Series(diffs).median())
 
 
 def _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax):
@@ -163,6 +258,14 @@ def main() -> None:
     p.add_argument("--title")
     p.add_argument("--panels", type=int, default=3)
     p.add_argument("--time-dim")
+    p.add_argument(
+        "--overlay-resample",
+        choices=("sum", "mean", "max", "min"),
+        default="sum",
+        help="When one input is station-schema and its time grid is finer "
+        "than the gridded input's, aggregate the station time axis to the "
+        "gridded input's bins using this rule.",
+    )
     args = p.parse_args()
 
     if len(args.input) != 2:
@@ -233,11 +336,44 @@ def main() -> None:
     da_a = _flatten(da_a, td_a)
     da_b = _flatten(da_b, td_b)
 
+    # When exactly one input is station-schema and its time grid is finer
+    # than the gridded input's, resample the station's time axis to the
+    # gridded input's bins. The gridded input is the "base"; the station
+    # input is the "overlay". This keeps the skill generic — no
+    # TAHMO/IMERG/CHIRPS or variable-specific assumptions.
+    a_station = _is_station(ds_a)
+    b_station = _is_station(ds_b)
+    base_bin_width = None
+    if a_station ^ b_station:
+        if a_station:
+            station_da, station_td = da_a, td_a
+            base_da, base_td = da_b, td_b
+        else:
+            station_da, station_td = da_b, td_b
+            base_da, base_td = da_a, td_a
+        base_bin_width = _median_bin_width(base_da[base_td].values)
+        station_bin_width = _median_bin_width(station_da[station_td].values)
+        if (
+            base_bin_width is not None
+            and station_bin_width is not None
+            and station_bin_width < base_bin_width
+        ):
+            base_times = base_da[base_td].values
+            station_da = _resample_to_bins(
+                station_da,
+                station_td,
+                base_times,
+                base_bin_width,
+                args.overlay_resample,
+            )
+            if a_station:
+                da_a = station_da
+            else:
+                da_b = station_da
+
     # Decide row layout: when exactly one is station-schema, put it on top.
     label_a = Path(path_a).name
     label_b = Path(path_b).name
-    a_station = _is_station(ds_a)
-    b_station = _is_station(ds_b)
     if b_station and not a_station:
         top = (ds_b, da_b, td_b, label_b)
         bottom = (ds_a, da_a, td_a, label_a)
@@ -262,7 +398,19 @@ def main() -> None:
     if args.title:
         fig.suptitle(args.title)
 
-    boundaries = _load_admin_boundaries()
+    # The "gridded base" determines both the admin-polygon clip bbox and
+    # the shared spatial extent across both rows. Pick whichever of A/B
+    # is NOT station-schema; if neither is station-schema, default to A.
+    if a_station and not b_station:
+        gridded_ds = ds_b
+    elif b_station and not a_station:
+        gridded_ds = ds_a
+    else:
+        gridded_ds = ds_a
+    g_xmin, g_xmax, g_ymin, g_ymax = _ax_bounds(gridded_ds, variable)
+    gridded_bbox = (g_xmin, g_ymin, g_xmax, g_ymax)
+
+    boundaries = _load_admin_boundaries(bbox=gridded_bbox)
 
     def _plot_row(axes, row, n_panels):
         ds, da, td, label = row
@@ -274,7 +422,7 @@ def main() -> None:
             ax = axes[col]
             sel = da.isel({td: first + col})
             t_val = da[td].values[first + col]
-            title_t = _format_single(t_val)
+            title_t = _format_single(t_val, bin_width=base_bin_width)
             if is_station:
                 last_im = _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax)
             else:
@@ -296,17 +444,16 @@ def main() -> None:
     sc_top = _plot_row(top_axes, top, n)
     im_bottom = _plot_row(bottom_axes, bottom, n)
 
-    # Constrain each axis to the data bounds of its row's dataset so the
-    # admin-boundary overlay does not zoom the view out to a global extent.
-    t_xmin, t_xmax, t_ymin, t_ymax = _ax_bounds(top[0], variable)
-    b_xmin, b_xmax, b_ymin, b_ymax = _ax_bounds(bottom[0], variable)
+    # Force both rows to share the gridded base's spatial extent. The
+    # station scatter still renders at actual lat/lon — matplotlib clips
+    # any points outside the limits naturally.
     for ax in top_axes:
-        ax.set_xlim(t_xmin, t_xmax)
-        ax.set_ylim(t_ymin, t_ymax)
+        ax.set_xlim(g_xmin, g_xmax)
+        ax.set_ylim(g_ymin, g_ymax)
         ax.set_xlabel("")
     for col, ax in enumerate(bottom_axes):
-        ax.set_xlim(b_xmin, b_xmax)
-        ax.set_ylim(b_ymin, b_ymax)
+        ax.set_xlim(g_xmin, g_xmax)
+        ax.set_ylim(g_ymin, g_ymax)
         ax.set_xlabel("lon" if col == n // 2 else "")
 
     fig.colorbar(
