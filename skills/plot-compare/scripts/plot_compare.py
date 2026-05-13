@@ -65,21 +65,28 @@ def _format_single(t, bin_width=None):
     """Render a time-bin label.
 
     When ``bin_width`` is a ``pandas.Timedelta``, format as
-    ``YYYY-MM-DD to YYYY-MM-DD`` with ``t`` as the bin start. Otherwise
-    fall back to a single ISO date.
+    ``YYYY-MM-DD to YYYY-MM-DD`` with ``t`` interpreted as the bin's
+    right edge (the right-edge label convention used by
+    ``aggregate-temporal`` and ``deaccumulate``). The displayed range
+    is inclusive-both-ends in daily granularity: ``start = end -
+    bin_width + 1 day``, so a 10-day dekad ending ``2026-05-09``
+    renders as ``"2026-04-30 to 2026-05-09"`` (10 days inclusive),
+    matching upstream pipelines. For sub-daily ``bin_width`` the +1
+    day adjustment is approximate; see deferred-work.md. When
+    ``bin_width`` is None, fall back to a single ISO date.
     """
     import pandas as pd
 
     try:
-        start = pd.Timestamp(t)
+        end = pd.Timestamp(t)
     except (TypeError, ValueError):
         return str(t)
     if bin_width is None:
-        return start.date().isoformat()
+        return end.date().isoformat()
     try:
-        end = start + bin_width
+        start = end - bin_width + pd.Timedelta(days=1)
     except (TypeError, ValueError):
-        return start.date().isoformat()
+        return end.date().isoformat()
     return f"{start.date().isoformat()} to {end.date().isoformat()}"
 
 
