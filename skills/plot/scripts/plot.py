@@ -166,11 +166,18 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
     nrows = int(np.ceil(num_steps / ncols))
 
     if extent is None:
+        # Default extent expands cell-center min/max by half the mean grid
+        # spacing on each side, so the view matches what pcolormesh actually
+        # draws (it treats coords as cell centers and extends ±½ spacing).
+        lat_vals = np.asarray(da[lat_dim].values)
+        lon_vals = np.asarray(da[lon_dim].values)
+        dlat = float(np.abs(np.diff(np.sort(lat_vals))).mean()) if lat_vals.size > 1 else 0.0
+        dlon = float(np.abs(np.diff(np.sort(lon_vals))).mean()) if lon_vals.size > 1 else 0.0
         extent = [
-            float(np.min(da[lon_dim].values)),
-            float(np.max(da[lon_dim].values)),
-            float(np.min(da[lat_dim].values)),
-            float(np.max(da[lat_dim].values)),
+            float(lon_vals.min()) - dlon / 2,
+            float(lon_vals.max()) + dlon / 2,
+            float(lat_vals.min()) - dlat / 2,
+            float(lat_vals.max()) + dlat / 2,
         ]
 
     vmax = float(da.max(skipna=True).values)

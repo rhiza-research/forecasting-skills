@@ -47,7 +47,10 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
   before panel layout: e.g. `--index step=2` reduces to a single-panel map at
   step 2; otherwise all steps are panelled.
 - `--extent` — heatmap map extent as `lon_min,lon_max,lat_min,lat_max`.
-  Defaults to the data bounds.
+  Defaults to the data's cell-center min/max expanded by half the mean
+  grid spacing on each side, so the view matches what `pcolormesh`
+  actually draws (it treats coords as cell centers and extends ±½
+  spacing).
 - `--cities` — heatmap city overlay. Inline JSON like
   `'{"Windhoek": [-22.55, 17.08]}'` or a path to such a JSON file. Off by
   default.
