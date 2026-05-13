@@ -37,6 +37,23 @@ uv run scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
 
 Same variables; the time/step axis is replaced by the aggregated window. `rhiza_aggregation` attr is stamped (e.g. `weekly-sum`).
 
+### Step coordinate convention
+
+For forecast (`step`) inputs, the output `step` coord is the **right edge** of
+each aggregation bucket — i.e. each value is labeled with the end of the
+period it covers. Buckets are **left-open and right-closed** (`(left, right]`),
+so a step value sitting on a period boundary (e.g. `step=7d` for end-of-period
+labeled data like a deaccumulated forecast) lands in the bucket it physically
+belongs to. Trailing partial buckets that would extend past the input's last
+step are dropped rather than synthesized.
+
+### Cumulative-since-init variables
+
+For variables that are stored as cumulative-since-init (e.g. ECMWF S2S `tp`),
+run the `deaccumulate` skill before `aggregate-temporal` so each step value
+is per-period rather than cumulative. Running `--method sum` directly on an
+accumulated variable double-counts earlier steps and inflates totals.
+
 ## Examples
 
 ```bash

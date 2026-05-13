@@ -48,13 +48,16 @@ def _cache_hit(out: Path, inputs: dict) -> bool:
     return cached == json.dumps(inputs, sort_keys=True)
 
 
-def _reduce(grouped, method):
-    return {
+def _reduce(grouped, method, dim=None):
+    fn = {
         "sum": grouped.sum,
         "mean": grouped.mean,
         "max": grouped.max,
         "min": grouped.min,
-    }[method](keep_attrs=True)
+    }[method]
+    if dim is not None:
+        return fn(dim=dim, keep_attrs=True)
+    return fn(keep_attrs=True)
 
 
 def _aggregate_step(ds, period, method):
@@ -74,20 +77,27 @@ def _aggregate_step(ds, period, method):
         print(f"Error: 'step' dim must be timedelta64, got {steps.dtype}", file=sys.stderr)
         sys.exit(2)
     max_step = steps.max()
+    # Emit a bucket (left, right] only if it covers a full `window` of the
+    # input step axis, i.e. right <= max_step. Trailing partial buckets are
+    # dropped rather than synthesized past max_step. Buckets are left-open
+    # and right-closed so that a step value sitting on the period boundary
+    # (e.g. step=7d, the END of week 1 for end-of-period-labeled data such
+    # as deaccumulated forecasts) lands in the bucket it physically belongs
+    # to. The right edge is the bucket label, so downstream consumers
+    # (e.g. plot.py) can reconstruct the [right - window, right] panel title
+    # correctly.
     edges = np.arange(0, max_step + window, window, dtype=steps.dtype)
     chunks, labels = [], []
     for left in edges[:-1]:
         right = left + window
-        mask = (steps >= left) & (steps < right)
+        if right > max_step:
+            continue
+        mask = (steps > left) & (steps <= right)
         if not mask.any():
             continue
         sel = ds.isel(step=np.where(mask)[0])
-        chunks.append(
-            _reduce(sel, method=method).drop_vars("step", errors="ignore")
-            if "step" in sel.dims
-            else _reduce(sel, method=method)
-        )
-        labels.append(left + window / 2)
+        chunks.append(_reduce(sel, method=method, dim="step"))
+        labels.append(left + window)
     import xarray as xr
 
     return xr.concat(chunks, dim="step").assign_coords(step=labels)
