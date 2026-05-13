@@ -25,6 +25,7 @@ mkdir -p "$OUT"
 uv tool install --force --reinstall ../
 
 forecasting-skills ecmwf-fetch  --date  "$INIT_DATE"  --region africa --output "$OUT/ecmwf.zarr"
+forecasting-skills deaccumulate -i "$OUT/ecmwf.zarr" -o "$OUT/ecmwf_per_step.zarr"
 forecasting-skills imerg-fetch  --start "$START_DATE" --end "$END_DATE" --output "$OUT/imerg.zarr"
 forecasting-skills chirps-fetch --start "$START_DATE" --end "$END_DATE" --output "$OUT/chirps.zarr"
 
@@ -33,7 +34,7 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     d="$OUT/$COUNTRY"
     mkdir -p "$d"
 
-    forecasting-skills clip-region        -i "$OUT/ecmwf.zarr"  -o "$d/ecmwf.zarr"         --region "$region"
+    forecasting-skills clip-region        -i "$OUT/ecmwf_per_step.zarr" -o "$d/ecmwf.zarr"         --region "$region"
     forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_weekly.zarr"  --period weekly  --method sum
     forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_dekadal.zarr" --period dekadal --method sum
     forecasting-skills plot               -i "$d/ecmwf_weekly.zarr"  -o "$d/weekly_precip.png"  --variable tp
