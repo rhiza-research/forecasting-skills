@@ -47,12 +47,12 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills plot               -i "$d/ecmwf_dekadal_ds.zarr" -o "$d/dekadal_precip_ds.png" --variable tp
 
     forecasting-skills clip-region        -i "$OUT/imerg.zarr"  -o "$d/imerg.zarr"         --region "$region"
-    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_weekly.zarr"  --period weekly  --method sum
-    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_dekadal.zarr" --period dekadal --method sum
+    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_weekly.zarr"  --period weekly  --method sum --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_dekadal.zarr" --period dekadal --method sum --anchor-end "$END_DATE"
 
     forecasting-skills clip-region        -i "$OUT/chirps.zarr" -o "$d/chirps.zarr"         --region "$region"
-    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_weekly.zarr"  --period weekly  --method sum
-    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_dekadal.zarr" --period dekadal --method sum
+    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_weekly.zarr"  --period weekly  --method sum --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_dekadal.zarr" --period dekadal --method sum --anchor-end "$END_DATE"
 
     forecasting-skills tahmo-fetch --country "$COUNTRY" --start "$START_DATE" --end "$END_DATE" --output "$d/tahmo.zarr"
 

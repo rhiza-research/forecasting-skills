@@ -23,15 +23,18 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
 ```
 uv run scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
     --period daily|weekly|dekadal|monthly [--method sum|mean|max|min] \
-    [--time-dim DIM]
+    [--time-dim DIM] [--anchor-end YYYY-MM-DD]
 ```
 
 ### Arguments
 - `--input`, `-i` — input Zarr.
 - `--output`, `-o` — output Zarr.
-- `--period` — window size: `daily` (1d), `weekly` (7d), `dekadal` (10d), `monthly` (calendar month).
+- `--period` — window size: `daily` (1d), `weekly` (7d), `dekadal` (10d), `monthly` (calendar month for the default forward-anchored resample; 30-day approximation when combined with `--anchor-end`).
 - `--method` — reducer: `sum` (default for totals), `mean`, `max`, `min`.
 - `--time-dim` — override; by default uses `time` if present, else `step`.
+- `--anchor-end` — ISO date (`YYYY-MM-DD`) used to anchor the LAST bin
+  on the obs/time-resample path (no effect on the forecast `step`
+  path). See "Anchor end" below.
 
 ### Output
 
@@ -46,6 +49,30 @@ so a step value sitting on a period boundary (e.g. `step=7d` for end-of-period
 labeled data like a deaccumulated forecast) lands in the bucket it physically
 belongs to. Trailing partial buckets that would extend past the input's last
 step are dropped rather than synthesized.
+
+### Anchor end
+
+By default, the obs/time path delegates to `xr.resample`, which anchors
+bins forward from the start of the input time axis. Pass
+`--anchor-end YYYY-MM-DD` to instead anchor the LAST bin to end on that
+date: bins are `period`-day windows (`(left, right]`) synthesized
+backward from `--anchor-end` while their `left` edge is `>=` the input's
+earliest timestamp. Partial bins at the start whose `left` falls before
+the input range are dropped. The output time coord for each bin is the
+bin's right edge (matching the right-edge convention used for
+forecast `step` aggregation), so the last bin's label is exactly
+`--anchor-end`.
+
+Caveat for `monthly`: with `--anchor-end`, monthly bins are 30-day
+fixed-width windows, not calendar months. Without `--anchor-end`,
+`monthly` continues to mean calendar months (`xr.resample("MS")`).
+
+Example — anchor the last weekly bin to end on 2026-05-12:
+
+```bash
+uv run scripts/aggregate.py -i /tmp/imerg.zarr -o /tmp/imerg_weekly.zarr \
+    --period weekly --method sum --anchor-end 2026-05-12
+```
 
 ### Cumulative-since-init variables
 
