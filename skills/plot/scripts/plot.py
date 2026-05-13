@@ -242,7 +242,7 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
     cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", fraction=5)
     units = da.attrs.get("units", "")
-    label = da.name or "value"
+    label = da.attrs.get("long_name") or da.attrs.get("GRIB_name") or da.name or "value"
     if units:
         label = f"{label} [{units}]"
     cbar.set_label(label, fontsize=fontsize)
