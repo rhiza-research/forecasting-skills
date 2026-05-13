@@ -37,8 +37,8 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills clip-region        -i "$OUT/ecmwf_per_step.zarr" -o "$d/ecmwf.zarr"         --region "$region"
     forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_weekly.zarr"  --period weekly  --method sum
     forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_dekadal.zarr" --period dekadal --method sum
-    forecasting-skills plot               -i "$d/ecmwf_weekly.zarr"  -o "$d/weekly_precip.png"  --variable tp
-    forecasting-skills plot               -i "$d/ecmwf_dekadal.zarr" -o "$d/dekadal_precip.png" --variable tp
+    forecasting-skills plot               -i "$d/ecmwf_weekly.zarr"  -o "$d/weekly_precip.png"  --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple
+    forecasting-skills plot               -i "$d/ecmwf_dekadal.zarr" -o "$d/dekadal_precip.png" --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple
     # Upstream daily_download2.0.yml runs a downscale step (dowscale_dekade.py) producing
     # dekadal_precip_downscaled.png. That artifact isn't in the emailed attachments, so
     # we run the regrid + plot here for parity with the workflow steps but the result is

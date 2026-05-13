@@ -38,7 +38,10 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable.
 - `--style` — `heatmap` (default) or `timeseries`.
-- `--colormap` — matplotlib colormap name (default `viridis`).
+- `--colormap` — either a matplotlib colormap name (default `viridis`) or a
+  comma-separated list of colors to interpolate between (e.g.
+  `white,wheat,green`). Named matplotlib colormaps cannot contain commas, so
+  the presence of a comma unambiguously selects the custom-list form.
 - `--title` — optional plot title.
 - `--index` — dim selections like `step=3,number=0`. For `heatmap`, applied
   before panel layout: e.g. `--index step=2` reduces to a single-panel map at
@@ -60,6 +63,13 @@ Multi-step forecast panel:
 ```bash
 uv run scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
     --variable tp --style heatmap --colormap magma --title "S2S precip"
+```
+
+Multi-step forecast panel with a custom precipitation palette:
+```bash
+uv run scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
+    --variable tp --style heatmap \
+    --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple
 ```
 
 Single-step map with cities and an explicit extent:

@@ -50,6 +50,21 @@ def _parse_extent(spec):
     return parts
 
 
+def _parse_colormap(spec):
+    """Pass through a named matplotlib colormap, or build one from a color list.
+
+    Named matplotlib colormap identifiers cannot contain commas, so the
+    presence of a comma in ``spec`` unambiguously indicates a custom color
+    list. Whitespace around each color is stripped.
+    """
+    if spec is None or "," not in spec:
+        return spec
+    from matplotlib.colors import LinearSegmentedColormap
+
+    parts = [p.strip() for p in spec.split(",") if p.strip()]
+    return LinearSegmentedColormap.from_list("custom", parts)
+
+
 def _parse_cities(spec):
     if not spec:
         return {}
@@ -292,8 +307,9 @@ def main() -> None:
                 da = da.isel({dim: idx}, drop=True)
         extent = _parse_extent(args.extent)
         cities = _parse_cities(args.cities)
+        cmap = _parse_colormap(args.colormap)
         fig = _heatmap(
-            da, lat_dim, lon_dim, args.colormap, extent, cities, args.title, args.fontsize
+            da, lat_dim, lon_dim, cmap, extent, cities, args.title, args.fontsize
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))
