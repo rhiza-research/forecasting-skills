@@ -16,6 +16,7 @@ expressed as timedelta64 and aggregates each.
 """
 
 import argparse
+import datetime as _dt
 import json
 import shutil
 import sys
@@ -23,6 +24,10 @@ from pathlib import Path
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
+# Bin-width in days used by the backward-anchored time resample path
+# (`--anchor-end`). "monthly" uses a 30-day approximation rather than
+# calendar months; see SKILL.md for the caveat.
+ANCHOR_PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10, "monthly": 30}
 
 
 def _upstream_inputs(zarr_path: Path) -> str | None:
@@ -58,6 +63,53 @@ def _reduce(grouped, method, dim=None):
     if dim is not None:
         return fn(dim=dim, keep_attrs=True)
     return fn(keep_attrs=True)
+
+
+def _aggregate_time_anchored(ds, dim, period, method, anchor_end):
+    """Backward-anchored time resample.
+
+    The LAST bin is the half-open-on-the-left interval
+    ``(anchor_end - period_days, anchor_end]``; previous bins are
+    ``period_days`` earlier, working backward as long as the bin's start
+    is ``>= ds[dim].min()``. Partial bins whose start would fall before
+    the first input timestamp are dropped. The output coord for each bin
+    is the bin's right edge (``anchor_end`` for the last bin), matching
+    the right-edge convention used by ``_aggregate_step``.
+    """
+    import numpy as np
+    import pandas as pd
+    import xarray as xr
+
+    period_days = ANCHOR_PERIOD_DAYS[period]
+    bin_width = pd.Timedelta(days=period_days)
+    times = pd.to_datetime(np.asarray(ds[dim].values))
+    if times.size == 0:
+        return ds.isel({dim: slice(0, 0)})
+    data_min = pd.Timestamp(times.min())
+
+    bins = []
+    right = pd.Timestamp(anchor_end)
+    while True:
+        left = right - bin_width
+        if left < data_min:
+            break
+        bins.append((left, right))
+        right = left
+    bins.reverse()
+
+    chunks, labels = [], []
+    for left, right in bins:
+        # (left, right] window: select strictly after `left` and up to and
+        # including `right` to match the left-open, right-closed convention.
+        sel = ds.sel({dim: slice(left + pd.Timedelta(nanoseconds=1), right)})
+        if sel.sizes.get(dim, 0) == 0:
+            continue
+        chunks.append(_reduce(sel, method=method, dim=dim))
+        labels.append(np.datetime64(right))
+
+    if not chunks:
+        return ds.isel({dim: slice(0, 0)})
+    return xr.concat(chunks, dim=dim).assign_coords({dim: labels})
 
 
 def _aggregate_step(ds, period, method):
@@ -110,12 +162,33 @@ def main() -> None:
     p.add_argument("--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"])
     p.add_argument("--method", default="sum", choices=["sum", "mean", "max", "min"])
     p.add_argument("--time-dim")
+    p.add_argument(
+        "--anchor-end",
+        default=None,
+        help="ISO date (YYYY-MM-DD). When set, anchors the obs/time "
+        "resample so the LAST bin ends at this date and previous bins "
+        "are synthesized backward in `period`-day windows. Partial bins "
+        "whose start falls before the input's first timestamp are "
+        "dropped. Has no effect on the forecast `step` path.",
+    )
     args = p.parse_args()
+
+    if args.anchor_end is not None:
+        try:
+            _dt.date.fromisoformat(args.anchor_end)
+        except ValueError as exc:
+            print(
+                f"Error: --anchor-end '{args.anchor_end}' is not a valid "
+                f"ISO date (YYYY-MM-DD): {exc}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     inputs = {
         "period": args.period,
         "method": args.method,
         "time_dim": args.time_dim,
+        "anchor_end": args.anchor_end,
         "input": _upstream_inputs(Path(args.input)),
     }
     out = Path(args.output)
@@ -165,6 +238,11 @@ def main() -> None:
 
     if dim == "step":
         out_ds = _aggregate_step(ds, args.period, args.method)
+    elif args.anchor_end is not None:
+        import pandas as pd
+
+        anchor_end = pd.Timestamp(args.anchor_end)
+        out_ds = _aggregate_time_anchored(ds, dim, args.period, args.method, anchor_end)
     else:
         resampled = ds.resample({dim: RESAMPLE_FREQ[args.period]})
         out_ds = _reduce(resampled, args.method)
