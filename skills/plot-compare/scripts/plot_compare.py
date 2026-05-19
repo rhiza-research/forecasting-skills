@@ -3,7 +3,7 @@
 # dependencies = [
 #   "cartopy",
 #   "cf-xarray",
-#   "geopandas",
+#   "geopandas>=1",
 #   "matplotlib",
 #   "numpy",
 #   "pandas",
@@ -23,6 +23,23 @@ normalization are used across both rows.
 import argparse
 import sys
 from pathlib import Path
+
+# Region bbox table accepted by ``--region``. Mirrors ``clip-region``'s
+# REGIONS dict; duplicated per CONVENTIONS.md ("no shared helper module" —
+# skills stay standalone). Keep in lockstep. Tuples are (N, W, S, E) in
+# decimal degrees, same convention as clip-region.
+REGIONS = {
+    "africa": (23, -20, -37, 59),
+    "kenya": (7, 32, -6, 43),
+    "ghana": (12, -4, 4, 2),
+    "senegal": (17, -17.5, 12, -11),
+    "ethiopia": (16, 32, 2, 49),
+    "namibia": (-15, 10, -31, 27),
+    "botswana": (-15, 18, -28, 31),
+    "zambia": (-6, 20, -20, 35),
+    "madagascar": (-10, 42, -27, 52),
+    "angola": (-5, 12, -18, 24),
+}
 
 # Shared categorical colormap and BoundaryNorm for precipitation (mm).
 PRECIP_COLORS = [
@@ -138,6 +155,36 @@ def _load_admin_boundaries(bbox=None):
                 file=sys.stderr,
             )
     return gdf
+
+
+def _lat_slice(lat_vals, north, south):
+    """Return a ``slice`` for ``ds.sel`` that works for ascending or descending lat."""
+    if lat_vals.size and lat_vals[0] > lat_vals[-1]:
+        return slice(north, south)
+    return slice(south, north)
+
+
+def _country_polygon_from_admin(name):
+    """Return the unioned Natural Earth admin-1 polygon for a country, or None.
+
+    Used to match upstream's sheerwater ``clip_region`` polygon clipping
+    on satellite data — gridded data outside the polygon is NaN'd before
+    plotting so the bottom row matches upstream's country-shaped sat
+    rendering. Returns None for multi-country names (e.g. ``africa``)
+    or when Natural Earth is unavailable.
+    """
+    gdf = _load_admin_boundaries(bbox=None)
+    if gdf is None:
+        return None
+    sub = gdf[gdf["admin"].str.casefold() == name.casefold()]
+    if sub.empty:
+        return None
+    try:
+        from shapely.ops import unary_union
+
+        return unary_union(list(sub.geometry))
+    except Exception:
+        return None
 
 
 def _resample_to_bins(da, time_dim, base_times, bin_width, agg):
@@ -273,6 +320,14 @@ def main() -> None:
         "than the gridded input's, aggregate the station time axis to the "
         "gridded input's bins using this rule.",
     )
+    p.add_argument(
+        "--region",
+        choices=sorted(REGIONS),
+        help="Named region. Slices gridded inputs to the region's (N, W, S, E) "
+        "bbox, drops stations outside the bbox, and sets axes to the bbox. "
+        "Cells inside the bbox but outside the country polygon are kept "
+        "(matching upstream's rectangular slice behavior).",
+    )
     args = p.parse_args()
 
     if len(args.input) != 2:
@@ -282,6 +337,8 @@ def main() -> None:
         )
         sys.exit(2)
     path_a, path_b = args.input
+    label_a = Path(path_a).name
+    label_b = Path(path_b).name
 
     import matplotlib
 
@@ -343,6 +400,79 @@ def main() -> None:
     da_a = _flatten(da_a, td_a)
     da_b = _flatten(da_b, td_b)
 
+    # When ``--region NAME`` is set: slice gridded inputs to the region's
+    # rectangular bbox, drop station inputs whose (lon, lat) is outside the
+    # bbox. This matches upstream's ``ds.sel(longitude=slice, latitude=slice)``
+    # rendering — admin polygons are decoration, not a mask.
+    region_bbox = REGIONS[args.region] if args.region else None
+    # Polygon-clip gridded inputs to match upstream sheerwater's clip_region,
+    # which polygon-clips IMERG/CHIRPS before plotting (so cells outside the
+    # country render as NaN/white). Skipped for multi-country regions.
+    region_polygon = (
+        _country_polygon_from_admin(args.region)
+        if (region_bbox is not None and args.region != "africa")
+        else None
+    )
+    if region_bbox is not None:
+        r_n, r_w, r_s, r_e = region_bbox
+        for side, ds_label in (("a", label_a), ("b", label_b)):
+            ds = ds_a if side == "a" else ds_b
+            da = da_a if side == "a" else da_b
+            if _is_station(ds):
+                lons = ds["longitude"].values
+                lats = ds["latitude"].values
+                keep = (lons >= r_w) & (lons <= r_e) & (lats >= r_s) & (lats <= r_n)
+                keep_ids = ds["station_id"].values[keep]
+                if len(keep_ids) == 0:
+                    print(
+                        f"Warning: 0 stations inside --region {args.region} "
+                        f"bbox on input '{ds_label}'; scatter will render empty.",
+                        file=sys.stderr,
+                    )
+                ds = ds.sel(station_id=keep_ids)
+                da = da.sel(station_id=keep_ids)
+            else:
+                lat_dim = _cf_dim(da, "latitude")
+                lon_dim = _cf_dim(da, "longitude")
+                if lat_dim is not None and lon_dim is not None:
+                    # Wrap lon to [-180, 180] before the slice so a 0..360
+                    # grid still intersects the bbox. Applied to both ds and
+                    # da so downstream _ax_bounds and overlay clip see the
+                    # same convention.
+                    lon_vals = da[lon_dim].values
+                    if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
+                        ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(
+                            lon_dim
+                        )
+                        da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(
+                            lon_dim
+                        )
+                    lat_vals = da[lat_dim].values
+                    ds = ds.sel({lat_dim: _lat_slice(lat_vals, r_n, r_s), lon_dim: slice(r_w, r_e)})
+                    da = da.sel({lat_dim: _lat_slice(lat_vals, r_n, r_s), lon_dim: slice(r_w, r_e)})
+                    # Polygon-mask gridded sat data to match upstream's
+                    # clip_region-clipped IMERG/CHIRPS (NaN outside country).
+                    if region_polygon is not None:
+                        import shapely
+                        import xarray as _xr
+
+                        post_lat = da[lat_dim].values
+                        post_lon = da[lon_dim].values
+                        lon_grid, lat_grid = np.meshgrid(post_lon, post_lat)
+                        mask = shapely.contains_xy(region_polygon, lon_grid, lat_grid)
+                        mask_da = _xr.DataArray(mask, dims=(lat_dim, lon_dim))
+                        da = da.where(mask_da)
+                else:
+                    print(
+                        f"Warning: input '{ds_label}' has no CF lat/lon "
+                        f"dims; --region {args.region} slice not applied.",
+                        file=sys.stderr,
+                    )
+            if side == "a":
+                ds_a, da_a = ds, da
+            else:
+                ds_b, da_b = ds, da
+
     # When exactly one input is station-schema and its time grid is finer
     # than the gridded input's, resample the station's time axis to the
     # gridded input's bins. The gridded input is the "base"; the station
@@ -379,8 +509,6 @@ def main() -> None:
                 da_b = station_da
 
     # Decide row layout: when exactly one is station-schema, put it on top.
-    label_a = Path(path_a).name
-    label_b = Path(path_b).name
     if b_station and not a_station:
         top = (ds_b, da_b, td_b, label_b)
         bottom = (ds_a, da_a, td_a, label_a)
@@ -415,6 +543,9 @@ def main() -> None:
     else:
         gridded_ds = ds_a
     g_xmin, g_xmax, g_ymin, g_ymax = _ax_bounds(gridded_ds, variable)
+    if region_bbox is not None:
+        r_n, r_w, r_s, r_e = region_bbox
+        g_xmin, g_xmax, g_ymin, g_ymax = r_w, r_e, r_s, r_n
     gridded_bbox = (g_xmin, g_ymin, g_xmax, g_ymax)
 
     boundaries = _load_admin_boundaries(bbox=gridded_bbox)

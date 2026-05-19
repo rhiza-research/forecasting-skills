@@ -37,8 +37,8 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills clip-region        -i "$OUT/ecmwf_per_step.zarr" -o "$d/ecmwf.zarr"         --region "$region"
     forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_weekly.zarr"  --period weekly  --method sum
     forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_dekadal.zarr" --period dekadal --method sum
-    forecasting-skills plot               -i "$d/ecmwf_weekly.zarr"  -o "$d/weekly_precip.png"  --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple
-    forecasting-skills plot               -i "$d/ecmwf_dekadal.zarr" -o "$d/dekadal_precip.png" --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple
+    forecasting-skills plot               -i "$d/ecmwf_weekly.zarr"  -o "$d/weekly_precip.png"  --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --region "$region"
+    forecasting-skills plot               -i "$d/ecmwf_dekadal.zarr" -o "$d/dekadal_precip.png" --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --region "$region"
     # Upstream daily_download2.0.yml runs a downscale step (dowscale_dekade.py) producing
     # dekadal_precip_downscaled.png. That artifact isn't in the emailed attachments, so
     # we run the regrid + plot here for parity with the workflow steps but the result is
@@ -56,10 +56,10 @@ for COUNTRY in "${COUNTRIES[@]}"; do
 
     forecasting-skills tahmo-fetch --country "$COUNTRY" --start "$START_DATE" --end "$END_DATE" --output "$d/tahmo.zarr"
 
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_weekly.zarr"   --variable precip --overlay-resample sum --panels 4 -o "$d/imerg_${COUNTRY}_weekly.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_dekadal.zarr"  --variable precip --overlay-resample sum             -o "$d/imerg_${COUNTRY}_dekadal.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_weekly.zarr"  --variable precip --overlay-resample sum --panels 4 -o "$d/chirps_${COUNTRY}_weekly.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_dekadal.zarr" --variable precip --overlay-resample sum             -o "$d/chirps_${COUNTRY}_dekadal.png"
+    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_weekly.zarr"   --variable precip --overlay-resample sum --panels 4 --region "$region" -o "$d/imerg_${COUNTRY}_weekly.png"
+    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_dekadal.zarr"  --variable precip --overlay-resample sum             --region "$region" -o "$d/imerg_${COUNTRY}_dekadal.png"
+    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_weekly.zarr"  --variable precip --overlay-resample sum --panels 4 --region "$region" -o "$d/chirps_${COUNTRY}_weekly.png"
+    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_dekadal.zarr" --variable precip --overlay-resample sum             --region "$region" -o "$d/chirps_${COUNTRY}_dekadal.png"
 
     forecasting-skills email-report \
         --from "$COUNTRY Data Share <demo@example.com>" \

@@ -30,7 +30,7 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
     [--variable NAME] [--style heatmap|timeseries] \
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
-    [--cities JSON_OR_PATH] [--fontsize N]
+    [--cities JSON_OR_PATH] [--fontsize N] [--region NAME]
 ```
 
 ### Arguments
@@ -55,6 +55,20 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
   `'{"Windhoek": [-22.55, 17.08]}'` or a path to such a JSON file. Off by
   default.
 - `--fontsize` — base font size for titles/colorbar label (default 16).
+- `--region` — optional named region. Slices the gridded input to the
+  region's (N, W, S, E) bbox using `da.sel(...)` and sets the heatmap
+  extent to that bbox. Cells inside the bbox but outside the country
+  polygon are kept — this is a rectangular slice, matching the upstream
+  `ECMWF-S2S4AFRICA` convention (admin boundaries are drawn as decoration
+  by `cfeature.BORDERS`/`cfeature.COASTLINE`, not used as a mask).
+  Accepted values mirror `clip-region`'s `REGIONS` dict
+  (`africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`,
+  `zambia`, `madagascar`, `angola`). Longitudes in `[0, 360]` are
+  auto-wrapped to `[-180, 180]` before slicing so global grids still
+  intersect negative-lon regions. `--extent` (if passed) wins over the
+  bbox-derived extent. Heatmap-only — `--style timeseries` ignores
+  `--region` with a stderr warning. Default unset → no slice, identical
+  behavior to pre-flag rendering.
 
 ### Output
 
