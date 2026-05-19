@@ -21,6 +21,29 @@ import json
 import sys
 from pathlib import Path
 
+# Region bbox table accepted by ``--region``. Mirrors ``clip-region``'s
+# REGIONS dict; duplicated per CONVENTIONS.md (no shared helper module —
+# skills stay standalone). Tuples are (N, W, S, E) in decimal degrees.
+REGIONS = {
+    "africa": (23, -20, -37, 59),
+    "kenya": (7, 32, -6, 43),
+    "ghana": (12, -4, 4, 2),
+    "senegal": (17, -17.5, 12, -11),
+    "ethiopia": (16, 32, 2, 49),
+    "namibia": (-15, 10, -31, 27),
+    "botswana": (-15, 18, -28, 31),
+    "zambia": (-6, 20, -20, 35),
+    "madagascar": (-10, 42, -27, 52),
+    "angola": (-5, 12, -18, 24),
+}
+
+
+def _lat_slice(lat_vals, north, south):
+    """Return a ``slice`` for ``ds.sel`` that works for ascending or descending lat."""
+    if lat_vals.size and lat_vals[0] > lat_vals[-1]:
+        return slice(north, south)
+    return slice(south, north)
+
 
 def _cf_dim(obj, cf_name):
     try:
@@ -275,6 +298,14 @@ def main() -> None:
         help='City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
     )
     p.add_argument("--fontsize", type=int, default=16)
+    p.add_argument(
+        "--region",
+        choices=sorted(REGIONS),
+        help="Named region. Slices the gridded input to the region's "
+        "(N, W, S, E) bbox and sets the axes extent to that bbox. Cells "
+        "inside the bbox but outside the country polygon are kept "
+        "(rectangular slice, matching the upstream convention).",
+    )
     args = p.parse_args()
 
     import matplotlib
@@ -300,6 +331,13 @@ def main() -> None:
     da = ds[variable]
     overrides = _parse_index(args.index)
 
+    if args.region and args.style != "heatmap":
+        print(
+            f"Warning: --region {args.region} is a heatmap-only option; "
+            f"ignored for --style {args.style}.",
+            file=sys.stderr,
+        )
+
     if args.style == "heatmap":
         lat_dim = _cf_dim(da, "latitude")
         lon_dim = _cf_dim(da, "longitude")
@@ -315,8 +353,29 @@ def main() -> None:
         extent = _parse_extent(args.extent)
         cities = _parse_cities(args.cities)
         cmap = _parse_colormap(args.colormap)
+        if args.region:
+            import numpy as _np_local
+
+            r_n, r_w, r_s, r_e = REGIONS[args.region]
+            # Wrap 0..360 lons to [-180, 180] before slicing so a global
+            # grid still intersects regions in the negative-lon half (e.g.
+            # Senegal). Mirror plot-compare's pre-slice wrap.
+            lon_vals_pre = _np_local.asarray(da[lon_dim].values)
+            if lon_vals_pre.size and float(_np_local.nanmax(lon_vals_pre)) > 180.0:
+                da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+            lat_vals_pre = da[lat_dim].values
+            da = da.sel({lat_dim: _lat_slice(lat_vals_pre, r_n, r_s), lon_dim: slice(r_w, r_e)})
+            if extent is None:
+                extent = [float(r_w), float(r_e), float(r_s), float(r_n)]
         fig = _heatmap(
-            da, lat_dim, lon_dim, cmap, extent, cities, args.title, args.fontsize
+            da,
+            lat_dim,
+            lon_dim,
+            cmap,
+            extent,
+            cities,
+            args.title,
+            args.fontsize,
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))
