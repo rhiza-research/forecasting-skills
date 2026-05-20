@@ -1,0 +1,11 @@
+# ecmwf-fetch
+export ECMWF_DATASTORES_URL=https://ecds.ecmwf.int/api
+export ECMWF_DATASTORES_KEY=
+
+# tahmo-fetch
+export TAHMO_API_USERNAME=
+export TAHMO_API_PASSWORD=
+
+# imerge-fetch
+export EARTHDATA_USERNAME=
+export EARTHDATA_PASSWORD=
