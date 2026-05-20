@@ -42,6 +42,10 @@ uv run scripts/regrid.py --input <in.zarr> --output <out.zarr> \
 - `--variable`, `-v` — restrict to a single data variable. Default: regrid all.
 - `--dims` — comma-separated lat,lon dim names. Defaults autodetect via CF metadata.
 
+### Longitude convention
+
+Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before the target axis is built, so a global grid stored in the `[0, 360]` convention does not produce a target axis spanning the entire globe when only a sub-region is wanted. Inputs already in `[-180, 180]` pass through unchanged.
+
 ### Output
 
 Same shape as input except the lat/lon dims are replaced by the target grid.
