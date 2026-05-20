@@ -185,6 +185,11 @@ def main() -> None:
             rhiza_inputs=json.dumps(inputs, sort_keys=True),
         )
         _stamp_cf_attrs(ds)
+        # Stamp explicit units on tp so downstream consumers don't have to reverse-engineer
+        # them from value ranges. GRIB carries `kg m**-2` (numerically equivalent to mm depth
+        # over the accumulation period); we forward that exact string rather than convert.
+        ds["tp"].attrs["units"] = "kg m**-2"
+        ds["tp"].attrs["long_name"] = "Total precipitation"
         for v in ds.variables:
             ds[v].encoding = {}
 
