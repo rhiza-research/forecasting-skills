@@ -3,6 +3,8 @@
 # dependencies = [
 #   "earthaccess",
 #   "h5netcdf",
+#   "h5py",
+#   "dask",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -100,7 +102,6 @@ def main() -> None:
         ds = xr.open_mfdataset(
             files,
             engine="h5netcdf",
-            group="Grid",
             combine="by_coords",
         )
         ds = ds[["precipitation"]].rename({"precipitation": "precip"})
