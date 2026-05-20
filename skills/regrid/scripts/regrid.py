@@ -108,6 +108,7 @@ def main() -> None:
         return
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
+    import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
 
@@ -145,6 +146,12 @@ def main() -> None:
             )
             sys.exit(2)
         ds = ds[[args.variable]]
+
+    # Wrap lon to [-180, 180] before building the target axis so a 0..360 input
+    # grid doesn't produce a target axis spanning ~the whole globe. Mirrors plot.py.
+    lon_vals = np.asarray(ds[lon_dim].values)
+    if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
+        ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
 
     new_lat = _target_axis(ds[lat_dim].values, args.target_resolution, args.offset)
     new_lon = _target_axis(ds[lon_dim].values, args.target_resolution, args.offset)

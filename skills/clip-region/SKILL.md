@@ -30,6 +30,10 @@ uv run scripts/clip.py --input <in.zarr> --output <out.zarr> \
 - `--bbox` — explicit `N/W/S/E` in decimal degrees (overrides `--region` if both given).
 - `--dims` — optional `LAT,LON` dim name override.
 
+### Longitude convention
+
+Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing, so a global grid stored in the `[0, 360]` convention still intersects bboxes that straddle the prime meridian (e.g. Ghana). Inputs already in `[-180, 180]` pass through unchanged.
+
 ### Output
 
 Same dims and variables, reduced to the requested window. Stamps `rhiza_region` on the output.

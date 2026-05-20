@@ -90,6 +90,7 @@ def main() -> None:
         return
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
+    import numpy as np
     import xarray as xr
 
     src = Path(args.input)
@@ -115,6 +116,12 @@ def main() -> None:
     lat_ascending = ds[lat_dim].values[0] < ds[lat_dim].values[-1]
     lat_slice = slice(s, n) if lat_ascending else slice(n, s)
     lon_slice = slice(w, e)
+
+    # Wrap lon to [-180, 180] before the slice so a 0..360 input grid still
+    # intersects bboxes that straddle the prime meridian. Mirrors plot.py.
+    lon_vals = np.asarray(ds[lon_dim].values)
+    if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
+        ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
 
     sub = ds.sel({lat_dim: lat_slice, lon_dim: lon_slice})
     if sub.sizes[lat_dim] == 0 or sub.sizes[lon_dim] == 0:
