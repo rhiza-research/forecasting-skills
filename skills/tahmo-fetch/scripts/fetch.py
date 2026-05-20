@@ -18,9 +18,11 @@ TAHMO_API_USERNAME and TAHMO_API_PASSWORD.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -125,18 +127,56 @@ def _station_frame(api, station_id: str, start: str, end: str):
     return daily
 
 
-def _cache_hit(out: Path, inputs: dict) -> bool:
-    """Return True if the zarr at `out` was produced by these same inputs."""
-    if not out.exists():
-        return False
+def _resolve_version() -> str:
+    """Return '<git_sha_or_unknown>+<skill_dir_hash>'. The git part comes
+    from `git rev-parse HEAD` against the script's parent dir; falls back
+    to 'unknown' when not resolvable. The hash part is sha256 of the
+    enclosing skill directory's contents."""
+    try:
+        sha = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parent,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        sha = "unknown"
+    h = hashlib.sha256()
+    skill_dir = Path(__file__).resolve().parent.parent
+    for p in sorted(skill_dir.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(skill_dir)).encode())
+            h.update(p.read_bytes())
+    return f"{sha}+{h.hexdigest()}"
+
+
+def _load_history(zarr_path: Path) -> list:
     try:
         import xarray as xr
 
-        with xr.open_zarr(out, consolidated=True) as ds:
-            cached = ds.attrs.get("rhiza_inputs")
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
     except Exception:
+        return []
+
+
+def _cache_hit(out: Path, entry: dict) -> bool:
+    """Return True if the zarr at `out` was produced by this same entry."""
+    if not out.exists():
         return False
-    return cached == json.dumps(inputs, sort_keys=True)
+    history = _load_history(out)
+    if not history:
+        return False
+    last = history[0]
+    return (
+        last.get("skill") == entry["skill"]
+        and last.get("args") == entry["args"]
+        and last.get("input") == entry["input"]
+    )
 
 
 def main() -> None:
@@ -152,13 +192,17 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
-    inputs = {
-        "country": sorted(args.country),
-        "start": args.start,
-        "end": args.end,
+    entry = {
+        "skill": "tahmo-fetch",
+        "version": _resolve_version(),
+        # Sort --country so that `--country Ghana --country Kenya` and
+        # `--country Kenya --country Ghana` produce identical cache keys.
+        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
+        | {"country": sorted(args.country)},
+        "input": None,
     }
     out = Path(args.output)
-    if _cache_hit(out, inputs):
+    if _cache_hit(out, entry):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping fetch.",
             file=sys.stderr,
@@ -258,9 +302,7 @@ def main() -> None:
             ds[canonical].attrs.update(attrs)
     ds.attrs.update(
         rhiza_source="tahmo",
-        rhiza_date=args.end,
-        rhiza_region=",".join(countries),
-        rhiza_inputs=json.dumps(inputs, sort_keys=True),
+        rhiza_history=json.dumps([entry], sort_keys=True),
         featureType="timeSeries",
     )
     for v in ds.variables:

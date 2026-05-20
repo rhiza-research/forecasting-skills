@@ -17,8 +17,10 @@ expressed as timedelta64 and aggregates each.
 
 import argparse
 import datetime as _dt
+import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -30,27 +32,76 @@ RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS
 ANCHOR_PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10, "monthly": 30}
 
 
-def _upstream_inputs(zarr_path: Path) -> str | None:
+def _resolve_version() -> str:
+    """Return '<git_sha_or_unknown>+<skill_dir_hash>'. The git part comes
+    from `git rev-parse HEAD` against the script's parent dir; falls back
+    to 'unknown' when not resolvable. The hash part is sha256 of the
+    enclosing skill directory's contents."""
+    try:
+        sha = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parent,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        sha = "unknown"
+    h = hashlib.sha256()
+    skill_dir = Path(__file__).resolve().parent.parent
+    for p in sorted(skill_dir.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(skill_dir)).encode())
+            h.update(p.read_bytes())
+    return f"{sha}+{h.hexdigest()}"
+
+
+def _hash_zarr(zarr_path: Path) -> str:
+    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
+    deterministically and hashes relative-path bytes + each file's
+    content. Returns sha256 hex digest."""
+    h = hashlib.sha256()
+    for p in sorted(zarr_path.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(zarr_path)).encode())
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _load_history(zarr_path: Path) -> list:
     try:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            return ds.attrs.get("rhiza_inputs")
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
     except Exception:
-        return None
+        return []
 
 
-def _cache_hit(out: Path, inputs: dict) -> bool:
+def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
+    """Cache check that compares everything except input.hash.
+
+    The hash over the upstream zarr is expensive; the basename + upstream
+    history chain is sufficient to identify whether a recompute is needed.
+    """
     if not out.exists():
         return False
-    try:
-        import xarray as xr
-
-        with xr.open_zarr(out, consolidated=False) as ds:
-            cached = ds.attrs.get("rhiza_inputs")
-    except Exception:
+    history = _load_history(out)
+    if len(history) != len(upstream) + 1:
         return False
-    return cached == json.dumps(inputs, sort_keys=True)
+    if history[:-1] != upstream:
+        return False
+    last = history[-1]
+    last_input = last.get("input") or {}
+    entry_input = entry.get("input") or {}
+    return (
+        last.get("skill") == entry["skill"]
+        and last.get("args") == entry["args"]
+        and last_input.get("basename") == entry_input.get("basename")
+    )
 
 
 def _reduce(grouped, method, dim=None):
@@ -184,20 +235,31 @@ def main() -> None:
             )
             sys.exit(2)
 
-    inputs = {
-        "period": args.period,
-        "method": args.method,
-        "time_dim": args.time_dim,
-        "anchor_end": args.anchor_end,
-        "input": _upstream_inputs(Path(args.input)),
+    # Build the cheap fields first; defer _hash_zarr until after the
+    # cache-hit check so we don't hash hundreds of MB of zarr on hits.
+    partial_entry = {
+        "skill": "aggregate-temporal",
+        "version": _resolve_version(),
+        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
+        "input": {"basename": Path(args.input).name},
     }
+    upstream = _load_history(Path(args.input))
     out = Path(args.output)
-    if _cache_hit(out, inputs):
+    if _cache_hit(out, upstream, partial_entry):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping aggregate.",
             file=sys.stderr,
         )
         return
+
+    # Cache miss: now compute the upstream hash and build the final entry.
+    entry = {
+        **partial_entry,
+        "input": {
+            "basename": Path(args.input).name,
+            "hash": _hash_zarr(Path(args.input)),
+        },
+    }
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
@@ -247,10 +309,25 @@ def main() -> None:
         resampled = ds.resample({dim: RESAMPLE_FREQ[args.period]})
         out_ds = _reduce(resampled, args.method)
 
+    if not upstream:
+        print(
+            "Warning: no upstream rhiza_history on input; treating input as opaque.",
+            file=sys.stderr,
+        )
+    deprecated = {
+        "rhiza_inputs",
+        "rhiza_region",
+        "rhiza_date",
+        "rhiza_area_NWSE",
+        "rhiza_deaccumulated",
+        "rhiza_aggregation",
+        "rhiza_regrid_resolution",
+        "rhiza_regrid_offset",
+        "rhiza_regrid_method",
+    }
     out_ds.attrs = {
-        **ds.attrs,
-        "rhiza_aggregation": f"{args.period}-{args.method}",
-        "rhiza_inputs": json.dumps(inputs, sort_keys=True),
+        **{k: v for k, v in ds.attrs.items() if k not in deprecated},
+        "rhiza_history": json.dumps(upstream + [entry], sort_keys=True),
     }
     for v in out_ds.variables:
         out_ds[v].encoding = {}

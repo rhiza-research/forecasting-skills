@@ -39,11 +39,24 @@ uv run scripts/deaccumulate.py --input <in.zarr> --output <out.zarr> \
 Same dims and coords as the input EXCEPT the `step` axis is one shorter: the
 first input step is dropped, and the remaining step coord values are
 preserved. Values are `arr[i+1] - arr[i]` clipped at zero. The variable's
-attrs are preserved; `rhiza_deaccumulated: "true"` is stamped on the dataset
-attrs.
+attrs are preserved.
 
 If the input lacks a `step` dim, or has multiple data vars and no
 `--variable`, the skill exits with code 2 and a clear message.
+
+### Provenance
+
+The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
+of per-step entries `{skill, version, args, input}`. This skill reads the
+upstream input's `rhiza_history` (default `[]` and stderr warning if absent)
+and appends its own entry. `args` is the argparse namespace minus the
+`--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
+`basename` is the upstream zarr's filename and `hash` is a sha256 of its
+stored bytes, so a renamed-but-unchanged input still cache-hits and a
+same-named-but-modified input correctly cache-misses; `version` is the
+git sha of the script at run time, or `"unknown"` when not resolvable. The previously stamped scalars `rhiza_deaccumulated`
+and `rhiza_inputs` are no longer written — they were collision-prone across
+a chain and are recoverable from `rhiza_history`.
 
 ## Composition with aggregate-temporal
 
