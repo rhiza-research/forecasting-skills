@@ -314,19 +314,8 @@ def main() -> None:
             "Warning: no upstream rhiza_history on input; treating input as opaque.",
             file=sys.stderr,
         )
-    deprecated = {
-        "rhiza_inputs",
-        "rhiza_region",
-        "rhiza_date",
-        "rhiza_area_NWSE",
-        "rhiza_deaccumulated",
-        "rhiza_aggregation",
-        "rhiza_regrid_resolution",
-        "rhiza_regrid_offset",
-        "rhiza_regrid_method",
-    }
     out_ds.attrs = {
-        **{k: v for k, v in ds.attrs.items() if k not in deprecated},
+        **ds.attrs,
         "rhiza_history": json.dumps(upstream + [entry], sort_keys=True),
     }
     for v in out_ds.variables:
