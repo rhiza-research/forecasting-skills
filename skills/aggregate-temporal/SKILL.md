@@ -38,7 +38,30 @@ uv run scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
 
 ### Output
 
-Same variables; the time/step axis is replaced by the aggregated window. `rhiza_aggregation` attr is stamped (e.g. `weekly-sum`).
+Same variables; the time/step axis is replaced by the aggregated window.
+
+### Provenance
+
+The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
+of per-step entries `{skill, version, args, input}`. This skill reads the
+upstream input's `rhiza_history` (default `[]` and stderr warning if absent)
+and appends its own entry. `args` is the argparse namespace minus the
+`--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
+`basename` is the upstream zarr's filename and `hash` is a sha256 of its
+stored bytes, so a renamed-but-unchanged input still cache-hits and a
+same-named-but-modified input correctly cache-misses; `version` is the
+git sha of the script at run time, or `"unknown"` when not resolvable. Cache-hit comparison reads the existing output's
+`rhiza_history`: a hit requires the upstream entries to match and the last
+entry's `skill`, `args`, and `input` to match the proposed new entry. The
+previously stamped scalars `rhiza_aggregation` and `rhiza_inputs` are no
+longer written — they were collision-prone across a chain and are
+recoverable from `rhiza_history`.
+
+The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
+`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
+(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
+reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+translate underscore → hyphen.
 
 ### Step coordinate convention
 

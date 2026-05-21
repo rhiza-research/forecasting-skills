@@ -11,8 +11,10 @@
 
 import argparse
 import ftplib
+import hashlib
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 from datetime import date, timedelta
@@ -31,16 +33,55 @@ class DayUnavailable(Exception):
     """Raised when a specific day's TIF is not yet published on the FTP server (550)."""
 
 
-def _cache_hit(out: Path, inputs: dict) -> bool:
-    """Return True if the zarr at `out` was produced by these same inputs."""
+def _resolve_version() -> str:
+    """Return '<git_sha_or_unknown>+<skill_dir_hash>'. The git part comes
+    from `git rev-parse HEAD` against the script's parent dir; falls back
+    to 'unknown' when not resolvable. The hash part is sha256 of the
+    enclosing skill directory's contents."""
+    try:
+        sha = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parent,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        sha = "unknown"
+    h = hashlib.sha256()
+    skill_dir = Path(__file__).resolve().parent.parent
+    for p in sorted(skill_dir.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(skill_dir)).encode())
+            h.update(p.read_bytes())
+    return f"{sha}+{h.hexdigest()}"
+
+
+def _load_history(zarr_path: Path) -> list:
+    try:
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _cache_hit(out: Path, entry: dict) -> bool:
+    """Return True if the zarr at `out` was produced by this same entry."""
     if not out.exists():
         return False
-    try:
-        with xr.open_zarr(out, consolidated=True) as ds:
-            cached = ds.attrs.get("rhiza_inputs")
-    except Exception:
+    history = _load_history(out)
+    if not history:
         return False
-    return cached == json.dumps(inputs, sort_keys=True)
+    existing_entry = history[0]
+    return (
+        existing_entry.get("skill") == entry["skill"]
+        and existing_entry.get("version") == entry["version"]
+        and existing_entry.get("args") == entry["args"]
+        and existing_entry.get("input") == entry["input"]
+    )
 
 
 def _daterange(start: str, end: str):
@@ -103,9 +144,14 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
-    inputs = {"start": args.start, "end": args.end}
+    requested_entry = {
+        "skill": "chirps-fetch",
+        "version": _resolve_version(),
+        "args": {"start": args.start, "end": args.end},
+        "input": None,
+    }
     out = Path(args.output)
-    if _cache_hit(out, inputs):
+    if _cache_hit(out, requested_entry):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping fetch.",
             file=sys.stderr,
@@ -192,12 +238,14 @@ def main() -> None:
         # Cache stamp reflects the EFFECTIVE end actually written, so a re-run
         # against the same --end re-attempts the missing tail days instead of
         # short-circuiting on a cache hit.
-        effective_inputs = {"start": args.start, "end": effective_end}
+        effective_entry = {
+            **requested_entry,
+            "args": {"start": args.start, "end": effective_end},
+        }
 
         ds = da.to_dataset()
         ds.attrs["rhiza_source"] = "chirps"
-        ds.attrs["rhiza_date"] = effective_end
-        ds.attrs["rhiza_inputs"] = json.dumps(effective_inputs, sort_keys=True)
+        ds.attrs["rhiza_history"] = json.dumps([effective_entry], sort_keys=True)
         _stamp_cf_attrs(ds)
         for v in ds.variables:
             ds[v].encoding = {}

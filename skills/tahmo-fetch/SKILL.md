@@ -34,7 +34,24 @@ uv run scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD
 
 ### Output
 
-Zarr with dims `(time, station_id)`, coords `latitude(station_id)`, `longitude(station_id)`, `country(station_id)`, and data variables `precip` (mm/day), `temperature` (°C), `humidity` (%), `pressure` (kPa) — whichever variables the stations report. Stamped with `rhiza_source=tahmo`.
+Zarr with dims `(time, station_id)`, coords `latitude(station_id)`, `longitude(station_id)`, `country(station_id)`, and data variables `precip` (mm/day), `temperature` (°C), `humidity` (%), `pressure` (kPa) — whichever variables the stations report. Stamped with `rhiza_source=tahmo` and `featureType=timeSeries`.
+
+### Provenance
+
+The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+per-step entries `{skill, version, args, input}`. For a fetcher this is a
+length-1 array; downstream zarr-writing skills append their own entry. `args`
+is the argparse namespace minus the `--input`/`--output` path strings;
+`version` is the git sha of the script at run time, or `"unknown"` when not
+resolvable. The previously stamped scalars `rhiza_region`, `rhiza_date`, and
+`rhiza_inputs` are no longer written — they were collision-prone across a
+chain and are recoverable from `rhiza_history`.
+
+The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
+`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
+(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
+reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+translate underscore → hyphen.
 
 ## Example
 

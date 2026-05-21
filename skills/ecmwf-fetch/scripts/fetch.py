@@ -13,9 +13,11 @@
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -46,18 +48,57 @@ def _require_env() -> None:
         sys.exit(2)
 
 
-def _cache_hit(out: Path, inputs: dict) -> bool:
-    """Return True if the zarr at `out` was produced by these same inputs."""
-    if not out.exists():
-        return False
+def _resolve_version() -> str:
+    """Return '<git_sha_or_unknown>+<skill_dir_hash>'. The git part comes
+    from `git rev-parse HEAD` against the script's parent dir; falls back
+    to 'unknown' when not resolvable. The hash part is sha256 of the
+    enclosing skill directory's contents."""
+    try:
+        sha = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parent,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        sha = "unknown"
+    h = hashlib.sha256()
+    skill_dir = Path(__file__).resolve().parent.parent
+    for p in sorted(skill_dir.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(skill_dir)).encode())
+            h.update(p.read_bytes())
+    return f"{sha}+{h.hexdigest()}"
+
+
+def _load_history(zarr_path: Path) -> list:
     try:
         import xarray as xr
 
-        with xr.open_zarr(out, consolidated=True) as ds:
-            cached = ds.attrs.get("rhiza_inputs")
-    except Exception:
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _cache_hit(out: Path, entry: dict) -> bool:
+    """Return True if the zarr at `out` was produced by this same entry."""
+    if not out.exists():
         return False
-    return cached == json.dumps(inputs, sort_keys=True)
+    history = _load_history(out)
+    if not history:
+        return False
+    existing_entry = history[0]
+    return (
+        existing_entry.get("skill") == entry["skill"]
+        and existing_entry.get("version") == entry["version"]
+        and existing_entry.get("args") == entry["args"]
+        and existing_entry.get("input") == entry["input"]
+    )
 
 
 def _stamp_cf_attrs(ds):
@@ -136,9 +177,14 @@ def main() -> None:
     else:
         area = REGIONS[args.region]
 
-    inputs = {"date": args.date, "area": area}
+    entry = {
+        "skill": "ecmwf-fetch",
+        "version": _resolve_version(),
+        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
+        "input": None,
+    }
     out = Path(args.output)
-    if _cache_hit(out, inputs):
+    if _cache_hit(out, entry):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping fetch.",
             file=sys.stderr,
@@ -179,10 +225,7 @@ def main() -> None:
         ds = xr.concat([pf, cf], dim="number").sortby("number")
         ds.attrs.update(
             rhiza_source="ecmwf-s2s",
-            rhiza_region=args.region or "",
-            rhiza_area_NWSE="/".join(str(x) for x in area),
-            rhiza_date=args.date,
-            rhiza_inputs=json.dumps(inputs, sort_keys=True),
+            rhiza_history=json.dumps([entry], sort_keys=True),
         )
         _stamp_cf_attrs(ds)
         # Stamp explicit units on tp so downstream consumers don't have to reverse-engineer

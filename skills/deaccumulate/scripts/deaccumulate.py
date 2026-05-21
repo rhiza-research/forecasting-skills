@@ -17,20 +17,85 @@ resulting axis labels each value with the end of the period it covers.
 """
 
 import argparse
+import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 
-def _upstream_inputs(zarr_path: Path) -> str | None:
+def _resolve_version() -> str:
+    """Return '<git_sha_or_unknown>+<skill_dir_hash>'. The git part comes
+    from `git rev-parse HEAD` against the script's parent dir; falls back
+    to 'unknown' when not resolvable. The hash part is sha256 of the
+    enclosing skill directory's contents."""
+    try:
+        sha = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parent,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        sha = "unknown"
+    h = hashlib.sha256()
+    skill_dir = Path(__file__).resolve().parent.parent
+    for p in sorted(skill_dir.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(skill_dir)).encode())
+            h.update(p.read_bytes())
+    return f"{sha}+{h.hexdigest()}"
+
+
+def _hash_zarr(zarr_path: Path) -> str:
+    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
+    deterministically and hashes relative-path bytes + each file's
+    content. Returns sha256 hex digest."""
+    h = hashlib.sha256()
+    for p in sorted(zarr_path.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(zarr_path)).encode())
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _load_history(zarr_path: Path) -> list:
     try:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            return ds.attrs.get("rhiza_inputs")
-    except Exception:
-        return None
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
+    """Cache check that compares everything except input.hash.
+
+    The hash over the upstream zarr is expensive; the basename + upstream
+    history chain is sufficient to identify whether a recompute is needed.
+    """
+    if not out.exists():
+        return False
+    history = _load_history(out)
+    if len(history) != len(upstream) + 1:
+        return False
+    if history[:-1] != upstream:
+        return False
+    last = history[-1]
+    last_input = last.get("input") or {}
+    entry_input = entry.get("input") or {}
+    return (
+        last.get("skill") == entry["skill"]
+        and last.get("version") == entry["version"]
+        and last.get("args") == entry["args"]
+        and last_input.get("basename") == entry_input.get("basename")
+    )
 
 
 def main() -> None:
@@ -44,11 +109,29 @@ def main() -> None:
     )
     args = p.parse_args()
 
+    # Cheap cache-hit pre-check: skill + args + input.basename + upstream
+    # history chain. Avoid opening the xarray dataset and hashing the upstream
+    # zarr if the output already matches.
+    src = Path(args.input)
+    partial_entry = {
+        "skill": "deaccumulate",
+        "version": _resolve_version(),
+        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
+        "input": {"basename": src.name},
+    }
+    upstream = _load_history(src)
+    out = Path(args.output)
+    if _cache_hit(out, upstream, partial_entry):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping deaccumulate.",
+            file=sys.stderr,
+        )
+        return
+
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import numpy as np
     import xarray as xr
 
-    src = Path(args.input)
     if not src.exists():
         print(f"Error: {src} not found.", file=sys.stderr)
         sys.exit(2)
@@ -98,19 +181,26 @@ def main() -> None:
 
     out_ds = ds.drop_vars(variable).isel(step=slice(1, None))
     out_ds[variable] = diffed
-    inputs = {
-        "variable": variable,
-        "input": _upstream_inputs(src),
+    # Cache miss: now compute the upstream hash and build the final entry.
+    entry = {
+        **partial_entry,
+        "input": {
+            "basename": src.name,
+            "hash": _hash_zarr(src),
+        },
     }
+    if not upstream:
+        print(
+            "Warning: no upstream rhiza_history on input; treating input as opaque.",
+            file=sys.stderr,
+        )
     out_ds.attrs = {
         **ds.attrs,
-        "rhiza_deaccumulated": "true",
-        "rhiza_inputs": json.dumps(inputs, sort_keys=True),
+        "rhiza_history": json.dumps(upstream + [entry], sort_keys=True),
     }
     for v in out_ds.variables:
         out_ds[v].encoding = {}
 
-    out = Path(args.output)
     if out.exists():
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)
