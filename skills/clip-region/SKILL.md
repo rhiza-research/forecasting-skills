@@ -4,7 +4,7 @@ description: Spatially subset a gridded Rhiza Envelope Zarr to a named region or
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # clip-region
