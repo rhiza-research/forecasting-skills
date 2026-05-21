@@ -13,9 +13,11 @@
 import argparse
 import hashlib
 import json
-import subprocess
 import sys
 from pathlib import Path
+
+# Auto-populated by the version-bump CI workflow. Do not edit manually.
+_RHIZA_SKILL_VERSION = "0.1.0"
 
 
 def _cf_dim(obj, cf_name):
@@ -23,32 +25,6 @@ def _cf_dim(obj, cf_name):
         return obj.cf[cf_name].name
     except KeyError:
         return None
-
-
-def _resolve_version() -> str:
-    """Return '<git_sha_or_unknown>+<skill_dir_hash>'. The git part comes
-    from `git rev-parse HEAD` against the script's parent dir; falls back
-    to 'unknown' when not resolvable. The hash part is sha256 of the
-    enclosing skill directory's contents."""
-    try:
-        sha = (
-            subprocess.check_output(
-                ["git", "rev-parse", "HEAD"],
-                cwd=Path(__file__).resolve().parent,
-                stderr=subprocess.DEVNULL,
-            )
-            .decode()
-            .strip()
-        )
-    except Exception:
-        sha = "unknown"
-    h = hashlib.sha256()
-    skill_dir = Path(__file__).resolve().parent.parent
-    for p in sorted(skill_dir.rglob("*")):
-        if p.is_file():
-            h.update(str(p.relative_to(skill_dir)).encode())
-            h.update(p.read_bytes())
-    return f"{sha}+{h.hexdigest()}"
 
 
 def _hash_zarr(zarr_path: Path) -> str:
@@ -262,7 +238,7 @@ def main() -> None:
     shared_args = {
         k: v for k, v in vars(args).items() if k not in {"forecast", "mclimate", "output"}
     }
-    version = _resolve_version()
+    version = _RHIZA_SKILL_VERSION
     mediogram_entry_forecast = {
         "skill": "plot-mediogram",
         "version": version,
