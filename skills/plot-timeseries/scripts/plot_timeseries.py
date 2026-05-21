@@ -17,8 +17,13 @@ mean-only and explicit (no silent averaging).
 """
 
 import argparse
+import hashlib
+import json
 import sys
 from pathlib import Path
+
+# Auto-populated by the version-bump CI workflow. Do not edit manually.
+_RHIZA_SKILL_VERSION = "0.1.0"
 
 
 def _cf_dim(obj, cf_name):
@@ -26,6 +31,29 @@ def _cf_dim(obj, cf_name):
         return obj.cf[cf_name].name
     except KeyError:
         return None
+
+
+def _hash_zarr(zarr_path: Path) -> str:
+    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
+    deterministically and hashes relative-path bytes + each file's
+    content. Returns sha256 hex digest."""
+    h = hashlib.sha256()
+    for p in sorted(zarr_path.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(zarr_path)).encode())
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _load_history(zarr_path: Path) -> list:
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
 
 
 def _pick_time_dim(da, override):
@@ -65,6 +93,16 @@ def main() -> None:
     )
     p.add_argument("--title")
     args = p.parse_args()
+
+    # PNG metadata keys are lettered by CLI position (rhiza_history_a,
+    # _b, ..., _z). The scheme stops at z; reject more inputs early so
+    # users see a clear error rather than a KeyError later.
+    if len(args.input) > 26:
+        print(
+            f"Error: --input must be passed at most 26 times; got {len(args.input)}.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     import matplotlib
 
@@ -140,7 +178,28 @@ def main() -> None:
     fig.tight_layout()
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=150)
+
+    args_dict = {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
+    png_metadata: dict[str, str] = {"Software": "forecasting-skills"}
+    for idx, pth in enumerate(args.input):
+        src = Path(pth)
+        upstream = _load_history(src)
+        entry = {
+            "skill": "plot-timeseries",
+            "version": _RHIZA_SKILL_VERSION,
+            "args": args_dict,
+            "input": {"basename": src.name, "hash": _hash_zarr(src)},
+        }
+        if not upstream:
+            print(
+                f"Warning: no upstream rhiza_history on {src.name}; "
+                "embedding plot-timeseries step alone.",
+                file=sys.stderr,
+            )
+        letter = chr(ord("a") + idx)
+        png_metadata[f"rhiza_history_{letter}"] = json.dumps(upstream + [entry], sort_keys=True)
+
+    fig.savefig(out, dpi=150, metadata=png_metadata)
     plt.close(fig)
     print(f"Wrote: {args.output}", file=sys.stderr)
 

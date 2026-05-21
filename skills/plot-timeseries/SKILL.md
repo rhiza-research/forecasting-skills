@@ -3,6 +3,8 @@ name: plot-timeseries
 description: Render a single PNG with one 1D trace per input Zarr overlaid on a shared time axis. Use when you want to compare a variable across multiple Rhiza Envelope Zarrs as line traces. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
+metadata:
+  version: "0.1.0"
 ---
 
 # plot-timeseries
@@ -54,6 +56,37 @@ uv run scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.pn
 A PNG at `--output`, single axes (`figsize=(10, 6)`), one line per input,
 legend on the axes. The y-axis label is `<variable>` plus `[<units>]` when
 the variable carries a `units` attribute.
+
+### Provenance
+
+Every PNG carries a per-input `tEXt` chunk plus a producer key, written via
+matplotlib's `savefig(metadata=...)`:
+
+- `rhiza_history_a`, `rhiza_history_b`, `rhiza_history_c`, ... — one key per
+  `-i` input, lettered by CLI position (first input → `_a`, second → `_b`,
+  third → `_c`, ...). Each value is a JSON-encoded array of
+  `{skill, version, args, input}` entries with the same schema used for the
+  zarr `rhiza_history` attribute. The last entry records this
+  `plot-timeseries` invocation, with `input` set to that branch's
+  `{basename, hash}`. Preceding entries are the upstream chain inherited
+  from that input's `rhiza_history` (empty if the input had none — a stderr
+  warning is emitted and the array contains only the rendering entry).
+  Inputs beyond 26 are rejected at argparse-validation time because the
+  letter scheme stops at `z`.
+- `Software` — set to `forecasting-skills` so generic image tools like
+  `exiftool` surface the producer prominently.
+
+One key per input (not one tree-shaped key) because `plot-timeseries`
+inputs typically have no common ancestor (e.g. two independent fetcher
+branches). Per-branch linear chains keep the on-disk schema identical to
+the other plotters: a consumer reading any single `rhiza_history_<letter>`
+uses one parse path and gets the full lineage of that branch.
+
+Read-back:
+
+```bash
+python3 -c "from PIL import Image; import json; img = Image.open('out.png'); print(json.loads(img.info['rhiza_history_a']))"
+```
 
 ## Examples
 
