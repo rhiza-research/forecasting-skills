@@ -92,6 +92,7 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
     entry_input = entry.get("input") or {}
     return (
         last.get("skill") == entry["skill"]
+        and last.get("version") == entry["version"]
         and last.get("args") == entry["args"]
         and last_input.get("basename") == entry_input.get("basename")
     )

@@ -75,6 +75,7 @@ def _cache_hit(out: Path, entry: dict) -> bool:
     last = history[0]
     return (
         last.get("skill") == entry["skill"]
+        and last.get("version") == entry["version"]
         and last.get("args") == entry["args"]
         and last.get("input") == entry["input"]
     )
