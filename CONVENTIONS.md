@@ -45,6 +45,13 @@ standalone single-file scripts. The convention is enforced by review.
 | Spatial dim-name override | `--dims` | `LAT,LON` | Comma-separated names of the latitude and longitude dims when they're not auto-detectable. |
 | Time-dim override | `--time-dim` | string | Name of the time-like dim when not auto-detectable. Distinct from `--dims`, which is spatial only. |
 
+### Reductions and rendering
+
+| Concept | Flag | Value shape | Notes |
+| --- | --- | --- | --- |
+| Explicit dim reduction | `--reduce` | string, repeatable | Names a non-time dim to mean-reduce before producing a 1-D output. Repeat once per dim (`--reduce number --reduce latitude --reduce longitude`). Required (rather than silently averaging) when an input still has non-time dims after `--variable` selection. |
+| Figure title | `--title` | string | Optional figure title. Used by `plot`, `plot-compare`, `plot-mediogram`, and `plot-timeseries`. |
+
 ### Bias correction
 
 | Concept | Flag | Value shape | Notes |
