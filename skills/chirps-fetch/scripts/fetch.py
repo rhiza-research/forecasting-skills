@@ -82,8 +82,13 @@ def _download_day_tif(ftp: ftplib.FTP, day: date, dest_dir: Path) -> Path:
         # Only 550 means "file not found"; 530/553 etc. are real errors and
         # should propagate as ftplib.error_perm.
         if str(exc).startswith("550"):
-            raise DayUnavailable(str(exc)) from exc
+            raise DayUnavailable(f"not posted: {exc}") from exc
         raise
+    except (ftplib.error_temp, EOFError, ConnectionError, TimeoutError, OSError) as exc:
+        # FTP 4xx temporary failures, mid-stream server hangups, socket
+        # disconnects / timeouts: treat the day as missing so the post-loop
+        # classifier handles tail-vs-mid-gap the same way it does for 550s.
+        raise DayUnavailable(f"transient network error: {exc}") from exc
     return out
 
 
@@ -151,7 +156,7 @@ def main() -> None:
                     tif = _download_day_tif(ftp, day, tmp)
                 except DayUnavailable as e:
                     print(
-                        f"    missing on FTP ({e}); will classify after loop",
+                        f"    day unavailable ({e}); will classify after loop",
                         file=sys.stderr,
                     )
                     missing_days.append(day)
