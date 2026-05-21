@@ -160,7 +160,7 @@ def _load_history(zarr_path: Path) -> list:
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
             raw = ds.attrs.get("rhiza_history")
             return json.loads(raw) if raw else []
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 
@@ -171,12 +171,12 @@ def _cache_hit(out: Path, entry: dict) -> bool:
     history = _load_history(out)
     if not history:
         return False
-    last = history[0]
+    existing_entry = history[0]
     return (
-        last.get("skill") == entry["skill"]
-        and last.get("version") == entry["version"]
-        and last.get("args") == entry["args"]
-        and last.get("input") == entry["input"]
+        existing_entry.get("skill") == entry["skill"]
+        and existing_entry.get("version") == entry["version"]
+        and existing_entry.get("args") == entry["args"]
+        and existing_entry.get("input") == entry["input"]
     )
 
 

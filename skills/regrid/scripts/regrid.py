@@ -71,7 +71,7 @@ def _load_history(zarr_path: Path) -> list:
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
             raw = ds.attrs.get("rhiza_history")
             return json.loads(raw) if raw else []
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 

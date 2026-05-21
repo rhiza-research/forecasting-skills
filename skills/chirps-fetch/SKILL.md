@@ -45,6 +45,12 @@ script at run time, or `"unknown"` when not resolvable. The previously
 stamped scalars `rhiza_date` and `rhiza_inputs` are no longer written — they
 were collision-prone across a chain and are recoverable from `rhiza_history`.
 
+The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
+`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
+(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
+reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+translate underscore → hyphen.
+
 ## Example
 
 ```bash

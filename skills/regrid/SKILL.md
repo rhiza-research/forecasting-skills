@@ -69,6 +69,12 @@ previously stamped scalars `rhiza_regrid_resolution`, `rhiza_regrid_offset`,
 `rhiza_regrid_method`, and `rhiza_inputs` are no longer written — they were
 collision-prone across a chain and are recoverable from `rhiza_history`.
 
+The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
+`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
+(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
+reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+translate underscore → hyphen.
+
 ## Examples
 
 ```bash

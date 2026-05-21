@@ -56,6 +56,12 @@ written — they were collision-prone across a chain (this skill's
 `rhiza_region` overwrote whatever a fetcher set) and are recoverable from
 `rhiza_history`.
 
+The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
+`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
+(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
+reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+translate underscore → hyphen.
+
 ## Example
 
 ```bash
