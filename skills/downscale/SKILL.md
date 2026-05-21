@@ -3,6 +3,8 @@ name: downscale
 description: Spatially regrid a Rhiza Envelope Zarr onto a coarser grid using linear interpolation, by an integer factor or to a target resolution. Use when a task needs to reduce the spatial resolution of any gridded dataset (forecast, satellite, reanalysis) to match another grid or to speed up downstream steps.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
+metadata:
+  version: "0.1.0"
 ---
 
 # downscale

@@ -3,6 +3,8 @@ name: aggregate-temporal
 description: Roll up a Rhiza Envelope Zarr along its time axis (or forecast step axis) into fixed windows (daily, weekly, dekadal, monthly) with a chosen reducer. Use whenever any dataset needs to be resampled to a canonical aggregation period before plotting or comparison.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
+metadata:
+  version: "0.1.0"
 ---
 
 # aggregate-temporal

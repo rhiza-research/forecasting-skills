@@ -3,6 +3,8 @@ name: plot-compare
 description: Render a side-by-side multi-panel comparison PNG of two Rhiza Envelope Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
+metadata:
+  version: "0.1.0"
 ---
 
 # plot-compare

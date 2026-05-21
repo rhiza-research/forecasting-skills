@@ -3,6 +3,8 @@ name: regrid
 description: Linearly regrid a Rhiza Envelope Zarr onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Use when a task needs to bring a gridded dataset onto a specific grid alignment to compare or combine with another dataset.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
+metadata:
+  version: "0.1.0"
 ---
 
 # regrid

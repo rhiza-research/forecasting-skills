@@ -3,6 +3,8 @@ name: deaccumulate
 description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step diffs, so each step value represents the period since the previous step rather than the accumulation since initialization.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
+metadata:
+  version: "0.1.0"
 ---
 
 # deaccumulate
