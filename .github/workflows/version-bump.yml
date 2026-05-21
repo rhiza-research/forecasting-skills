@@ -65,12 +65,12 @@ jobs:
           # and mid-message, while rejecting substring matches like
           # `no[skip ci]allowed`.
           if printf '%s' "$HEAD_MESSAGE" | python3 -c '
-import re, sys
-msg = sys.stdin.read()
-if re.search(r"(?:\A|\s)\[skip ci\](?:\s|\Z)", msg):
-    sys.exit(0)
-sys.exit(1)
-'; then
+          import re, sys
+          msg = sys.stdin.read()
+          if re.search(r"(?:\A|\s)\[skip ci\](?:\s|\Z)", msg):
+              sys.exit(0)
+          sys.exit(1)
+          '; then
             echo "has_skip_ci=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_skip_ci=false" >> "$GITHUB_OUTPUT"
@@ -205,13 +205,13 @@ sys.exit(1)
           # Take the labels from the first associated PR (there will
           # typically be exactly one for a merge into main).
           labels=$(printf '%s' "$pr_json" | python3 -c 'import json, sys
-data = json.load(sys.stdin)
-if data:
-    for label in data[0].get("labels", []):
-        name = label.get("name", "")
-        if name:
-            print(name)
-')
+          data = json.load(sys.stdin)
+          if data:
+              for label in data[0].get("labels", []):
+                  name = label.get("name", "")
+                  if name:
+                      print(name)
+          ')
           # Log the observed labels so we can distinguish "PR had no
           # labels" from "PR had labels but none matched release:*".
           # Quote "$labels" and use sed (not printf word-splitting) so
