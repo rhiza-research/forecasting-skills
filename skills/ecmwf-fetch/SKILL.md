@@ -46,10 +46,9 @@ The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For a fetcher this is a
 length-1 array; downstream zarr-writing skills append their own entry. `args`
 is the argparse namespace minus the `--input`/`--output` path strings;
-`version` is the git sha of the script at run time, or `"unknown"` when not
-resolvable. The previously stamped scalars `rhiza_region`, `rhiza_area_NWSE`,
-`rhiza_date`, and `rhiza_inputs` are no longer written — they were
-collision-prone across a chain and are recoverable from `rhiza_history`.
+`version` is the `_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept
+in lockstep with `metadata.version` in this SKILL.md by the CI version-bump
+workflow.
 
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names

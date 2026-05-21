@@ -11,8 +11,8 @@ metadata:
 
 Source-agnostic spatial regridding: linearly interpolates the input onto a
 uniform target grid whose points fall at `offset + k * resolution` for integer
-k, clipped to the input's lon/lat range. Same library and call shape sheerwater
-uses (`xarray-regrid`'s `.regrid.linear()` accessor).
+k, clipped to the input's lon/lat range. Uses `xarray-regrid`'s
+`.regrid.linear()` accessor.
 
 `(--target-resolution 0.25, --offset 0.0)` aligns with sheerwater's
 `global0_25`; `(0.1, 0.05)` with `global0_1`; `(0.05, 0.025)` with `global0_05`.
@@ -25,8 +25,8 @@ uses (`xarray-regrid`'s `.regrid.linear()` accessor).
   `(resolution, offset)` pair.
 
 Not for: statistical/bias-corrected downscaling — that's a domain-specific
-operation tracked separately. Not for choosing a non-linear regridding method
-(nearest, cubic, conservative, most_common); this skill is linear-only.
+operation. Not for choosing a non-linear regridding method (nearest, cubic,
+conservative, most_common); this skill is linear-only.
 
 ## Usage
 
@@ -64,12 +64,11 @@ and appends its own entry. `args` is the argparse namespace minus the
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
 stored bytes, so a renamed-but-unchanged input still cache-hits and a
 same-named-but-modified input correctly cache-misses; `version` is the
-git sha of the script at run time, or `"unknown"` when not resolvable. Cache-hit comparison reads the existing output's
+`_RHIZA_SKILL_VERSION` constant in `scripts/regrid.py`, kept in lockstep with
+`metadata.version` in this SKILL.md by the CI version-bump workflow.
+Cache-hit comparison reads the existing output's
 `rhiza_history`: a hit requires the upstream entries to match and the last
-entry's `skill`, `args`, and `input` to match the proposed new entry. The
-previously stamped scalars `rhiza_regrid_resolution`, `rhiza_regrid_offset`,
-`rhiza_regrid_method`, and `rhiza_inputs` are no longer written — they were
-collision-prone across a chain and are recoverable from `rhiza_history`.
+entry's `skill`, `args`, and `input` to match the proposed new entry.
 
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names

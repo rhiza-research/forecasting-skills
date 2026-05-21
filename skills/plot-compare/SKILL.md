@@ -82,18 +82,15 @@ uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
 - `--region` — optional named region. Two-stage clipping on gridded
   inputs: (a) `ds.sel(...)` rectangular slice to the region's
   (N, W, S, E) bbox, then (b) `shapely.contains_xy` polygon mask that
-  NaN's cells outside the country admin-1 polygon. This matches
-  upstream `plot_sat_vs_stations.py` whose satellite inputs are
-  polygon-clipped at the source by sheerwater's `clip_region` (which
-  internally calls `clip_by_geometry`). Station inputs are filtered to
-  the bbox (no polygon test). Multi-country names (`africa`) skip the
-  polygon mask — bbox slice only. Axes set to the bbox. Admin-1
-  boundary overlay drawn on top as decoration. Accepted values mirror
-  `clip-region`'s `REGIONS` dict (`africa`, `kenya`, `ghana`,
-  `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`,
-  `angola`). Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]`
-  before slicing so global grids intersect negative-lon regions.
-  Default unset → no slice, identical behavior to pre-flag rendering.
+  NaN's cells outside the country admin-1 polygon. Station inputs are
+  filtered to the bbox (no polygon test). Multi-country names
+  (`africa`) skip the polygon mask — bbox slice only. Axes set to the
+  bbox. Admin-1 boundary overlay drawn on top as decoration. Accepted
+  values mirror `clip-region`'s `REGIONS` dict (`africa`, `kenya`,
+  `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`,
+  `madagascar`, `angola`). Longitudes in `[0, 360]` are auto-wrapped
+  to `[-180, 180]` before slicing so global grids intersect negative-lon
+  regions. Default unset → no slice.
 
 ### Behavior
 
