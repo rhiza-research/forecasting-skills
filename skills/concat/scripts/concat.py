@@ -9,9 +9,37 @@
 """Concatenate Rhiza Envelope Zarr stores along a named dim."""
 
 import argparse
+import hashlib
+import json
 import shutil
 import sys
 from pathlib import Path
+
+# Auto-populated by the version-bump CI workflow. Do not edit manually.
+_RHIZA_SKILL_VERSION = "0.1.0"
+
+
+def _hash_zarr(zarr_path: Path) -> str:
+    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
+    deterministically and hashes relative-path bytes + each file's
+    content. Returns sha256 hex digest."""
+    h = hashlib.sha256()
+    for p in sorted(zarr_path.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(zarr_path)).encode())
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _load_history(zarr_path: Path) -> list:
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
 
 
 def _coerce(values):
@@ -72,6 +100,36 @@ def main() -> None:
     out_ds.attrs = dict(dss[0].attrs)
     for v in out_ds.variables:
         out_ds[v].encoding = {}
+
+    # Provenance: concat is a multi-input op, so the entry's `input` is a
+    # list of `{basename, hash}` dicts (schema extension over the single-
+    # input zarr-transformers). The upstream chain is taken from the first
+    # input's `rhiza_history` (matching the attr-passthrough above); if the
+    # other inputs have non-empty histories that disagree with the first,
+    # warn but proceed — concat is not in the business of reconciling
+    # divergent provenance.
+    upstream = _load_history(paths[0])
+    other_histories = [_load_history(ip) for ip in paths[1:]]
+    for ip, h in zip(paths[1:], other_histories, strict=True):
+        if h and h != upstream:
+            print(
+                f"Warning: input {ip.name} has a rhiza_history that diverges from "
+                f"{paths[0].name}; keeping the first input's chain on the output.",
+                file=sys.stderr,
+            )
+    if not upstream:
+        print(
+            f"Warning: no upstream rhiza_history on input {paths[0].name}; "
+            f"treating inputs as opaque.",
+            file=sys.stderr,
+        )
+    entry = {
+        "skill": "concat",
+        "version": _RHIZA_SKILL_VERSION,
+        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
+        "input": [{"basename": ip.name, "hash": _hash_zarr(ip)} for ip in paths],
+    }
+    out_ds.attrs["rhiza_history"] = json.dumps(upstream + [entry], sort_keys=True)
 
     out = Path(args.output)
     if out.exists():

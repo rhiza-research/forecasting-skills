@@ -40,7 +40,25 @@ uv run scripts/downscale.py --input <in.zarr> --output <out.zarr> \
 
 ### Output
 
-Same shape as input except the lat/lon dims are smaller. Non-spatial dims (`number`, `step`, `time`) are preserved. `rhiza_downscale_factor` and `rhiza_downscale_method=linear` attrs are stamped. When `--qq-reference` is used, `rhiza_downscale_qq_method=empirical` and `rhiza_downscale_qq_reference=<path>` attrs are also stamped, and only data variables present in both the regridded output and the reference are mapped (others pass through unchanged).
+Same shape as input except the lat/lon dims are smaller. Non-spatial dims (`number`, `step`, `time`) are preserved. When `--qq-reference` is used, only data variables present in both the regridded output and the reference are mapped; others pass through unchanged.
+
+### Provenance
+
+The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+per-step entries `{skill, version, args, input}`. This skill reads the upstream
+input's `rhiza_history` (default `[]` with a stderr warning if absent) and
+appends its own entry. `args` is the argparse namespace minus the
+`--input`/`--output` path strings — so `factor`, `target_resolution`, `dims`,
+`variable`, `qq_reference`, and `time_dim` are recorded under their argparse
+dest names (underscored). `input` is a `{basename, hash}` dict for `--input`
+only; the `--qq-reference` zarr is recorded as a path string under
+`args.qq_reference` and is not hashed. `version` is the `_RHIZA_SKILL_VERSION`
+constant in `scripts/downscale.py`, kept in lockstep with `metadata.version`
+in this SKILL.md by the CI version-bump workflow. Cache-hit comparison reads
+the existing output's `rhiza_history`: a hit requires the upstream chain to
+match and the last entry's `skill`, `version`, `args`, and `input.basename`
+to match the proposed new entry; on a hit the script returns without
+re-regridding.
 
 ## Examples
 

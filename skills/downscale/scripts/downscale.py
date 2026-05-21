@@ -11,9 +11,61 @@
 """Linear regridding for Rhiza Envelope Zarr stores, with optional post-regrid q-q mapping."""
 
 import argparse
+import hashlib
+import json
 import shutil
 import sys
 from pathlib import Path
+
+# Auto-populated by the version-bump CI workflow. Do not edit manually.
+_RHIZA_SKILL_VERSION = "0.1.0"
+
+
+def _hash_zarr(zarr_path: Path) -> str:
+    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
+    deterministically and hashes relative-path bytes + each file's
+    content. Returns sha256 hex digest."""
+    h = hashlib.sha256()
+    for p in sorted(zarr_path.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(zarr_path)).encode())
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _load_history(zarr_path: Path) -> list:
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
+    """Cache check that compares everything except input.hash.
+
+    The hash over the upstream zarr is expensive; the basename + upstream
+    history chain is sufficient to identify whether a recompute is needed.
+    """
+    if not out.exists():
+        return False
+    history = _load_history(out)
+    if len(history) != len(upstream) + 1:
+        return False
+    if history[:-1] != upstream:
+        return False
+    last = history[-1]
+    last_input = last.get("input") or {}
+    entry_input = entry.get("input") or {}
+    return (
+        last.get("skill") == entry["skill"]
+        and last.get("version") == entry["version"]
+        and last.get("args") == entry["args"]
+        and last_input.get("basename") == entry_input.get("basename")
+    )
 
 
 def _grid_spacing(ds, dim):
@@ -125,11 +177,37 @@ def main() -> None:
     )
     args = p.parse_args()
 
+    # Build the cheap fields first; defer _hash_zarr until after the
+    # cache-hit check so we don't hash hundreds of MB of zarr on hits.
+    src = Path(args.input)
+    partial_entry = {
+        "skill": "downscale",
+        "version": _RHIZA_SKILL_VERSION,
+        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
+        "input": {"basename": src.name},
+    }
+    upstream = _load_history(src)
+    out = Path(args.output)
+    if _cache_hit(out, upstream, partial_entry):
+        print(
+            f"Cache hit: {args.output} already matches requested params; skipping downscale.",
+            file=sys.stderr,
+        )
+        return
+
+    # Cache miss: build the final entry (hashes the upstream zarr).
+    entry = {
+        **partial_entry,
+        "input": {
+            "basename": src.name,
+            "hash": _hash_zarr(src),
+        },
+    }
+
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
 
-    src = Path(args.input)
     if not src.exists():
         print(f"Error: input {src} not found.", file=sys.stderr)
         sys.exit(2)
@@ -189,11 +267,7 @@ def main() -> None:
     )
     out_ds = ds.regrid.linear(target)
 
-    out_ds.attrs = {
-        **ds.attrs,
-        "rhiza_downscale_factor": factor,
-        "rhiza_downscale_method": "linear",
-    }
+    out_ds.attrs = dict(ds.attrs)
 
     if args.qq_reference:
         ref_path = Path(args.qq_reference)
@@ -254,13 +328,16 @@ def main() -> None:
             mapped = _qmap_dataarray(out_ds[v], ref_aligned[v], time_dim)
             mapped.attrs = dict(out_ds[v].attrs)
             out_ds[v] = mapped
-        out_ds.attrs["rhiza_downscale_qq_method"] = "empirical"
-        out_ds.attrs["rhiza_downscale_qq_reference"] = str(ref_path)
 
+    if not upstream:
+        print(
+            "Warning: no upstream rhiza_history on input; treating input as opaque.",
+            file=sys.stderr,
+        )
+    out_ds.attrs["rhiza_history"] = json.dumps(upstream + [entry], sort_keys=True)
     for v in out_ds.variables:
         out_ds[v].encoding = {}
 
-    out = Path(args.output)
     if out.exists():
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)
