@@ -151,8 +151,26 @@ def main() -> None:
             )
             sys.exit(2)
 
-    lat_ascending = ds[lat_dim].values[0] < ds[lat_dim].values[-1]
-    lat_slice = slice(s, n) if lat_ascending else slice(n, s)
+    # length check / monotonicity check / slice
+    lat_vals = ds[lat_dim].values
+    if len(lat_vals) == 0:
+        print("Error: lat axis has length 0; cannot clip.", file=sys.stderr)
+        sys.exit(2)
+    if len(lat_vals) == 1:
+        lat_slice = None
+    else:
+        diffs = np.diff(lat_vals)
+        if (diffs > 0).all():
+            lat_slice = slice(s, n)
+        elif (diffs < 0).all():
+            lat_slice = slice(n, s)
+        else:
+            print(
+                "Error: lat axis is non-monotonic; cannot infer slice orientation. "
+                "Re-sort the input or pre-process before clip-region.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
     lon_slice = slice(w, e)
 
     # Wrap lon to [-180, 180] before the slice so a 0..360 input grid still
@@ -161,7 +179,10 @@ def main() -> None:
     if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
         ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
 
-    sub = ds.sel({lat_dim: lat_slice, lon_dim: lon_slice})
+    if lat_slice is None:
+        sub = ds.sel({lon_dim: lon_slice})
+    else:
+        sub = ds.sel({lat_dim: lat_slice, lon_dim: lon_slice})
     if sub.sizes[lat_dim] == 0 or sub.sizes[lon_dim] == 0:
         print(
             f"Error: clip produced empty result ({dict(sub.sizes)}). "
