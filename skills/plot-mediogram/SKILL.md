@@ -46,24 +46,38 @@ A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on t
 
 ### Provenance
 
-Every PNG carries two `tEXt` chunk keys written via matplotlib's
+Every PNG carries three `tEXt` chunk keys written via matplotlib's
 `savefig(metadata=...)`:
 
-- `rhiza_history` — a JSON-encoded array of `{skill, version, args,
-  input}` entries with the same schema used for the zarr `rhiza_history`
-  attribute. The chain belongs to the `--forecast` input (treated as
-  the primary input for provenance). The last entry records this
-  `plot-mediogram` invocation; preceding entries are the upstream chain
-  inherited from the forecast zarr's `rhiza_history` (empty array if
-  the input had none — a stderr warning is emitted and the array
-  contains only the rendering entry).
+- `rhiza_history_forecast` — a JSON-encoded array of `{skill, version,
+  args, input}` entries with the same schema used for the zarr
+  `rhiza_history` attribute. The chain belongs to the `--forecast`
+  input. The last entry records this `plot-mediogram` invocation, with
+  its `input` field set to the forecast-side `{basename, hash}`.
+  Preceding entries are the upstream chain inherited from the forecast
+  zarr's `rhiza_history` (empty if the input had none — a stderr
+  warning is emitted and the array contains only the rendering entry).
+- `rhiza_history_mclimate` — the same shape for the `--mclimate` input.
+  The last entry's `input` is the m-climate-side `{basename, hash}`;
+  preceding entries come from the m-climate zarr's upstream chain.
 - `Software` — set to `forecasting-skills` so generic image tools like
   `exiftool` surface the producer prominently.
+
+Both `--forecast` and `--mclimate` are recorded as first-class inputs:
+a mediogram plots the forecast against the climatology baseline, so
+the PNG can only be reproduced from its own provenance when both input
+chains are present. Two keys (not one tree-shaped key) because the
+forecast and m-climate inputs typically come from independent
+upstream branches (e.g. an ecmwf-fetch forecast vs. an m-climate
+sample drawn from the historical archive). Two linear chains keep the
+on-disk schema identical to the single-input plotters: a consumer
+reading either `rhiza_history_forecast` or `rhiza_history_mclimate`
+uses one parse path and gets the full lineage of that branch.
 
 Read-back:
 
 ```bash
-python3 -c "from PIL import Image; import json; print(json.loads(Image.open('out.png').info['rhiza_history']))"
+python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['rhiza_history_forecast'])); print(json.loads(img.info['rhiza_history_mclimate']))"
 ```
 
 Or:

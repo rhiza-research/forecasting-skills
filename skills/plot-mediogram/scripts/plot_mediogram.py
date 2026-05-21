@@ -255,26 +255,48 @@ def main() -> None:
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    src = Path(args.forecast)
-    upstream = _load_history(src)
-    plot_mediogram_entry = {
-        "skill": "plot-mediogram",
-        "version": _resolve_version(),
-        "args": {
-            k: v for k, v in vars(args).items() if k not in {"forecast", "mclimate", "output"}
-        },
-        "input": {"basename": src.name, "hash": _hash_zarr(src)},
+    src_forecast = Path(args.forecast)
+    src_mclimate = Path(args.mclimate)
+    upstream_forecast = _load_history(src_forecast)
+    upstream_mclimate = _load_history(src_mclimate)
+    shared_args = {
+        k: v for k, v in vars(args).items() if k not in {"forecast", "mclimate", "output"}
     }
-    if not upstream:
+    version = _resolve_version()
+    mediogram_entry_forecast = {
+        "skill": "plot-mediogram",
+        "version": version,
+        "args": shared_args,
+        "input": {"basename": src_forecast.name, "hash": _hash_zarr(src_forecast)},
+    }
+    mediogram_entry_mclimate = {
+        "skill": "plot-mediogram",
+        "version": version,
+        "args": shared_args,
+        "input": {"basename": src_mclimate.name, "hash": _hash_zarr(src_mclimate)},
+    }
+    if not upstream_forecast:
         print(
-            f"Warning: no upstream rhiza_history on {src.name}; embedding plot-mediogram step alone.",
+            f"Warning: no upstream rhiza_history on {src_forecast.name}; "
+            "embedding plot-mediogram step alone.",
+            file=sys.stderr,
+        )
+    if not upstream_mclimate:
+        print(
+            f"Warning: no upstream rhiza_history on {src_mclimate.name}; "
+            "embedding plot-mediogram step alone.",
             file=sys.stderr,
         )
     fig.savefig(
         out,
         dpi=150,
         metadata={
-            "rhiza_history": json.dumps(upstream + [plot_mediogram_entry], sort_keys=True),
+            "rhiza_history_forecast": json.dumps(
+                upstream_forecast + [mediogram_entry_forecast], sort_keys=True
+            ),
+            "rhiza_history_mclimate": json.dumps(
+                upstream_mclimate + [mediogram_entry_mclimate], sort_keys=True
+            ),
             "Software": "forecasting-skills",
         },
     )
