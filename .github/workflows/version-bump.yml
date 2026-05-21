@@ -1,0 +1,393 @@
+name: Version bump
+
+# Trigger: every push to main, including post-merge pushes from the
+# merge button. The job inspects the push diff for changed skill
+# directories and bumps each affected skill's SKILL.md `version:`.
+#
+# Recursion: the bump commit this workflow itself creates carries
+# `[skip ci]` in its subject so the downstream push of that commit
+# does not re-trigger this workflow (or CI). The push uses a token
+# minted from a GitHub App installation (via
+# actions/create-github-app-token) so that *other* workflows could,
+# if needed, see the push event — but the `[skip ci]` marker prevents
+# this workflow from recursing regardless of token.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  # Serialize bump runs on main so two near-simultaneous merges don't
+  # race when computing diffs against `github.event.before`.
+  group: version-bump-main
+  cancel-in-progress: false
+
+jobs:
+  # Pre-step: normalize the head-commit message (strip trailing whitespace
+  # and newlines) and expose two booleans the bump job uses for its `if`.
+  # GitHub Actions expression syntax has no regex, and `endsWith` on the raw
+  # message misses commits whose subject ends with `[skip ci]\n` (a trailing
+  # newline after the marker). Normalizing here pulls that fiddly parsing
+  # out of an inline expression and into a single shell step where it can be
+  # tested unambiguously.
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      is_bot: ${{ steps.flags.outputs.is_bot }}
+      has_skip_ci: ${{ steps.flags.outputs.has_skip_ci }}
+    steps:
+      - name: Compute skip-ci and bot flags
+        id: flags
+        env:
+          HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          # Bot author check: the release bot's own bump commits are skipped
+          # regardless of subject content, as a belt-and-suspenders to the
+          # [skip ci] marker. The email matches GitHub's convention for an
+          # App-bot user: "<app-id>+<app-slug>[bot]@users.noreply.github.com".
+          if [ "$HEAD_AUTHOR_EMAIL" = "3799090+forecasting-skills-release-bot[bot]@users.noreply.github.com" ]; then
+            echo "is_bot=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_bot=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Match [skip ci] as a whitespace-delimited token anywhere in
+          # the message. "Whitespace" here means a space, tab, newline,
+          # or one of the string edges. A simple shell-substring check
+          # can't express "any whitespace OR string edge" without a lot
+          # of brittle padding, so we delegate to python's `re.search`
+          # with `\b`-style boundaries: the token must be preceded by
+          # start-of-string or whitespace, and followed by whitespace
+          # or end-of-string. This covers `[skip ci]` alone on a line,
+          # at the start, at the end (with or without trailing newline),
+          # and mid-message, while rejecting substring matches like
+          # `no[skip ci]allowed`.
+          if printf '%s' "$HEAD_MESSAGE" | python3 -c '
+import re, sys
+msg = sys.stdin.read()
+if re.search(r"(?:\A|\s)\[skip ci\](?:\s|\Z)", msg):
+    sys.exit(0)
+sys.exit(1)
+'; then
+            echo "has_skip_ci=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_skip_ci=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  bump:
+    needs: preflight
+    if: needs.preflight.outputs.is_bot != 'true' && needs.preflight.outputs.has_skip_ci != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Checkout main at pushed sha
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          # Branch protection requires linear history on main (see
+          # CONTRIBUTING.md), so the push range is a clean linear sequence
+          # of commits. A full unshallow is still cheap and avoids any
+          # edge case where a force-push extends the range further than
+          # depth 2 would cover.
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git identity
+        run: |
+          set -euo pipefail
+          # The App token authenticates as the App, so the bump commit
+          # is authored as the App's bot user. The committer email
+          # follows GitHub's convention for App-bot users:
+          # "<app-id>+<app-slug>[bot]@users.noreply.github.com".
+          git config user.name "forecasting-skills-release-bot[bot]"
+          git config user.email "3799090+forecasting-skills-release-bot[bot]@users.noreply.github.com"
+
+      - name: Identify changed skill directories
+        id: changed
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # github.event.before is "0000...0000" when the branch is new
+          # (the inaugural push). In that case prefer diffing against
+          # the parent of HEAD; if HEAD has no parent (the very first
+          # commit in the repo), list every file in HEAD itself so the
+          # inaugural commit's skills still get bumped.
+          #
+          # Pathspec note: git pathspecs are not true globs. `skills/*/*`
+          # is interpreted as "any file at or below `skills/<one-segment>/`",
+          # so it matches `skills/foo/SKILL.md`, `skills/foo/scripts/bar.py`,
+          # AND `skills/foo/scripts/sub/deep.py` — both git diff and
+          # git diff-tree apply this consistently. The `awk` afterwards
+          # only reads `$2` (the skill directory) and feeds `sort -u`,
+          # so depth beyond `skills/<skill>/` doesn't change which skills
+          # are reported, only whether their nested file changes are
+          # observed at all.
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            if parent=$(git rev-parse --verify --quiet "${AFTER_SHA}^"); then
+              BEFORE_SHA="$parent"
+              changed=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- 'skills/*/*' \
+                | awk -F/ 'NF >= 2 && $1 == "skills" { print $2 }' \
+                | sort -u)
+            else
+              echo "HEAD has no parent (fresh repo); listing files in HEAD."
+              changed=$(git diff-tree --no-commit-id --name-only -r "$AFTER_SHA" -- 'skills/*/*' \
+                | awk -F/ 'NF >= 2 && $1 == "skills" { print $2 }' \
+                | sort -u)
+            fi
+          else
+            changed=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- 'skills/*/*' \
+              | awk -F/ 'NF >= 2 && $1 == "skills" { print $2 }' \
+              | sort -u)
+          fi
+          if [ -z "$changed" ]; then
+            echo "No skill directories changed; exiting cleanly."
+            echo "skills=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed skills:"
+            printf '  %s\n' $changed
+            # Join with newlines and emit as a multiline output.
+            {
+              echo "skills<<EOF"
+              echo "$changed"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine bump kind from merged PR labels
+        id: kind
+        if: steps.changed.outputs.skills != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Look up the PR(s) that introduced this commit. The endpoint
+          # is "List pull requests associated with a commit"; the
+          # `groot-preview` accept header is no longer required (the
+          # endpoint left preview in 2019).
+          #
+          # Distinguish three outcomes:
+          #   - success with a non-empty PR list: read labels from PR[0]
+          #   - success with an empty PR list: no PR is associated with
+          #     the commit (direct push to main, manual bump, ...). Log
+          #     and default to patch.
+          #   - failure (network, auth, 5xx): log the captured error
+          #     output and default to patch. Don't silently swallow.
+          if pr_json="$(gh api "repos/${REPO}/commits/${SHA}/pulls" 2>&1)"; then
+            : # success; pr_json holds the JSON body
+          else
+            rc=$?
+            echo "gh api failed (exit $rc): $pr_json" >&2
+            echo "Defaulting to patch; labels not consulted." >&2
+            pr_json="[]"
+          fi
+          # Log "no PR associated" explicitly, so a maintainer reading
+          # the run can distinguish that case from "PR exists but had
+          # no labels".
+          if printf '%s' "$pr_json" \
+            | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin) else 1)'; then
+            : # at least one PR; nothing to log here
+          else
+            echo "No PR associated with ${SHA}; defaulting to patch." >&2
+          fi
+          # Take the labels from the first associated PR (there will
+          # typically be exactly one for a merge into main).
+          labels=$(printf '%s' "$pr_json" | python3 -c 'import json, sys
+data = json.load(sys.stdin)
+if data:
+    for label in data[0].get("labels", []):
+        name = label.get("name", "")
+        if name:
+            print(name)
+')
+          # Log the observed labels so we can distinguish "PR had no
+          # labels" from "PR had labels but none matched release:*".
+          # Quote "$labels" and use sed (not printf word-splitting) so
+          # label names that contain spaces don't get split across log
+          # lines.
+          if [ -z "$labels" ]; then
+            echo "Labels: (none)"
+          else
+            echo "Labels:"
+            echo "$labels" | sed 's/^/  /'
+          fi
+          # Highest-precedence release: label wins (major > minor > patch).
+          # The order of these checks encodes that precedence — if a PR
+          # carries both `release: major` and `release: minor`, the major
+          # bump is applied.
+          kind=patch
+          if printf '%s\n' "$labels" | grep -qx 'release: major'; then
+            kind=major
+            echo "Multiple release: labels may be present; major has highest precedence and wins."
+          elif printf '%s\n' "$labels" | grep -qx 'release: minor'; then
+            kind=minor
+            echo "release: minor selected (no release: major present)."
+          fi
+          echo "Bump kind: $kind"
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+
+      - name: Bump each affected skill and stage changes
+        id: bump
+        if: steps.changed.outputs.skills != ''
+        env:
+          KIND: ${{ steps.kind.outputs.kind }}
+          # Read the changed-skill list from an env var rather than
+          # interpolating `${{ ... }}` straight into the shell body. A
+          # skill name (or any output captured from a third-party action)
+          # that contained shell metacharacters would otherwise be a
+          # template-injection sink. The env-var path quotes the value
+          # at the runner level and reaches the shell as $SKILLS only.
+          SKILLS: ${{ steps.changed.outputs.skills }}
+        run: |
+          set -euo pipefail
+          # Collect "<skill>: <old> -> <new>" lines into a build-up file
+          # that the next step turns into the commit body. The file lives
+          # under $RUNNER_TEMP so it never accidentally lands inside the
+          # repo working tree (which would otherwise be staged by a
+          # broad `git add` and shipped in the bump commit).
+          bumps_file="${RUNNER_TEMP}/bumps.txt"
+          : > "$bumps_file"
+          # Helper: read the current `metadata.version` value from a
+          # SKILL.md by delegating to the shared parser in tools/. The
+          # python invocation imports `find_metadata_version_line` so the
+          # YAML walk stays identical to the bump script's view; a
+          # divergent inline regex here would risk reading from the
+          # wrong key (e.g. a top-level `version:` rather than the
+          # nested `metadata.version`).
+          read_version() {
+            local skill="$1"
+            python3 - "$skill" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("tools").resolve()))
+          from rhiza_version_re import find_metadata_version_line  # noqa: E402
+
+          skill = sys.argv[1]
+          text = Path("skills") / skill / "SKILL.md"
+          content = text.read_text(encoding="utf-8")
+          if not content.startswith("---"):
+              raise SystemExit(f"{text}: no YAML frontmatter")
+          end = content.find("\n---", 3)
+          if end < 0:
+              raise SystemExit(f"{text}: no closing --- for frontmatter")
+          front = content[3:end].split("\n")
+          _, raw, _ = find_metadata_version_line(front)
+          # Strip matching surrounding quotes (single or double) so the
+          # printed value is the bare semver string.
+          if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+              raw = raw[1:-1]
+          print(raw)
+          PY
+          }
+          while IFS= read -r skill; do
+            [ -z "$skill" ] && continue
+            if [ ! -f "skills/${skill}/SKILL.md" ]; then
+              echo "Skipping ${skill}: no SKILL.md (likely a deletion)"
+              continue
+            fi
+            old_version=$(read_version "$skill")
+            # The bump script updates SKILL.md AND every script's
+            # _RHIZA_SKILL_VERSION constant for this skill in one shot.
+            python3 .github/scripts/bump-skill-version.py --skill "$skill" --kind "$KIND"
+            new_version=$(read_version "$skill")
+            # Stage the whole skill directory so the bump-script's edits
+            # to scripts/*.py (the _RHIZA_SKILL_VERSION constant) are
+            # committed alongside SKILL.md. Staging only SKILL.md would
+            # silently drop the constant rewrite.
+            git add "skills/${skill}/"
+            printf -- '- %s: %s -> %s\n' "$skill" "$old_version" "$new_version" >> "$bumps_file"
+          done <<< "$SKILLS"
+          # Report the count to a step output so the commit step can
+          # decide whether there's anything to commit. The build-up file
+          # path is also exported so the commit step reads from the same
+          # location without re-deriving it.
+          bump_count=$(wc -l < "$bumps_file" | tr -d ' ')
+          echo "bumps_file=${bumps_file}" >> "$GITHUB_OUTPUT"
+          echo "bump_count=${bump_count}" >> "$GITHUB_OUTPUT"
+          if [ "$bump_count" -eq 0 ]; then
+            echo "No skills bumped (e.g. all changed skill dirs were deletions)."
+          else
+            echo "Bumped ${bump_count} skill(s):"
+            cat "$bumps_file"
+          fi
+
+      - name: Create single bump commit
+        id: commit
+        if: steps.bump.outputs.bump_count != '' && steps.bump.outputs.bump_count != '0'
+        env:
+          BUMPS_FILE: ${{ steps.bump.outputs.bumps_file }}
+        run: |
+          set -euo pipefail
+          # One commit per workflow run, regardless of how many skills
+          # were bumped. The subject carries no version literal because
+          # each skill is versioned independently and the bumped set
+          # generally lands at heterogeneous versions; the body
+          # enumerates each affected skill's old -> new transition.
+          git commit \
+            -m "release: bump skill versions [skip ci]" \
+            -m "$(cat "$BUMPS_FILE")" \
+            -m "Auto-generated by .github/workflows/version-bump.yml in response to skill-directory changes in commit ${GITHUB_SHA}."
+
+      - name: Push bump commit
+        if: steps.bump.outputs.bump_count != '' && steps.bump.outputs.bump_count != '0'
+        run: |
+          set -euo pipefail
+          # Push to main. The push uses the App-minted token obtained
+          # by the checkout step (see CONTRIBUTING.md for App setup).
+          # The `[skip ci]` marker on the commit prevents recursion
+          # into this workflow.
+          #
+          # Retry up to 3 times on push contention: another merge can
+          # land on main between checkout and push, which would reject
+          # this push as non-fast-forward. Rebase locally and retry.
+          # If still failing after the third attempt, fail the job
+          # rather than silently dropping the bump.
+          attempts=0
+          max_attempts=3
+          while true; do
+            attempts=$((attempts + 1))
+            if git push origin HEAD:main; then
+              echo "Push succeeded on attempt ${attempts}."
+              break
+            fi
+            if [ "$attempts" -ge "$max_attempts" ]; then
+              echo "Push failed after ${attempts} attempts; giving up." >&2
+              # If a partial rebase is still in progress (the last
+              # `git pull --rebase` left conflicts unresolved), surface
+              # the conflicting paths so the maintainer can act.
+              if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+                echo "Partial rebase still in progress; conflicting paths:" >&2
+                git diff --name-only --diff-filter=U >&2 || true
+                git rebase --abort 2>/dev/null || true
+              fi
+              exit 1
+            fi
+            echo "Push rejected (likely contention); rebasing onto origin/main and retrying (${attempts}/${max_attempts})." >&2
+            git fetch origin main
+            # Defensive: if a previous attempt left a partial rebase
+            # behind (conflicts the auto-rebase couldn't resolve), abort
+            # it before starting a fresh pull --rebase. Without this, the
+            # next `git pull --rebase` would fail with "rebase in progress".
+            if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+              echo "Aborting prior partial rebase before retry." >&2
+              git rebase --abort 2>/dev/null || true
+            fi
+            if ! git pull --rebase origin main; then
+              echo "git pull --rebase failed; aborting partial rebase and retrying." >&2
+              echo "Conflicting paths (if any):" >&2
+              git diff --name-only --diff-filter=U >&2 || true
+              git rebase --abort 2>/dev/null || true
+            fi
+          done

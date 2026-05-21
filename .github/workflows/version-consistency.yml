@@ -1,0 +1,34 @@
+name: Version consistency
+
+# For every skill that carries BOTH a SKILL.md `version:` AND at least one
+# scripts/*.py with `_RHIZA_SKILL_VERSION`, verify the two values agree.
+# Guards against hand-edits that desync the runtime constant from the
+# authoritative SKILL.md value.
+
+on:
+  pull_request:
+    # Exclude draft PRs: contributors often push WIP commits whose
+    # version: / _RHIZA_SKILL_VERSION values are intentionally inconsistent
+    # while they iterate. The check still runs as soon as the PR is marked
+    # ready for review.
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    # Skip draft PRs explicitly. The `types:` filter above already drops
+    # `synchronize` events on drafts in some cases, but a draft can be
+    # opened directly (e.g. via `gh pr create --draft`), and the `opened`
+    # event fires regardless. This `if:` is the canonical guard.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8.1.0
+      - run: uv run --script tools/check_version_consistency.py .
