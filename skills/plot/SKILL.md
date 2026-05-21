@@ -69,8 +69,7 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
   auto-wrapped to `[-180, 180]` before slicing so global grids still
   intersect negative-lon regions. `--extent` (if passed) wins over the
   bbox-derived extent. Heatmap-only — `--style timeseries` ignores
-  `--region` with a stderr warning. Default unset → no slice, identical
-  behavior to pre-flag rendering.
+  `--region` with a stderr warning. Default unset → no slice.
 
 ### Output
 

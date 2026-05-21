@@ -52,12 +52,11 @@ and appends its own entry. `args` is the argparse namespace minus the
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
 stored bytes, so a renamed-but-unchanged input still cache-hits and a
 same-named-but-modified input correctly cache-misses; `version` is the
-git sha of the script at run time, or `"unknown"` when not resolvable. Cache-hit comparison reads the existing output's
+`_RHIZA_SKILL_VERSION` constant in `scripts/aggregate.py`, kept in lockstep
+with `metadata.version` in this SKILL.md by the CI version-bump workflow.
+Cache-hit comparison reads the existing output's
 `rhiza_history`: a hit requires the upstream entries to match and the last
-entry's `skill`, `args`, and `input` to match the proposed new entry. The
-previously stamped scalars `rhiza_aggregation` and `rhiza_inputs` are no
-longer written — they were collision-prone across a chain and are
-recoverable from `rhiza_history`.
+entry's `skill`, `args`, and `input` to match the proposed new entry.
 
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
