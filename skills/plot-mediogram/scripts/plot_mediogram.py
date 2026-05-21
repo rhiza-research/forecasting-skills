@@ -11,6 +11,9 @@
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
 
 import argparse
+import hashlib
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,6 +23,55 @@ def _cf_dim(obj, cf_name):
         return obj.cf[cf_name].name
     except KeyError:
         return None
+
+
+def _resolve_version() -> str:
+    """Return '<git_sha_or_unknown>+<skill_dir_hash>'. The git part comes
+    from `git rev-parse HEAD` against the script's parent dir; falls back
+    to 'unknown' when not resolvable. The hash part is sha256 of the
+    enclosing skill directory's contents."""
+    try:
+        sha = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parent,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        sha = "unknown"
+    h = hashlib.sha256()
+    skill_dir = Path(__file__).resolve().parent.parent
+    for p in sorted(skill_dir.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(skill_dir)).encode())
+            h.update(p.read_bytes())
+    return f"{sha}+{h.hexdigest()}"
+
+
+def _hash_zarr(zarr_path: Path) -> str:
+    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
+    deterministically and hashes relative-path bytes + each file's
+    content. Returns sha256 hex digest."""
+    h = hashlib.sha256()
+    for p in sorted(zarr_path.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(zarr_path)).encode())
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _load_history(zarr_path: Path) -> list:
+    try:
+        import xarray as xr
+
+        with xr.open_zarr(zarr_path, consolidated=False) as ds:
+            raw = ds.attrs.get("rhiza_history")
+            return json.loads(raw) if raw else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
 
 
 def _select_point(da, lat, lon):
@@ -202,7 +254,30 @@ def main() -> None:
     fig.tight_layout()
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=150)
+
+    src = Path(args.forecast)
+    upstream = _load_history(src)
+    plot_mediogram_entry = {
+        "skill": "plot-mediogram",
+        "version": _resolve_version(),
+        "args": {
+            k: v for k, v in vars(args).items() if k not in {"forecast", "mclimate", "output"}
+        },
+        "input": {"basename": src.name, "hash": _hash_zarr(src)},
+    }
+    if not upstream:
+        print(
+            f"Warning: no upstream rhiza_history on {src.name}; embedding plot-mediogram step alone.",
+            file=sys.stderr,
+        )
+    fig.savefig(
+        out,
+        dpi=150,
+        metadata={
+            "rhiza_history": json.dumps(upstream + [plot_mediogram_entry], sort_keys=True),
+            "Software": "forecasting-skills",
+        },
+    )
     plt.close(fig)
     print(f"Wrote: {args.output}", file=sys.stderr)
 

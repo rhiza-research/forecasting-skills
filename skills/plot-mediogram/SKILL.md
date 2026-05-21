@@ -44,6 +44,34 @@ uv run scripts/plot_mediogram.py --forecast <forecast.zarr> --mclimate <mclimate
 
 A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on the x-axis.
 
+### Provenance
+
+Every PNG carries two `tEXt` chunk keys written via matplotlib's
+`savefig(metadata=...)`:
+
+- `rhiza_history` — a JSON-encoded array of `{skill, version, args,
+  input}` entries with the same schema used for the zarr `rhiza_history`
+  attribute. The chain belongs to the `--forecast` input (treated as
+  the primary input for provenance). The last entry records this
+  `plot-mediogram` invocation; preceding entries are the upstream chain
+  inherited from the forecast zarr's `rhiza_history` (empty array if
+  the input had none — a stderr warning is emitted and the array
+  contains only the rendering entry).
+- `Software` — set to `forecasting-skills` so generic image tools like
+  `exiftool` surface the producer prominently.
+
+Read-back:
+
+```bash
+python3 -c "from PIL import Image; import json; print(json.loads(Image.open('out.png').info['rhiza_history']))"
+```
+
+Or:
+
+```bash
+exiftool out.png
+```
+
 ## Example
 
 ```bash

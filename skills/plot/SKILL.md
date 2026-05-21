@@ -76,6 +76,33 @@ A PNG at `--output`. The colorbar label resolves from variable attrs:
 `long_name` → `GRIB_name` → bare variable name → `"value"`, suffixed
 with `[units]` when the `units` attr is present.
 
+### Provenance
+
+Every PNG carries two `tEXt` chunk keys written via matplotlib's
+`savefig(metadata=...)`:
+
+- `rhiza_history` — a JSON-encoded array of `{skill, version, args,
+  input}` entries with the same schema used for the zarr `rhiza_history`
+  attribute. Each entry records one pipeline step. The last entry is
+  this `plot` invocation; preceding entries are the upstream chain
+  inherited from the input zarr's `rhiza_history` (empty array if the
+  input had none — a stderr warning is emitted in that case and the
+  array contains only the `plot` entry).
+- `Software` — set to `forecasting-skills` so generic image tools like
+  `exiftool` surface the producer prominently.
+
+Read-back:
+
+```bash
+python3 -c "from PIL import Image; import json; print(json.loads(Image.open('out.png').info['rhiza_history']))"
+```
+
+Or:
+
+```bash
+exiftool out.png
+```
+
 ## Examples
 
 Multi-step forecast panel:
