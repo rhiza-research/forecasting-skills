@@ -21,15 +21,23 @@ A Zarr v2 store containing one or more data variables.
 
 ## Attrs
 
-Skills may stamp these on the Zarr root for traceability. None are required for correctness.
+`rhiza_source` is optional metadata for human readability. `rhiza_history` is the canonical provenance chain and is set by every zarr-writing skill.
 
 | Attr | Set by | Meaning |
 |---|---|---|
 | `rhiza_source` | fetchers | e.g. `ecmwf-s2s`, `chirps`, `imerg`, `tahmo` |
-| `rhiza_region` | `ecmwf-fetch`, `clip-region` | Last named region or bbox applied |
-| `rhiza_date` | fetchers | Primary temporal anchor (ISO) |
-| `rhiza_downscale_factor` | `downscale` | Integer factor if coarsen was applied |
-| `rhiza_aggregation` | `aggregate-temporal` | e.g. `dekadal-sum`, `weekly-mean` |
+| `rhiza_history` | every zarr-writing skill | JSON-encoded append-only provenance chain (see below) |
+
+### `rhiza_history` schema
+
+A JSON-encoded array, ordered oldest first along the pipeline. Each entry is an object with these fields:
+
+- `skill` — canonical skill name (e.g. `clip-region`).
+- `version` — the SKILL.md `metadata.version` value at the time the entry was written, kept in lockstep with the script's `_RHIZA_SKILL_VERSION` constant by CI.
+- `args` — the script's argparse namespace minus `--input`/`--output` path strings. Keys are argparse dest names (underscored).
+- `input` — for fetchers, `null` (no upstream zarr); for single-input transformers, a `{basename, hash}` dict where `hash` is a sha256 over the upstream zarr's stored bytes; for multi-input transformers like `concat`, a list of `{basename, hash}` dicts in input order.
+
+PNG outputs from plot-writers embed the same schema in PNG `tEXt` chunks via matplotlib's `savefig(metadata=...)`. Single-input plotters use the key `rhiza_history`; two-input plotters use a pair of keys — `rhiza_history_a` / `rhiza_history_b` for `plot-compare`, `rhiza_history_forecast` / `rhiza_history_mclimate` for `plot-mediogram` — one per input branch. Read-back via `PIL.Image.open(path).info` or `exiftool`.
 
 ## Conventions
 
