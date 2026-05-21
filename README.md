@@ -29,10 +29,13 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 |---|---|
 | `clip-region` | Subset a gridded Zarr to a named region or `--bbox N/W/S/E` |
 | `aggregate-temporal` | Resample along `time` or `step` into daily/weekly/dekadal/monthly windows |
-| `downscale` | Spatial coarsening by factor or target resolution; multiple reducers |
+| `deaccumulate` | Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) into per-step diffs along the `step` axis |
+| `downscale` | Spatial coarsening by factor or target resolution, with optional empirical quantile-quantile bias correction |
+| `regrid` | Linear regrid onto a target grid defined by `(resolution, offset)` for matching another dataset's alignment |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
 | `plot` | Heatmap or timeseries PNG from one dataset |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid) |
+| `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
 
 ### Egress
 | Skill | What it does |
@@ -80,7 +83,7 @@ to always pull the newest):
 # List what skillkit discovers in the repo
 npx skillkit install rhiza-research/forecasting-skills --list
 
-# Install all 11 skills to the current project
+# Install all skills to the current project
 npx skillkit install rhiza-research/forecasting-skills --all --yes
 
 # Install globally so any project can use them
@@ -176,6 +179,13 @@ supported by the underlying client). Nothing is hardcoded. See each skill's
 See [`ALTERNATIVES.md`](ALTERNATIVES.md) for the tools we surveyed (CDO, GDAL,
 xcube, xclim, zarrs_tools, …) and why the current lightweight xarray-based
 implementations are the right trade at this scale.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the publishing model (`main` is the
+consumer-facing branch — every merge is a release), the PR workflow, and the
+version-bump conventions (per-skill `metadata.version` driven by `release: major`
+/ `release: minor` PR labels, with patch as the default).
 
 ## License
 
