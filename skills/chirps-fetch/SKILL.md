@@ -27,6 +27,7 @@ uv run scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
 ### Arguments
 - `--start`, `--end` — inclusive date range (ISO).
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
+- `--workers` — max concurrent per-day download threads (default 8). Bounds the thread pool that fetches each day's TIF over HTTPS. A concurrency knob only: it does not change the output and is excluded from the cache key. Lower it if the CHIRPS server returns throttling errors.
 
 ### Output
 

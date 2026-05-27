@@ -15,6 +15,8 @@ import json
 import shutil
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -26,6 +28,15 @@ import xarray as xr
 CHIRPS_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/prelim/sat"
 CHIRPS_NODATA = -9999.0
 HTTP_TIMEOUT = 60
+
+# Default size of the per-day download thread pool. The work is
+# network-I/O-bound (one independent HTTPS GET per day), so threads overlap
+# request latency without contending on the GIL. The bound is deliberately
+# conservative: CHC's data server is a public research host, so excessive
+# concurrency is impolite and risks throttling. 8 is enough to hide request
+# latency while staying well below levels that typically provoke rate limiting;
+# operators can lower it with --workers if they observe throttling.
+DEFAULT_WORKERS = 8
 
 
 class DayUnavailable(Exception):
@@ -86,6 +97,38 @@ def _daterange(start: str, end: str):
     while d <= e:
         yield d
         d += timedelta(days=1)
+
+
+class _SessionPool:
+    """Per-thread requests.Session holder.
+
+    requests.Session is not documented thread-safe — its connection pool and
+    cookie jar are not meant to be shared across threads — so each worker
+    thread gets its own Session, created lazily on first use and reused for
+    every subsequent GET on that thread (one TLS handshake per thread rather
+    than one per day). Every created Session is tracked so they can all be
+    closed after the pool drains.
+    """
+
+    def __init__(self):
+        self._local = threading.local()
+        self._all = []
+        self._lock = threading.Lock()
+
+    def session(self) -> requests.Session:
+        s = getattr(self._local, "session", None)
+        if s is None:
+            s = requests.Session()
+            self._local.session = s
+            with self._lock:
+                self._all.append(s)
+        return s
+
+    def close_all(self) -> None:
+        with self._lock:
+            sessions = list(self._all)
+        for s in sessions:
+            s.close()
 
 
 def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> Path:
@@ -174,8 +217,24 @@ def main() -> None:
     p.add_argument("--start", required=True, help="Start date YYYY-MM-DD (inclusive)")
     p.add_argument("--end", required=True, help="End date YYYY-MM-DD (inclusive)")
     p.add_argument("--output", "-o", required=True)
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help=(
+            f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
+            "Lower this if the CHIRPS server returns throttling errors."
+        ),
+    )
     args = p.parse_args()
 
+    if args.workers < 1:
+        print("Error: --workers must be >= 1.", file=sys.stderr)
+        sys.exit(2)
+
+    # --workers is a concurrency knob, not a data parameter, so it is excluded
+    # from the cache key: the same {start, end} request at any worker count
+    # produces the same data.
     requested_entry = {
         "skill": "chirps-fetch",
         "version": _RHIZA_SKILL_VERSION,
@@ -198,24 +257,52 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="chirps_") as tmpdir:
         tmp = Path(tmpdir)
-        # One keep-alive session reused across every per-day GET, so there is
-        # one TLS handshake for the whole range rather than one per day.
-        session = requests.Session()
+        # Only the downloads run concurrently. Each worker returns its day's tif
+        # path on success or signals a missing day via DayUnavailable; the tifs
+        # are opened with _open_day SEQUENTIALLY in the main thread after the
+        # pool drains. The download is the network-I/O bottleneck, while
+        # _open_day is fast and GDAL concurrent-open safety is build-dependent —
+        # so parallelizing only the download captures the win without relying on
+        # unverified concurrent-open behavior.
+        sessions = _SessionPool()
+
+        def _download(day: date) -> tuple[date, Path]:
+            return day, _download_day_tif(sessions.session(), day, tmp)
+
+        downloaded: list[tuple[date, Path]] = []
         try:
-            for day in expected_days:
-                print(f"  {day.isoformat()}", file=sys.stderr)
-                try:
-                    tif = _download_day_tif(session, day, tmp)
-                except DayUnavailable as e:
-                    print(
-                        f"    day unavailable ({e}); will classify after loop",
-                        file=sys.stderr,
-                    )
-                    missing_days.append(day)
-                    continue
-                succeeded.append((day, _open_day(tif, day)))
+            with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                futures = {pool.submit(_download, day): day for day in expected_days}
+                for fut in as_completed(futures):
+                    day = futures[fut]
+                    try:
+                        # A DayUnavailable (404/5xx/transient/truncated/non-TIFF)
+                        # marks the day missing. Any other exception is
+                        # unexpected and is re-raised by future.result(), so the
+                        # run fails loudly rather than silently dropping a day or
+                        # hanging the pool.
+                        result_day, tif = fut.result()
+                    except DayUnavailable as e:
+                        print(
+                            f"  {day.isoformat()}: day unavailable ({e}); "
+                            "will classify after download",
+                            file=sys.stderr,
+                        )
+                        missing_days.append(day)
+                        continue
+                    print(f"  {result_day.isoformat()}", file=sys.stderr)
+                    downloaded.append((result_day, tif))
         finally:
-            session.close()
+            sessions.close_all()
+
+        # Restore day order on both outcome lists. Futures complete in an
+        # arbitrary order, but the classifier below compares `missing_days`
+        # against the day-sorted `expected_tail` as lists and takes
+        # `succeeded_days[-1]` as the last available day, so both must be sorted
+        # to reproduce the serial path's behavior exactly.
+        missing_days.sort()
+        for day, tif in sorted(downloaded, key=lambda dt: dt[0]):
+            succeeded.append((day, _open_day(tif, day)))
 
         # Classify outcome.
         if not succeeded:
