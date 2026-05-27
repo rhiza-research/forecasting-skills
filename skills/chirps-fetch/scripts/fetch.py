@@ -29,7 +29,9 @@ HTTP_TIMEOUT = 60
 
 
 class DayUnavailable(Exception):
-    """Raised when a specific day's TIF is not yet published (HTTP 404)."""
+    """Raised when a day's TIF cannot be retrieved: not yet published (HTTP 404),
+    a transient server (5xx) or network error, or a non-TIFF / truncated / empty
+    body. The post-loop classifier then handles tail-vs-mid-gap."""
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -113,13 +115,28 @@ def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> P
     body = resp.content
     # Guard against a truncated body: when the server reports a length, the
     # received byte count must match before the file is handed to rioxarray.
+    # A malformed/non-numeric Content-Length is treated as "no declared
+    # length" rather than aborting the whole run with an uncaught ValueError.
     declared = resp.headers.get("Content-Length")
-    if declared is not None and len(body) != int(declared):
-        raise DayUnavailable(
-            f"truncated body for {url}: got {len(body)} bytes, Content-Length was {declared}"
-        )
+    if declared is not None:
+        try:
+            declared_len = int(declared)
+        except (TypeError, ValueError):
+            declared_len = None
+        if declared_len is not None and len(body) != declared_len:
+            raise DayUnavailable(
+                f"truncated body for {url}: got {len(body)} bytes, Content-Length was {declared}"
+            )
     if not body:
         raise DayUnavailable(f"empty body for {url}")
+
+    # Reject a 200 response whose body is not actually a TIFF (e.g. an HTML
+    # error/landing page): a TIFF/GeoTIFF starts with the little-endian
+    # b"II*\x00" or big-endian b"MM\x00*" signature. Rejecting here makes such
+    # a response a clean DayUnavailable rather than a confusing downstream
+    # rioxarray error after the body has been written and reopened.
+    if body[:4] not in (b"II*\x00", b"MM\x00*"):
+        raise DayUnavailable(f"non-TIFF body for {url}: leading bytes {body[:4]!r}")
 
     with open(out, "wb") as f:
         f.write(body)
