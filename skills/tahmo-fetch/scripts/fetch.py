@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 # Default size of the per-station fetch thread pool. The work is
 # network-I/O-bound (one independent authenticated HTTP request per station),
