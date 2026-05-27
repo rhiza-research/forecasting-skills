@@ -102,13 +102,15 @@ def _load_png(path: Path) -> dict:
     chains = {}
     for key in sorted(info):
         if key == "rhiza_history":
-            coerced = _coerce_chain(info[key], f"{path.name} ({key})")
-            if coerced is not None:
-                chains[path.name] = coerced
+            if info[key]:
+                coerced = _coerce_chain(info[key], f"{path.name} ({key})")
+                if coerced is not None:
+                    chains[path.name] = coerced
         elif key.startswith("rhiza_history_"):
-            coerced = _coerce_chain(info[key], f"{path.name} ({key})")
-            if coerced is not None:
-                chains[key[len("rhiza_history_") :]] = coerced
+            if info[key]:
+                coerced = _coerce_chain(info[key], f"{path.name} ({key})")
+                if coerced is not None:
+                    chains[key[len("rhiza_history_") :]] = coerced
     return {"chains": chains, "source": None, "name": path.name}
 
 
@@ -153,7 +155,10 @@ def _read_raw_histories(path: Path) -> dict:
             print(f"Error: could not open {path} as a zarr store: {exc}", file=sys.stderr)
             sys.exit(2)
         raw = {}
-        if "rhiza_history" in attrs:
+        # Only register a truthy value: an empty-string rhiza_history is treated
+        # as absent (consistent with how consumers read it), so --check reports
+        # "no provenance found" (exit 1) rather than "invalid" (exit 2).
+        if attrs.get("rhiza_history"):
             raw["rhiza_history"] = attrs["rhiza_history"]
         return raw
     if path.is_file() and path.suffix.lower() == ".png":
@@ -167,7 +172,10 @@ def _read_raw_histories(path: Path) -> dict:
             sys.exit(2)
         raw = {}
         for key in sorted(info):
-            if key == "rhiza_history" or key.startswith("rhiza_history_"):
+            # Only register a truthy value: an empty-string tEXt value is treated
+            # as absent (consistent with how consumers read it), so --check reports
+            # "no provenance found" (exit 1) rather than "invalid" (exit 2).
+            if (key == "rhiza_history" or key.startswith("rhiza_history_")) and info[key]:
                 raw[key] = info[key]
         return raw
     print(
@@ -311,6 +319,11 @@ def _format_input(step_input) -> str:
 
 
 def _print_step(n: int, step: dict, indent: str) -> None:
+    if not isinstance(step, dict):
+        # A non-dict chain entry is a malformed/opaque step; render a placeholder
+        # rather than calling .get on it.
+        print(f"{indent}{n}. (malformed entry: not an object)")
+        return
     print(f"{indent}{n}. {step.get('skill', '?')} (v{step.get('version', '?')})")
     print(f"{indent}   input: {_format_input(step.get('input'))}")
     args = step.get("args") or {}
@@ -359,7 +372,11 @@ def _render_human(data: dict) -> None:
         indent = "  " if multi else ""
         for n, step in enumerate(chain, start=1):
             _print_step(n, step, indent)
-            if step.get("skill") == "concat" and isinstance(step.get("input"), list):
+            if (
+                isinstance(step, dict)
+                and step.get("skill") == "concat"
+                and isinstance(step.get("input"), list)
+            ):
                 _print_concat_branches(step, indent)
 
 
@@ -418,6 +435,11 @@ def _emit_linear(chain: list, prefix: str, final_output: str) -> list:
     prev = None
     n = len(chain)
     for i, step in enumerate(chain, start=1):
+        if not isinstance(step, dict):
+            # A non-dict chain entry is a malformed/opaque step; emit a comment
+            # and skip it rather than calling .get on it.
+            lines.append(f"# (malformed entry skipped: not an object) -- step {i}")
+            continue
         skill = step.get("skill", "?")
         args = step.get("args") or {}
         step_input = step.get("input")
@@ -457,6 +479,9 @@ def _concat_branches(chain: list) -> dict | None:
     if not chain:
         return None
     terminal = chain[-1]
+    if not isinstance(terminal, dict):
+        # A non-dict terminal is not a concat to expand; fall through to linear.
+        return None
     if terminal.get("skill") != "concat":
         return None
     items = terminal.get("input")
@@ -538,8 +563,15 @@ def _render_script(data: dict) -> None:
 
     lines.append("# --- combine into the final step ---")
     if terminal is not None:
-        ins = _branch_input_flags(branch_outputs)
-        lines.append(_command(terminal.get("skill", "?"), terminal.get("args") or {}, ins, name))
+        if not isinstance(terminal, dict):
+            # A non-dict terminal is a malformed/opaque step; skip emitting the
+            # final combine command rather than calling .get on it.
+            lines.append("# (malformed terminal step skipped: not an object)")
+        else:
+            ins = _branch_input_flags(branch_outputs)
+            lines.append(
+                _command(terminal.get("skill", "?"), terminal.get("args") or {}, ins, name)
+            )
     print("\n".join(lines))
 
 
