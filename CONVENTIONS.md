@@ -59,6 +59,12 @@ standalone single-file scripts. The convention is enforced by review.
 | --- | --- | --- | --- |
 | Q-Q mapping reference | `--qq-reference` | path | Optional reference Zarr whose distribution the skill maps the operation's output onto. Empirical-CDF mapping per grid cell along `--time-dim`. The reference must already be on the post-operation lat/lon grid. |
 
+### Concurrency
+
+| Concept | Flag | Value shape | Notes |
+| --- | --- | --- | --- |
+| Fetch concurrency | `--workers` | int (per-skill default) | Max size of a bounded thread pool for skills that fetch many independent items (e.g. per-station or per-day requests). For network-I/O-bound work only. Keep the default conservative to respect upstream API rate limits, and let callers lower it on throttling. A concurrency knob, not a data parameter: it must be excluded from the cache key / `rhiza_history` args, since it changes speed, not output. |
+
 ## Rules
 
 - **Multi-value parameters use repeated flags, not comma-separated values.** A
