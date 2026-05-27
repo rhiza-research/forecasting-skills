@@ -22,10 +22,21 @@ import json
 import os
 import shutil
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _RHIZA_SKILL_VERSION = "0.1.1"
+
+# Default size of the per-station fetch thread pool. The work is
+# network-I/O-bound (one independent authenticated HTTP request per station),
+# so threads overlap request latency without contending on the GIL. The bound
+# is deliberately conservative: TAHMO's datahub is a research API and excessive
+# concurrency risks 429/throttling. 8 is enough to hide request latency while
+# staying well below levels that typically provoke rate limiting; operators can
+# lower it with --workers if they observe throttling.
+DEFAULT_WORKERS = 8
 
 COUNTRY_CODE = {
     "Burkina Faso": "BF",
@@ -94,14 +105,54 @@ def _require_env() -> tuple[str, str]:
     return u, p
 
 
+def _is_transient(exc: Exception) -> bool:
+    """Heuristic: does this error look like a retryable transient/rate-limit?
+
+    The TAHMO wrapper raises bare Exceptions whose message carries the HTTP
+    status (e.g. "API request failed with status code 429"), plus requests/
+    urllib3 connection and timeout errors. Match those so a momentary 429/5xx
+    or dropped connection is retried rather than silently dropping a station.
+    """
+    text = str(exc).lower()
+    transient_markers = ("429", "500", "502", "503", "504", "timed out", "timeout", "connection")
+    return any(marker in text for marker in transient_markers)
+
+
+def _fetch_raw(api, station_id: str, start: str, end: str):
+    """Call getRawData once, retrying a single transient error after a short
+    backoff. Returns the raw DataFrame (or None for genuine no-data). Raises if
+    the error is non-transient or if the retry also fails transiently."""
+    try:
+        return api.getRawData(
+            station=station_id, startDate=start, endDate=end, dataset="controlled"
+        )
+    except Exception as exc:
+        if not _is_transient(exc):
+            raise
+        print(
+            f"{station_id}: transient error ({exc}); retrying once",
+            file=sys.stderr,
+        )
+        time.sleep(2.0)
+        return api.getRawData(
+            station=station_id, startDate=start, endDate=end, dataset="controlled"
+        )
+
+
 def _station_frame(api, station_id: str, start: str, end: str):
-    """Return a daily-aggregated DataFrame for one station, or None."""
+    """Return a daily-aggregated DataFrame for one station, or None.
+
+    None means "no usable data for this station" (empty response, no kept
+    variables, etc.) and is a quiet skip. A fetch that errors out — including a
+    transient error that survives one retry — is logged distinctly on stderr as
+    a dropped station so it is never silently lost, then returns None.
+    """
     import pandas as pd
 
     try:
-        raw = api.getRawData(station=station_id, startDate=start, endDate=end, dataset="controlled")
+        raw = _fetch_raw(api, station_id, start, end)
     except Exception as exc:
-        print(f"{station_id}: skipped ({exc})", file=sys.stderr)
+        print(f"{station_id}: DROPPED, fetch failed ({exc})", file=sys.stderr)
         return None
     if raw is None or len(raw) == 0:
         return None
@@ -182,6 +233,15 @@ def main() -> None:
     p.add_argument("--start", required=True)
     p.add_argument("--end", required=True)
     p.add_argument("--output", "-o", required=True)
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help=(
+            f"Max concurrent per-station fetch threads (default {DEFAULT_WORKERS}). "
+            "Lower this if TAHMO returns 429/throttling errors."
+        ),
+    )
     args = p.parse_args()
 
     entry = {
@@ -189,7 +249,10 @@ def main() -> None:
         "version": _RHIZA_SKILL_VERSION,
         # Sort --country so that `--country Ghana --country Kenya` and
         # `--country Kenya --country Ghana` produce identical cache keys.
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
+        # --workers is a concurrency knob, not a data parameter, so it is
+        # excluded from the cache key: the same request at any worker count
+        # produces the same data.
+        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output", "workers"}}
         | {"country": sorted(args.country)},
         "input": None,
     }
@@ -232,8 +295,11 @@ def main() -> None:
     # Discover units / description from TAHMO so we don't hard-code them.
     var_meta = api.getVariables()
 
-    frames = []
-    meta_rows = []
+    # Flatten the selection into one task list of (country, station-row) pairs
+    # across all requested countries, then fetch them concurrently. A single
+    # bounded pool over the flat list keeps all worker slots busy regardless of
+    # how stations are distributed between countries.
+    tasks = []
     for country in countries:
         code = COUNTRY_CODE[country]
         sub = stations[stations["location_countrycode"] == code]
@@ -242,19 +308,49 @@ def main() -> None:
             print(f"{country}: no stations", file=sys.stderr)
             continue
         for _, row in sub.iterrows():
-            sid = row["code"]
-            daily = _station_frame(api, sid, args.start, args.end)
-            if daily is None:
+            tasks.append((country, row))
+
+    def _fetch_one(country, row):
+        """Worker: fetch one station and return its paired (frame, meta_row).
+
+        The frame and meta_row are produced together so that whatever order
+        futures complete in, each station's data stays bound to its own
+        latitude/longitude/country. Returns None when the station has no usable
+        data (or was dropped after a failed fetch) so it can be skipped.
+
+        The single `api` instance is shared across workers. The TAHMO
+        apiWrapper carries no per-call mutable state: setCredentials sets
+        apiKey/apiSecret once, and getRawData/__request only read them, build a
+        fresh requests.get per request (no shared Session), and keep all
+        intermediate state in locals. Concurrent getRawData calls on one
+        instance therefore do not race on shared state.
+        """
+        sid = row["code"]
+        daily = _station_frame(api, sid, args.start, args.end)
+        if daily is None:
+            return None
+        meta_row = {
+            "station_id": sid,
+            "latitude": float(row["location_latitude"]),
+            "longitude": float(row["location_longitude"]),
+            "country": country,
+        }
+        return daily, meta_row
+
+    frames = []
+    meta_rows = []
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {
+            pool.submit(_fetch_one, country, row): (country, row["code"]) for country, row in tasks
+        }
+        for fut in as_completed(futures):
+            country, sid = futures[fut]
+            result = fut.result()
+            if result is None:
                 continue
+            daily, meta_row = result
             frames.append(daily)
-            meta_rows.append(
-                {
-                    "station_id": sid,
-                    "latitude": float(row["location_latitude"]),
-                    "longitude": float(row["location_longitude"]),
-                    "country": country,
-                }
-            )
+            meta_rows.append(meta_row)
             print(f"{country} {sid}: {len(daily)} daily rows", file=sys.stderr)
 
     if not frames:
