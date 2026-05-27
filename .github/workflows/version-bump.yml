@@ -391,3 +391,82 @@ jobs:
               git rebase --abort 2>/dev/null || true
             fi
           done
+
+  # After a real merge (skill bump and/or agent change), publish a lean copy of
+  # just the plugin to the `plugin-dist` branch: the manifest, the agent, and
+  # skills/ -- nothing else from the repo (no demo/, tools/, CI, or tests).
+  # marketplace.json sources the rhiza-forecasting plugin from this branch, so
+  # installs never pull the repo's non-runtime content. One appended commit per
+  # merge (no force-push); the commit SHA is the plugin version, since
+  # plugin.json carries no `version`.
+  #
+  # Sequencing: `needs: bump` so this runs after the bump commit lands, and the
+  # checkout takes main's latest tip to capture it. The bot's `[skip ci]` bump
+  # commit is gated out by the same preflight flags, so plugin-dist is rebuilt
+  # exactly once per real merge, not again for the bump commit.
+  dist:
+    needs: [preflight, bump]
+    if: needs.preflight.outputs.is_bot != 'true' && needs.preflight.outputs.has_skip_ci != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Checkout main at its latest tip
+        uses: actions/checkout@v4
+        with:
+          # `main`, not github.sha: the `bump` job may have just pushed a
+          # skill-version bump commit, and plugin-dist must reflect it.
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Publish curated plugin payload to plugin-dist
+        run: |
+          set -euo pipefail
+          git config user.name "forecasting-skills-release-bot[bot]"
+          git config user.email "3799090+forecasting-skills-release-bot[bot]@users.noreply.github.com"
+
+          # Stage exactly the plugin payload from main: manifest, agent, skills.
+          # Nothing else in the repo is copied, so the published plugin never
+          # carries demo/, tools/, CI, or tests.
+          stage="${RUNNER_TEMP}/plugin-payload"
+          rm -rf "$stage"
+          mkdir -p "$stage/.claude-plugin" "$stage/agents"
+          cp .claude-plugin/plugin.json "$stage/.claude-plugin/plugin.json"
+          cp agents/forecaster.md "$stage/agents/forecaster.md"
+          cp -R skills "$stage/skills"
+
+          # Check out plugin-dist in a separate worktree so the main checkout is
+          # untouched. Base on the branch's current tip for a fast-forward
+          # append; create it as an orphan on the first run.
+          worktree="${RUNNER_TEMP}/plugin-dist-wt"
+          rm -rf "$worktree"
+          if git ls-remote --exit-code --heads origin plugin-dist >/dev/null 2>&1; then
+            git fetch origin plugin-dist:plugin-dist
+            git worktree add "$worktree" plugin-dist
+            cd "$worktree"
+          else
+            git worktree add --detach "$worktree"
+            cd "$worktree"
+            git checkout --orphan plugin-dist
+          fi
+
+          # Replace tracked content with the staged payload, then commit only if
+          # something actually changed.
+          git rm -rfq . >/dev/null 2>&1 || true
+          cp -R "$stage"/. .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "plugin-dist already current; nothing to publish."
+            exit 0
+          fi
+          git commit -m "release: sync plugin-dist from ${GITHUB_SHA}"
+          # Append-only: a plain push (no --force). Fast-forwards because the
+          # commit is based on plugin-dist's tip (or the branch is new).
+          git push origin plugin-dist
