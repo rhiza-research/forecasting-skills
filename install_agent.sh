@@ -12,7 +12,23 @@ cat <<'EOF'
 Installed the rhiza-forecasting plugin.
 
 Next steps:
-  1. cp .env.example .env     # then edit .env and fill in your credentials
-  2. claude --agent rhiza-forecasting:forecaster
+
+# Export your credentials
+
+# ecmwf-fetch — ECMWF S2S forecasts via the ECMWF Data Stores (ECDS)
+export ECMWF_DATASTORES_URL=https://ecds.ecmwf.int/api
+export ECMWF_DATASTORES_KEY=
+
+# imerg-fetch — NASA Earthdata (urs.earthdata.nasa.gov)
+export EARTHDATA_USERNAME=
+export EARTHDATA_PASSWORD=
+
+# tahmo-fetch — TAHMO station API
+export TAHMO_API_USERNAME=
+export TAHMO_API_PASSWORD=
+
+
+# Then run the agent
+claude --agent rhiza-forecasting:forecaster
 
 EOF
