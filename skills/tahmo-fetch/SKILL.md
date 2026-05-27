@@ -32,6 +32,7 @@ uv run scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD
 - `--country` — country name (pass once per country). Supported: Kenya, Ghana, Senegal, Ethiopia, Burkina Faso, Benin, DR Congo, Côte d'Ivoire, Cameroon, Lesotho, Madagascar, Mali, Malawi, Mozambique, Niger, Nigeria, Rwanda, Chad, Togo, Tanzania, Uganda, South Africa, Zambia, Zimbabwe.
 - `--start`, `--end` — inclusive date range (ISO).
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
+- `--workers` — max concurrent per-station fetch threads (default 8). Stations are fetched concurrently over a bounded thread pool; lower this if TAHMO returns 429/throttling errors. Does not affect the output or the cache key.
 
 ### Output
 
