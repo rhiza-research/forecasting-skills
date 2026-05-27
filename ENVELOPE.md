@@ -30,7 +30,9 @@ A Zarr v2 store containing one or more data variables.
 
 ### `rhiza_history` schema
 
-A JSON-encoded array, ordered oldest first along the pipeline. Each entry is an object with these fields:
+`rhiza_history`, when present, MUST be a JSON-encoded array, ordered oldest first along the pipeline. A consumer that reads an artifact whose `rhiza_history` is present but not a JSON array (a JSON object, a scalar, or non-JSON text) treats it as no history: it proceeds as if the attribute were absent and prints a one-line warning to stderr pointing at `provenance --check`. The coercion is array-level only — an array whose individual entries are imperfect (missing keys, an old `version`) is passed through unchanged. `provenance --check` validates an artifact's compliance with this schema and reports per-entry violations.
+
+Each entry is an object with these fields:
 
 - `skill` — canonical skill name (e.g. `clip-region`).
 - `version` — the SKILL.md `metadata.version` value at the time the entry was written, kept in lockstep with the script's `_RHIZA_SKILL_VERSION` constant by CI.

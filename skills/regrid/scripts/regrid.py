@@ -46,9 +46,25 @@ def _load_history(zarr_path: Path) -> list:
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
             raw = ds.attrs.get("rhiza_history")
-            return json.loads(raw) if raw else []
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
+        # A not-yet-existing output read during a cache check is a silent miss.
         return []
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = None
+    if not isinstance(parsed, list):
+        # A present-but-non-array value is malformed under the rhiza_history
+        # contract; treat it as no history and flag it on stderr.
+        print(
+            f"ignoring malformed rhiza_history on {zarr_path}; "
+            "run `provenance --check` for details",
+            file=sys.stderr,
+        )
+        return []
+    return parsed
 
 
 def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:

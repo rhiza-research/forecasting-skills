@@ -25,16 +25,42 @@ from pathlib import Path
 _RHIZA_SKILL_VERSION = "0.1.1"
 
 
-def _parse_chain(raw: str, path: Path) -> list:
-    """Parse a JSON rhiza_history value into a list of step dicts, or exit 2."""
+def _parse_chain(raw: str) -> list:
+    """Parse a JSON rhiza_history value into a list of step dicts.
+
+    Strict: raises ``ValueError`` when the value is not valid JSON or does not
+    decode to an array. Used by ``--check``, which records the raised message as
+    a violation rather than aborting. Non-check readers use ``_coerce_chain``.
+    """
     try:
         chain = json.loads(raw)
     except (TypeError, json.JSONDecodeError):
-        print(f"Error: {path} has a rhiza_history value that is not valid JSON.", file=sys.stderr)
-        sys.exit(2)
+        raise ValueError("value is not valid JSON") from None
     if not isinstance(chain, list):
-        print(f"Error: {path} rhiza_history is not a JSON array.", file=sys.stderr)
-        sys.exit(2)
+        raise ValueError("value is not a JSON array")
+    return chain
+
+
+def _coerce_chain(raw: str, label: str) -> list | None:
+    """Lenient parse of a rhiza_history value for the non-check render paths.
+
+    A value that is absent has already been filtered out by the caller. A value
+    that is present but not a JSON array (non-JSON, or a JSON object/scalar) is
+    malformed under the rhiza_history array contract; return ``None`` and emit a
+    one-line stderr warning pointing at ``--check``, so the caller omits the
+    branch. A valid array (including an empty one) passes through unchanged,
+    even when its entries are imperfect.
+    """
+    try:
+        chain = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        chain = None
+    if not isinstance(chain, list):
+        print(
+            f"ignoring malformed rhiza_history on {label}; run `provenance --check` for details",
+            file=sys.stderr,
+        )
+        return None
     return chain
 
 
@@ -51,7 +77,9 @@ def _load_zarr(path: Path) -> dict:
     chains = {}
     raw = attrs.get("rhiza_history")
     if raw:
-        chains[path.name] = _parse_chain(raw, path)
+        coerced = _coerce_chain(raw, path.name)
+        if coerced is not None:
+            chains[path.name] = coerced
     return {"chains": chains, "source": attrs.get("rhiza_source"), "name": path.name}
 
 
@@ -74,9 +102,13 @@ def _load_png(path: Path) -> dict:
     chains = {}
     for key in sorted(info):
         if key == "rhiza_history":
-            chains[path.name] = _parse_chain(info[key], path)
+            coerced = _coerce_chain(info[key], f"{path.name} ({key})")
+            if coerced is not None:
+                chains[path.name] = coerced
         elif key.startswith("rhiza_history_"):
-            chains[key[len("rhiza_history_") :]] = _parse_chain(info[key], path)
+            coerced = _coerce_chain(info[key], f"{path.name} ({key})")
+            if coerced is not None:
+                chains[key[len("rhiza_history_") :]] = coerced
     return {"chains": chains, "source": None, "name": path.name}
 
 
@@ -94,6 +126,175 @@ def _read_artifact(path: Path) -> dict:
         file=sys.stderr,
     )
     sys.exit(2)
+
+
+# --------------------------------------------------------------------------- #
+# check (schema validation)
+# --------------------------------------------------------------------------- #
+def _read_raw_histories(path: Path) -> dict:
+    """Return {location_key: raw_string} for every rhiza_history value present.
+
+    Reads the raw, un-parsed values so ``--check`` can validate them itself.
+    A zarr contributes its single `rhiza_history` attr (keyed `rhiza_history`);
+    a PNG contributes its `rhiza_history` and any `rhiza_history_<label>` tEXt
+    keys (keyed by the tEXt key name). Exits 2 cleanly when the path is missing,
+    unopenable, or neither a zarr directory nor a .png file.
+    """
+    if not path.exists():
+        print(f"Error: {path} not found.", file=sys.stderr)
+        sys.exit(2)
+    if path.is_dir():
+        import xarray as xr
+
+        try:
+            with xr.open_zarr(path, consolidated=False) as ds:
+                attrs = dict(ds.attrs)
+        except Exception as exc:  # noqa: BLE001 -- any open failure becomes a clean exit 2
+            print(f"Error: could not open {path} as a zarr store: {exc}", file=sys.stderr)
+            sys.exit(2)
+        raw = {}
+        if "rhiza_history" in attrs:
+            raw["rhiza_history"] = attrs["rhiza_history"]
+        return raw
+    if path.is_file() and path.suffix.lower() == ".png":
+        from PIL import Image
+
+        try:
+            with Image.open(path) as img:
+                info = dict(img.info)
+        except Exception as exc:  # noqa: BLE001 -- any open failure becomes a clean exit 2
+            print(f"Error: could not open {path} as a PNG: {exc}", file=sys.stderr)
+            sys.exit(2)
+        raw = {}
+        for key in sorted(info):
+            if key == "rhiza_history" or key.startswith("rhiza_history_"):
+                raw[key] = info[key]
+        return raw
+    print(
+        f"Error: {path} is neither a zarr directory nor a .png file; cannot inspect provenance.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+_ENTRY_KNOWN_KEYS = {"skill", "version", "args", "input"}
+_INPUT_ITEM_KNOWN_KEYS = {"basename", "hash", "history"}
+
+
+def _validate_input(value, loc: str, violations: list, notes: list) -> None:
+    """Validate an entry's `input` field against the array contract.
+
+    `input` is one of: `null`; a `{basename, hash}` dict; or an array of
+    `{basename, hash}` dicts, each of which may also carry a nested `history`
+    chain (recursively validated). Appends violations and notes in place.
+    """
+    if value is None:
+        return
+
+    def _check_item(item, item_loc: str) -> None:
+        if not isinstance(item, dict):
+            violations.append(f"{item_loc}: input entry is not an object")
+            return
+        if "basename" not in item:
+            violations.append(f"{item_loc}: missing required key 'basename'")
+        elif not isinstance(item["basename"], str):
+            violations.append(f"{item_loc}.basename: must be a string")
+        if "hash" not in item:
+            violations.append(f"{item_loc}: missing required key 'hash'")
+        elif not isinstance(item["hash"], str):
+            violations.append(f"{item_loc}.hash: must be a string")
+        if "history" in item:
+            _validate_chain(item["history"], f"{item_loc}.history", violations, notes)
+        for key in item:
+            if key not in _INPUT_ITEM_KNOWN_KEYS:
+                notes.append(f"{item_loc}: unknown key {key!r}")
+
+    if isinstance(value, list):
+        for j, item in enumerate(value):
+            _check_item(item, f"{loc}[{j}]")
+        return
+    if isinstance(value, dict):
+        _check_item(value, loc)
+        return
+    violations.append(f"{loc}: must be null, an object, or an array of objects")
+
+
+def _validate_chain(chain, loc: str, violations: list, notes: list) -> None:
+    """Validate one rhiza_history chain (an array of entries) against the schema.
+
+    Records every violation with its location into `violations`; records
+    unknown/extra keys (which do not fail validation) into `notes`. Recurses
+    into a concat entry's `input[*].history`.
+    """
+    if not isinstance(chain, list):
+        violations.append(f"{loc}: value is not a JSON array")
+        return
+    for i, entry in enumerate(chain):
+        eloc = f"{loc}[{i}]"
+        if not isinstance(entry, dict):
+            violations.append(f"{eloc}: entry is not an object")
+            continue
+        if "skill" not in entry:
+            violations.append(f"{eloc}: missing required key 'skill'")
+        elif not isinstance(entry["skill"], str):
+            violations.append(f"{eloc}.skill: must be a string")
+        elif not entry["skill"]:
+            violations.append(f"{eloc}.skill: must be a non-empty string")
+        if "version" not in entry:
+            violations.append(f"{eloc}: missing required key 'version'")
+        elif not isinstance(entry["version"], str):
+            violations.append(f"{eloc}.version: must be a string")
+        if "args" not in entry:
+            violations.append(f"{eloc}: missing required key 'args'")
+        elif not isinstance(entry["args"], dict):
+            violations.append(f"{eloc}.args: must be an object")
+        if "input" not in entry:
+            violations.append(f"{eloc}: missing required key 'input'")
+        else:
+            _validate_input(entry["input"], f"{eloc}.input", violations, notes)
+        for key in entry:
+            if key not in _ENTRY_KNOWN_KEYS:
+                notes.append(f"{eloc}: unknown key {key!r}")
+
+
+def _run_check(path: Path) -> int:
+    """Validate the rhiza_history schema on `path` and return the exit code.
+
+    `0` = valid provenance present; `1` = no provenance found; `2` = present
+    but invalid (every violation is printed with its location). Never raises a
+    traceback on malformed input -- reporting that input is the point.
+    """
+    raw_histories = _read_raw_histories(path)
+    if not raw_histories:
+        print(f"no provenance found on {path}")
+        return 1
+
+    violations: list = []
+    notes: list = []
+    for key, raw in raw_histories.items():
+        try:
+            chain = _parse_chain(raw)
+        except ValueError as exc:
+            violations.append(f"{key}: {exc}")
+            continue
+        _validate_chain(chain, key, violations, notes)
+
+    if violations:
+        print(f"invalid rhiza_history on {path}:")
+        for v in violations:
+            print(f"  - {v}")
+        if notes:
+            print("notes (not failures):")
+            for n in notes:
+                print(f"  - {n}")
+        return 2
+
+    print(f"valid rhiza_history on {path}")
+    if notes:
+        print("notes (not failures):")
+        for n in notes:
+            print(f"  - {n}")
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -129,7 +330,10 @@ def _print_concat_branches(step: dict, indent: str) -> None:
         if not isinstance(item, dict) or "history" not in item:
             continue
         label = chr(ord("a") + idx)
-        history = item.get("history") or []
+        history = item.get("history")
+        if not isinstance(history, list):
+            # A nested history that is not a list is malformed; treat as empty.
+            history = []
         print(f"{indent}   input branch {label} ({item.get('basename', '?')}):")
         if not history:
             print(f"{indent}     (no recorded history)")
@@ -263,7 +467,11 @@ def _concat_branches(chain: list) -> dict | None:
     branches = {}
     for idx, item in enumerate(items):
         label = chr(ord("a") + idx)
-        branches[label] = list(item.get("history") or []) + [terminal]
+        history = item.get("history")
+        if not isinstance(history, list):
+            # A nested history that is not a list is malformed; treat as empty.
+            history = []
+        branches[label] = list(history) + [terminal]
     return branches
 
 
@@ -331,7 +539,7 @@ def _render_script(data: dict) -> None:
     lines.append("# --- combine into the final step ---")
     if terminal is not None:
         ins = _branch_input_flags(branch_outputs)
-        lines.append(_command(terminal["skill"], terminal.get("args") or {}, ins, name))
+        lines.append(_command(terminal.get("skill", "?"), terminal.get("args") or {}, ins, name))
     print("\n".join(lines))
 
 
@@ -346,7 +554,18 @@ def main() -> None:
         default="human",
         help="Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
     )
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Validate the rhiza_history schema instead of rendering it. "
+            "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
+        ),
+    )
     args = p.parse_args()
+
+    if args.check:
+        sys.exit(_run_check(Path(args.input)))
 
     data = _read_artifact(Path(args.input))
 
