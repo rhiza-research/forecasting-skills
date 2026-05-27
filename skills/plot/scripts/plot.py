@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.0"
+_RHIZA_SKILL_VERSION = "0.1.1"
 
 # Region bbox table accepted by ``--region``. Mirrors ``clip-region``'s
 # REGIONS dict; duplicated per CONVENTIONS.md (no shared helper module —

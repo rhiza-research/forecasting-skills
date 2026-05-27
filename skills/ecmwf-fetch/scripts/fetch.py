@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.0"
+_RHIZA_SKILL_VERSION = "0.1.1"
 
 REGIONS = {
     "africa": [23.0, -20.0, -37.0, 59.0],
