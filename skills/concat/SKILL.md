@@ -4,7 +4,7 @@ description: Concatenate two or more Rhiza Envelope Zarr stores along a named di
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # concat
@@ -38,14 +38,15 @@ A single Zarr with the concat dim extended. Attrs from the first input are prese
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. Because concat takes multiple
-inputs, its entry's `input` field is a list of `{basename, hash}` dicts (one per
-input, in the order given on the command line). The upstream
-chain is taken from the first input's `rhiza_history` (matching the attr
-passthrough already done on the dataset). If any other input has a non-empty
-`rhiza_history` that disagrees with the first input's, a warning is written to
-stderr; concat does not attempt to reconcile divergent provenance. `args` is
-the argparse namespace minus the `--input`/`--output` path strings; `version`
-is the `_RHIZA_SKILL_VERSION` constant in `scripts/concat.py`, kept in
+inputs, its entry's `input` field is a list of `{basename, hash, history}` dicts
+(one per input, in the order given on the command line). Each item's `history`
+holds that input's full `rhiza_history` chain (an empty list when the input had
+no `rhiza_history`), so the concat entry records every input branch and the
+output is fully reproducible from its own provenance. The output's top-level
+`rhiza_history` is a single linear array: the first input's chain followed by
+this concat entry, matching the attr passthrough already done on the dataset.
+`args` is the argparse namespace minus the `--input`/`--output` path strings;
+`version` is the `_RHIZA_SKILL_VERSION` constant in `scripts/concat.py`, kept in
 lockstep with `metadata.version` in this SKILL.md by the CI version-bump
 workflow. Each input's `hash` is a sha256 over its stored bytes, so
 renamed-but-unchanged inputs still match and same-named-but-modified inputs

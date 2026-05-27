@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.0"
+_RHIZA_SKILL_VERSION = "0.1.1"
 
 REGIONS = {
     "africa": [23.0, -20.0, -37.0, 59.0],
@@ -55,9 +55,25 @@ def _load_history(zarr_path: Path) -> list:
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
             raw = ds.attrs.get("rhiza_history")
-            return json.loads(raw) if raw else []
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
+        # A not-yet-existing output read during a cache check is a silent miss.
         return []
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = None
+    if not isinstance(parsed, list):
+        # A present-but-non-array value is malformed under the rhiza_history
+        # contract; treat it as no history and flag it on stderr.
+        print(
+            f"ignoring malformed rhiza_history on {zarr_path}; "
+            "run `provenance --check` for details",
+            file=sys.stderr,
+        )
+        return []
+    return parsed
 
 
 def _cache_hit(out: Path, entry: dict) -> bool:

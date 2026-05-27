@@ -4,7 +4,7 @@ description: Inspect the rhiza_history provenance chain stamped on a Rhiza artif
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # provenance
@@ -29,18 +29,25 @@ writes a file or modifies its input.
 ## Usage
 
 ```
-uv run scripts/provenance.py --input <artifact> [--format human|json|script]
+uv run scripts/provenance.py --input <artifact> [--format human|json|script] [--check]
 ```
 
 ### Arguments
 - `--input`, `-i` — the artifact to inspect: a Rhiza Envelope Zarr (a
   directory) or a plot PNG (a file ending `.png`). Required.
 - `--format` — output view, one of `human` (default), `json`, or `script`.
+- `--check` — validate the `rhiza_history` schema instead of rendering it.
+  Takes precedence over `--format`.
 
 A path that is neither a zarr directory nor a `.png` file, or a missing
 path, is an error: a message goes to stderr and the skill exits 2. An
 artifact with no `rhiza_history` reports `no provenance recorded` and
 exits 0.
+
+In the render formats (`human`/`json`/`script`), an artifact whose
+`rhiza_history` is present but not a JSON array is treated as no history: the
+skill prints a one-line malformed-history warning to stderr, reports
+`no provenance recorded`, and exits 0.
 
 ## Formats
 
@@ -48,8 +55,10 @@ exits 0.
 
 Prints the lineage oldest-first. Each step shows its skill, version, input
 basename, and args. For a two-input PNG (`plot-compare` or
-`plot-mediogram`), each input branch is printed under its own label. If the
-zarr carries a `rhiza_source` attr it is printed first.
+`plot-mediogram`), each input branch is printed under its own label. For a
+`concat` zarr, the concat step lists each input branch's full recorded lineage
+beneath it (labeled `a`, `b`, … by input order). If the zarr carries a
+`rhiza_source` attr it is printed first.
 
 ### `json`
 
@@ -71,6 +80,46 @@ nothing needs to be installed first — `uvx` fetches the CLI on demand.
   reproduces each input branch to a distinctly-named file, then emits one final
   plot command that takes every branch's output as an input (e.g.
   `plot-compare --input a.zarr --input b.zarr`).
+- A `concat` zarr records each input's full chain under the concat entry, so it
+  reproduces every input branch (labeled `a`, `b`, … by input order) to its own
+  `{letter}.zarr`, then emits one final `concat` command that threads every
+  branch's output via repeated `--input` plus the concat's `--dim`/`--coords`
+  args. A branch whose head is not a fetcher still emits the `<UPSTREAM>` caveat
+  so you can supply that input yourself.
+
+## `--check` (schema validation)
+
+`--check` validates the `rhiza_history` on an artifact against the array
+contract in `ENVELOPE.md` and reports every violation it finds. It validates
+**schema shape**, not skill-name membership: a `skill` value may be any
+non-empty string, because external tools that emit `rhiza_history` have their
+own skill names.
+
+For a zarr it reads the single `rhiza_history` attribute; for a PNG it reads
+the `rhiza_history` key and every `rhiza_history_<label>` tEXt key, validating
+each. Each value must be a JSON array, and each entry an object with:
+
+- `skill` — a non-empty string.
+- `version` — a string.
+- `args` — an object.
+- `input` — `null`, a `{basename, hash}` object, or an array of
+  `{basename, hash}` objects (each of which may also carry a nested `history`
+  chain, which is validated recursively, so a `concat` entry's per-input
+  branches are checked too).
+
+Unknown or extra keys are noted but do not fail validation. Every violation is
+reported with its location (which key, which entry index, which rule).
+
+Exit codes:
+
+- `0` — valid `rhiza_history` is present.
+- `1` — no `rhiza_history` is present on the artifact.
+- `2` — `rhiza_history` is present but invalid; the violations are listed.
+
+```bash
+# Validate that a freshly produced artifact conforms to the schema.
+uv run scripts/provenance.py -i /tmp/forecast.zarr --check
+```
 
 ## Reproduction-script caveats
 

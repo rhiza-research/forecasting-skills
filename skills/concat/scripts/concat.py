@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.0"
+_RHIZA_SKILL_VERSION = "0.1.1"
 
 
 def _hash_zarr(zarr_path: Path) -> str:
@@ -37,9 +37,25 @@ def _load_history(zarr_path: Path) -> list:
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
             raw = ds.attrs.get("rhiza_history")
-            return json.loads(raw) if raw else []
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
+        # A not-yet-existing output read during a cache check is a silent miss.
         return []
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = None
+    if not isinstance(parsed, list):
+        # A present-but-non-array value is malformed under the rhiza_history
+        # contract; treat it as no history and flag it on stderr.
+        print(
+            f"ignoring malformed rhiza_history on {zarr_path}; "
+            "run `provenance --check` for details",
+            file=sys.stderr,
+        )
+        return []
+    return parsed
 
 
 def _coerce(values):
@@ -102,32 +118,24 @@ def main() -> None:
         out_ds[v].encoding = {}
 
     # Provenance: concat is a multi-input op, so the entry's `input` is a
-    # list of `{basename, hash}` dicts (schema extension over the single-
-    # input zarr-transformers). The upstream chain is taken from the first
-    # input's `rhiza_history` (matching the attr-passthrough above); if the
-    # other inputs have non-empty histories that disagree with the first,
-    # warn but proceed — concat is not in the business of reconciling
-    # divergent provenance.
-    upstream = _load_history(paths[0])
-    other_histories = [_load_history(ip) for ip in paths[1:]]
-    for ip, h in zip(paths[1:], other_histories, strict=True):
-        if h and h != upstream:
-            print(
-                f"Warning: input {ip.name} has a rhiza_history that diverges from "
-                f"{paths[0].name}; keeping the first input's chain on the output.",
-                file=sys.stderr,
-            )
-    if not upstream:
-        print(
-            f"Warning: no upstream rhiza_history on input {paths[0].name}; "
-            f"treating inputs as opaque.",
-            file=sys.stderr,
-        )
+    # list of `{basename, hash, history}` dicts (schema extension over the
+    # single-input zarr-transformers). Each item's `history` is that input's
+    # full `rhiza_history` chain (`[]` when the input had none), so the merge
+    # records every input branch and the output is fully reproducible from its
+    # own provenance. The output's top-level `rhiza_history` stays a single
+    # linear array — the trunk is the first input's chain plus this entry,
+    # matching the attr-passthrough above — so every existing single-attr
+    # reader keeps working.
+    input_histories = [_load_history(ip) for ip in paths]
+    upstream = input_histories[0]
     entry = {
         "skill": "concat",
         "version": _RHIZA_SKILL_VERSION,
         "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
-        "input": [{"basename": ip.name, "hash": _hash_zarr(ip)} for ip in paths],
+        "input": [
+            {"basename": ip.name, "hash": _hash_zarr(ip), "history": hist}
+            for ip, hist in zip(paths, input_histories, strict=True)
+        ],
     }
     out_ds.attrs["rhiza_history"] = json.dumps(upstream + [entry], sort_keys=True)
 
