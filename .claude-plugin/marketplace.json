@@ -1,0 +1,18 @@
+{
+  "name": "rhiza",
+  "description": "Forecasting assistant agent plus weather and climate data skills.",
+  "owner": {
+    "name": "rhiza-research"
+  },
+  "plugins": [
+    {
+      "name": "rhiza-forecasting",
+      "source": {
+        "source": "github",
+        "repo": "rhiza-research/forecasting-skills",
+        "ref": "plugin-dist"
+      },
+      "description": "Forecasting assistant agent plus weather and climate data skills."
+    }
+  ]
+}
