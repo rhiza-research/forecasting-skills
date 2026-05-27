@@ -244,6 +244,10 @@ def main() -> None:
     )
     args = p.parse_args()
 
+    if args.workers < 1:
+        print("Error: --workers must be >= 1.", file=sys.stderr)
+        sys.exit(2)
+
     entry = {
         "skill": "tahmo-fetch",
         "version": _RHIZA_SKILL_VERSION,
@@ -345,7 +349,14 @@ def main() -> None:
         }
         for fut in as_completed(futures):
             country, sid = futures[fut]
-            result = fut.result()
+            try:
+                result = fut.result()
+            except Exception as exc:  # noqa: BLE001 -- isolate per-station failures
+                # A worker that raises (e.g. a station row with a null/NaN
+                # coordinate, or any other unexpected processing error) drops
+                # only that station rather than aborting the whole run.
+                print(f"{country} {sid}: DROPPED, worker error ({exc})", file=sys.stderr)
+                continue
             if result is None:
                 continue
             daily, meta_row = result
