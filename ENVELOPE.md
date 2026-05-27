@@ -35,7 +35,7 @@ A JSON-encoded array, ordered oldest first along the pipeline. Each entry is an 
 - `skill` — canonical skill name (e.g. `clip-region`).
 - `version` — the SKILL.md `metadata.version` value at the time the entry was written, kept in lockstep with the script's `_RHIZA_SKILL_VERSION` constant by CI.
 - `args` — the script's argparse namespace minus `--input`/`--output` path strings. Keys are argparse dest names (underscored).
-- `input` — for fetchers, `null` (no upstream zarr); for single-input transformers, a `{basename, hash}` dict where `hash` is a sha256 over the upstream zarr's stored bytes; for multi-input transformers like `concat`, a list of `{basename, hash}` dicts in input order.
+- `input` — for fetchers, `null` (no upstream zarr); for single-input transformers, a `{basename, hash}` dict where `hash` is a sha256 over the upstream zarr's stored bytes; for multi-input transformers like `concat`, a list of `{basename, hash, history}` dicts in input order, where `history` is that input's full `rhiza_history` chain (an empty list when the input had no `rhiza_history`). A multi-input entry therefore records every input branch in full, while the store's top-level `rhiza_history` stays a single linear array (the first input's chain plus the merge entry) so single-attr readers keep working.
 
 PNG outputs from plot-writers embed the same schema in PNG `tEXt` chunks via matplotlib's `savefig(metadata=...)`. Single-input plotters use the key `rhiza_history`; two-input plotters use a pair of keys — `rhiza_history_a` / `rhiza_history_b` for `plot-compare`, `rhiza_history_forecast` / `rhiza_history_mclimate` for `plot-mediogram` — one per input branch. Read-back via `PIL.Image.open(path).info` or `exiftool`.
 

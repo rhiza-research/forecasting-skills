@@ -48,8 +48,10 @@ exits 0.
 
 Prints the lineage oldest-first. Each step shows its skill, version, input
 basename, and args. For a two-input PNG (`plot-compare` or
-`plot-mediogram`), each input branch is printed under its own label. If the
-zarr carries a `rhiza_source` attr it is printed first.
+`plot-mediogram`), each input branch is printed under its own label. For a
+`concat` zarr, the concat step lists each input branch's full recorded lineage
+beneath it (labeled `a`, `b`, … by input order). If the zarr carries a
+`rhiza_source` attr it is printed first.
 
 ### `json`
 
@@ -71,6 +73,12 @@ nothing needs to be installed first — `uvx` fetches the CLI on demand.
   reproduces each input branch to a distinctly-named file, then emits one final
   plot command that takes every branch's output as an input (e.g.
   `plot-compare --input a.zarr --input b.zarr`).
+- A `concat` zarr records each input's full chain under the concat entry, so it
+  reproduces every input branch (labeled `a`, `b`, … by input order) to its own
+  `{letter}.zarr`, then emits one final `concat` command that threads every
+  branch's output via repeated `--input` plus the concat's `--dim`/`--coords`
+  args. A branch whose head is not a fetcher still emits the `<UPSTREAM>` caveat
+  so you can supply that input yourself.
 
 ## Reproduction-script caveats
 

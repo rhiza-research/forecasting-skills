@@ -109,6 +109,35 @@ def _format_input(step_input) -> str:
     return str(step_input)
 
 
+def _print_step(n: int, step: dict, indent: str) -> None:
+    print(f"{indent}{n}. {step.get('skill', '?')} (v{step.get('version', '?')})")
+    print(f"{indent}   input: {_format_input(step.get('input'))}")
+    args = step.get("args") or {}
+    if args:
+        print(f"{indent}   args: " + ", ".join(f"{k}={v!r}" for k, v in sorted(args.items())))
+    else:
+        print(f"{indent}   args: (none)")
+
+
+def _print_concat_branches(step: dict, indent: str) -> None:
+    """Under a concat step, list each input branch's recorded lineage. Letters
+    a, b, c… by input order match the reproduction-script branch labels."""
+    items = step.get("input")
+    if not isinstance(items, list):
+        return
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict) or "history" not in item:
+            continue
+        label = chr(ord("a") + idx)
+        history = item.get("history") or []
+        print(f"{indent}   input branch {label} ({item.get('basename', '?')}):")
+        if not history:
+            print(f"{indent}     (no recorded history)")
+            continue
+        for bn, bstep in enumerate(history, start=1):
+            _print_step(bn, bstep, indent + "     ")
+
+
 def _render_human(data: dict) -> None:
     chains = data["chains"]
     source = data.get("source")
@@ -125,15 +154,9 @@ def _render_human(data: dict) -> None:
             print(f"branch {label}:")
         indent = "  " if multi else ""
         for n, step in enumerate(chain, start=1):
-            print(f"{indent}{n}. {step.get('skill', '?')} (v{step.get('version', '?')})")
-            print(f"{indent}   input: {_format_input(step.get('input'))}")
-            args = step.get("args") or {}
-            if args:
-                print(
-                    f"{indent}   args: " + ", ".join(f"{k}={v!r}" for k, v in sorted(args.items()))
-                )
-            else:
-                print(f"{indent}   args: (none)")
+            _print_step(n, step, indent)
+            if step.get("skill") == "concat" and isinstance(step.get("input"), list):
+                _print_concat_branches(step, indent)
 
 
 # --------------------------------------------------------------------------- #
@@ -221,6 +244,29 @@ def _emit_linear(chain: list, prefix: str, final_output: str) -> list:
     return lines
 
 
+def _concat_branches(chain: list) -> dict | None:
+    """If `chain`'s terminal entry is a multi-input `concat` carrying per-input
+    `history`, expand it into a `{letter: history + [concat_entry]}` chains dict
+    (letters a, b, c… by input order, matching plot-timeseries) suitable for the
+    multi-branch reproduction path. Returns None when the chain is not such a
+    concat, so linear chains fall through to `_emit_linear` unchanged."""
+    if not chain:
+        return None
+    terminal = chain[-1]
+    if terminal.get("skill") != "concat":
+        return None
+    items = terminal.get("input")
+    if not isinstance(items, list) or not all(
+        isinstance(i, dict) and "history" in i for i in items
+    ):
+        return None
+    branches = {}
+    for idx, item in enumerate(items):
+        label = chr(ord("a") + idx)
+        branches[label] = list(item.get("history") or []) + [terminal]
+    return branches
+
+
 def _branch_input_flags(branch_outputs: list) -> list:
     """Map (label, output) branch pairs to the final plotter's input flags."""
     labels = [lab for lab, _ in branch_outputs]
@@ -247,14 +293,22 @@ def _render_script(data: dict) -> None:
 
     if len(chains) <= 1:
         # zarr, or single-input PNG: one linear chain ending in this artifact.
+        # A concat zarr's terminal entry carries each input's full chain under
+        # `input[*].history`; expand it into one branch per input so the
+        # multi-branch reproduction path below threads every branch through the
+        # final concat. Otherwise it's a plain linear chain.
         chain = next(iter(chains.values()))
-        lines += _emit_linear(chain, prefix="step", final_output=name)
-        print("\n".join(lines))
-        return
+        branches = _concat_branches(chain)
+        if branches is None:
+            lines += _emit_linear(chain, prefix="step", final_output=name)
+            print("\n".join(lines))
+            return
+        chains = branches
 
-    # Multi-input plot. Each branch chain ends in the same shared plot step.
-    # Reproduce each branch up to (but excluding) that step to build its input,
-    # then run the plot once with every branch's output as an input.
+    # Multi-input merge or plot. Each branch chain ends in the same shared
+    # terminal step (a concat or a plotter). Reproduce each branch up to (but
+    # excluding) that step to build its input, then run the terminal step once
+    # with every branch's output as an input.
     terminal = None
     branch_outputs = []
     for label, chain in chains.items():
@@ -268,12 +322,13 @@ def _render_script(data: dict) -> None:
             lines += _emit_linear(sub, prefix=f"{label}_", final_output=branch_out)
         else:
             lines.append(
-                f"# branch {label} records no steps before the plot; supply {branch_out} yourself."
+                f"# branch {label} records no steps before the final step; "
+                f"supply {branch_out} yourself."
             )
         branch_outputs.append((label, branch_out))
         lines.append("")
 
-    lines.append("# --- combine into the final plot ---")
+    lines.append("# --- combine into the final step ---")
     if terminal is not None:
         ins = _branch_input_flags(branch_outputs)
         lines.append(_command(terminal["skill"], terminal.get("args") or {}, ins, name))
