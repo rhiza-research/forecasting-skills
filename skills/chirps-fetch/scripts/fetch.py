@@ -1,16 +1,16 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#   "requests",
 #   "xarray",
 #   "zarr",
 #   "numpy",
 #   "rioxarray",
 # ]
 # ///
-"""Fetch CHIRPS prelim precipitation from FTP and write a Rhiza Envelope Zarr."""
+"""Fetch CHIRPS prelim precipitation over HTTPS and write a Rhiza Envelope Zarr."""
 
 import argparse
-import ftplib
 import json
 import shutil
 import sys
@@ -19,16 +19,17 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
+import requests
 import rioxarray  # noqa: F401 — registers .rio accessor
 import xarray as xr
 
-CHIRPS_FTP_HOST = "ftp.chc.ucsb.edu"
-CHIRPS_FTP_DIR = "/pub/org/chc/products/CHIRPS/v3.0/daily/prelim/sat"
+CHIRPS_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/prelim/sat"
 CHIRPS_NODATA = -9999.0
+HTTP_TIMEOUT = 60
 
 
 class DayUnavailable(Exception):
-    """Raised when a specific day's TIF is not yet published on the FTP server (550)."""
+    """Raised when a specific day's TIF is not yet published (HTTP 404)."""
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -85,26 +86,43 @@ def _daterange(start: str, end: str):
         d += timedelta(days=1)
 
 
-def _download_day_tif(ftp: ftplib.FTP, day: date, dest_dir: Path) -> Path:
+def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> Path:
     name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
-    # A cwd failure here indicates a real config problem (missing year dir,
-    # auth issue, etc.) — let ftplib.error_perm propagate.
-    ftp.cwd(f"{CHIRPS_FTP_DIR}/{day.year:04d}")
+    url = f"{CHIRPS_BASE_URL}/{day.year:04d}/{name}"
     out = dest_dir / name
     try:
-        with open(out, "wb") as f:
-            ftp.retrbinary(f"RETR {name}", f.write)
-    except ftplib.error_perm as exc:
-        # Only 550 means "file not found"; 530/553 etc. are real errors and
-        # should propagate as ftplib.error_perm.
-        if str(exc).startswith("550"):
-            raise DayUnavailable(f"not posted: {exc}") from exc
-        raise
-    except (ftplib.error_temp, EOFError, ConnectionError, TimeoutError, OSError) as exc:
-        # FTP 4xx temporary failures, mid-stream server hangups, socket
-        # disconnects / timeouts: treat the day as missing so the post-loop
-        # classifier handles tail-vs-mid-gap the same way it does for 550s.
+        resp = session.get(url, timeout=HTTP_TIMEOUT)
+    except requests.RequestException as exc:
+        # Connection resets, timeouts, and other transport-level failures:
+        # treat the day as missing so the post-loop classifier handles
+        # tail-vs-mid-gap the same way it does for a 404.
         raise DayUnavailable(f"transient network error: {exc}") from exc
+
+    if resp.status_code == 404:
+        # The day's file is not yet published.
+        raise DayUnavailable(f"not posted: HTTP 404 for {url}")
+    if resp.status_code >= 500:
+        # Server-side errors are transient: classify as a missing day so the
+        # post-loop tail-vs-mid-gap logic handles them the same way as a 404.
+        raise DayUnavailable(f"transient server error: HTTP {resp.status_code} for {url}")
+    if resp.status_code != 200:
+        # 4xx other than 404 (auth, bad request, etc.) indicates a real
+        # config problem rather than a not-yet-published day; surface it.
+        resp.raise_for_status()
+
+    body = resp.content
+    # Guard against a truncated body: when the server reports a length, the
+    # received byte count must match before the file is handed to rioxarray.
+    declared = resp.headers.get("Content-Length")
+    if declared is not None and len(body) != int(declared):
+        raise DayUnavailable(
+            f"truncated body for {url}: got {len(body)} bytes, Content-Length was {declared}"
+        )
+    if not body:
+        raise DayUnavailable(f"empty body for {url}")
+
+    with open(out, "wb") as f:
+        f.write(body)
     return out
 
 
@@ -163,13 +181,14 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="chirps_") as tmpdir:
         tmp = Path(tmpdir)
-        ftp = ftplib.FTP(CHIRPS_FTP_HOST, timeout=60)
-        ftp.login()
+        # One keep-alive session reused across every per-day GET, so there is
+        # one TLS handshake for the whole range rather than one per day.
+        session = requests.Session()
         try:
             for day in expected_days:
                 print(f"  {day.isoformat()}", file=sys.stderr)
                 try:
-                    tif = _download_day_tif(ftp, day, tmp)
+                    tif = _download_day_tif(session, day, tmp)
                 except DayUnavailable as e:
                     print(
                         f"    day unavailable ({e}); will classify after loop",
@@ -179,16 +198,13 @@ def main() -> None:
                     continue
                 succeeded.append((day, _open_day(tif, day)))
         finally:
-            try:
-                ftp.quit()
-            except ftplib.all_errors:
-                ftp.close()
+            session.close()
 
         # Classify outcome.
         if not succeeded:
             print(
                 f"Error: no days available in range {args.start}..{args.end} "
-                f"on the CHIRPS FTP server. CHIRPS v3.0 preliminary is "
+                f"from the CHIRPS data server. CHIRPS v3.0 preliminary is "
                 "published 2 days after each pentad closes (pentads end on "
                 "days 5, 10, 15, 20, 25, and last of month), so worst-case "
                 "lag is ~7 days; try an earlier --end.",

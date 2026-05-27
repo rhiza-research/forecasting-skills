@@ -2,7 +2,7 @@
 name: chirps-fetch
 description: Fetch live CHIRPS precipitation observations for a date range and write a Rhiza Envelope Zarr. Use when a task needs recent CHIRPS rainfall data, e.g. to compare against a forecast or stations.
 license: MIT
-compatibility: Requires Python 3.12+ and uv. Fetches from the public CHIRPS prelim FTP (ftp.chc.ucsb.edu, anonymous); no credentials required.
+compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS prelim server (data.chc.ucsb.edu); no credentials required.
 metadata:
   version: "0.1.2"
 ---
@@ -34,7 +34,7 @@ Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the glo
 
 ### Production lag and partial-tail behavior
 
-The CHIRPS v3.0 daily preliminary product is published on a pentad-based schedule: per-day files appear in batches **2 days after each pentad closes** (pentads end on the 5th, 10th, 15th, 20th, 25th, and last day of each month). Best-case lag is 2 days (the last day of a pentad, published 2 days later); worst case is ~7 days (the day right after a pentad ends, which waits for the next pentad to close before its batch is published). Average lag is 4-5 days. See https://www.chc.ucsb.edu/data/chirps3 for the official schedule. When the requested `--end` falls inside the lag window, the script writes a partial zarr covering only the days that were available on the FTP server, logs the missing days and effective end date to stderr, and exits 0. If days are missing from the middle of the range (not the tail), the script exits 2 — that's a server-side data gap, not a lag issue. The `rhiza_history` entry's `args.end` reflects the EFFECTIVE end actually written (not the requested `--end`), so a re-run against the same `--end` cache-misses on the partial output and re-attempts the missing tail.
+The CHIRPS v3.0 daily preliminary product is published on a pentad-based schedule: per-day files appear in batches **2 days after each pentad closes** (pentads end on the 5th, 10th, 15th, 20th, 25th, and last day of each month). Best-case lag is 2 days (the last day of a pentad, published 2 days later); worst case is ~7 days (the day right after a pentad ends, which waits for the next pentad to close before its batch is published). Average lag is 4-5 days. See https://www.chc.ucsb.edu/data/chirps3 for the official schedule. When the requested `--end` falls inside the lag window, the script writes a partial zarr covering only the days that were available on the server, logs the missing days and effective end date to stderr, and exits 0. If days are missing from the middle of the range (not the tail), the script exits 2 — that's a server-side data gap, not a lag issue. The `rhiza_history` entry's `args.end` reflects the EFFECTIVE end actually written (not the requested `--end`), so a re-run against the same `--end` cache-misses on the partial output and re-attempts the missing tail.
 
 ### Provenance
 
