@@ -4,7 +4,7 @@ description: Render a side-by-side multi-panel comparison PNG of two Rhiza Envel
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # plot-compare
@@ -109,6 +109,13 @@ uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
   gridded input has lon in `[0, 360]`, lons are auto-wrapped to
   `[-180, 180]` (and the dim re-sorted) before the rectangular slice.
   Inputs already in `[-180, 180]` are unaffected.
+- **Input units.** Both rows are drawn on one shared colormap and
+  normalization. When the two inputs carry the compared variable in
+  differing `units`, the figure colors values from different units on a
+  single scale, so a warning naming both units is printed to stderr.
+  This is a rendering caveat only — the figure is still produced and the
+  exit status is 0. The check applies only when both inputs carry a
+  `units` attr; a missing value is not compared.
 
 ### Output
 

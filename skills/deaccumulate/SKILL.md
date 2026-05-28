@@ -4,7 +4,7 @@ description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # deaccumulate
@@ -21,6 +21,24 @@ per-step increments via `arr[i+1] - arr[i]`, clipped at zero.
   windows.
 - Common examples: ECMWF S2S total precipitation (`tp`), surface net solar
   radiation, evaporation, SWE.
+
+## Input precondition
+
+The input variable must be a cumulative-since-init accumulated quantity — a
+depth or amount that grows along `step` (units such as `kg m**-2`, `m`, `mm`,
+or `J m**-2`, and no rate/flux `standard_name`). The skill validates this from
+the variable's metadata before differencing:
+
+- It rejects (exit 2, with a message naming the variable and the offending
+  metadata) inputs whose `units` carry a per-time denominator (e.g. `mm/day`,
+  `kg m-2 s-1`, `m s-1`) or whose `standard_name` ends in `_rate` or `_flux`
+  (e.g. `lwe_precipitation_rate`, `precipitation_flux`). Such inputs are
+  per-time rates and are already per-period; differencing them produces
+  meaningless values. A daily `mm/day` product (e.g. CHIRPS or IMERG) must not
+  be deaccumulated.
+- When the variable has neither `units` nor `standard_name`, the skill cannot
+  validate the input. It prints a stderr warning and proceeds, so an
+  accumulated input that lacks a `units` attr still works.
 
 ## Usage
 

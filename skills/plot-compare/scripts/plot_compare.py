@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 # Region bbox table accepted by ``--region``. Mirrors ``clip-region``'s
 # REGIONS dict; duplicated per CONVENTIONS.md ("no shared helper module" —
@@ -427,6 +427,25 @@ def main() -> None:
 
     da_a = ds_a[variable]
     da_b = ds_b[variable]
+
+    # Input-units check. The two rows share one colormap and normalization, so
+    # if the inputs hold the variable in different units the panels are colored
+    # on a single scale that does not correspond to either input's quantity,
+    # making the comparison misleading. This only affects the rendering, so warn
+    # and proceed. Compare only when both inputs carry a string `units` attr; a
+    # missing or non-string value can't be checked. Units are compared after
+    # stripping surrounding whitespace so a trailing space is not read as a real
+    # difference.
+    units_a = da_a.attrs.get("units")
+    units_b = da_b.attrs.get("units")
+    if isinstance(units_a, str) and isinstance(units_b, str) and units_a.strip() != units_b.strip():
+        print(
+            f"Warning: variable '{variable}' has differing units between the "
+            f"inputs ({label_a} units={units_a!r}, {label_b} units={units_b!r}). "
+            f"The two rows are drawn on one shared color scale, so values in "
+            f"different units are not directly comparable in this figure.",
+            file=sys.stderr,
+        )
 
     a_lat = _cf_dim(da_a, "latitude")
     a_lon = _cf_dim(da_a, "longitude")
