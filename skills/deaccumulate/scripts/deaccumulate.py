@@ -42,31 +42,54 @@ _RATE_SLASH_RE = re.compile(
     re.IGNORECASE,
 )
 
-# UDUNITS negative-power rate forms on a time-unit token: ``s-1``, ``s**-1``,
-# ``s^-1``, ``day-1``, etc. The token must stand alone (word boundary before
-# it) so that the ``-2`` in ``m-2`` / ``m**-2`` (per area) is never matched and
-# the ``m`` length token never participates.
+# UDUNITS negative-power rate forms on a time-unit token, restricted to the
+# first negative power: ``s-1``, ``s**-1``, ``s^-1``, ``day-1``, etc. The token
+# must stand alone (word boundary before it) so that the ``-2`` in ``m-2`` /
+# ``m**-2`` (per area) is never matched and the ``m`` length token never
+# participates. The power is fixed at exactly ``-1`` (a per-time rate); higher
+# negative powers such as ``s-2`` denote acceleration / energy-per-mass (e.g.
+# the ``m2 s-2`` of geopotential or CAPE), which are not rates.
 _RATE_POWER_RE = re.compile(
-    r"\b(?:" + "|".join(_TIME_UNIT_TOKENS) + r")(?:\*\*|\^)?-[1-9][0-9]*\b",
+    r"\b(?:" + "|".join(_TIME_UNIT_TOKENS) + r")(?:\*\*|\^)?-1\b",
+    re.IGNORECASE,
+)
+
+# A standalone watt token marks a power (energy per time), which is inherently a
+# per-time rate (``W`` = J/s). So a units string such as ``W m-2`` / ``W m**-2``
+# / ``W/m2`` (instantaneous radiation flux) is a rate, in contrast to its
+# accumulated form ``J m-2``. Match the SI symbol ``W`` on word boundaries (so
+# it does not fire inside another token like ``Wb``) or the spelled-out
+# ``watt``/``watts``. Under IGNORECASE this also matches a lone lowercase ``w``,
+# which is acceptable (there is no standard unit ``w``).
+_RATE_WATT_RE = re.compile(
+    r"\b(?:W|watts?)\b",
     re.IGNORECASE,
 )
 
 
 def _units_look_like_rate(units: str) -> bool:
-    """Return True when a CF ``units`` string carries a per-time denominator,
-    indicating a rate rather than an accumulated amount.
+    """Return True when a CF ``units`` string carries a per-time denominator or a
+    power (watt) term, indicating a rate rather than an accumulated amount.
 
-    Detects two forms on a time-unit token (``s``, ``sec``, ``second``, ``min``,
-    ``minute``, ``h``, ``hr``, ``hour``, ``d``, ``day``):
-      - a slash denominator: ``mm/day``, ``m / s``;
-      - a UDUNITS negative power: ``s-1``, ``s**-1``, ``s^-1``, ``day-1``.
+    Detects three forms:
+      - a slash denominator on a time-unit token (``s``, ``sec``, ``second``,
+        ``min``, ``minute``, ``h``, ``hr``, ``hour``, ``d``, ``day``):
+        ``mm/day``, ``m / s``;
+      - a UDUNITS first negative power on a time-unit token: ``s-1``, ``s**-1``,
+        ``s^-1``, ``day-1``;
+      - a standalone watt token (``W``, ``watt``, ``watts``): ``W m-2``,
+        ``W m**-2``, ``W/m2``.
 
-    So ``mm/day``, ``kg m-2 s-1``, and ``m s-1`` are rates, while the per-area
-    ``m-2`` / ``m**-2`` in ``kg m**-2`` is not (``m`` is not a time token).
+    So ``mm/day``, ``kg m-2 s-1``, ``m s-1``, and ``W m-2`` are rates, while the
+    per-area ``m-2`` / ``m**-2`` in ``kg m**-2`` is not (``m`` is not a time
+    token), and the higher negative power ``m2 s-2`` (acceleration /
+    energy-per-mass) is not a rate.
     """
     if not units:
         return False
-    return bool(_RATE_SLASH_RE.search(units) or _RATE_POWER_RE.search(units))
+    return bool(
+        _RATE_SLASH_RE.search(units) or _RATE_POWER_RE.search(units) or _RATE_WATT_RE.search(units)
+    )
 
 
 def _hash_zarr(zarr_path: Path) -> str:
