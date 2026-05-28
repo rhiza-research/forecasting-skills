@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 # Time-unit tokens that, when they appear as a per-time denominator, mark a
 # rate. Deliberately excludes length/mass/etc. tokens (e.g. ``m``) so that a
