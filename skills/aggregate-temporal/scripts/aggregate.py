@@ -99,7 +99,7 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
 
 # Units that, on their own, mark a temperature (an intensive quantity that
 # cannot be summed). Compared case-insensitively against the stripped units
-# string. Kelvin, Celsius, and their common CF/UDUNITS spellings.
+# string. Kelvin, Celsius, Fahrenheit, and their common CF/UDUNITS spellings.
 _TEMPERATURE_UNITS = {
     "k",
     "degk",
@@ -109,6 +109,11 @@ _TEMPERATURE_UNITS = {
     "degrees_celsius",
     "degreec",
     "°c",
+    "degf",
+    "degree_fahrenheit",
+    "degrees_fahrenheit",
+    "fahrenheit",
+    "°f",
 }
 
 # Pressure units. A pressure value is intensive, but a bare pressure unit is
@@ -117,9 +122,11 @@ _TEMPERATURE_UNITS = {
 # indicates pressure (see `_intensive_reason`).
 _PRESSURE_UNITS = {"pa", "hpa", "mbar", "bar"}
 
-# Dimensionless fraction / percentage units. A fraction or percentage is
-# intensive and summing it across a window is not a physical total.
-_FRACTION_UNITS = {"1", "%", "percent"}
+# Percentage units. A percentage is intensive and summing it across a window
+# is not a physical total. The bare dimensionless unit `1` is excluded: in CF
+# it is also the units of dimensionless counts (e.g. number of wet days), which
+# are legitimately summable, so flagging it would be a false positive.
+_FRACTION_UNITS = {"%", "percent"}
 
 
 def _intensive_reason(units, standard_name):
@@ -150,7 +157,8 @@ def _intensive_reason(units, standard_name):
     if units_norm in _PRESSURE_UNITS and "pressure" in name:
         return f"units={units!r} with standard_name={standard_name!r} denotes a pressure"
 
-    # Dimensionless fraction or percentage.
+    # Percentage (`%`/`percent`); the bare dimensionless unit `1` is not flagged
+    # because it also covers summable counts.
     if units_norm in _FRACTION_UNITS:
         return f"units={units!r} denotes a dimensionless fraction or percentage"
 

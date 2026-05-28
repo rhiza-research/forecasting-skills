@@ -432,11 +432,13 @@ def main() -> None:
     # if the inputs hold the variable in different units the panels are colored
     # on a single scale that does not correspond to either input's quantity,
     # making the comparison misleading. This only affects the rendering, so warn
-    # and proceed. Compare only when both inputs carry a `units` attr; a missing
-    # value can't be checked.
+    # and proceed. Compare only when both inputs carry a string `units` attr; a
+    # missing or non-string value can't be checked. Units are compared after
+    # stripping surrounding whitespace so a trailing space is not read as a real
+    # difference.
     units_a = da_a.attrs.get("units")
     units_b = da_b.attrs.get("units")
-    if units_a is not None and units_b is not None and units_a != units_b:
+    if isinstance(units_a, str) and isinstance(units_b, str) and units_a.strip() != units_b.strip():
         print(
             f"Warning: variable '{variable}' has differing units between the "
             f"inputs ({label_a} units={units_a!r}, {label_b} units={units_b!r}). "

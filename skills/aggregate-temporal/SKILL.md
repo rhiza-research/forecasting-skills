@@ -52,7 +52,7 @@ signals and leaves ambiguous metadata to proceed:
 - temperature units (`K`, `degK`, `degC`, `Celsius`, `degree_Celsius`, `°C`);
 - pressure units (`Pa`, `hPa`, `mbar`, `bar`) when the `standard_name` also
   indicates pressure;
-- a dimensionless fraction or percentage (`1`, `%`, `percent`).
+- a percentage (`%`, `percent`).
 
 The other reducers (`mean`, `max`, `min`) are always accepted, and precipitation
 (`mm`, `kg m**-2`) with `--method sum` proceeds.

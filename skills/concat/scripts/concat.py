@@ -106,19 +106,24 @@ def main() -> None:
     # `units` attr across inputs; error when two inputs carry the variable in
     # differing units. Inputs that omit `units` for a variable are not a
     # violation (missing metadata can't be checked), so only present values
-    # participate in the comparison.
-    common_vars = set(dss[0].data_vars)
-    for ds in dss[1:]:
-        common_vars &= set(ds.data_vars)
-    for var in sorted(common_vars):
+    # participate in the comparison. The check spans the union of all inputs'
+    # data variables, so a variable that appears in only some inputs with
+    # conflicting units is still caught; inputs lacking the variable are
+    # skipped. Units are compared after stripping surrounding whitespace and
+    # only when they are strings, so a trailing space is not read as a real
+    # difference and a non-string attr does not break the comparison.
+    all_vars = set()
+    for ds in dss:
+        all_vars |= set(ds.data_vars)
+    for var in sorted(all_vars):
         seen_units = {}
         for ip, ds in zip(paths, dss, strict=True):
             if var not in ds.data_vars:
                 continue
             u = ds[var].attrs.get("units")
-            if u is None:
+            if not isinstance(u, str):
                 continue
-            seen_units[ip.name] = u
+            seen_units[ip.name] = u.strip()
         if len(set(seen_units.values())) > 1:
             detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
             print(

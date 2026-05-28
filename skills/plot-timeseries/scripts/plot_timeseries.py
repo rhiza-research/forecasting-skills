@@ -154,12 +154,17 @@ def main() -> None:
     # units, traces measured in different units are drawn against a single
     # scale and labeled with only one of them, which misrepresents the data.
     # This only affects the rendering, so warn and proceed. Compare only the
-    # inputs that carry a `units` attr; a missing value can't be checked.
+    # inputs that carry the variable with a string `units` attr; an input that
+    # lacks the variable is skipped, and a missing or non-string value can't be
+    # checked. Units are compared after stripping surrounding whitespace so a
+    # trailing space is not read as a real difference.
     seen_units = {}
     for pth, ds in zip(args.input, datasets, strict=True):
+        if variable not in ds:
+            continue
         u = ds[variable].attrs.get("units")
-        if u is not None:
-            seen_units[Path(pth).stem] = u
+        if isinstance(u, str):
+            seen_units[Path(pth).stem] = u.strip()
     if len(set(seen_units.values())) > 1:
         detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
         print(
