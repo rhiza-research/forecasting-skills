@@ -97,6 +97,66 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
     )
 
 
+# Units that, on their own, mark a temperature (an intensive quantity that
+# cannot be summed). Compared case-insensitively against the stripped units
+# string. Kelvin, Celsius, and their common CF/UDUNITS spellings.
+_TEMPERATURE_UNITS = {
+    "k",
+    "degk",
+    "degc",
+    "celsius",
+    "degree_celsius",
+    "degrees_celsius",
+    "degreec",
+    "°c",
+}
+
+# Pressure units. A pressure value is intensive, but a bare pressure unit is
+# also used for non-pressure quantities in some conventions, so these only
+# count toward an intensive verdict when the variable's standard_name also
+# indicates pressure (see `_intensive_reason`).
+_PRESSURE_UNITS = {"pa", "hpa", "mbar", "bar"}
+
+# Dimensionless fraction / percentage units. A fraction or percentage is
+# intensive and summing it across a window is not a physical total.
+_FRACTION_UNITS = {"1", "%", "percent"}
+
+
+def _intensive_reason(units, standard_name):
+    """Return a short reason string when the variable is clearly an intensive
+    quantity (one whose values describe a state, not an amount, so summing them
+    over a window is not meaningful), or None when there is no high-confidence
+    intensive signal.
+
+    Detection is deliberately conservative — it fires only on unambiguous
+    temperature, pressure, or fraction/percentage signals — so that extensive
+    quantities such as precipitation depth (`mm`, `kg m**-2`) are never flagged
+    and ambiguous metadata is left to proceed.
+    """
+    name = standard_name.strip().lower() if isinstance(standard_name, str) else ""
+    units_norm = units.strip().lower() if isinstance(units, str) else ""
+
+    # Temperature by standard_name: `air_temperature`, `sea_surface_temperature`,
+    # or any name ending in `_temperature`.
+    if name == "air_temperature" or name.endswith("_temperature"):
+        return f"standard_name={standard_name!r} denotes a temperature"
+
+    # Temperature by units.
+    if units_norm in _TEMPERATURE_UNITS:
+        return f"units={units!r} denotes a temperature"
+
+    # Pressure: require both a pressure unit and a pressure-ish standard_name so
+    # that a bare pressure unit on an unrelated variable is not misread.
+    if units_norm in _PRESSURE_UNITS and "pressure" in name:
+        return f"units={units!r} with standard_name={standard_name!r} denotes a pressure"
+
+    # Dimensionless fraction or percentage.
+    if units_norm in _FRACTION_UNITS:
+        return f"units={units!r} denotes a dimensionless fraction or percentage"
+
+    return None
+
+
 def _reduce(grouped, method, dim=None):
     fn = {
         "sum": grouped.sum,
@@ -290,6 +350,31 @@ def main() -> None:
         f"Aggregating dim={dim} period={args.period} method={args.method}",
         file=sys.stderr,
     )
+
+    # Method guard. `--method sum` adds the values within each window into a
+    # period total. That is meaningful only for an extensive quantity (an
+    # amount that accumulates, e.g. precipitation depth), not for an intensive
+    # quantity (a state value such as temperature, pressure, or a fraction):
+    # the sum of intensive values has no physical interpretation. Reject only
+    # high-confidence intensive cases when the method is `sum`; the other
+    # reducers (`mean`/`max`/`min`) are always valid and ambiguous metadata is
+    # left to proceed.
+    if args.method == "sum":
+        for var in ds.data_vars:
+            reason = _intensive_reason(
+                ds[var].attrs.get("units"),
+                ds[var].attrs.get("standard_name"),
+            )
+            if reason is not None:
+                print(
+                    f"Error: variable '{var}' is an intensive quantity "
+                    f"({reason}); '--method sum' adds its values within each "
+                    f"window into a period total, but the sum of an intensive "
+                    f"quantity is not a physical total and has no meaningful "
+                    f"interpretation.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
 
     if dim == "step":
         out_ds = _aggregate_step(ds, args.period, args.method)

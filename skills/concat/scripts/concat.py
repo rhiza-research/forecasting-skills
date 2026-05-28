@@ -97,6 +97,41 @@ def main() -> None:
         sys.exit(2)
 
     dss = [xr.open_zarr(p, consolidated=False) for p in paths]
+
+    # Input-units guard. Concatenation places the inputs' values into a single
+    # array under one set of attrs (the first input's, stamped below). If the
+    # inputs hold the same variable in different units, the concatenated array
+    # mixes incompatible numbers under one units label, producing objectively
+    # wrong data. For each data variable common to all inputs, compare the
+    # `units` attr across inputs; error when two inputs carry the variable in
+    # differing units. Inputs that omit `units` for a variable are not a
+    # violation (missing metadata can't be checked), so only present values
+    # participate in the comparison.
+    common_vars = set(dss[0].data_vars)
+    for ds in dss[1:]:
+        common_vars &= set(ds.data_vars)
+    for var in sorted(common_vars):
+        seen_units = {}
+        for ip, ds in zip(paths, dss, strict=True):
+            if var not in ds.data_vars:
+                continue
+            u = ds[var].attrs.get("units")
+            if u is None:
+                continue
+            seen_units[ip.name] = u
+        if len(set(seen_units.values())) > 1:
+            detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
+            print(
+                f"Error: variable '{var}' has differing units across the inputs "
+                f"({detail}). Concatenation combines these inputs into one array "
+                f"that carries a single units label, so values measured in "
+                f"different units would be mixed together as if they were the "
+                f"same quantity. Concatenation requires the inputs to express "
+                f"'{var}' in one consistent unit.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
     dim_on_inputs = all(args.dim in ds.dims for ds in dss)
 
     if not dim_on_inputs:

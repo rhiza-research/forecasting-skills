@@ -30,6 +30,16 @@ uv run scripts/concat.py -i a.zarr -i b.zarr [-i ...] --dim DIM --output <out.za
 - `--coords` — optional comma-separated coord values to assign to the new dim. Length must match number of inputs; only used when `--dim` does not already exist on inputs.
 - `--output`, `-o` — output Zarr.
 
+### Input units
+
+Concatenation combines the inputs into one array that carries a single `units`
+label (the first input's attrs are preserved on the output). For each data
+variable common to every input, the `units` attr is compared across the inputs
+before any output is written. When two inputs carry the variable in differing
+units, the skill exits with status 2 and names each input and its units; no
+output is produced. Inputs that omit `units` for a variable are not treated as a
+violation — only present values are compared.
+
 ### Output
 
 A single Zarr with the concat dim extended. Attrs from the first input are preserved.

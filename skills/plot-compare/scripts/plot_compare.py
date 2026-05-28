@@ -428,6 +428,23 @@ def main() -> None:
     da_a = ds_a[variable]
     da_b = ds_b[variable]
 
+    # Input-units check. The two rows share one colormap and normalization, so
+    # if the inputs hold the variable in different units the panels are colored
+    # on a single scale that does not correspond to either input's quantity,
+    # making the comparison misleading. This only affects the rendering, so warn
+    # and proceed. Compare only when both inputs carry a `units` attr; a missing
+    # value can't be checked.
+    units_a = da_a.attrs.get("units")
+    units_b = da_b.attrs.get("units")
+    if units_a is not None and units_b is not None and units_a != units_b:
+        print(
+            f"Warning: variable '{variable}' has differing units between the "
+            f"inputs ({label_a} units={units_a!r}, {label_b} units={units_b!r}). "
+            f"The two rows are drawn on one shared color scale, so values in "
+            f"different units are not directly comparable in this figure.",
+            file=sys.stderr,
+        )
+
     a_lat = _cf_dim(da_a, "latitude")
     a_lon = _cf_dim(da_a, "longitude")
     b_lat = _cf_dim(da_b, "latitude")

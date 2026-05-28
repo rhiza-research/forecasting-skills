@@ -38,6 +38,25 @@ uv run scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
   on the obs/time-resample path (no effect on the forecast `step`
   path). See "Anchor end" below.
 
+### Method and intensive quantities
+
+`--method sum` adds the values within each window into a period total, which is
+meaningful only for an extensive quantity (an amount that accumulates, e.g.
+precipitation depth in `mm` or `kg m**-2`). When `--method sum` is requested on a
+variable that is clearly an intensive quantity, the skill exits with status 2
+before any output is written and names the variable and the signal that marks it
+as intensive. Detection is conservative — it fires only on high-confidence
+signals and leaves ambiguous metadata to proceed:
+
+- a `standard_name` of `air_temperature` or any name ending in `_temperature`;
+- temperature units (`K`, `degK`, `degC`, `Celsius`, `degree_Celsius`, `°C`);
+- pressure units (`Pa`, `hPa`, `mbar`, `bar`) when the `standard_name` also
+  indicates pressure;
+- a dimensionless fraction or percentage (`1`, `%`, `percent`).
+
+The other reducers (`mean`, `max`, `min`) are always accepted, and precipitation
+(`mm`, `kg m**-2`) with `--method sum` proceeds.
+
 ### Output
 
 Same variables; the time/step axis is replaced by the aggregated window.

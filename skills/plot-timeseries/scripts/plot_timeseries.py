@@ -149,6 +149,27 @@ def main() -> None:
             )
             sys.exit(2)
 
+    # Input-units check. The traces share one y-axis whose label takes the
+    # units of the first input. If the inputs hold the variable in different
+    # units, traces measured in different units are drawn against a single
+    # scale and labeled with only one of them, which misrepresents the data.
+    # This only affects the rendering, so warn and proceed. Compare only the
+    # inputs that carry a `units` attr; a missing value can't be checked.
+    seen_units = {}
+    for pth, ds in zip(args.input, datasets, strict=True):
+        u = ds[variable].attrs.get("units")
+        if u is not None:
+            seen_units[Path(pth).stem] = u
+    if len(set(seen_units.values())) > 1:
+        detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
+        print(
+            f"Warning: variable '{variable}' has differing units across the "
+            f"overlaid inputs ({detail}). The traces share one y-axis labeled "
+            f"with a single unit, so lines in different units are not directly "
+            f"comparable in this figure.",
+            file=sys.stderr,
+        )
+
     fig, ax = plt.subplots(figsize=(10, 6))
     units = None
     first_tdim = None
