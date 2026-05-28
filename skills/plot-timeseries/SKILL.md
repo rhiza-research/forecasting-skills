@@ -57,6 +57,15 @@ A PNG at `--output`, single axes (`figsize=(10, 6)`), one line per input,
 legend on the axes. The y-axis label is `<variable>` plus `[<units>]` when
 the variable carries a `units` attribute.
 
+### Input units
+
+All traces share one y-axis whose label takes the units of the first input.
+When the overlaid inputs carry the plotted variable in differing `units`, lines
+in different units are drawn against a single scale and labeled with only one of
+them. The skill prints a warning to stderr naming the distinct units and still
+renders the figure (exit status 0); it is a rendering caveat, not a hard error.
+Only inputs that carry a `units` attr participate in the comparison.
+
 ### Provenance
 
 Every PNG carries a per-input `tEXt` chunk plus a producer key, written via
