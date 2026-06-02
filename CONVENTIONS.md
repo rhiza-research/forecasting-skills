@@ -36,6 +36,8 @@ standalone single-file scripts. The convention is enforced by review.
 | --- | --- | --- | --- |
 | Date range | `--start` / `--end` | `YYYY-MM-DD` (inclusive) | Used by archive fetchers covering a span of dates. |
 | Single date | `--date` | `YYYY-MM-DD` | Used when a skill operates on one timestamp (e.g. an init date for a forecast). |
+| Relative window length | `--last` | `<int>d` \| `<int>w` | Inclusive calendar-day window expressed relative to its end (`w` = 7 days, so `3w` = 21 days; `start = end - (N-1)`). Mutually exclusive with `--start`/`--end`: a fetcher accepts one mode or the other, never both or neither. The fetcher resolves `--last` to a concrete `start`/`end` and records those resolved dates (not the relative spec) in the cache key / `rhiza_history` args. |
+| Window anchor | `--anchor` | `today` \| `YYYY-MM-DD` | Upper bound used when resolving a `--last` window's end. `today` is the default. The end is the latest available data on or before the anchor (the production lag is whatever the data dictates), so the caller never hardcodes a lag. Only meaningful alongside `--last`. |
 
 ### Variables and dimensions
 
