@@ -367,63 +367,11 @@ def _aggregate_step(ds, period, method):
     return xr.concat(chunks, dim="step").assign_coords(step=labels)
 
 
-def _run_self_test() -> None:
-    """Exercise the sum unit-relabel helpers over the SKILL.md I/O matrix.
-
-    Pure-function checks only — no zarr or xarray needed — so CI's `--help`
-    job and a manual `--self-test` run both stay cheap.
-    """
-    # _rate_depth_numerator: recognized per-day depth rates map to their depth;
-    # everything else returns None.
-    assert _rate_depth_numerator("mm/day") == "mm"
-    assert _rate_depth_numerator("mm day-1") == "mm"
-    assert _rate_depth_numerator("mm d-1") == "mm"
-    assert _rate_depth_numerator("mm/d") == "mm"
-    assert _rate_depth_numerator("MM/DAY") == "mm"
-    assert _rate_depth_numerator("kg m**-2/day") == "kg m**-2"
-    assert _rate_depth_numerator("kg m-2 day-1") == "kg m**-2"
-    assert _rate_depth_numerator("mm") is None  # already extensive
-    assert _rate_depth_numerator("kg m**-2") is None  # already extensive
-    assert _rate_depth_numerator("kg/m2") is None  # area-normalized, not /time
-    assert _rate_depth_numerator("mm/hr") is None  # sub-daily denom not recognized
-    # Slash + negative power is a double negation (mm·day), not a rate.
-    assert _rate_depth_numerator("mm/day-1") is None
-    assert _rate_depth_numerator("mm/day**-1") is None
-    assert _rate_depth_numerator("°C") is None
-    assert _rate_depth_numerator("") is None
-    assert _rate_depth_numerator(None) is None
-
-    # _summed_units_and_name: relabel units and keep standard_name consistent
-    # with the new depth units.
-    # Known rate name -> amount form.
-    assert _summed_units_and_name("mm/day", "lwe_precipitation_rate") == (
-        "mm",
-        "lwe_thickness_of_precipitation_amount",
-    )
-    # Other rate-shaped name (no known amount equivalent) -> dropped to None.
-    assert _summed_units_and_name("mm/day", "precipitation_flux") == ("mm", None)
-    assert _summed_units_and_name("mm/day", "rainfall_rate") == ("mm", None)
-    assert _summed_units_and_name("mm/day", "LWE_PRECIPITATION_FLUX") == ("mm", None)
-    # Non-rate name -> kept unchanged.
-    assert _summed_units_and_name("mm/day", "daily_rain_gauge") == ("mm", "daily_rain_gauge")
-    # Absent name -> stays absent.
-    assert _summed_units_and_name("mm/day", None) == ("mm", None)
-    # Non-rate units -> everything unchanged (no relabel, no drop).
-    assert _summed_units_and_name("kg m**-2", "lwe_thickness_of_precipitation_amount") == (
-        "kg m**-2",
-        "lwe_thickness_of_precipitation_amount",
-    )
-    assert _summed_units_and_name("°C", "air_temperature") == ("°C", "air_temperature")
-    assert _summed_units_and_name(None, None) == (None, None)
-
-    print("self-test OK", file=sys.stderr)
-
-
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--input", "-i")
-    p.add_argument("--output", "-o")
-    p.add_argument("--period", choices=["daily", "weekly", "dekadal", "monthly"])
+    p.add_argument("--input", "-i", required=True)
+    p.add_argument("--output", "-o", required=True)
+    p.add_argument("--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"])
     p.add_argument("--method", default="sum", choices=["sum", "mean", "max", "min"])
     p.add_argument("--time-dim")
     p.add_argument(
@@ -435,20 +383,7 @@ def main() -> None:
         "whose start falls before the input's first timestamp are "
         "dropped. Has no effect on the forecast `step` path.",
     )
-    p.add_argument(
-        "--self-test",
-        action="store_true",
-        help="Run the in-script unit checks for the sum unit-relabel helpers "
-        "and exit. Requires no input data.",
-    )
     args = p.parse_args()
-
-    if args.self_test:
-        _run_self_test()
-        return
-
-    if not args.input or not args.output or not args.period:
-        p.error("--input, --output, and --period are required")
 
     if args.anchor_end is not None:
         try:
@@ -466,7 +401,7 @@ def main() -> None:
     partial_entry = {
         "skill": "aggregate-temporal",
         "version": _RHIZA_SKILL_VERSION,
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output", "self_test"}},
+        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
         "input": {"basename": Path(args.input).name},
     }
     upstream = _load_history(Path(args.input))
