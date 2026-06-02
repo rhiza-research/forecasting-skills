@@ -1,6 +1,6 @@
 ---
 name: downscale
-description: Spatially regrid a Rhiza Envelope Zarr onto a coarser grid using linear interpolation, by an integer factor or to a target resolution. Use when a task needs to reduce the spatial resolution of any gridded dataset (forecast, satellite, reanalysis) to match another grid or to speed up downstream steps.
+description: Downscale a Rhiza Envelope Zarr onto a FINER grid, adding information via a chosen --method (linear-interpolation or q-q empirical quantile mapping). The finer target is given by an integer factor, a finer target resolution, or a reference dataset's grid. Use when a task needs higher spatial resolution; to make a grid coarser or merely realign it, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
@@ -9,21 +9,41 @@ metadata:
 
 # downscale
 
-Source-agnostic spatial regridding: linearly interpolates the input onto a uniform target grid `factor` times coarser (or with spacing `target-resolution` degrees) along the detected latitude/longitude dims. Works on any gridded Rhiza Envelope Zarr regardless of source. Optionally applies empirical quantile-quantile mapping after regridding to bias-correct the regridded values against a reference distribution.
+Source-agnostic spatial downscaling: produces a FINER grid than the input and
+adds information through a pluggable `--method`. The finer target grid is
+specified one of three ways — an integer `--factor` (new spacing = input
+spacing / factor), a finer `--target-resolution` in degrees, or a
+`--reference-grid` dataset whose lat/lon grid becomes the target. The requested
+target must be finer than the input; a coarser-or-equal target is rejected with
+a pointer to the `coarsen` skill.
+
+Methods:
+
+- `linear-interpolation` — linearly interpolate the input onto the finer target
+  grid (via `xarray-regrid`'s `.regrid.linear()` accessor). No distribution
+  change.
+- `q-q` — linearly interpolate onto the finer target grid, then apply per-grid-cell
+  empirical quantile-quantile mapping along `--time-dim`, mapping the
+  interpolated values onto the distribution of a `--qq-reference` dataset that
+  must already be on the output (finer) grid.
 
 ## When to use
 
-- A gridded Zarr needs to be brought onto a coarser grid before plotting, comparison, or ensemble aggregation.
-- Matching the resolution of another dataset (e.g. IMERG 0.1° onto a 0.25° grid).
-- Bias-correcting the regridded output against an observational reference on the same target grid (opt-in via `--qq-reference`).
+- A gridded Zarr needs higher spatial resolution before plotting or comparison.
+- Matching the (finer) resolution of another dataset via its grid
+  (`--reference-grid`).
+- Bias-correcting interpolated output against an observational reference on the
+  output grid (`--method q-q` with `--qq-reference`).
 
-Not for: statistical/bias-corrected downscaling to *higher* resolution — that's a domain-specific operation and not this skill.
+Not for: coarsening a grid or simply realigning onto a coarser/equal grid — that
+is the `coarsen` skill.
 
 ## Usage
 
 ```
 uv run scripts/downscale.py --input <in.zarr> --output <out.zarr> \
-    (--factor N | --target-resolution DEG) \
+    --method {linear-interpolation,q-q} \
+    (--factor N | --target-resolution DEG | --reference-grid REF.zarr) \
     [--dims LAT,LON] [--variable NAME] \
     [--qq-reference REF.zarr] [--time-dim DIM]
 ```
@@ -31,16 +51,21 @@ uv run scripts/downscale.py --input <in.zarr> --output <out.zarr> \
 ### Arguments
 - `--input`, `-i` — input Zarr (any gridded envelope).
 - `--output`, `-o` — output Zarr.
-- `--factor`, `-f` — integer coarsening factor (>= 2). Mutually exclusive with `--target-resolution`. Target spacing = `factor` × input spacing.
-- `--target-resolution` — target spacing in degrees; factor is derived from the input grid spacing.
+- `--method` — `linear-interpolation` or `q-q`. Required.
+- `--factor`, `-f` — integer refinement factor (>= 2). New spacing = input spacing / factor. Mutually exclusive with `--target-resolution` and `--reference-grid`.
+- `--target-resolution` — target spacing in degrees; must be finer (smaller) than the input. Mutually exclusive with `--factor` and `--reference-grid`.
+- `--reference-grid` — path to a reference Zarr whose lat/lon grid defines the finer target. The reference grid must be finer than the input. Mutually exclusive with `--factor` and `--target-resolution`.
 - `--dims` — comma-separated lat,lon dim names. Defaults autodetect among `latitude/lat/y` and `longitude/lon/x`.
-- `--variable`, `-v` — restrict to a single data variable. Default: regrid all.
-- `--qq-reference` — optional path to a reference Zarr. When given, applies per-grid-cell empirical quantile mapping along `--time-dim` after the regrid, mapping the regridded values to the reference distribution. The reference must already be on the post-regrid lat/lon grid; mismatches are an error.
-- `--time-dim` — time dimension used as the sample axis for q-q mapping. Default: `time`. Both the input and the reference must have a dimension by this name.
+- `--variable`, `-v` — restrict to a single data variable. Default: process all.
+- `--qq-reference` — reference Zarr whose distribution the `q-q` method maps the output onto. Per-grid-cell empirical quantile mapping along `--time-dim`. The reference must already be on the post-downscale lat/lon grid; mismatches are an error. Required for `--method q-q`.
+- `--time-dim` — time dimension used as the sample axis for q-q mapping. Default: `time`. Both the output and the reference must have a dimension by this name.
 
 ### Output
 
-Same shape as input except the lat/lon dims are smaller. Non-spatial dims (`number`, `step`, `time`) are preserved. When `--qq-reference` is used, only data variables present in both the regridded output and the reference are mapped; others pass through unchanged.
+Same shape as input except the lat/lon dims are finer. Non-spatial dims
+(`number`, `step`, `time`) are preserved. With `--method q-q`, only data
+variables present in both the interpolated output and the `--qq-reference` are
+mapped; others pass through unchanged.
 
 ### Provenance
 
@@ -48,31 +73,46 @@ The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. This skill reads the upstream
 input's `rhiza_history` (default `[]` with a stderr warning if absent) and
 appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings — so `factor`, `target_resolution`, `dims`,
-`variable`, `qq_reference`, and `time_dim` are recorded under their argparse
-dest names (underscored). `input` is a `{basename, hash}` dict for `--input`
-only; the `--qq-reference` zarr is recorded as a path string under
-`args.qq_reference` and is not hashed. `version` is the `_RHIZA_SKILL_VERSION`
-constant in `scripts/downscale.py`, kept in lockstep with `metadata.version`
-in this SKILL.md by the CI version-bump workflow. Cache-hit comparison reads
-the existing output's `rhiza_history`: a hit requires the upstream chain to
-match and the last entry's `skill`, `version`, `args`, and `input.basename`
-to match the proposed new entry; on a hit the script returns without
-re-regridding.
+`--input`/`--output` path strings — so `method`, `factor`, `target_resolution`,
+`reference_grid`, `dims`, `variable`, `qq_reference`, and `time_dim` are
+recorded under their argparse dest names (underscored). `input` is a
+`{basename, hash}` dict for `--input`. When `--reference-grid` and/or
+`--qq-reference` are supplied, the entry also carries a `reference_inputs`
+field: a list of `{basename, hash}` dicts content-hashing each supplied
+reference zarr's stored bytes, so editing a reference in place (same path,
+changed content) invalidates the cache and forces a recompute. `version` is
+the `_RHIZA_SKILL_VERSION` constant in `scripts/downscale.py`, kept in lockstep
+with `metadata.version` in this SKILL.md by the CI version-bump workflow.
+Cache-hit comparison reads the existing output's `rhiza_history`: a hit requires
+the upstream chain to match and the last entry's `skill`, `version`, `args`,
+`input.basename`, and `reference_inputs` to match the proposed new entry; on a
+hit the script returns without recomputing. The main `--input` hash is not part
+of the cache key (a renamed-but-unchanged input still hits on basename), but the
+secondary `reference_inputs` hashes are.
 
 ## Examples
 
 ```bash
-uv run scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_10x.zarr --factor 10
+# Factor-4 finer, linear interpolation.
+uv run scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_4x.zarr \
+    --method linear-interpolation --factor 4
 ```
 
 ```bash
-uv run scripts/downscale.py -i /tmp/imerg.zarr -o /tmp/imerg_p25.zarr --target-resolution 0.25
+# Onto a finer 0.05° grid, linear interpolation.
+uv run scripts/downscale.py -i /tmp/imerg.zarr -o /tmp/imerg_p05.zarr \
+    --method linear-interpolation --target-resolution 0.05
 ```
 
-Q-Q map ECMWF onto a 0.25° grid using ERA5 observations on the same grid as the post-regrid reference distribution:
+```bash
+# Match the (finer) grid of another dataset.
+uv run scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_on_imerg.zarr \
+    --method linear-interpolation --reference-grid /tmp/imerg.zarr
+```
 
 ```bash
-uv run scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_p25_qq.zarr \
-    --target-resolution 0.25 --qq-reference /tmp/era5_p25.zarr
+# Downscale ECMWF onto a finer 0.05° grid and q-q map onto ERA5 observations
+# that already sit on that grid.
+uv run scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_p05_qq.zarr \
+    --method q-q --target-resolution 0.05 --qq-reference /tmp/era5_p05.zarr
 ```

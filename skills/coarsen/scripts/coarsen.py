@@ -8,12 +8,14 @@
 #   "numpy",
 # ]
 # ///
-"""Linear regridding for Rhiza Envelope Zarr stores.
+"""Coarsen or align a Rhiza Envelope Zarr onto a target grid (geometry only).
 
 Generates a target grid at points ``offset + k * resolution`` for integer k,
 clipped to the input's lon/lat range, and interpolates onto it linearly via
-xarray-regrid. ``(0.25, 0.0)`` aligns with sheerwater's ``global0_25``;
-``(0.1, 0.05)`` with ``global0_1``; ``(0.05, 0.025)`` with ``global0_05``.
+xarray-regrid. This changes grid geometry only and adds no information; it is
+used to coarsen a grid or to align two grids for comparison. ``(0.25, 0.0)``
+aligns with sheerwater's ``global0_25``; ``(0.1, 0.05)`` with ``global0_1``;
+``(0.05, 0.025)`` with ``global0_05``.
 """
 
 import argparse
@@ -139,7 +141,7 @@ def main() -> None:
     # Build the cheap fields first; defer _hash_zarr until after the
     # cache-hit check so we don't hash hundreds of MB of zarr on hits.
     partial_entry = {
-        "skill": "regrid",
+        "skill": "coarsen",
         "version": _RHIZA_SKILL_VERSION,
         "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
         "input": {"basename": Path(args.input).name},
@@ -148,7 +150,7 @@ def main() -> None:
     out = Path(args.output)
     if _cache_hit(out, upstream, partial_entry):
         print(
-            f"Cache hit: {args.output} already matches requested params; skipping regrid.",
+            f"Cache hit: {args.output} already matches requested params; skipping coarsen.",
             file=sys.stderr,
         )
         return
@@ -218,7 +220,7 @@ def main() -> None:
     )
 
     print(
-        f"Regridding {lat_dim},{lon_dim} (linear) to "
+        f"Coarsening/aligning {lat_dim},{lon_dim} (linear) to "
         f"resolution={args.target_resolution} offset={args.offset}: "
         f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
