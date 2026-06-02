@@ -29,10 +29,13 @@ SHORTNAMES = {
     "final": "GPM_3IMERGDF",
 }
 
-# Extra calendar days searched before the requested window start when
-# auto-discovering the end granule, so a production lag of up to two weeks
-# still surfaces a granule on or before the anchor.
-_DISCOVERY_LOOKBACK_PAD_DAYS = 14
+# How far back from the anchor the end-discovery search looks for the latest
+# available granule. This is independent of the requested window length: it only
+# needs to span the product's realistic production lag (IMERG late runs a few
+# days behind; final can run months behind), not the window. The actual window
+# is fetched by a separate search over the exact resolved [start, end] (see
+# main()), so a wide discovery lookback never inflates the fetched data.
+_DISCOVERY_LOOKBACK_DAYS = 200
 
 _LAST_RE = re.compile(r"^(?P<n>\d+)(?P<unit>[dw])$")
 
@@ -130,26 +133,63 @@ def _stamp_cf_attrs(ds):
     return ds
 
 
+class GranuleShapeError(Exception):
+    """Raised when a CMR granule result lacks the expected temporal-extent path
+    or carries a non-ISO BeginningDateTime, so the failure surfaces as a clear
+    message rather than an uncaught KeyError/ValueError traceback after login."""
+
+
 def _granule_date(result) -> date:
-    """Extract the start date of an earthaccess granule's temporal coverage."""
-    iso = result["umm"]["TemporalExtent"]["RangeDateTime"]["BeginningDateTime"]
+    """Extract the start date of an earthaccess granule's temporal coverage.
+
+    Raises GranuleShapeError if the expected
+    ``umm.TemporalExtent.RangeDateTime.BeginningDateTime`` path is missing or
+    its value is not a parseable ISO 8601 date, so a malformed CMR result yields
+    a clear error rather than an uncaught traceback.
+    """
+    try:
+        iso = result["umm"]["TemporalExtent"]["RangeDateTime"]["BeginningDateTime"]
+    except (KeyError, TypeError) as exc:
+        raise GranuleShapeError(
+            "CMR granule result missing "
+            "umm.TemporalExtent.RangeDateTime.BeginningDateTime; "
+            f"cannot determine its date (got: {result!r})"
+        ) from exc
     # BeginningDateTime is an ISO 8601 instant (e.g. "2026-05-29T00:00:00.000Z");
     # the leading 10 chars are the calendar date.
-    return date.fromisoformat(iso[:10])
+    if not isinstance(iso, str):
+        raise GranuleShapeError(f"CMR granule BeginningDateTime is not a string: {iso!r}")
+    try:
+        return date.fromisoformat(iso[:10])
+    except ValueError as exc:
+        raise GranuleShapeError(
+            f"CMR granule BeginningDateTime {iso!r} is not a parseable ISO date"
+        ) from exc
 
 
-def _discover_end(shortname: str, anchor: date, n_days: int):
-    """Find the latest granule on or before ``anchor`` and return its date with
-    the search results, so the caller can reuse them for the actual fetch.
+def _count_distinct_days(results, start_date: date, end_date: date) -> int:
+    """Count distinct granule calendar dates within ``[start_date, end_date]``.
 
-    Searches a bounded lookback ending at ``anchor`` (wide enough to span the
-    requested window plus a production-lag pad), then returns the max granule
-    date ``<= anchor``. Returns ``(end_date, results)``. Exits 2 if no granule
-    falls on or before ``anchor`` in that window.
+    Used to decide whether the fetched window covers the full requested span.
+    """
+    days = {d for r in results if start_date <= (d := _granule_date(r)) <= end_date}
+    return len(days)
+
+
+def _discover_end(shortname: str, anchor: date) -> date:
+    """Find the latest available granule on or before ``anchor`` and return its
+    date.
+
+    Searches a lookback window ending at ``anchor`` whose width is set by the
+    product's realistic production lag (``_DISCOVERY_LOOKBACK_DAYS``), not by the
+    requested window length. The resolved window is fetched separately over its
+    exact ``[start, end]`` (see ``main()``), so this discovery search only has to
+    surface the most-recent granule. Returns the max granule date ``<= anchor``.
+    Exits 2 if no granule falls on or before ``anchor`` in that lookback.
     """
     import earthaccess
 
-    lookback_start = anchor - timedelta(days=n_days + _DISCOVERY_LOOKBACK_PAD_DAYS)
+    lookback_start = anchor - timedelta(days=_DISCOVERY_LOOKBACK_DAYS)
     results = earthaccess.search_data(
         short_name=shortname,
         cloud_hosted=True,
@@ -164,8 +204,7 @@ def _discover_end(shortname: str, anchor: date, n_days: int):
             file=sys.stderr,
         )
         sys.exit(2)
-    end_date = max(_granule_date(r) for r in on_or_before)
-    return end_date, on_or_before
+    return max(_granule_date(r) for r in on_or_before)
 
 
 def main() -> None:
@@ -236,7 +275,11 @@ def main() -> None:
         # Discovery needs login. Run it first, then echo the resolved window
         # to stderr before any download.
         earthaccess.login()
-        end_date, results = _discover_end(shortname, anchor_date, n_days)
+        try:
+            end_date = _discover_end(shortname, anchor_date)
+        except GranuleShapeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(2)
         start_date = _resolve_window(end_date, n_days)
         start = start_date.isoformat()
         end = end_date.isoformat()
@@ -245,13 +288,13 @@ def main() -> None:
             f"{start}..{end} ({n_days} days)",
             file=sys.stderr,
         )
-        # Reuse the discovery search's results: keep only granules within the
-        # resolved [start, end] window rather than issuing a second search.
-        results = [r for r in results if start_date <= _granule_date(r) <= end_date]
     else:
         start = args.start
         end = args.end
-        results = None
+        # start_date/end_date are only consumed by the relative-mode short-window
+        # warning below; absolute mode passes its --start/--end strings straight
+        # to search_data (unchanged), so it does not need them parsed here.
+        start_date = end_date = None
 
     # Cache/provenance args record the resolved concrete window, never the
     # relative --last/--anchor inputs, so the same resolved window cache-hits
@@ -275,18 +318,42 @@ def main() -> None:
         file=sys.stderr,
     )
 
-    if results is None:
-        # Absolute mode: search the requested window. The relative mode already
-        # holds the granules from discovery.
+    # Fetch over the EXACT resolved [start, end]. In relative mode this is a
+    # second search, distinct from end-discovery: discovery only finds the
+    # latest granule, while this search must cover the whole resolved window
+    # regardless of how far end sits behind the anchor. In absolute mode it is
+    # the only search. Relative mode already logged in for discovery; absolute
+    # mode logs in here.
+    if args.last is None:
         earthaccess.login()
-        results = earthaccess.search_data(
-            short_name=shortname,
-            cloud_hosted=True,
-            temporal=(start, end),
-        )
+    results = earthaccess.search_data(
+        short_name=shortname,
+        cloud_hosted=True,
+        temporal=(start, end),
+    )
     if not results:
         raise RuntimeError(f"No IMERG {args.version} granules found in {start}..{end}")
     print(f"Found {len(results)} granules", file=sys.stderr)
+
+    # If the fetched window covers fewer than the requested number of distinct
+    # days (a genuine data gap or near the dataset start), warn with the
+    # effective covered span rather than silently presenting a short series as
+    # complete. Accept what exists. Only meaningful for relative mode, where
+    # n_days is the requested length; absolute mode has no requested day count.
+    if args.last is not None:
+        try:
+            covered_days = _count_distinct_days(results, start_date, end_date)
+        except GranuleShapeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(2)
+        if covered_days < n_days:
+            print(
+                f"WARNING: requested {n_days} days ({start}..{end}) but only "
+                f"{covered_days} distinct day(s) are available in that span; "
+                "writing the available days (genuine data gap or near the "
+                "dataset start).",
+                file=sys.stderr,
+            )
 
     if out.exists():
         shutil.rmtree(out)
