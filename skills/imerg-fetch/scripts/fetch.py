@@ -222,10 +222,11 @@ def main() -> None:
     )
     p.add_argument(
         "--anchor",
-        default="today",
+        default=None,
         help=(
             "Upper bound for --last end-granule discovery: 'today' (default) "
-            "or an ISO date YYYY-MM-DD. Ignored without --last."
+            "or an ISO date YYYY-MM-DD. Only valid with --last; passing it with "
+            "--start/--end is an error."
         ),
     )
     p.add_argument("--output", "-o", required=True)
@@ -252,12 +253,49 @@ def main() -> None:
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(2)
+        # In relative mode, an unset --anchor (None) means today.
         try:
-            anchor_date = _resolve_anchor(args.anchor)
+            anchor_date = _resolve_anchor("today" if args.anchor is None else args.anchor)
         except ValueError as exc:
             print(
                 f"Error: invalid --anchor value {args.anchor!r}: "
                 f"expected 'today' or an ISO date YYYY-MM-DD ({exc}).",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+    else:
+        # Absolute mode. --anchor only resolves a --last window's end, so
+        # supplying it here is a misuse: reject rather than silently ignore.
+        if args.anchor is not None:
+            print(
+                "Error: --anchor is only valid with --last; "
+                "it has no meaning for an explicit --start/--end window.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        # Validate the explicit window before any network/login: malformed ISO
+        # dates and reversed ranges fail fast here rather than after login.
+        try:
+            start_check = date.fromisoformat(args.start)
+        except ValueError as exc:
+            print(
+                f"Error: invalid --start value {args.start!r}: "
+                f"expected an ISO date YYYY-MM-DD ({exc}).",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        try:
+            end_check = date.fromisoformat(args.end)
+        except ValueError as exc:
+            print(
+                f"Error: invalid --end value {args.end!r}: "
+                f"expected an ISO date YYYY-MM-DD ({exc}).",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if start_check > end_check:
+            print(
+                f"Error: --start {args.start} is after --end {args.end}; the range is reversed.",
                 file=sys.stderr,
             )
             sys.exit(2)

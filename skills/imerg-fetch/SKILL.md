@@ -50,7 +50,8 @@ network call.
   and the available days are written rather than erroring or silently presenting
   a short series as complete.
 - `--anchor` — upper bound for `--last` end-granule discovery: `today` (default)
-  or an ISO date `YYYY-MM-DD`. Ignored without `--last`.
+  or an ISO date `YYYY-MM-DD`. Only valid with `--last`; passing it alongside
+  `--start`/`--end` exits 2 with a clear message before any network call.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--version` — `late` (default; ~4 days behind realtime, `GPM_3IMERGDL`) or `final` (`GPM_3IMERGDF`).
 
