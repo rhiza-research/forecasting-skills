@@ -45,6 +45,10 @@ network call.
   `--anchor`, so the caller never guesses the production lag; the start is `end -
   (N-1)` days. Before the download, the resolved concrete window is echoed to
   stderr as `resolved --last <spec> (anchor=<date>) -> <start>..<end> (<N> days)`.
+  If fewer than `N` distinct days are actually available in the resolved span (a
+  data gap or near the dataset start), a stderr `WARNING` names the covered count
+  and the available days are written rather than erroring or silently presenting
+  a short series as complete.
 - `--anchor` — upper bound for `--last` end-granule discovery: `today` (default)
   or an ISO date `YYYY-MM-DD`. Ignored without `--last`.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
