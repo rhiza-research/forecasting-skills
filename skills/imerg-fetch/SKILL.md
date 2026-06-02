@@ -23,14 +23,36 @@ Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess
 
 ## Usage
 
+Pick one of two window modes:
+
 ```
+# Absolute window
 uv run scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr> [--version late|final]
+
+# Relative window (auto-discovered end)
+uv run scripts/fetch.py --last <N>d|w [--anchor today|YYYY-MM-DD] --output <path.zarr> [--version late|final]
 ```
+
+`--last` is mutually exclusive with `--start`/`--end`: supply one mode or the
+other. Passing both, or neither, exits 2 with a clear message before any
+network call.
 
 ### Arguments
 - `--start`, `--end` — inclusive date range (ISO).
+- `--last` — relative window length as `<int>d` (days) or `<int>w` (weeks, where
+  `1w` = 7 days), e.g. `21d` or `3w`. The window is `N` inclusive calendar days.
+  The end is auto-discovered as the latest available IMERG granule on or before
+  `--anchor`, so the caller never guesses the production lag; the start is `end -
+  (N-1)` days. Before the download, the resolved concrete window is echoed to
+  stderr as `resolved --last <spec> (anchor=<date>) -> <start>..<end> (<N> days)`.
+- `--anchor` — upper bound for `--last` end-granule discovery: `today` (default)
+  or an ISO date `YYYY-MM-DD`. Ignored without `--last`.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--version` — `late` (default; ~4 days behind realtime, `GPM_3IMERGDL`) or `final` (`GPM_3IMERGDF`).
+
+For `--last`, the provenance/cache `args` records the resolved concrete
+`{start, end, version}`, never the `--last`/`--anchor` inputs, so the same
+resolved window cache-hits and a relative spec never false-hits across days.
 
 ### Output
 
@@ -41,19 +63,21 @@ Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the glo
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For a fetcher this is a
 length-1 array; downstream zarr-writing skills append their own entry. `args`
-is the argparse namespace minus the `--input`/`--output` path strings;
-`version` is the `_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept
-in lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow.
-
-The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
-(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run scripts/<skill>.py <args>` invocation must
-translate underscore → hyphen.
+records the resolved concrete window as `{start, end, version}` — for `--last`,
+the auto-discovered `start`/`end`, not the relative spec — so the cache key is a
+function of the data produced, not how the window was requested. `version` is
+the `_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept in lockstep with
+`metadata.version` in this SKILL.md by the CI version-bump workflow.
 
 ## Example
 
 ```bash
+# Absolute window
 uv run scripts/fetch.py --start 2026-01-01 --end 2026-02-07 --output /tmp/imerg.zarr
+
+# Last 3 weeks ending at the latest granule on or before today
+uv run scripts/fetch.py --last 3w --output /tmp/imerg.zarr
+
+# Last 7 days ending at the latest granule on or before a fixed anchor
+uv run scripts/fetch.py --last 7d --anchor 2026-05-01 --output /tmp/imerg.zarr
 ```
