@@ -18,7 +18,7 @@ import re
 import shutil
 import sys
 import tempfile
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -39,13 +39,22 @@ _DISCOVERY_LOOKBACK_DAYS = 200
 
 _LAST_RE = re.compile(r"^(?P<n>\d+)(?P<unit>[dw])$")
 
+# Upper bound on the resolved day count for --last. IMERG begins in year 2000,
+# so a window cannot meaningfully span more than ~26 years; 36525 days (~100
+# years) is far beyond any real window yet small enough that
+# `end - timedelta(days=n_days - 1)` cannot raise OverflowError. Rejecting above
+# this cap keeps the failure pre-network instead of crashing in _resolve_window
+# after login.
+_MAX_LAST_DAYS = 36525
+
 
 def _parse_last(spec: str) -> int:
     """Parse a relative-window spec into an inclusive calendar-day count.
 
     Accepts ``<int>d`` (days) or ``<int>w`` (weeks, where 1w = 7 days). The
-    integer must be >= 1. ``"3w"`` -> 21, ``"21d"`` -> 21. Anything else
-    (e.g. ``"3weeks"``, ``"0d"``, ``"-1d"``, ``"d"``) raises ValueError.
+    integer must be >= 1 and resolve to at most ``_MAX_LAST_DAYS`` days. ``"3w"``
+    -> 21, ``"21d"`` -> 21. Anything else (e.g. ``"3weeks"``, ``"0d"``, ``"-1d"``,
+    ``"d"``, or a count above the cap) raises ValueError.
     """
     m = _LAST_RE.match(spec)
     if m is None:
@@ -53,7 +62,14 @@ def _parse_last(spec: str) -> int:
     n = int(m.group("n"))
     if n < 1:
         raise ValueError(f"invalid --last value {spec!r}: count must be >= 1")
-    return n * 7 if m.group("unit") == "w" else n
+    n_days = n * 7 if m.group("unit") == "w" else n
+    if n_days > _MAX_LAST_DAYS:
+        raise ValueError(
+            f"invalid --last value {spec!r}: resolves to {n_days} days, "
+            f"above the maximum of {_MAX_LAST_DAYS} days (~100 years); "
+            "IMERG data begins in year 2000, so no real window is this long"
+        )
+    return n_days
 
 
 def _resolve_window(end_date: date, n_days: int) -> date:
@@ -64,9 +80,14 @@ def _resolve_window(end_date: date, n_days: int) -> date:
 
 
 def _resolve_anchor(anchor: str) -> date:
-    """Resolve the ``--anchor`` value (``"today"`` or an ISO date) to a date."""
+    """Resolve the ``--anchor`` value (``"today"`` or an ISO date) to a date.
+
+    ``"today"`` resolves to the current UTC date (not the local date), so the
+    default anchor is deterministic for a UTC-based dataset regardless of the
+    caller's timezone.
+    """
     if anchor == "today":
-        return date.today()
+        return datetime.now(UTC).date()
     return date.fromisoformat(anchor)
 
 
@@ -174,6 +195,24 @@ def _count_distinct_days(results, start_date: date, end_date: date) -> int:
     """
     days = {d for r in results if start_date <= (d := _granule_date(r)) <= end_date}
     return len(days)
+
+
+def _effective_end(results, start_date: date, end_date: date) -> date:
+    """Return the last granule day actually present within ``[start_date, end_date]``.
+
+    Used by relative mode when the resolved window is short: the cache key is
+    stamped with this effective end (the last day really written) instead of the
+    requested ``end_date``, so a later request for the full window misses the
+    cache and re-fetches days that have since published. Mirrors chirps-fetch's
+    ``effective_end`` logic. Raises ValueError if no granule falls in the window
+    (callers only invoke this once at least one in-window day is known to exist).
+    """
+    present = {d for r in results if start_date <= (d := _granule_date(r)) <= end_date}
+    if not present:
+        raise ValueError(
+            f"no granule day falls within {start_date.isoformat()}..{end_date.isoformat()}"
+        )
+    return max(present)
 
 
 def _discover_end(shortname: str, anchor: date) -> date:
@@ -327,24 +366,33 @@ def main() -> None:
             file=sys.stderr,
         )
     else:
-        start = args.start
-        end = args.end
+        # Absolute mode. Normalize --start/--end through date.fromisoformat so
+        # the downstream search, time-slice, and cache key all use the validated
+        # date (its isoformat), not the raw input string. date.fromisoformat on
+        # 3.12 also accepts compact (20260501) and ISO-week (2026-W18-1) forms;
+        # normalizing here guarantees validated == queried. For an already-
+        # YYYY-MM-DD input this is byte-identical (isoformat of a parsed
+        # YYYY-MM-DD date is the same string). The earlier validation block
+        # already proved these parse and are not reversed.
+        start = date.fromisoformat(args.start).isoformat()
+        end = date.fromisoformat(args.end).isoformat()
         # start_date/end_date are only consumed by the relative-mode short-window
-        # warning below; absolute mode passes its --start/--end strings straight
-        # to search_data (unchanged), so it does not need them parsed here.
+        # warning below; absolute mode has no requested day count.
         start_date = end_date = None
 
     # Cache/provenance args record the resolved concrete window, never the
     # relative --last/--anchor inputs, so the same resolved window cache-hits
     # and a relative spec never false-hits across days. Mirrors chirps-fetch's
-    # explicit-args cache key.
-    entry = {
+    # explicit-args cache key. The cache CHECK uses the requested resolved
+    # window; in relative mode a short window re-stamps a shorter effective end
+    # (see below), so a later request for the full window misses and re-fetches.
+    requested_entry = {
         "skill": "imerg-fetch",
         "version": _RHIZA_SKILL_VERSION,
         "args": {"start": start, "end": end, "version": args.version},
         "input": None,
     }
-    if _cache_hit(out, entry):
+    if _cache_hit(out, requested_entry):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping fetch.",
             file=sys.stderr,
@@ -373,6 +421,13 @@ def main() -> None:
         raise RuntimeError(f"No IMERG {args.version} granules found in {start}..{end}")
     print(f"Found {len(results)} granules", file=sys.stderr)
 
+    # The stamp records the cache key written into rhiza_history. It defaults to
+    # the requested resolved window; relative mode refines it to the effective
+    # end (last day actually present) when the window is short, so a later
+    # request for the full window misses the cache and re-fetches days that have
+    # since published. Absolute mode is unchanged.
+    stamp_entry = requested_entry
+
     # If the fetched window covers fewer than the requested number of distinct
     # days (a genuine data gap or near the dataset start), warn with the
     # effective covered span rather than silently presenting a short series as
@@ -385,11 +440,29 @@ def main() -> None:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(2)
         if covered_days < n_days:
+            # Stamp the EFFECTIVE end (last present day) rather than the
+            # requested end, mirroring chirps-fetch, so the short zarr is not
+            # cached as a complete window.
+            try:
+                effective_end = _effective_end(results, start_date, end_date)
+            except (GranuleShapeError, ValueError) as exc:
+                # ValueError: no granule day falls inside [start, end] at all,
+                # even though search_data returned overlap granules just outside
+                # the bounds. There is nothing in-window to write.
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(2)
+            effective_end_iso = effective_end.isoformat()
+            stamp_entry = {
+                **requested_entry,
+                "args": {"start": start, "end": effective_end_iso, "version": args.version},
+            }
             print(
                 f"WARNING: requested {n_days} days ({start}..{end}) but only "
                 f"{covered_days} distinct day(s) are available in that span; "
-                "writing the available days (genuine data gap or near the "
-                "dataset start).",
+                f"writing the available days through {effective_end_iso} "
+                "(genuine data gap or near the dataset start). Caching the "
+                "effective window so a later request for the full window "
+                "re-fetches the missing tail.",
                 file=sys.stderr,
             )
 
@@ -412,7 +485,7 @@ def main() -> None:
         ds = ds.drop_attrs()
         ds.attrs.update(
             rhiza_source="imerg",
-            rhiza_history=json.dumps([entry], sort_keys=True),
+            rhiza_history=json.dumps([stamp_entry], sort_keys=True),
         )
         ds["precip"].attrs.update(
             units="mm/day",

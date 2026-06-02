@@ -41,17 +41,21 @@ network call.
 - `--start`, `--end` — inclusive date range (ISO).
 - `--last` — relative window length as `<int>d` (days) or `<int>w` (weeks, where
   `1w` = 7 days), e.g. `21d` or `3w`. The window is `N` inclusive calendar days.
-  The end is auto-discovered as the latest available IMERG granule on or before
-  `--anchor`, so the caller never guesses the production lag; the start is `end -
-  (N-1)` days. Before the download, the resolved concrete window is echoed to
-  stderr as `resolved --last <spec> (anchor=<date>) -> <start>..<end> (<N> days)`.
-  If fewer than `N` distinct days are actually available in the resolved span (a
-  data gap or near the dataset start), a stderr `WARNING` names the covered count
-  and the available days are written rather than erroring or silently presenting
-  a short series as complete.
-- `--anchor` — upper bound for `--last` end-granule discovery: `today` (default)
-  or an ISO date `YYYY-MM-DD`. Only valid with `--last`; passing it alongside
-  `--start`/`--end` exits 2 with a clear message before any network call.
+  `N` must resolve to at most 36525 days (~100 years); IMERG begins in year 2000,
+  so a larger value is rejected with exit 2 before any network call. The end is
+  auto-discovered as the latest available IMERG granule on or before `--anchor`,
+  so the caller never guesses the production lag; the start is `end - (N-1)`
+  days. Before the download, the resolved concrete window is echoed to stderr as
+  `resolved --last <spec> (anchor=<date>) -> <start>..<end> (<N> days)`. If fewer
+  than `N` distinct days are actually available in the resolved span (a data gap
+  or near the dataset start), a stderr `WARNING` names the covered count, the
+  available days are written rather than erroring, and the cache key is stamped
+  with the effective end (the last day actually present) so a later request for
+  the full window misses the cache and re-fetches days that have since published.
+- `--anchor` — upper bound for `--last` end-granule discovery: `today` (default,
+  the current UTC date) or an ISO date `YYYY-MM-DD`. Only valid with `--last`;
+  passing it alongside `--start`/`--end` exits 2 with a clear message before any
+  network call.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--version` — `late` (default; ~4 days behind realtime, `GPM_3IMERGDL`) or `final` (`GPM_3IMERGDF`).
 
