@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 # Region bbox table accepted by ``--region``. Mirrors ``clip-region``'s
 # REGIONS dict; duplicated per CONVENTIONS.md (no shared helper module —
@@ -267,6 +267,12 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
     for i, s in enumerate(steps):
         ax = axes[i]
         slab = da if s is None else da.sel({sdim: s})
+        # Order the 2D field as (lat, lon) so its shape matches the C array
+        # pcolormesh expects given the (lon, lat) X/Y coordinate vectors.
+        # Sources like IMERG store the variable as (..., lon, lat), which
+        # would otherwise feed a transposed array and raise a shape mismatch.
+        # Mirrors plot-compare's _grid_panel transpose.
+        slab = slab.transpose(lat_dim, lon_dim)
         contour = ax.pcolormesh(
             slab[lon_dim],
             slab[lat_dim],
