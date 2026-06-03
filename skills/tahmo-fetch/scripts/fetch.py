@@ -460,14 +460,18 @@ def main() -> None:
         lookback ending today, across the requested countries' stations.
 
         Requests controlled raw data over the last ``_LATEST_LOOKBACK_DAYS`` days
-        for each candidate TA-coded station and returns the max observation date
-        seen. Stops at the first station that returns data. Exits 2 if no station
-        returns any observation in the lookback.
+        for each candidate TA-coded station and takes the max observation date
+        across ALL stations (not the first station that returns data): station
+        reporting cadence varies, so the first responder is not necessarily the
+        freshest. The result is clamped to ``<= today`` (UTC) so a station clock
+        skewed into the future cannot push `latest` past today. Exits 2 if no
+        station returns any observation in the lookback.
         """
         api_l, stations_l, _ = _ensure_setup()
         today = datetime.now(UTC).date()
         lookback_start = (today - timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()
         today_iso = today.isoformat()
+        max_obs_date = None
         for country in list(args.country):
             code = COUNTRY_CODE[country]
             sub = stations_l[stations_l["location_countrycode"] == code]
@@ -481,14 +485,20 @@ def main() -> None:
                 if raw is None or len(raw) == 0:
                     continue
                 times = pd.to_datetime(raw["time"], format="mixed", utc=True)
-                return times.max().date()
-        print(
-            f"Error: no TAHMO observations in the last {_LATEST_LOOKBACK_DAYS} days "
-            f"({lookback_start}..{today_iso}) for the requested countries; "
-            "cannot resolve 'latest'.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+                station_max = times.max().date()
+                if max_obs_date is None or station_max > max_obs_date:
+                    max_obs_date = station_max
+        if max_obs_date is None:
+            print(
+                f"Error: no TAHMO observations in the last {_LATEST_LOOKBACK_DAYS} days "
+                f"({lookback_start}..{today_iso}) for the requested countries; "
+                "cannot resolve 'latest'.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        # Clamp to today (UTC): a station with a future-skewed clock must not
+        # push `latest` past the current UTC date.
+        return min(max_obs_date, today)
 
     # Resolve --start/--end to concrete inclusive dates. Malformed tokens and
     # post-resolution reversed ranges exit 2 before any fetch. A `latest` token
