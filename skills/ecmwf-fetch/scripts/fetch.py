@@ -41,6 +41,11 @@ _LATEST_LOOKBACK_DAYS = 14
 # Anything else (months/years, future "+", junk) is rejected pre-network.
 _REL_OFFSET_RE = re.compile(r"^(?P<base>now|latest)-(?P<n>\d+)(?P<unit>[dw])$")
 
+# Strict absolute-date shape. dt.date.fromisoformat on 3.12 also accepts compact
+# (20260501) and ISO-week (2026-W18-1) forms; the documented grammar is exactly
+# YYYY-MM-DD, so we gate on this regex first and reject the looser forms.
+_ABS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
 # Upper bound on a relative offset's resolved day count. 36525 days (~100 years)
 # is far beyond any real value yet small enough that the date arithmetic cannot
 # raise OverflowError. Rejecting above this cap keeps the failure pre-network.
@@ -69,6 +74,10 @@ def _parse_token(value: str) -> tuple:
     m = _REL_OFFSET_RE.match(value)
     if m is not None:
         n = int(m.group("n"))
+        if n < 1:
+            raise ValueError(
+                f"invalid date value {value!r}: offset must be >= 1 (e.g. now-1d, latest-3w)"
+            )
         unit = m.group("unit")
         n_days = n * 7 if unit == "w" else n
         if n_days > _MAX_OFFSET_DAYS:
@@ -78,14 +87,16 @@ def _parse_token(value: str) -> tuple:
             )
         unit_phrase = f"{n}-{'week' if unit == 'w' else 'day'}"
         return ("offset", m.group("base"), n_days, unit_phrase)
-    try:
-        return ("abs", dt.date.fromisoformat(value))
-    except ValueError:
-        raise ValueError(
-            f"invalid date value {value!r}: expected an absolute date YYYY-MM-DD, "
-            "'now'/'today', 'latest', or an offset 'now-<int>{d|w}' / "
-            "'latest-<int>{d|w}'"
-        ) from None
+    if _ABS_DATE_RE.match(value):
+        try:
+            return ("abs", dt.date.fromisoformat(value))
+        except ValueError:
+            pass
+    raise ValueError(
+        f"invalid date value {value!r}: expected an absolute date YYYY-MM-DD, "
+        "'now'/'today', 'latest', or an offset 'now-<int>{d|w}' / "
+        "'latest-<int>{d|w}'"
+    )
 
 
 def _resolve_date(value: str, latest_fn) -> tuple:
