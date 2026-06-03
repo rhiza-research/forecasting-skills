@@ -42,6 +42,13 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 |---|---|
 | `email-report` | Compose an RFC 5322 `.eml` with attachments. **Mocks SMTP — writes to disk, does not send.** |
 
+### Agent tooling (not a pipeline skill)
+These help an agent operate the skill set; they do not fetch, transform, or plot data.
+
+| Skill | What it does |
+|---|---|
+| `submit-feedback` | Build a length-checked prefilled GitHub new-issue URL the user clicks to file feedback under their own account. Holds no token, makes no network call, creates no issue itself. |
+
 ## Install
 
 These skills live at <https://github.com/rhiza-research/forecasting-skills>.
