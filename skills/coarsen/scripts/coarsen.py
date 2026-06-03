@@ -8,12 +8,14 @@
 #   "numpy",
 # ]
 # ///
-"""Linear regridding for Rhiza Envelope Zarr stores.
+"""Coarsen or align a Rhiza Envelope Zarr onto a target grid (geometry only).
 
 Generates a target grid at points ``offset + k * resolution`` for integer k,
 clipped to the input's lon/lat range, and interpolates onto it linearly via
-xarray-regrid. ``(0.25, 0.0)`` aligns with sheerwater's ``global0_25``;
-``(0.1, 0.05)`` with ``global0_1``; ``(0.05, 0.025)`` with ``global0_05``.
+xarray-regrid. This changes grid geometry only and adds no information; it is
+used to coarsen a grid or to align two grids for comparison. ``(0.25, 0.0)``
+aligns with sheerwater's ``global0_25``; ``(0.1, 0.05)`` with ``global0_1``;
+``(0.05, 0.025)`` with ``global0_05``.
 """
 
 import argparse
@@ -91,6 +93,15 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
     )
 
 
+def _grid_spacing(coord_vals) -> float:
+    import numpy as np
+
+    coord = np.asarray(coord_vals)
+    if coord.size < 2:
+        raise ValueError(f"Cannot infer spacing for coord with size {coord.size}")
+    return float(abs(np.median(np.diff(coord))))
+
+
 def _target_axis(coord_vals, resolution: float, offset: float):
     import numpy as np
 
@@ -139,7 +150,7 @@ def main() -> None:
     # Build the cheap fields first; defer _hash_zarr until after the
     # cache-hit check so we don't hash hundreds of MB of zarr on hits.
     partial_entry = {
-        "skill": "regrid",
+        "skill": "coarsen",
         "version": _RHIZA_SKILL_VERSION,
         "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
         "input": {"basename": Path(args.input).name},
@@ -148,7 +159,7 @@ def main() -> None:
     out = Path(args.output)
     if _cache_hit(out, upstream, partial_entry):
         print(
-            f"Cache hit: {args.output} already matches requested params; skipping regrid.",
+            f"Cache hit: {args.output} already matches requested params; skipping coarsen.",
             file=sys.stderr,
         )
         return
@@ -208,6 +219,22 @@ def main() -> None:
     if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
         ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
 
+    # Coarsen goes coarser-or-equal. Reject a strictly-finer target on either
+    # axis (target spacing smaller than the input spacing) — that is the
+    # downscale skill's job. Coarser-or-equal passes (equal = no-op/realign).
+    in_lat_res = _grid_spacing(ds[lat_dim].values)
+    in_lon_res = _grid_spacing(ds[lon_dim].values)
+    if args.target_resolution < in_lat_res or args.target_resolution < in_lon_res:
+        print(
+            f"Error: --target-resolution {args.target_resolution}° is finer "
+            f"than the input on at least one axis "
+            f"(~{in_lat_res:.4f}°x{in_lon_res:.4f}°). "
+            f"Coarsening goes coarser-or-equal; to make a grid finer and add "
+            f"information use the downscale skill.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     new_lat = _target_axis(ds[lat_dim].values, args.target_resolution, args.offset)
     new_lon = _target_axis(ds[lon_dim].values, args.target_resolution, args.offset)
     target = xr.Dataset(
@@ -218,7 +245,7 @@ def main() -> None:
     )
 
     print(
-        f"Regridding {lat_dim},{lon_dim} (linear) to "
+        f"Coarsening/aligning {lat_dim},{lon_dim} (linear) to "
         f"resolution={args.target_resolution} offset={args.offset}: "
         f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,

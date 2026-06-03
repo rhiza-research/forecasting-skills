@@ -30,8 +30,8 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 | `clip-region` | Subset a gridded Zarr to a named region or `--bbox N/W/S/E` |
 | `aggregate-temporal` | Resample along `time` or `step` into daily/weekly/dekadal/monthly windows |
 | `deaccumulate` | Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) into per-step diffs along the `step` axis |
-| `downscale` | Spatial coarsening by factor or target resolution, with optional empirical quantile-quantile bias correction |
-| `regrid` | Linear regrid onto a target grid defined by `(resolution, offset)` for matching another dataset's alignment |
+| `downscale` | Spatial downscaling onto a finer grid (by factor, finer resolution, or a reference grid) via `--method` (linear-interpolation or q-q empirical quantile mapping) |
+| `coarsen` | Coarsen or align a grid by linear interpolation onto a target `(resolution, offset)` — geometry only, adds no information |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
 | `plot` | Heatmap or timeseries PNG from one dataset |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid) |
