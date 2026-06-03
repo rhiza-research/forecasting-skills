@@ -8,7 +8,7 @@
 #   "numpy",
 # ]
 # ///
-"""Linear regridding for Rhiza Envelope Zarr stores, with optional post-regrid q-q mapping."""
+"""Downscale a Rhiza Envelope Zarr onto a finer grid via a chosen method."""
 
 import argparse
 import hashlib
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 
 def _hash_zarr(zarr_path: Path) -> str:
@@ -81,6 +81,10 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
         and last.get("version") == entry["version"]
         and last.get("args") == entry["args"]
         and last_input.get("basename") == entry_input.get("basename")
+        # Secondary references (--reference-grid, --qq-reference) are
+        # content-hashed and compared so an in-place change to a reference
+        # forces a recompute. Absent on entries that supplied no reference.
+        and last.get("reference_inputs") == entry.get("reference_inputs")
     )
 
 
@@ -91,27 +95,6 @@ def _grid_spacing(ds, dim):
     if coord.size < 2:
         raise ValueError(f"Cannot infer spacing for dim '{dim}' with size {coord.size}")
     return float(abs(np.median(np.diff(coord))))
-
-
-def _factor_from_target(ds, lat_dim, lon_dim, target_res):
-    lat_res = _grid_spacing(ds, lat_dim)
-    lon_res = _grid_spacing(ds, lon_dim)
-    if abs(lat_res - lon_res) / max(lat_res, lon_res) > 0.05:
-        print(
-            f"Warning: anisotropic input grid ({lat_res:.4f}° vs {lon_res:.4f}°); "
-            f"using mean for factor.",
-            file=sys.stderr,
-        )
-    mean_res = (lat_res + lon_res) / 2
-    factor = round(target_res / mean_res)
-    if factor < 2:
-        print(
-            f"Error: --target-resolution {target_res}° is not coarser than input "
-            f"grid (~{mean_res:.4f}°).",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    return factor
 
 
 def _target_coord(coord, new_spacing):
@@ -172,18 +155,44 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", "-i", required=True)
     p.add_argument("--output", "-o", required=True)
+    p.add_argument(
+        "--method",
+        choices=["linear-interpolation", "q-q"],
+        required=True,
+        help=(
+            "How to add information when going finer. 'linear-interpolation' "
+            "linearly interpolates onto the finer grid; 'q-q' interpolates and "
+            "then empirically quantile-maps onto a distribution reference."
+        ),
+    )
     grp = p.add_mutually_exclusive_group(required=True)
-    grp.add_argument("--factor", "-f", type=int)
-    grp.add_argument("--target-resolution", type=float, help="Target grid spacing in degrees")
+    grp.add_argument(
+        "--factor",
+        "-f",
+        type=int,
+        help="Integer refinement factor (>= 1). New spacing = input spacing / factor.",
+    )
+    grp.add_argument(
+        "--target-resolution",
+        type=float,
+        help="Target grid spacing in degrees. Must be finer-or-equal (<=) to the input.",
+    )
+    grp.add_argument(
+        "--reference-grid",
+        help=(
+            "Path to a reference Zarr whose lat/lon grid defines the finer "
+            "target. The reference grid must be finer-or-equal to the input."
+        ),
+    )
     p.add_argument("--dims", help="Override as LAT,LON dim names")
     p.add_argument("--variable", "-v", help="Restrict to a single data variable")
     p.add_argument(
         "--qq-reference",
         help=(
-            "Optional path to a reference Zarr. When given, applies empirical "
-            "quantile mapping per grid cell along --time-dim, mapping the "
-            "regridded values to the reference distribution. Reference must be "
-            "on the post-regrid lat/lon grid."
+            "Reference Zarr whose distribution the q-q method maps the output "
+            "onto. Empirical quantile mapping per grid cell along --time-dim. "
+            "The reference must already be on the post-downscale lat/lon grid. "
+            "Required for --method q-q."
         ),
     )
     p.add_argument(
@@ -193,15 +202,51 @@ def main() -> None:
     )
     args = p.parse_args()
 
-    # Build the cheap fields first; defer _hash_zarr until after the
-    # cache-hit check so we don't hash hundreds of MB of zarr on hits.
+    if args.factor is not None and args.factor < 1:
+        print("Error: --factor must be >= 1.", file=sys.stderr)
+        sys.exit(2)
+    if args.target_resolution is not None and args.target_resolution <= 0:
+        print("Error: --target-resolution must be > 0.", file=sys.stderr)
+        sys.exit(2)
+    if args.method == "q-q" and not args.qq_reference:
+        print(
+            "Error: --method q-q requires --qq-reference (the distribution reference to map onto).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if args.qq_reference and args.method != "q-q":
+        print(
+            "Error: --qq-reference is only valid with --method q-q.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    # Build the cheap fields first; defer the expensive _hash_zarr over the main
+    # --input until after the cache-hit check so we don't hash hundreds of MB of
+    # zarr on hits. Secondary references (--reference-grid, --qq-reference) ARE
+    # hashed up front when supplied — they're typically far smaller, and their
+    # content must enter the cache key so an in-place edit forces a recompute
+    # (the main input's hash deliberately does NOT enter the key; see _cache_hit).
     src = Path(args.input)
+    reference_inputs = []
+    for flag, ref in (
+        ("--reference-grid", args.reference_grid),
+        ("--qq-reference", args.qq_reference),
+    ):
+        if ref:
+            ref_p = Path(ref)
+            if not ref_p.exists():
+                print(f"Error: {flag} {ref_p} not found.", file=sys.stderr)
+                sys.exit(2)
+            reference_inputs.append({"basename": ref_p.name, "hash": _hash_zarr(ref_p)})
     partial_entry = {
         "skill": "downscale",
         "version": _RHIZA_SKILL_VERSION,
         "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
         "input": {"basename": src.name},
     }
+    if reference_inputs:
+        partial_entry["reference_inputs"] = reference_inputs
     upstream = _load_history(src)
     out = Path(args.output)
     if _cache_hit(out, upstream, partial_entry):
@@ -221,6 +266,7 @@ def main() -> None:
     }
 
     import cf_xarray  # noqa: F401 — registers the .cf accessor
+    import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
 
@@ -249,15 +295,6 @@ def main() -> None:
             )
             sys.exit(2)
 
-    factor = (
-        args.factor
-        if args.factor is not None
-        else _factor_from_target(ds, lat_dim, lon_dim, args.target_resolution)
-    )
-    if factor < 2:
-        print("Error: factor must be >= 2.", file=sys.stderr)
-        sys.exit(2)
-
     if args.variable:
         if args.variable not in ds.data_vars:
             print(
@@ -267,8 +304,68 @@ def main() -> None:
             sys.exit(2)
         ds = ds[[args.variable]]
 
-    new_lat = _target_coord(ds[lat_dim].values, factor * _grid_spacing(ds, lat_dim))
-    new_lon = _target_coord(ds[lon_dim].values, factor * _grid_spacing(ds, lon_dim))
+    in_lat_res = _grid_spacing(ds, lat_dim)
+    in_lon_res = _grid_spacing(ds, lon_dim)
+
+    # Build the finer target grid from one of the three mutually-exclusive specs.
+    if args.reference_grid is not None:
+        ref_grid_path = Path(args.reference_grid)
+        ref_grid_ds = xr.open_zarr(ref_grid_path, consolidated=False)
+        for d in (lat_dim, lon_dim):
+            if d not in ref_grid_ds.dims:
+                print(
+                    f"Error: --reference-grid missing '{d}' dim (have {list(ref_grid_ds.dims)}).",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        new_lat = np.asarray(ref_grid_ds[lat_dim].values)
+        new_lon = np.asarray(ref_grid_ds[lon_dim].values)
+        ref_lat_res = _grid_spacing(ref_grid_ds, lat_dim)
+        ref_lon_res = _grid_spacing(ref_grid_ds, lon_dim)
+        if ref_lat_res > in_lat_res or ref_lon_res > in_lon_res:
+            print(
+                f"Error: --reference-grid is coarser than the input "
+                f"(input ~{in_lat_res:.4f}°x{in_lon_res:.4f}°, reference "
+                f"~{ref_lat_res:.4f}°x{ref_lon_res:.4f}°). Downscaling goes "
+                f"finer-or-equal; to coarsen onto a coarser grid use the "
+                f"coarsen skill.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        target_desc = f"reference grid {ref_grid_path.name}"
+    else:
+        if args.factor is not None:
+            lat_spacing = in_lat_res / args.factor
+            lon_spacing = in_lon_res / args.factor
+            target_desc = f"factor {args.factor}"
+        else:
+            # --target-resolution: the requested spacing applies to both axes.
+            # Require it to be finer-or-equal to BOTH input axis spacings, so a
+            # value finer than one axis but coarser than the other is still rejected.
+            if args.target_resolution > in_lat_res or args.target_resolution > in_lon_res:
+                print(
+                    f"Error: --target-resolution {args.target_resolution}° is "
+                    f"coarser than the input on at least one axis "
+                    f"(~{in_lat_res:.4f}°x{in_lon_res:.4f}°). "
+                    f"Downscaling goes finer-or-equal; to coarsen onto a coarser "
+                    f"grid use the coarsen skill.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            if abs(in_lat_res - in_lon_res) / max(in_lat_res, in_lon_res) > 0.05:
+                print(
+                    f"Warning: input grid is anisotropic "
+                    f"(~{in_lat_res:.4f}°x{in_lon_res:.4f}°); the single "
+                    f"--target-resolution {args.target_resolution}° is applied to "
+                    f"both axes.",
+                    file=sys.stderr,
+                )
+            lat_spacing = args.target_resolution
+            lon_spacing = args.target_resolution
+            target_desc = f"target-resolution {args.target_resolution}°"
+        new_lat = _target_coord(ds[lat_dim].values, lat_spacing)
+        new_lon = _target_coord(ds[lon_dim].values, lon_spacing)
+
     target = xr.Dataset(
         coords={
             lat_dim: (lat_dim, new_lat, dict(ds[lat_dim].attrs)),
@@ -277,24 +374,22 @@ def main() -> None:
     )
 
     print(
-        f"Regridding {lat_dim},{lon_dim} by factor {factor} (linear): "
-        f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
+        f"Downscaling {lat_dim},{lon_dim} (method={args.method}, "
+        f"{target_desc}): {ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> "
+        f"{len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
     out_ds = ds.regrid.linear(target)
 
     out_ds.attrs = dict(ds.attrs)
 
-    if args.qq_reference:
+    if args.method == "q-q":
         ref_path = Path(args.qq_reference)
-        if not ref_path.exists():
-            print(f"Error: --qq-reference {ref_path} not found.", file=sys.stderr)
-            sys.exit(2)
         ref_ds = xr.open_zarr(ref_path, consolidated=False)
         time_dim = args.time_dim
         if time_dim not in out_ds.dims:
             print(
-                f"Error: regridded output has no '{time_dim}' dim "
+                f"Error: downscaled output has no '{time_dim}' dim "
                 f"(have {list(out_ds.dims)}); pass --time-dim.",
                 file=sys.stderr,
             )
@@ -316,14 +411,14 @@ def main() -> None:
             if not _coords_match(out_ds[d].values, ref_ds[d].values):
                 print(
                     f"Error: --qq-reference '{d}' coords do not match the "
-                    f"regridded grid. Reference must be on the post-regrid lat/lon.",
+                    f"downscaled grid. Reference must be on the post-downscale lat/lon.",
                     file=sys.stderr,
                 )
                 sys.exit(2)
         shared = [v for v in out_ds.data_vars if v in ref_ds.data_vars]
         if not shared:
             print(
-                f"Error: --qq-reference shares no variables with the regridded "
+                f"Error: --qq-reference shares no variables with the downscaled "
                 f"output (out: {list(out_ds.data_vars)}, ref: {list(ref_ds.data_vars)}).",
                 file=sys.stderr,
             )
