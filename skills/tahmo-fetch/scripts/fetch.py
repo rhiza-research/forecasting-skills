@@ -463,42 +463,77 @@ def main() -> None:
         for each candidate TA-coded station and takes the max observation date
         across ALL stations (not the first station that returns data): station
         reporting cadence varies, so the first responder is not necessarily the
-        freshest. The result is clamped to ``<= today`` (UTC) so a station clock
-        skewed into the future cannot push `latest` past today. Exits 2 if no
-        station returns any observation in the lookback.
+        freshest.
+
+        Observation times are filtered to ``<= today`` (UTC) BEFORE taking the
+        max, so `latest` is always a real observation day on or before today
+        rather than a value clamped to today with no same-day data behind it (a
+        station with a future-skewed clock therefore cannot push `latest` past a
+        day it actually reported).
+
+        Error vs no-data taxonomy (mirrors chirps/ecmwf): a per-station fetch
+        that RAISES (auth/transport/HTTP) is distinguished from one that responds
+        with no observations. If EVERY candidate station raised — i.e. not one
+        station responded — that is an auth/transport problem, surfaced as a real
+        error (exit non-zero), never misreported as "no data". Only when at least
+        one station responded but none carried an in-window observation is the
+        "no observations" case reported (exit 2).
         """
         api_l, stations_l, _ = _ensure_setup()
         today = datetime.now(UTC).date()
         lookback_start = (today - timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()
         today_iso = today.isoformat()
         max_obs_date = None
+        candidate_count = 0
+        responded_count = 0  # stations that returned WITHOUT raising (data or empty)
+        last_error = None
         for country in list(args.country):
             code = COUNTRY_CODE[country]
             sub = stations_l[stations_l["location_countrycode"] == code]
             sub = sub[sub["code"].str.startswith("TA")]
             for _, row in sub.iterrows():
                 sid = row["code"]
+                candidate_count += 1
                 try:
                     raw = _fetch_raw(api_l, sid, lookback_start, today_iso)
-                except Exception:  # noqa: BLE001 -- a failing probe station is skipped
+                except Exception as exc:  # noqa: BLE001 -- classified below
+                    last_error = f"{sid}: {exc}"
                     continue
+                responded_count += 1
                 if raw is None or len(raw) == 0:
                     continue
                 times = pd.to_datetime(raw["time"], format="mixed", utc=True)
-                station_max = times.max().date()
+                obs_dates = times.dt.date
+                # Keep only observations on or before today (UTC) before taking
+                # the max, so a future-skewed station clock cannot inflate latest.
+                obs_dates = [d for d in obs_dates if d <= today]
+                if not obs_dates:
+                    continue
+                station_max = max(obs_dates)
                 if max_obs_date is None or station_max > max_obs_date:
                     max_obs_date = station_max
-        if max_obs_date is None:
+        if max_obs_date is not None:
+            return max_obs_date
+        if candidate_count > 0 and responded_count == 0:
+            # No station responded — every candidate raised. This is an
+            # auth/transport problem, not an empty dataset; surface it.
             print(
-                f"Error: no TAHMO observations in the last {_LATEST_LOOKBACK_DAYS} days "
-                f"({lookback_start}..{today_iso}) for the requested countries; "
-                "cannot resolve 'latest'.",
+                f"Error: every candidate TAHMO station ({candidate_count}) failed to "
+                f"respond while resolving 'latest' (last error: {last_error}); this is "
+                "an auth/transport problem, not a not-yet-reported window.",
                 file=sys.stderr,
             )
-            sys.exit(2)
-        # Clamp to today (UTC): a station with a future-skewed clock must not
-        # push `latest` past the current UTC date.
-        return min(max_obs_date, today)
+            sys.exit(1)
+        # At least one station responded (or there were no candidates), but none
+        # carried an in-window observation on or before today: a genuine no-data
+        # case.
+        print(
+            f"Error: no TAHMO observations in the last {_LATEST_LOOKBACK_DAYS} days "
+            f"({lookback_start}..{today_iso}) for the requested countries; "
+            "cannot resolve 'latest'.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     # Resolve --start/--end to concrete inclusive dates. Malformed tokens and
     # post-resolution reversed ranges exit 2 before any fetch. A `latest` token

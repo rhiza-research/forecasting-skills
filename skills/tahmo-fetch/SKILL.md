@@ -35,7 +35,13 @@ uv run scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD
   - `now` or `today` — the current UTC date;
   - `latest` — the newest available TAHMO observation date (found by requesting
     controlled raw data over a bounded lookback ending today and taking the max
-    returned observation date across the requested countries' stations);
+    returned observation date across the requested countries' stations).
+    Observations are filtered to on-or-before today (UTC) before the max is
+    taken, so `latest` is always a real observation day on or before today. If
+    every candidate station fails to respond (an auth/transport problem) the run
+    exits non-zero with that error rather than reporting no data; only when
+    stations respond but carry no in-window observation is the no-data case
+    reported;
   - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
     days, so `3w` = 21 days). The offset is capped at 36525 days; a larger value,
     a future `+` offset, a month/year unit, or any malformed value exits 2 before
