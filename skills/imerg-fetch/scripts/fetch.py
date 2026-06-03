@@ -46,8 +46,8 @@ _LAST_RE = re.compile(r"^(?P<n>\d+)(?P<unit>[dw])$")
 # so a window cannot meaningfully span more than ~26 years; 36525 days (~100
 # years) is far beyond any real window yet small enough that
 # `end - timedelta(days=n_days - 1)` cannot raise OverflowError. Rejecting above
-# this cap keeps the failure pre-network instead of crashing in _resolve_window
-# after login.
+# this cap keeps the failure pre-network instead of crashing in the window
+# arithmetic after login.
 _MAX_LAST_DAYS = 36525
 
 
