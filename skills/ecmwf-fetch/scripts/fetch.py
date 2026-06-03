@@ -280,6 +280,20 @@ def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
     re-submitting it. This is the slow/async case (each probe is a real ECDS
     submit) — acceptable because it is opt-in. Bounded by
     ``_LATEST_LOOKBACK_DAYS``; exhausting it without a usable init exits 2.
+
+    Existence cost: ECDS exposes no metadata-only "does this init exist" query
+    in the submit/poll model — a non-published init surfaces only as a
+    ProcessingFailedError on poll, and a published init is confirmed only when
+    its job reaches results_ready. So confirming the `latest` init's existence
+    unavoidably polls one control retrieval to completion. When the resolved
+    --date IS that probed init (bare `latest`), main() reuses this completed
+    retrieval as the control leg. When the resolved --date is an OFFSET off
+    latest (`latest-Nd|w`), the probed init differs from the init main() fetches,
+    so this completed control retrieval cannot be reused and is spent solely to
+    confirm `latest` existed — one unavoidable probe retrieval. The offset init
+    is then submitted exactly once in main(); the probed `latest` init is never
+    re-submitted (it is only ever reused, never resubmitted), so no init is ever
+    submitted twice.
     """
     from ecmwf.datastores.processing import ProcessingFailedError
 
@@ -416,6 +430,7 @@ def main() -> None:
 
     import xarray as xr
     from ecmwf.datastores import Client
+    from ecmwf.datastores.processing import ProcessingFailedError
 
     print(f"Fetching ECMWF S2S for area={area} date={date_iso}", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="ecmwf-fetch-") as tmpdir:
@@ -434,20 +449,72 @@ def main() -> None:
         # the control leg instead of re-submitting it. Otherwise submit cf now.
         # The perturbed leg is always submitted here. ECDS retrievals are
         # typically minutes to ~hour.
+        #
+        # _submit handles the licence-not-accepted case (exits). Any other submit
+        # failure (transport/auth/HTTP) is surfaced here and the run exits
+        # non-zero, mirroring the probe's taxonomy so a bad init or a credential
+        # problem yields a clear message rather than a raw traceback.
         cf_remote = None
         if resolved_date == _client_cache.get("v"):
             cf_remote = _client_cache.get("cf_remote")
-        if cf_remote is not None:
-            print("Reusing probe's control retrieval; submitting pf...", file=sys.stderr)
-            pf_remote = _submit(client, pf_req)
-        else:
-            print("Submitting cf and pf retrievals...", file=sys.stderr)
-            cf_req = _build_request(date_iso, area, "control_forecast")
-            cf_remote = _submit(client, cf_req)
-            pf_remote = _submit(client, pf_req)
+        try:
+            if cf_remote is not None:
+                print("Reusing probe's control retrieval; submitting pf...", file=sys.stderr)
+                pf_remote = _submit(client, pf_req)
+            else:
+                print("Submitting cf and pf retrievals...", file=sys.stderr)
+                cf_req = _build_request(date_iso, area, "control_forecast")
+                cf_remote = _submit(client, cf_req)
+                pf_remote = _submit(client, pf_req)
+        except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't traceback
+            print(
+                f"Error: ECDS submit failed for init {date_iso} ({exc}); "
+                "this is a transport/auth problem.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # Bounded poll with the same taxonomy as the probe (reusing its
+        # poll-interval/cap constants):
+        #   - ProcessingFailedError (ECDS marked a leg failed/rejected/dismissed)
+        #     means this init is not retrievable — most often because the
+        #     requested --date is not a valid S2S init day. Exit non-zero with a
+        #     clear message rather than a traceback.
+        #   - a transport/auth error on poll is surfaced and exits non-zero.
+        #   - still-not-ready at the wall-clock cap is a stuck job: abort rather
+        #     than looping forever.
         remotes = [cf_remote, pf_remote]
-        while not all(r.results_ready for r in remotes):
-            time.sleep(30)
+        waited = 0
+        while True:
+            try:
+                if all(r.results_ready for r in remotes):
+                    break
+            except ProcessingFailedError as exc:
+                print(
+                    f"Error: ECDS reported no data for init {date_iso} ({exc}); "
+                    "it may not be a valid S2S init day. ECMWF S2S runs init on "
+                    "fixed days, so 'now'/offset dates rarely align — use 'latest' "
+                    "or pass a known S2S init date.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't step
+                print(
+                    f"Error: polling ECDS job for init {date_iso} failed ({exc}); "
+                    "this is a transport/auth problem.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if waited >= _PROBE_POLL_MAX_SECONDS:
+                print(
+                    f"Error: ECDS job for init {date_iso} was still not ready after "
+                    f"{_PROBE_POLL_MAX_SECONDS}s; the job is stuck. Re-run, or pass a "
+                    "different init date.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            time.sleep(_PROBE_POLL_SECONDS)
+            waited += _PROBE_POLL_SECONDS
 
         print("Downloading cf...", file=sys.stderr)
         cf_remote.download(str(cf_grib))

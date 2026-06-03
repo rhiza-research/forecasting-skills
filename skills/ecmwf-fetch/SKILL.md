@@ -47,10 +47,14 @@ uv run scripts/fetch.py --date YYYY-MM-DD --region <region> --output <path.zarr>
   **`now`/offset values rarely land on a real init day.** ECMWF S2S runs init on
   fixed days (Mondays and Thursdays), so an arbitrary calendar date — which is
   what `now`, `today`, and `now-<int>{d|w}` resolve to — usually is not a
-  published init and the retrieval will fail. Use `latest` (or an explicit init
-  date) as the intended relative form for this skill; `now`/offset are accepted
-  for grammar consistency with the other fetchers but seldom resolve to a valid
-  init.
+  published init. When the requested init is not retrievable (ECDS rejects the
+  job) the main fetch exits non-zero with a clear "no data for this init (it may
+  not be a valid S2S init day)" message, and a transport/auth failure is
+  likewise surfaced as a clear error — not a raw traceback. The main fetch's
+  submit and poll use the same bounded-poll and error classification as the
+  `latest` probe. Use `latest` (or an explicit init date) as the intended
+  relative form for this skill; `now`/offset are accepted for grammar
+  consistency with the other fetchers but seldom resolve to a valid init.
 
   **Cost of `latest`:** resolving `latest` is the slow case. Each probe is a real
   ECDS retrieval submit (the asynchronous queue, polled until results-ready), so
