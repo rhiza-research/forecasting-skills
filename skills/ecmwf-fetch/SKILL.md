@@ -31,7 +31,25 @@ uv run scripts/fetch.py --date YYYY-MM-DD --region <region> --output <path.zarr>
 ```
 
 ### Arguments
-- `--date` — forecast init date (ISO).
+- `--date` — forecast init date. The value is one of:
+  - an absolute ISO date `YYYY-MM-DD`;
+  - `now` or `today` — the current UTC date;
+  - `latest` — the newest available forecast init, found by probing init dates
+    backward via ECDS submits;
+  - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
+    days, so `3w` = 21 days). The offset is capped at 36525 days; a larger value,
+    a future `+` offset, a month/year unit, or any malformed value exits 2 before
+    any network call.
+
+  For a relative token the resolved concrete init date is echoed to stderr before
+  fetching, e.g. `resolved "latest" -> 2026-05-30 (single forecast init date)`.
+
+  **Cost of `latest`:** resolving `latest` is the slow case. Each probe is a real
+  ECDS retrieval submit (the asynchronous queue, polled until results-ready), so
+  discovering the newest init may take several minutes to an hour and steps back
+  one init day at a time until one succeeds. This is acceptable because it is
+  opt-in — an absolute or `now`-based `--date` does no probing. The cache key
+  records the resolved absolute init date, never the relative token.
 - `--region` — one of: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`, `angola`. Matches the named regions accepted by `clip-region`. For an explicit bbox, use `--bbox N/W/S/E` instead.
 - `--bbox` — optional; `N/W/S/E` decimal degrees. Overrides `--region` if both are given.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
@@ -64,6 +82,11 @@ uv run scripts/fetch.py --date 2026-02-15 --region africa --output /tmp/ecmwf.za
 
 ```bash
 uv run scripts/fetch.py --date 2026-02-15 --bbox 7/32/-6/43 --output /tmp/ecmwf_kenya.zarr
+```
+
+```bash
+# Newest available init (slow: probes init dates backward via ECDS submits)
+uv run scripts/fetch.py --date latest --region kenya --output /tmp/ecmwf_latest.zarr
 ```
 
 See [references/REFERENCE.md](references/REFERENCE.md) for the exact ECDS request parameters and how retrieval time scales with area.
