@@ -23,6 +23,7 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
 | `imerg-fetch` | IMERG satellite precipitation (late release) → Zarr |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
+| `dynamical-fetch` | dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses) via `--dataset`, credential-free → Zarr |
 
 ### Generic middle (operate on any envelope)
 | Skill | What it does |

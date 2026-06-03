@@ -76,7 +76,8 @@ resolved concrete dates, the day count, and the boundary mode and its reason.
 
 | Concept | Flag | Value shape | Notes |
 | --- | --- | --- | --- |
-| Variable selector | `--variable` / `-v` | string | Restricts an operation to one data variable in a multi-variable Zarr. |
+| Variable selector | `--variable` / `-v` | string | Restricts an operation to one data variable in a multi-variable Zarr. Repeat once per variable to select several. |
+| Catalog dataset selector | `--dataset` | string | Names which dataset to fetch from a multi-dataset source catalog. Validated at runtime against the source's own listing (e.g. `dynamical-fetch` checks `dynamical_catalog.list()`); an unknown id prints the valid list and exits. Used by fetchers that front a catalog of datasets rather than a single product. |
 | Spatial dim-name override | `--dims` | `LAT,LON` | Comma-separated names of the latitude and longitude dims when they're not auto-detectable. |
 | Time-dim override | `--time-dim` | string | Name of the time-like dim when not auto-detectable. Distinct from `--dims`, which is spatial only. |
 
