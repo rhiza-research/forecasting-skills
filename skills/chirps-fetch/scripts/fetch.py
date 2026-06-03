@@ -12,12 +12,13 @@
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +29,147 @@ import xarray as xr
 CHIRPS_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/prelim/sat"
 CHIRPS_NODATA = -9999.0
 HTTP_TIMEOUT = 60
+
+# How far back from today the `latest` backward probe looks for the first
+# available CHIRPS prelim day. CHIRPS v3.0 prelim is published 2 days after each
+# pentad closes (worst-case lag ~7 days); 30 days of margin comfortably covers
+# that plus any short server-side gap. Exhausting the probe without a hit exits
+# non-zero.
+_LATEST_LOOKBACK_DAYS = 30
+
+# --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
+#
+# A --start/--end value is one of:
+#   YYYY-MM-DD                  absolute date
+#   now | today                 current UTC date
+#   latest                      newest date with available data (per-source)
+#   now-<int>{d|w}              now minus N days   (w = 7 days)
+#   latest-<int>{d|w}           latest minus N days
+# Anything else (months/years, future "+", junk) is rejected pre-network.
+_REL_OFFSET_RE = re.compile(r"^(?P<base>now|latest)-(?P<n>\d+)(?P<unit>[dw])$")
+
+# Upper bound on a relative offset's resolved day count. 36525 days (~100 years)
+# is far beyond any real window yet small enough that the date arithmetic cannot
+# raise OverflowError. Rejecting above this cap keeps the failure pre-network.
+_MAX_OFFSET_DAYS = 36525
+
+
+def _parse_token(value: str) -> tuple:
+    """Parse a --start/--end value into a structured token.
+
+    Returns one of:
+      ("abs", date)                              absolute YYYY-MM-DD
+      ("base", "now")                            current UTC date
+      ("base", "latest")                         newest available date (resolved later)
+      ("offset", "now", n_days, unit_phrase)     now minus n_days
+      ("offset", "latest", n_days, unit_phrase)  latest minus n_days
+
+    `unit_phrase` describes the offset in its requested units for the log line
+    (e.g. "3-week", "7-day"). Raises ValueError for anything else (months/years,
+    future "+", malformed), so the failure happens before any network call.
+    "today" is accepted as an alias for "now".
+    """
+    if value in ("now", "today"):
+        return ("base", "now")
+    if value == "latest":
+        return ("base", "latest")
+    m = _REL_OFFSET_RE.match(value)
+    if m is not None:
+        n = int(m.group("n"))
+        unit = m.group("unit")
+        n_days = n * 7 if unit == "w" else n
+        if n_days > _MAX_OFFSET_DAYS:
+            raise ValueError(
+                f"invalid date value {value!r}: offset resolves to {n_days} days, "
+                f"above the maximum of {_MAX_OFFSET_DAYS} days (~100 years)"
+            )
+        unit_phrase = f"{n}-{'week' if unit == 'w' else 'day'}"
+        return ("offset", m.group("base"), n_days, unit_phrase)
+    try:
+        return ("abs", date.fromisoformat(value))
+    except ValueError:
+        raise ValueError(
+            f"invalid date value {value!r}: expected an absolute date YYYY-MM-DD, "
+            "'now'/'today', 'latest', or an offset 'now-<int>{d|w}' / "
+            "'latest-<int>{d|w}'"
+        ) from None
+
+
+def _token_base_date(tok: tuple, now: date, latest_fn) -> date:
+    """Resolve a parsed token's base date.
+
+    `now` is the current UTC date. `latest_fn` is a zero-arg callable that
+    discovers the newest available date for this source; it is invoked at most
+    once per process (the caller memoizes) and only when a token references
+    `latest`.
+    """
+    kind = tok[0]
+    if kind == "abs":
+        return tok[1]
+    base = tok[1]
+    base_date = now if base == "now" else latest_fn()
+    if kind == "base":
+        return base_date
+    return base_date - timedelta(days=tok[2])
+
+
+def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
+    """Resolve --start/--end values to concrete inclusive (start, end) dates.
+
+    Applies the value grammar and the boundary rules:
+      - absolute endpoints and ordinary relative ranges are inclusive both ends;
+      - the DURATION IDIOM (start is `B-<int>{d|w}` and end is exactly the same
+        base token `B`, both `now` or both `latest`) yields an N-day window
+        inclusive of the base, with the far edge shifted in by one.
+
+    Returns (start_date, end_date, log_line) where log_line is a stderr message
+    to print before fetching when any relative token is present, else None.
+    Exits 2 (pre-network) on a malformed token or a reversed range. `latest_fn`
+    is called only if a token references `latest`, and at most once.
+    """
+    try:
+        start_tok = _parse_token(start_value)
+        end_tok = _parse_token(end_value)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    relative_used = start_tok[0] != "abs" or end_tok[0] != "abs"
+    now = datetime.now(UTC).date()
+
+    # Duration idiom: start is an offset off base B, end is exactly base B.
+    duration = start_tok[0] == "offset" and end_tok[0] == "base" and start_tok[1] == end_tok[1]
+
+    start_date = _token_base_date(start_tok, now, latest_fn)
+    end_date = _token_base_date(end_tok, now, latest_fn)
+
+    if duration:
+        # Window is exactly N days, inclusive of the base end, far edge shifted
+        # in by one: start moves forward one day so [end-(N-1), end] spans N days.
+        n_days = start_tok[2]
+        start_date = end_date - timedelta(days=n_days - 1)
+        reason = f"duration mode: {start_tok[3]} window inclusive of {start_tok[1]}"
+    else:
+        reason = "inclusive both ends"
+
+    if start_date > end_date:
+        print(
+            f"Error: resolved --start {start_date.isoformat()} is after resolved "
+            f"--end {end_date.isoformat()}; the range is reversed.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    log_line = None
+    if relative_used:
+        span = (end_date - start_date).days + 1
+        log_line = (
+            f'resolved "{start_value}".."{end_value}" -> '
+            f"{start_date.isoformat()}..{end_date.isoformat()} "
+            f"({span} days; {reason})"
+        )
+    return start_date, end_date, log_line
+
 
 # Default size of the per-day download thread pool. The work is
 # network-I/O-bound (one independent HTTPS GET per day), so threads overlap
@@ -186,6 +328,42 @@ def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> P
     return out
 
 
+def _discover_latest() -> date:
+    """Find the newest available CHIRPS prelim day on or before today (UTC) — the
+    `latest` resolver for CHIRPS.
+
+    Probes backward day-by-day over HTTPS from today: an HTTP 200 on the day's
+    TIF URL means the day is available, a 404 means not-yet-published. Bounded by
+    ``_LATEST_LOOKBACK_DAYS`` (covers the product's worst-case pentad lag plus
+    margin). Returns the first available day. Exits 2 if none is found in the
+    lookback.
+    """
+    today = datetime.now(UTC).date()
+    session = requests.Session()
+    try:
+        for offset in range(_LATEST_LOOKBACK_DAYS + 1):
+            day = today - timedelta(days=offset)
+            name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
+            url = f"{CHIRPS_BASE_URL}/{day.year:04d}/{name}"
+            try:
+                resp = session.head(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
+            except requests.RequestException:
+                # Transport-level failure on this probe day: treat as unavailable
+                # and keep walking backward rather than aborting discovery.
+                continue
+            if resp.status_code == 200:
+                return day
+    finally:
+        session.close()
+    print(
+        f"Error: no CHIRPS prelim day available in the last {_LATEST_LOOKBACK_DAYS} "
+        f"days (probed back to {(today - timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()}); "
+        "cannot resolve 'latest'.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
 def _open_day(tif: Path, day: date) -> xr.DataArray:
     da = rioxarray.open_rasterio(tif, masked=False).squeeze("band", drop=True)
     da = da.where(da != CHIRPS_NODATA)
@@ -214,8 +392,22 @@ def _stamp_cf_attrs(ds: xr.Dataset) -> xr.Dataset:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--start", required=True, help="Start date YYYY-MM-DD (inclusive)")
-    p.add_argument("--end", required=True, help="End date YYYY-MM-DD (inclusive)")
+    p.add_argument(
+        "--start",
+        required=True,
+        help=(
+            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
+            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
+        ),
+    )
+    p.add_argument(
+        "--end",
+        required=True,
+        help=(
+            "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
+            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
+        ),
+    )
     p.add_argument("--output", "-o", required=True)
     p.add_argument(
         "--workers",
@@ -232,13 +424,26 @@ def main() -> None:
         print("Error: --workers must be >= 1.", file=sys.stderr)
         sys.exit(2)
 
+    # Resolve --start/--end to concrete inclusive dates. Malformed tokens and
+    # post-resolution reversed ranges exit 2 before any fetch. `latest` triggers
+    # a backward HTTPS probe (the resolution itself, run at most once); an
+    # all-absolute or now-only window performs no discovery. An absolute
+    # YYYY-MM-DD endpoint normalizes through date.fromisoformat, so the resolved
+    # isoformat is byte-identical to the raw input — absolute behavior unchanged.
+    start_date, end_date, log_line = _resolve_window(args.start, args.end, _discover_latest)
+    start = start_date.isoformat()
+    end = end_date.isoformat()
+    if log_line is not None:
+        print(log_line, file=sys.stderr)
+
     # --workers is a concurrency knob, not a data parameter, so it is excluded
     # from the cache key: the same {start, end} request at any worker count
-    # produces the same data.
+    # produces the same data. The key records the RESOLVED concrete window, never
+    # the relative token.
     requested_entry = {
         "skill": "chirps-fetch",
         "version": _RHIZA_SKILL_VERSION,
-        "args": {"start": args.start, "end": args.end},
+        "args": {"start": start, "end": end},
         "input": None,
     }
     out = Path(args.output)
@@ -249,9 +454,9 @@ def main() -> None:
         )
         return
 
-    print(f"Fetching CHIRPS prelim {args.start} -> {args.end}", file=sys.stderr)
+    print(f"Fetching CHIRPS prelim {start} -> {end}", file=sys.stderr)
 
-    expected_days = list(_daterange(args.start, args.end))
+    expected_days = list(_daterange(start, end))
     succeeded: list[tuple[date, xr.DataArray]] = []
     missing_days: list[date] = []
 
@@ -307,7 +512,7 @@ def main() -> None:
         # Classify outcome.
         if not succeeded:
             print(
-                f"Error: no days available in range {args.start}..{args.end} "
+                f"Error: no days available in range {start}..{end} "
                 f"from the CHIRPS data server. CHIRPS v3.0 preliminary is "
                 "published 2 days after each pentad closes (pentads end on "
                 "days 5, 10, 15, 20, 25, and last of month), so worst-case "
@@ -336,7 +541,7 @@ def main() -> None:
             print(
                 f"Tail-missing day(s) {', '.join(d.isoformat() for d in missing_days)}; "
                 f"writing partial zarr with effective end {effective_end} "
-                f"(requested --end was {args.end}). "
+                f"(requested --end was {end}). "
                 "Consistent with CHIRPS v3.0 preliminary's pentad-based "
                 "schedule (per-day files published 2 days after each pentad "
                 "ends on days 5, 10, 15, 20, 25, and last of month; "
@@ -357,7 +562,7 @@ def main() -> None:
         # short-circuiting on a cache hit.
         effective_entry = {
             **requested_entry,
-            "args": {"start": args.start, "end": effective_end},
+            "args": {"start": start, "end": effective_end},
         }
 
         ds = da.to_dataset()
