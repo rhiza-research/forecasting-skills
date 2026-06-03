@@ -41,9 +41,9 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills plot               -i "$d/ecmwf_dekadal.zarr" -o "$d/dekadal_precip.png" --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --region "$region"
     # Upstream daily_download2.0.yml runs a downscale step (dowscale_dekade.py) producing
     # dekadal_precip_downscaled.png. That artifact isn't in the emailed attachments, so
-    # we run the coarsen + plot here for parity with the workflow steps but the result is
+    # we run the downscale + plot here for parity with the workflow steps but the result is
     # not part of the email deliverable.
-    forecasting-skills coarsen            -i "$d/ecmwf_dekadal.zarr" -o "$d/ecmwf_dekadal_ds.zarr" --target-resolution 0.25 --offset 0.0 --variable tp
+    forecasting-skills downscale          -i "$d/ecmwf_dekadal.zarr" -o "$d/ecmwf_dekadal_ds.zarr" --method linear-interpolation --target-resolution 0.25 --variable tp
     forecasting-skills plot               -i "$d/ecmwf_dekadal_ds.zarr" -o "$d/dekadal_precip_ds.png" --variable tp
 
     forecasting-skills clip-region        -i "$OUT/imerg.zarr"  -o "$d/imerg.zarr"         --region "$region"
