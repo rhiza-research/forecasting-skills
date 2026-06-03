@@ -165,6 +165,106 @@ def _intensive_reason(units, standard_name):
     return None
 
 
+# Extensive depth units (an amount that accumulates, so a per-window SUM of a
+# rate expressed in "<depth>/day" lands in this depth). Keys are tolerated input
+# spellings (matched case-insensitively); values are the canonical spelling the
+# relabel emits.
+_DEPTH_UNITS = {
+    "mm": "mm",
+    "kg m**-2": "kg m**-2",
+    "kg m-2": "kg m**-2",
+    "kg m^-2": "kg m**-2",
+}
+
+# Per-day denominator tokens recognized in a "<depth>/day" rate. Restricted to
+# the day family on purpose: the sum of N rate samples equals the N-period total
+# depth only when each sample spans exactly one denominator unit, which holds
+# for daily-cadence inputs but not for sub-daily cadence. Extending to /hr or /s
+# would silently mis-total sub-daily inputs.
+#
+# The token set is split by spelling form so the two are not mixed:
+#   - slash form  ("mm/day"):   the divisor is a BARE word.
+#   - product form ("mm day-1"): the per-day factor carries a NEGATIVE power.
+# Mixing them ("mm/day-1") is a double negation (mm·day, a depth-days, not a
+# rate), so the slash path accepts only bare words and the product path accepts
+# only negative-power tokens.
+_PER_DAY_SLASH_DENOMINATORS = {"day", "days", "d"}
+_PER_DAY_POWER_DENOMINATORS = {"day-1", "d-1", "day**-1", "d**-1"}
+
+# CF standard_name remap applied when a recognized precipitation RATE is summed
+# into an accumulated depth. Restricted to verified CF rate/amount pairs; this
+# is the standard liquid-water-equivalent precipitation rate and its accumulated
+# depth. A rate-shaped name NOT in this table is dropped (not mapped to an
+# invented amount name) — see `_summed_units_and_name`.
+_RATE_TO_AMOUNT_STANDARD_NAME = {
+    "lwe_precipitation_rate": "lwe_thickness_of_precipitation_amount",
+}
+
+# Suffixes that mark a `standard_name` as a per-time rate (CF rate names end in
+# `_rate`; flux names in `_flux`). Same signal `deaccumulate` uses to detect a
+# rate. Case-insensitive, compared against the stripped name.
+_RATE_NAME_SUFFIXES = ("_rate", "_flux")
+
+
+def _rate_depth_numerator(units):
+    """If `units` is a recognized per-day depth rate (e.g. ``mm/day``,
+    ``mm day-1``), return the canonical extensive depth unit a per-window SUM
+    should carry (e.g. ``mm``). Otherwise return None.
+
+    Recognized numerators are precipitation depths (``mm``, ``kg m**-2`` and
+    tolerated spellings); recognized denominators are the ``day`` family only.
+    Matching is case- and whitespace-tolerant. The denominator is taken as the
+    slash-delimited tail (``mm/day``, a bare word) or, absent a slash, the
+    trailing whitespace-delimited UDUNITS negative-power token (``mm day-1``).
+    A bare word and a negative power are not mixed: ``mm/day-1`` is ``mm·day``
+    (a double negation), not a rate, so it returns None. Already-extensive units
+    (``mm``, ``kg m**-2``) and non-rate units have no such tail and return None.
+    """
+    if not isinstance(units, str):
+        return None
+    u = units.strip()
+    if not u:
+        return None
+    if "/" in u:
+        head, _, tail = u.rpartition("/")
+        valid_denominators = _PER_DAY_SLASH_DENOMINATORS
+    else:
+        head, _, tail = u.rpartition(" ")
+        valid_denominators = _PER_DAY_POWER_DENOMINATORS
+    if tail.strip().lower() not in valid_denominators:
+        return None
+    return _DEPTH_UNITS.get(head.strip().lower())
+
+
+def _summed_units_and_name(units, standard_name):
+    """Return the ``(units, standard_name)`` a SUM output should carry.
+
+    When ``units`` is a recognized per-day depth rate, each summed value is an
+    accumulated depth, so the output must stay self-consistent — a rate
+    ``standard_name`` on depth units is invalid CF metadata:
+
+    - units drop to the depth numerator;
+    - a known rate ``standard_name`` is remapped to its amount form;
+    - a rate-shaped name (``_rate``/``_flux`` suffix) with no known amount
+      equivalent is dropped — returned as ``None`` so the caller removes the
+      attr and warns — rather than left contradicting the new units;
+    - a non-rate or absent ``standard_name`` is returned unchanged.
+
+    When ``units`` is not a recognized rate, both values are returned unchanged.
+    """
+    depth = _rate_depth_numerator(units)
+    if depth is None:
+        return units, standard_name
+    if not isinstance(standard_name, str):
+        return depth, standard_name
+    stripped = standard_name.strip()
+    if stripped in _RATE_TO_AMOUNT_STANDARD_NAME:
+        return depth, _RATE_TO_AMOUNT_STANDARD_NAME[stripped]
+    if stripped.lower().endswith(_RATE_NAME_SUFFIXES):
+        return depth, None
+    return depth, standard_name
+
+
 def _reduce(grouped, method, dim=None):
     fn = {
         "sum": grouped.sum,
@@ -394,6 +494,38 @@ def main() -> None:
     else:
         resampled = ds.resample({dim: RESAMPLE_FREQ[args.period]})
         out_ds = _reduce(resampled, args.method)
+
+    # Units after sum: `_reduce` keeps the input attrs (keep_attrs=True), so a
+    # summed precipitation RATE (e.g. mm/day) would otherwise keep its rate
+    # units even though each output value is now an accumulated per-window
+    # depth. Relabel recognized per-day depth rates to the extensive depth and
+    # remap the precipitation-rate standard_name. Only `sum` accumulates into a
+    # total; mean/max/min keep the rate units. See SKILL.md "Units after sum".
+    if args.method == "sum":
+        for var in out_ds.data_vars:
+            attrs = out_ds[var].attrs
+            old_units = attrs.get("units")
+            old_name = attrs.get("standard_name")
+            new_units, new_name = _summed_units_and_name(old_units, old_name)
+            if new_units == old_units:
+                continue
+            attrs["units"] = new_units
+            if new_name == old_name:
+                continue
+            if new_name is None:
+                # A rate-shaped standard_name with no known amount equivalent:
+                # dropping it keeps the output self-consistent (depth units, no
+                # rate name) instead of contradicting the relabeled units.
+                attrs.pop("standard_name", None)
+                print(
+                    f"Warning: variable '{var}' summed to an accumulated depth; "
+                    f"relabeled units {old_units!r} -> {new_units!r} and dropped "
+                    f"the now-inconsistent rate standard_name {old_name!r} "
+                    f"(no known amount equivalent). Restamp standard_name if needed.",
+                    file=sys.stderr,
+                )
+            else:
+                attrs["standard_name"] = new_name
 
     if not upstream:
         print(
