@@ -68,14 +68,23 @@ spec never false-hits across days.
 
 IMERG late runs ~4 days behind realtime, so a window whose end is at or near
 today (e.g. `--end now`) can resolve to a span whose trailing days are not yet
-published. After the fetch, if fewer distinct granule days fall inside the
-resolved `[start, end]` than the requested span, the skill prints a stderr
-`WARNING` and stamps the cache key with the **effective end** (the last day
-actually present) rather than the requested end. A later run for the same
-requested window therefore misses the cache and re-fetches the now-published
-tail instead of short-circuiting on a partial-window cache hit (mirrors
-chirps-fetch's effective-end behavior). If no granule day falls inside the
-resolved window at all, the run exits non-zero.
+published. After the fetch, the present days are read from the written dataset's
+own time axis (not from CMR metadata), and a span with fewer present days than
+the requested span is classified the same way chirps-fetch classifies missing
+days:
+
+- A contiguous **trailing** gap (the missing days are exactly the tail past the
+  last present day) prints a stderr `WARNING` and stamps the cache key with the
+  **effective end** (the last day actually present) rather than the requested
+  end. A later run for the same requested window therefore misses the cache and
+  re-fetches the now-published tail instead of short-circuiting on a
+  partial-window cache hit.
+- An **interior** hole (a missing day that precedes a later present day) is a
+  server/data gap rather than realtime lag, so the run exits non-zero rather
+  than silently caching a window with a hole in the middle.
+
+If no granule day falls inside the resolved window at all, the run exits
+non-zero.
 
 ### Output
 

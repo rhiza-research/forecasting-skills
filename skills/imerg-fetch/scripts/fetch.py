@@ -400,45 +400,7 @@ def main() -> None:
         raise RuntimeError(f"No IMERG {args.version} granules found in {start}..{end}")
     print(f"Found {len(results)} granules", file=sys.stderr)
 
-    # Short-window protection (mirrors chirps-fetch's effective-end behavior).
-    # IMERG late runs a few days behind realtime, so a window whose end is at or
-    # near today (e.g. `--end now`) can resolve to a span whose trailing days are
-    # not yet published. If fewer distinct granule days fall inside the resolved
-    # [start, end] than the requested span, warn on stderr and stamp the cache
-    # key with the EFFECTIVE end (last day actually present) rather than the
-    # requested end, so a later run re-fetches the now-published tail instead of
-    # short-circuiting on a cache hit against a partial window.
     requested_span = (end_date - start_date).days + 1
-    stamp_entry = requested_entry
-    try:
-        present_days = {d for r in results if start_date <= (d := _granule_date(r)) <= end_date}
-    except GranuleShapeError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(2)
-    covered_days = len(present_days)
-    if covered_days < requested_span:
-        if not present_days:
-            # search_data returned overlap granules just outside the bounds, but
-            # no granule day falls inside [start, end]: nothing in-window to write.
-            print(
-                f"Error: no granule day falls within {start}..{end}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-        effective_end_iso = max(present_days).isoformat()
-        stamp_entry = {
-            **requested_entry,
-            "args": {"start": start, "end": effective_end_iso, "version": args.version},
-        }
-        print(
-            f"WARNING: requested {requested_span} days ({start}..{end}) but only "
-            f"{covered_days} distinct day(s) are available in that span; "
-            f"writing the available days through {effective_end_iso} "
-            "(trailing days not yet published, a genuine data gap, or near the "
-            "dataset start). Caching the effective window so a later request for "
-            "the full window re-fetches the missing tail.",
-            file=sys.stderr,
-        )
 
     if out.exists():
         shutil.rmtree(out)
@@ -456,6 +418,73 @@ def main() -> None:
         # outside [start, end]; trim to exact requested bounds to match the
         # prior sheerwater @timeseries() post-process.
         ds = ds.sel(time=slice(start, end))
+
+        # Short-window protection (mirrors chirps-fetch's tail-vs-mid-gap
+        # handling). IMERG late runs a few days behind realtime, so a window
+        # whose end is at or near today (e.g. `--end now`) can resolve to a span
+        # whose trailing days are not yet published. The present-day set is
+        # derived from the WRITTEN dataset's own time axis (after the
+        # sel(time=slice) trim above), NOT from CMR BeginningDateTime metadata,
+        # so the cache stamp matches the data actually written.
+        import numpy as np
+
+        # np.datetime64(t, "D") truncates each ns timestamp to its calendar day;
+        # .item() on a datetime64[D] yields a datetime.date.
+        present_days = sorted({np.datetime64(t, "D").item() for t in ds["time"].values})
+        # ds.sel already restricts to [start, end]; defensively re-bound in case
+        # any boundary granule slipped through the slice.
+        present_days = [d for d in present_days if start_date <= d <= end_date]
+        covered_days = len(present_days)
+        stamp_entry = requested_entry
+        if covered_days == 0:
+            # The granules search returned overlap granules just outside the
+            # bounds, but no granule day falls inside [start, end]: nothing
+            # in-window to write.
+            print(
+                f"Error: no granule day falls within {start}..{end}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if covered_days < requested_span:
+            last_present = present_days[-1]
+            expected_tail = [
+                start_date + timedelta(days=i)
+                for i in range(requested_span)
+                if start_date + timedelta(days=i) > last_present
+            ]
+            missing_days = sorted(
+                set(start_date + timedelta(days=i) for i in range(requested_span))
+                - set(present_days)
+            )
+            if missing_days != expected_tail:
+                # Interior hole: a missing day precedes a later present day. This
+                # is a server/data gap, not realtime lag; refuse to silently cache
+                # a window with a hole in the middle (mirrors chirps).
+                print(
+                    f"Error: non-trailing missing day(s) "
+                    f"{', '.join(d.isoformat() for d in missing_days)} within "
+                    f"{start}..{end} — server/data gap, not lag. Refusing to write "
+                    "a partial zarr with a hole in the middle.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            # Contiguous trailing gap: warn and stamp the EFFECTIVE end (last day
+            # actually present) so a later run re-fetches the now-published tail
+            # instead of short-circuiting on a cache hit against a partial window.
+            effective_end_iso = last_present.isoformat()
+            stamp_entry = {
+                **requested_entry,
+                "args": {"start": start, "end": effective_end_iso, "version": args.version},
+            }
+            print(
+                f"WARNING: requested {requested_span} days ({start}..{end}) but only "
+                f"{covered_days} distinct day(s) are present in that span; writing the "
+                f"available days through {effective_end_iso} (trailing days not yet "
+                "published, or near the dataset start). Caching the effective window "
+                "so a later request for the full window re-fetches the missing tail.",
+                file=sys.stderr,
+            )
+
         ds = ds.drop_attrs()
         ds.attrs.update(
             rhiza_source="imerg",
