@@ -44,11 +44,27 @@ uv run scripts/fetch.py --date YYYY-MM-DD --region <region> --output <path.zarr>
   For a relative token the resolved concrete init date is echoed to stderr before
   fetching, e.g. `resolved "latest" -> 2026-05-30 (single forecast init date)`.
 
+  **`now`/offset values rarely land on a real init day.** ECMWF S2S runs init on
+  fixed days (Mondays and Thursdays), so an arbitrary calendar date — which is
+  what `now`, `today`, and `now-<int>{d|w}` resolve to — usually is not a
+  published init and the retrieval will fail. Use `latest` (or an explicit init
+  date) as the intended relative form for this skill; `now`/offset are accepted
+  for grammar consistency with the other fetchers but seldom resolve to a valid
+  init.
+
   **Cost of `latest`:** resolving `latest` is the slow case. Each probe is a real
   ECDS retrieval submit (the asynchronous queue, polled until results-ready), so
   discovering the newest init may take several minutes to an hour and steps back
   one init day at a time until one succeeds. This is acceptable because it is
-  opt-in — an absolute or `now`-based `--date` does no probing. The cache key
+  opt-in — an absolute or `now`-based `--date` does no probing. A probe job that
+  ECDS marks failed/rejected means that init is not yet published and the probe
+  steps back; a submit/transport/auth error, or a job still not ready after a
+  bounded wall-clock poll (1 hour), is surfaced and the run exits non-zero rather
+  than being misreported as a missing init or looping forever. (On the poll-cap
+  timeout the run aborts rather than stepping back, because stepping back from a
+  stuck-but-possibly-valid job would report a misleadingly old `latest`.) The
+  completed control retrieval from the winning probe is reused as the control
+  leg of the fetch, so the winning init is not submitted twice. The cache key
   records the resolved absolute init date, never the relative token.
 - `--region` — one of: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`, `angola`. Matches the named regions accepted by `clip-region`. For an explicit bbox, use `--bbox N/W/S/E` instead.
 - `--bbox` — optional; `N/W/S/E` decimal degrees. Overrides `--region` if both are given.

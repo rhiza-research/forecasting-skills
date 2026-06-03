@@ -30,6 +30,16 @@ _RHIZA_SKILL_VERSION = "0.1.1"
 # the probe without a usable init exits non-zero.
 _LATEST_LOOKBACK_DAYS = 14
 
+# Bounded poll for a single `latest` probe day. ECDS retrievals run minutes to
+# ~hour, so each probe job is polled every _PROBE_POLL_SECONDS up to a
+# _PROBE_POLL_MAX_SECONDS wall-clock cap. A job still not results-ready at the
+# cap is treated as stuck (not as "this init is unavailable"): the probe aborts
+# with a clear message rather than looping forever or silently stepping back to
+# an older init, since stepping back on a stuck-but-possibly-valid job would
+# report a misleadingly old `latest`. See SKILL.md.
+_PROBE_POLL_SECONDS = 30
+_PROBE_POLL_MAX_SECONDS = 3600
+
 # --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
 #
 # A --date value is one of:
@@ -253,30 +263,72 @@ def _build_request(date_iso: str, area: list[float], forecast_type: str) -> dict
     }
 
 
-def _discover_latest(client, area: list[float]) -> dt.date:
+def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
     """`latest` resolver for ECMWF S2S: newest available forecast init on or
     before today (UTC), found by probing init dates backward.
 
     For each candidate day back from today, submits a control-forecast retrieval
-    over the requested area and treats a job that reaches results-ready as a
-    usable init; a submit error or a job that fails is treated as "no init that
-    day" and the probe steps back one day. This is the slow/async case (each
-    probe is a real ECDS submit) — acceptable because it is opt-in. Bounded by
+    over the requested area and polls it (bounded by ``_PROBE_POLL_MAX_SECONDS``)
+    until results-ready. A job that ECDS marks failed/rejected/dismissed means
+    that init is not published — step back one day. A submit/transport/auth
+    error, or a job still not ready at the poll cap, is NOT "this init is
+    unavailable": it is surfaced and the run exits non-zero, so a stuck job or a
+    credential problem is never silently misreported as a missing init.
+
+    Returns ``(day, remote)`` for the winning init — the completed control
+    retrieval — so the caller reuses it as the control leg rather than
+    re-submitting it. This is the slow/async case (each probe is a real ECDS
+    submit) — acceptable because it is opt-in. Bounded by
     ``_LATEST_LOOKBACK_DAYS``; exhausting it without a usable init exits 2.
     """
+    from ecmwf.datastores.processing import ProcessingFailedError
+
     today = dt.datetime.now(dt.UTC).date()
     for offset in range(_LATEST_LOOKBACK_DAYS + 1):
         day = today - dt.timedelta(days=offset)
         req = _build_request(day.isoformat(), area, "control_forecast")
         print(f"Probing ECMWF init {day.isoformat()} for 'latest'...", file=sys.stderr)
+        # _submit handles the licence-not-accepted case (exits). Any other
+        # submit failure (transport/auth/HTTP) is a real error, not a missing
+        # init: surface it and exit rather than stepping back.
         try:
             remote = _submit(client, req)
-            while not remote.results_ready:
-                time.sleep(30)
-        except Exception as exc:  # noqa: BLE001 -- a failed probe day is skipped
-            print(f"  {day.isoformat()} unavailable ({exc}); stepping back", file=sys.stderr)
-            continue
-        return day
+        except Exception as exc:  # noqa: BLE001 -- surface; do not misreport as missing init
+            print(
+                f"Error: ECDS submit failed while probing init {day.isoformat()} ({exc}); "
+                "this is a transport/auth problem, not a not-yet-published init.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        waited = 0
+        while True:
+            try:
+                if remote.results_ready:
+                    return day, remote
+            except ProcessingFailedError as exc:
+                # ECDS marked the job failed/rejected/dismissed: this init is not
+                # published. Step back one day.
+                print(f"  {day.isoformat()} not published ({exc}); stepping back", file=sys.stderr)
+                break
+            except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't step back
+                print(
+                    f"Error: polling ECDS job for init {day.isoformat()} failed ({exc}); "
+                    "this is a transport/auth problem, not a not-yet-published init.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if waited >= _PROBE_POLL_MAX_SECONDS:
+                print(
+                    f"Error: ECDS job for init {day.isoformat()} was still not ready after "
+                    f"{_PROBE_POLL_MAX_SECONDS}s; the job is stuck. Aborting rather than "
+                    "stepping back to an older init (which would report a misleadingly old "
+                    "'latest'). Re-run, or pass an explicit init date.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            time.sleep(_PROBE_POLL_SECONDS)
+            waited += _PROBE_POLL_SECONDS
     print(
         f"Error: no ECMWF S2S init available in the last {_LATEST_LOOKBACK_DAYS} days "
         f"(probed back to {(today - dt.timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()}); "
@@ -323,7 +375,12 @@ def main() -> None:
             from ecmwf.datastores import Client
 
             _client_cache["client"] = Client()
-            _client_cache["v"] = _discover_latest(_client_cache["client"], area)
+            # _discover_latest returns (day, completed control retrieval). Cache
+            # the remote so main can reuse the probe's control leg for the
+            # winning init instead of re-submitting it.
+            day, cf_remote = _discover_latest(_client_cache["client"], area)
+            _client_cache["v"] = day
+            _client_cache["cf_remote"] = cf_remote
         return _client_cache["v"]
 
     # Resolve --date to a concrete init date. A malformed token exits 2 before
@@ -335,12 +392,16 @@ def main() -> None:
     if log_line is not None:
         print(log_line, file=sys.stderr)
 
+    # Build the cache-key args from the argparse namespace minus the path
+    # strings, then set the resolved concrete init date by explicit assignment
+    # (never the relative token) — matching how imerg/tahmo build their dicts,
+    # rather than a vars(args) | {"date": ...} merge-override.
+    args_dict = {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
+    args_dict["date"] = date_iso
     entry = {
         "skill": "ecmwf-fetch",
         "version": _RHIZA_SKILL_VERSION,
-        # date records the RESOLVED concrete init date, never the relative token.
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
-        | {"date": date_iso},
+        "args": args_dict,
         "input": None,
     }
     out = Path(args.output)
@@ -365,13 +426,25 @@ def main() -> None:
         # Reuse the probe's Client when `latest` discovery already built one,
         # else create it now.
         client = _client_cache.get("client") or Client()
-        cf_req = _build_request(date_iso, area, "control_forecast")
         pf_req = _build_request(date_iso, area, "perturbed_forecast")
 
-        # Submit cf and pf in parallel; ECDS retrievals are typically minutes to ~hour.
-        print("Submitting cf and pf retrievals...", file=sys.stderr)
-        cf_remote = _submit(client, cf_req)
-        pf_remote = _submit(client, pf_req)
+        # If `latest` discovery already submitted and completed a control-forecast
+        # retrieval for THIS exact init (i.e. the resolved date is the probed
+        # `latest` day, not an offset off it), reuse that completed retrieval as
+        # the control leg instead of re-submitting it. Otherwise submit cf now.
+        # The perturbed leg is always submitted here. ECDS retrievals are
+        # typically minutes to ~hour.
+        cf_remote = None
+        if resolved_date == _client_cache.get("v"):
+            cf_remote = _client_cache.get("cf_remote")
+        if cf_remote is not None:
+            print("Reusing probe's control retrieval; submitting pf...", file=sys.stderr)
+            pf_remote = _submit(client, pf_req)
+        else:
+            print("Submitting cf and pf retrievals...", file=sys.stderr)
+            cf_req = _build_request(date_iso, area, "control_forecast")
+            cf_remote = _submit(client, cf_req)
+            pf_remote = _submit(client, pf_req)
         remotes = [cf_remote, pf_remote]
         while not all(r.results_ready for r in remotes):
             time.sleep(30)
