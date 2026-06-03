@@ -21,6 +21,9 @@ import tempfile
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import earthaccess
+import xarray as xr
+
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _RHIZA_SKILL_VERSION = "0.1.1"
 
@@ -72,13 +75,6 @@ def _parse_last(spec: str) -> int:
     return n_days
 
 
-def _resolve_window(end_date: date, n_days: int) -> date:
-    """Return the inclusive start date for a window of ``n_days`` ending at
-    ``end_date``. The window spans ``n_days`` calendar days inclusive, so
-    ``start = end - (n_days - 1)``."""
-    return end_date - timedelta(days=n_days - 1)
-
-
 def _resolve_anchor(anchor: str) -> date:
     """Resolve the ``--anchor`` value (``"today"`` or an ISO date) to a date.
 
@@ -92,8 +88,6 @@ def _resolve_anchor(anchor: str) -> date:
 
 
 def _load_history(zarr_path: Path) -> list:
-    import xarray as xr
-
     try:
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
             raw = ds.attrs.get("rhiza_history")
@@ -188,33 +182,6 @@ def _granule_date(result) -> date:
         ) from exc
 
 
-def _count_distinct_days(results, start_date: date, end_date: date) -> int:
-    """Count distinct granule calendar dates within ``[start_date, end_date]``.
-
-    Used to decide whether the fetched window covers the full requested span.
-    """
-    days = {d for r in results if start_date <= (d := _granule_date(r)) <= end_date}
-    return len(days)
-
-
-def _effective_end(results, start_date: date, end_date: date) -> date:
-    """Return the last granule day actually present within ``[start_date, end_date]``.
-
-    Used by relative mode when the resolved window is short: the cache key is
-    stamped with this effective end (the last day really written) instead of the
-    requested ``end_date``, so a later request for the full window misses the
-    cache and re-fetches days that have since published. Mirrors chirps-fetch's
-    ``effective_end`` logic. Raises ValueError if no granule falls in the window
-    (callers only invoke this once at least one in-window day is known to exist).
-    """
-    present = {d for r in results if start_date <= (d := _granule_date(r)) <= end_date}
-    if not present:
-        raise ValueError(
-            f"no granule day falls within {start_date.isoformat()}..{end_date.isoformat()}"
-        )
-    return max(present)
-
-
 def _discover_end(shortname: str, anchor: date) -> date:
     """Find the latest available granule on or before ``anchor`` and return its
     date.
@@ -226,8 +193,6 @@ def _discover_end(shortname: str, anchor: date) -> date:
     surface the most-recent granule. Returns the max granule date ``<= anchor``.
     Exits 2 if no granule falls on or before ``anchor`` in that lookback.
     """
-    import earthaccess
-
     lookback_start = anchor - timedelta(days=_DISCOVERY_LOOKBACK_DAYS)
     results = earthaccess.search_data(
         short_name=shortname,
@@ -342,12 +307,6 @@ def main() -> None:
     shortname = SHORTNAMES[args.version]
     out = Path(args.output)
 
-    # Heavy deps are imported only past the arg-validation guards above, so the
-    # mutual-exclusion / neither-mode / malformed-`--last` error paths exit 2
-    # without requiring earthaccess or xarray to be installed.
-    import earthaccess
-    import xarray as xr
-
     if args.last is not None:
         # Discovery needs login. Run it first, then echo the resolved window
         # to stderr before any download.
@@ -357,7 +316,9 @@ def main() -> None:
         except GranuleShapeError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(2)
-        start_date = _resolve_window(end_date, n_days)
+        # The window spans n_days calendar days inclusive, so
+        # start = end - (n_days - 1).
+        start_date = end_date - timedelta(days=n_days - 1)
         start = start_date.isoformat()
         end = end_date.isoformat()
         print(
@@ -434,24 +395,30 @@ def main() -> None:
     # complete. Accept what exists. Only meaningful for relative mode, where
     # n_days is the requested length; absolute mode has no requested day count.
     if args.last is not None:
+        # Distinct granule calendar dates within [start_date, end_date], used
+        # both to decide whether the fetched window covers the full requested
+        # span and to derive the effective end (last present day).
         try:
-            covered_days = _count_distinct_days(results, start_date, end_date)
+            present_days = {d for r in results if start_date <= (d := _granule_date(r)) <= end_date}
         except GranuleShapeError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(2)
+        covered_days = len(present_days)
         if covered_days < n_days:
+            # No granule day falls inside [start, end] at all, even though
+            # search_data returned overlap granules just outside the bounds.
+            # There is nothing in-window to write.
+            if not present_days:
+                print(
+                    f"Error: no granule day falls within "
+                    f"{start_date.isoformat()}..{end_date.isoformat()}",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
             # Stamp the EFFECTIVE end (last present day) rather than the
             # requested end, mirroring chirps-fetch, so the short zarr is not
             # cached as a complete window.
-            try:
-                effective_end = _effective_end(results, start_date, end_date)
-            except (GranuleShapeError, ValueError) as exc:
-                # ValueError: no granule day falls inside [start, end] at all,
-                # even though search_data returned overlap granules just outside
-                # the bounds. There is nothing in-window to write.
-                print(f"Error: {exc}", file=sys.stderr)
-                sys.exit(2)
-            effective_end_iso = effective_end.isoformat()
+            effective_end_iso = max(present_days).isoformat()
             stamp_entry = {
                 **requested_entry,
                 "args": {"start": start, "end": effective_end_iso, "version": args.version},
