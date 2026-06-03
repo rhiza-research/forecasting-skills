@@ -13,8 +13,10 @@ Source-agnostic spatial coarsening and alignment: linearly interpolates the
 input onto a uniform target grid whose points fall at `offset + k * resolution`
 for integer k, clipped to the input's lon/lat range. This changes grid geometry
 only — it adds no information — and is used to coarsen a grid or to align two
-grids for comparison. Uses `xarray-regrid`'s `.regrid.linear()` accessor. Any
-resolution is allowed.
+grids for comparison. The target resolution must be coarser-or-equal to the
+input on each axis; equal resolution is accepted as a no-op/realign. A
+strictly-finer target is rejected with a pointer to the `downscale` skill, since
+gaining resolution with added information is that skill's job.
 
 `(--target-resolution 0.25, --offset 0.0)` aligns with sheerwater's
 `global0_25`; `(0.1, 0.05)` with `global0_1`; `(0.05, 0.025)` with `global0_05`.

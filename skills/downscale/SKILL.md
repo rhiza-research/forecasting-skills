@@ -1,6 +1,6 @@
 ---
 name: downscale
-description: Downscale a Rhiza Envelope Zarr onto a FINER grid, adding information via a chosen --method (linear-interpolation or q-q empirical quantile mapping). The finer target is given by an integer factor, a finer target resolution, or a reference dataset's grid. Use when a task needs higher spatial resolution; to make a grid coarser or merely realign it, use the coarsen skill.
+description: Downscale a Rhiza Envelope Zarr onto a FINER-OR-EQUAL grid, adding information via a chosen --method (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
@@ -9,13 +9,14 @@ metadata:
 
 # downscale
 
-Source-agnostic spatial downscaling: produces a FINER grid than the input and
-adds information through a pluggable `--method`. The finer target grid is
+Source-agnostic spatial downscaling: produces a FINER-OR-EQUAL grid than the
+input and adds information through a pluggable `--method`. The target grid is
 specified one of three ways — an integer `--factor` (new spacing = input
-spacing / factor), a finer `--target-resolution` in degrees, or a
-`--reference-grid` dataset whose lat/lon grid becomes the target. The requested
-target must be finer than the input; a coarser-or-equal target is rejected with
-a pointer to the `coarsen` skill.
+spacing / factor), a `--target-resolution` in degrees, or a `--reference-grid`
+dataset whose lat/lon grid becomes the target. The requested target must be
+finer-or-equal to the input on each axis; equal resolution is accepted as a
+no-op on geometry (for `--method q-q` the value mapping still applies). A
+strictly-coarser target is rejected with a pointer to the `coarsen` skill.
 
 Methods:
 
@@ -35,8 +36,8 @@ Methods:
 - Bias-correcting interpolated output against an observational reference on the
   output grid (`--method q-q` with `--qq-reference`).
 
-Not for: coarsening a grid or simply realigning onto a coarser/equal grid — that
-is the `coarsen` skill.
+Not for: coarsening a grid onto a strictly-coarser resolution — that is the
+`coarsen` skill.
 
 ## Usage
 
@@ -52,9 +53,9 @@ uv run scripts/downscale.py --input <in.zarr> --output <out.zarr> \
 - `--input`, `-i` — input Zarr (any gridded envelope).
 - `--output`, `-o` — output Zarr.
 - `--method` — `linear-interpolation` or `q-q`. Required.
-- `--factor`, `-f` — integer refinement factor (>= 2). New spacing = input spacing / factor. Mutually exclusive with `--target-resolution` and `--reference-grid`.
-- `--target-resolution` — target spacing in degrees; must be finer (smaller) than the input. Mutually exclusive with `--factor` and `--reference-grid`.
-- `--reference-grid` — path to a reference Zarr whose lat/lon grid defines the finer target. The reference grid must be finer than the input. Mutually exclusive with `--factor` and `--target-resolution`.
+- `--factor`, `-f` — integer refinement factor (>= 1). New spacing = input spacing / factor (factor 1 = identity). Mutually exclusive with `--target-resolution` and `--reference-grid`.
+- `--target-resolution` — target spacing in degrees; must be finer-or-equal (<=) to the input on each axis. Mutually exclusive with `--factor` and `--reference-grid`.
+- `--reference-grid` — path to a reference Zarr whose lat/lon grid defines the target. The reference grid must be finer-or-equal to the input. Mutually exclusive with `--factor` and `--target-resolution`.
 - `--dims` — comma-separated lat,lon dim names. Defaults autodetect among `latitude/lat/y` and `longitude/lon/x`.
 - `--variable`, `-v` — restrict to a single data variable. Default: process all.
 - `--qq-reference` — reference Zarr whose distribution the `q-q` method maps the output onto. Per-grid-cell empirical quantile mapping along `--time-dim`. The reference must already be on the post-downscale lat/lon grid; mismatches are an error. Required for `--method q-q`.

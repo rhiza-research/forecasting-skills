@@ -170,18 +170,18 @@ def main() -> None:
         "--factor",
         "-f",
         type=int,
-        help="Integer refinement factor (>= 2). New spacing = input spacing / factor.",
+        help="Integer refinement factor (>= 1). New spacing = input spacing / factor.",
     )
     grp.add_argument(
         "--target-resolution",
         type=float,
-        help="Target grid spacing in degrees. Must be finer (smaller) than the input.",
+        help="Target grid spacing in degrees. Must be finer-or-equal (<=) to the input.",
     )
     grp.add_argument(
         "--reference-grid",
         help=(
             "Path to a reference Zarr whose lat/lon grid defines the finer "
-            "target. The reference grid must be finer than the input."
+            "target. The reference grid must be finer-or-equal to the input."
         ),
     )
     p.add_argument("--dims", help="Override as LAT,LON dim names")
@@ -202,8 +202,8 @@ def main() -> None:
     )
     args = p.parse_args()
 
-    if args.factor is not None and args.factor < 2:
-        print("Error: --factor must be >= 2.", file=sys.stderr)
+    if args.factor is not None and args.factor < 1:
+        print("Error: --factor must be >= 1.", file=sys.stderr)
         sys.exit(2)
     if args.target_resolution is not None and args.target_resolution <= 0:
         print("Error: --target-resolution must be > 0.", file=sys.stderr)
@@ -322,12 +322,12 @@ def main() -> None:
         new_lon = np.asarray(ref_grid_ds[lon_dim].values)
         ref_lat_res = _grid_spacing(ref_grid_ds, lat_dim)
         ref_lon_res = _grid_spacing(ref_grid_ds, lon_dim)
-        if ref_lat_res >= in_lat_res or ref_lon_res >= in_lon_res:
+        if ref_lat_res > in_lat_res or ref_lon_res > in_lon_res:
             print(
-                f"Error: --reference-grid is not finer than the input "
+                f"Error: --reference-grid is coarser than the input "
                 f"(input ~{in_lat_res:.4f}°x{in_lon_res:.4f}°, reference "
                 f"~{ref_lat_res:.4f}°x{ref_lon_res:.4f}°). Downscaling goes "
-                f"finer; to coarsen or align onto a coarser/equal grid use the "
+                f"finer-or-equal; to coarsen onto a coarser grid use the "
                 f"coarsen skill.",
                 file=sys.stderr,
             )
@@ -337,16 +337,17 @@ def main() -> None:
         if args.factor is not None:
             lat_spacing = in_lat_res / args.factor
             lon_spacing = in_lon_res / args.factor
-            target_desc = f"factor {args.factor} finer"
+            target_desc = f"factor {args.factor}"
         else:
             # --target-resolution: the requested spacing applies to both axes.
-            # Require it to be strictly finer than BOTH input axis spacings, so a
-            # value finer than the mean but coarser than one axis is still rejected.
-            if args.target_resolution >= in_lat_res or args.target_resolution >= in_lon_res:
+            # Require it to be finer-or-equal to BOTH input axis spacings, so a
+            # value finer than one axis but coarser than the other is still rejected.
+            if args.target_resolution > in_lat_res or args.target_resolution > in_lon_res:
                 print(
-                    f"Error: --target-resolution {args.target_resolution}° is not "
-                    f"finer than both input axes (~{in_lat_res:.4f}°x{in_lon_res:.4f}°). "
-                    f"Downscaling goes finer; to coarsen or align onto a coarser/equal "
+                    f"Error: --target-resolution {args.target_resolution}° is "
+                    f"coarser than the input on at least one axis "
+                    f"(~{in_lat_res:.4f}°x{in_lon_res:.4f}°). "
+                    f"Downscaling goes finer-or-equal; to coarsen onto a coarser "
                     f"grid use the coarsen skill.",
                     file=sys.stderr,
                 )

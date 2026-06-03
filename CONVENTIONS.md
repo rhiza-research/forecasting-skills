@@ -57,10 +57,10 @@ standalone single-file scripts. The convention is enforced by review.
 
 | Concept | Flag | Value shape | Notes |
 | --- | --- | --- | --- |
-| Refinement/coarsening factor | `--factor` / `-f` | int | Integer grid factor. For `downscale` (finer): factor must be an integer `>= 2`; new spacing = input spacing / factor. |
-| Target grid spacing | `--target-resolution` | float (degrees) | Target grid spacing in degrees. For `downscale` it must be finer (smaller) than the input; `coarsen` allows any spacing. |
+| Refinement/coarsening factor | `--factor` / `-f` | int | Integer grid factor. For `downscale` (finer-or-equal): factor must be an integer `>= 1`; new spacing = input spacing / factor (factor 1 = identity). |
+| Target grid spacing | `--target-resolution` | float (degrees) | Target grid spacing in degrees. For `downscale` it must be finer-or-equal (`<=`) to the input on each axis; for `coarsen` it must be coarser-or-equal (`>=`) on each axis. Equal resolution is a valid no-op in both. |
 | Grid offset | `--offset` | float (degrees) | Used by `coarsen`: target points fall at `offset + k*resolution`. |
-| Reference-grid target | `--reference-grid` | path | Path to a Zarr whose lat/lon grid defines the target grid. Used by `downscale` to match another dataset's (finer) grid. |
+| Reference-grid target | `--reference-grid` | path | Path to a Zarr whose lat/lon grid defines the target grid. Used by `downscale` to match another dataset's (finer-or-equal) grid. |
 | Downscaling method | `--method` | string from a per-skill fixed list | How a downscaling step adds information. `downscale` uses `choices={linear-interpolation, q-q}`. (Note: `aggregate-temporal` also uses `--method` for its temporal reducer — a per-skill fixed list, distinct values.) |
 
 ### Bias correction
