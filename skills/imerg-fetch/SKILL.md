@@ -64,6 +64,19 @@ The provenance/cache `args` records the resolved concrete `{start, end, version}
 never the relative token, so the same resolved window cache-hits and a relative
 spec never false-hits across days.
 
+### Short-window warning
+
+IMERG late runs ~4 days behind realtime, so a window whose end is at or near
+today (e.g. `--end now`) can resolve to a span whose trailing days are not yet
+published. After the fetch, if fewer distinct granule days fall inside the
+resolved `[start, end]` than the requested span, the skill prints a stderr
+`WARNING` and stamps the cache key with the **effective end** (the last day
+actually present) rather than the requested end. A later run for the same
+requested window therefore misses the cache and re-fetches the now-published
+tail instead of short-circuiting on a partial-window cache hit (mirrors
+chirps-fetch's effective-end behavior). If no granule day falls inside the
+resolved window at all, the run exits non-zero.
+
 ### Output
 
 Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the global IMERG 0.1° grid. Stamped with `rhiza_source=imerg`.

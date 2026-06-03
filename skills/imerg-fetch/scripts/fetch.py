@@ -400,7 +400,45 @@ def main() -> None:
         raise RuntimeError(f"No IMERG {args.version} granules found in {start}..{end}")
     print(f"Found {len(results)} granules", file=sys.stderr)
 
+    # Short-window protection (mirrors chirps-fetch's effective-end behavior).
+    # IMERG late runs a few days behind realtime, so a window whose end is at or
+    # near today (e.g. `--end now`) can resolve to a span whose trailing days are
+    # not yet published. If fewer distinct granule days fall inside the resolved
+    # [start, end] than the requested span, warn on stderr and stamp the cache
+    # key with the EFFECTIVE end (last day actually present) rather than the
+    # requested end, so a later run re-fetches the now-published tail instead of
+    # short-circuiting on a cache hit against a partial window.
+    requested_span = (end_date - start_date).days + 1
     stamp_entry = requested_entry
+    try:
+        present_days = {d for r in results if start_date <= (d := _granule_date(r)) <= end_date}
+    except GranuleShapeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
+    covered_days = len(present_days)
+    if covered_days < requested_span:
+        if not present_days:
+            # search_data returned overlap granules just outside the bounds, but
+            # no granule day falls inside [start, end]: nothing in-window to write.
+            print(
+                f"Error: no granule day falls within {start}..{end}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        effective_end_iso = max(present_days).isoformat()
+        stamp_entry = {
+            **requested_entry,
+            "args": {"start": start, "end": effective_end_iso, "version": args.version},
+        }
+        print(
+            f"WARNING: requested {requested_span} days ({start}..{end}) but only "
+            f"{covered_days} distinct day(s) are available in that span; "
+            f"writing the available days through {effective_end_iso} "
+            "(trailing days not yet published, a genuine data gap, or near the "
+            "dataset start). Caching the effective window so a later request for "
+            "the full window re-fetches the missing tail.",
+            file=sys.stderr,
+        )
 
     if out.exists():
         shutil.rmtree(out)
