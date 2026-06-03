@@ -4,7 +4,7 @@ description: Roll up a Rhiza Envelope Zarr along its time axis (or forecast step
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # aggregate-temporal
@@ -56,6 +56,38 @@ signals and leaves ambiguous metadata to proceed:
 
 The other reducers (`mean`, `max`, `min`) are always accepted, and precipitation
 (`mm`, `kg m**-2`) with `--method sum` proceeds.
+
+### Units after sum
+
+`--method sum` of a precipitation **rate** produces an accumulated **depth**: the
+sum of N daily `mm/day` values is the total depth in `mm` over those N days. So
+after a `sum`, any variable whose units are a recognized per-day depth rate is
+relabeled to the extensive depth, and a known precipitation-rate `standard_name`
+is remapped to its accumulated-amount form:
+
+- units `mm/day` (also `mm day-1`, `mm/d`, and `kg m**-2/day` spellings) → the
+  bare depth (`mm`, `kg m**-2`);
+- `standard_name` is kept consistent with the new depth units (a rate name on
+  depth units is invalid CF metadata): the known `lwe_precipitation_rate` →
+  `lwe_thickness_of_precipitation_amount`; any other rate-shaped name (a
+  `_rate`/`_flux` suffix) with no known amount equivalent is **dropped** with a
+  stderr warning rather than left contradicting the units; a non-rate or absent
+  `standard_name` is left unchanged.
+
+This keeps downstream plot axis labels correct (e.g. a weekly total reads `[mm]`,
+not `[mm/day]`) and keeps output metadata self-consistent for any input,
+including user-provided datasets. Scope is deliberately narrow:
+
+- Only `--method sum` relabels; `mean`/`max`/`min` keep the rate units (a window
+  mean of `mm/day` is still a rate in `mm/day`).
+- Only the **`/day`** denominator family is recognized. The sum-equals-total
+  identity holds only when each sample spans exactly one denominator unit, which
+  is true for daily-cadence inputs but not for sub-daily cadence; `/hr` and `/s`
+  rates are left untouched rather than silently mis-totaled.
+- Already-extensive units (`mm`, `kg m**-2`) and unrecognized units are left
+  unchanged, as is any unrecognized or absent `standard_name`.
+
+The numeric values are never altered — this is a metadata-only relabel.
 
 ### Output
 
