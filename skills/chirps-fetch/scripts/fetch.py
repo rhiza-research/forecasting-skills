@@ -343,51 +343,81 @@ def _discover_latest() -> date:
     """Find the newest available CHIRPS prelim day on or before today (UTC) — the
     `latest` resolver for CHIRPS.
 
-    Probes backward day-by-day over HTTPS from today, mirroring the status
-    handling in ``_download_day_tif``:
+    Probes backward day-by-day over HTTPS from today, classifying availability
+    the same way an actual download (``_download_day_tif``) would see it:
       - HTTP 200 means the day is available -> return it;
       - HTTP 404 means not-yet-published -> step back one day;
       - HTTP 5xx or a transport-level failure is transient -> step back, but
         remembered: if the probe never reaches a definitive 200/404 answer
         (every day failed transiently), that is a connectivity/server problem,
         not "no data", and is surfaced as a real error;
-      - any other status (403/401/other-4xx) is a real config/auth problem ->
-        surface it immediately.
-    Bounded by ``_LATEST_LOOKBACK_DAYS`` (covers the product's worst-case pentad
-    lag plus margin). Exits 2 if no day is available, distinguishing a genuine
+      - any other status (403/401/405/other-4xx) is surfaced as a real
+        config/auth problem.
+    Each day is probed with HEAD first (cheap — no body), but because
+    ``_download_day_tif`` issues a GET, a server that rejects HEAD (e.g. 405
+    Method Not Allowed, or a 403/other-4xx that only applies to HEAD) would
+    falsely abort here even though the day downloads fine. So a non-404 HEAD
+    answer (the 405/403/other-4xx case) is re-probed with GET before deciding:
+    the GET status is then what a real download would see, keeping availability
+    detection consistent with the downloader. Bounded by
+    ``_LATEST_LOOKBACK_DAYS`` (covers the product's worst-case pentad lag plus
+    margin). Exits 2 if no day is available, distinguishing a genuine
     not-yet-published lookback from a persistent transport/server failure.
     """
     today = datetime.now(UTC).date()
     session = requests.Session()
     transient_only = True  # cleared as soon as any probe gets a definitive 200/404
     last_transient = None
+
+    def _probe_status(url: str):
+        """Return (status_code, None) or (None, transient_message) for one day.
+
+        HEAD first; on any non-404, non-200, non-5xx answer (405/403/other-4xx)
+        re-issue a GET so the verdict matches what the downloader's GET sees.
+        A transport-level failure on either request is reported as transient.
+        """
+        try:
+            resp = session.head(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
+        except requests.RequestException as exc:
+            return None, f"transport error: {exc}"
+        if resp.status_code in (200, 404) or resp.status_code >= 500:
+            return resp.status_code, None
+        # 4xx other than 404 (403/401/405/bad request, etc.) on HEAD may be a
+        # HEAD-specific rejection; confirm with a GET, which is what the real
+        # download issues, before treating it as a config/auth problem.
+        try:
+            get_resp = session.get(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
+        except requests.RequestException as exc:
+            return None, f"transport error: {exc}"
+        return get_resp.status_code, None
+
     try:
         for offset in range(_LATEST_LOOKBACK_DAYS + 1):
             day = today - timedelta(days=offset)
             name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
             url = f"{CHIRPS_BASE_URL}/{day.year:04d}/{name}"
-            try:
-                resp = session.head(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
-            except requests.RequestException as exc:
+            status, transient = _probe_status(url)
+            if status is None:
                 # Transport-level failure on this probe day is transient: step
                 # back, but record it so an all-transient probe surfaces below
                 # instead of being misreported as "no data".
-                last_transient = f"transport error: {exc}"
+                last_transient = transient
                 continue
-            if resp.status_code == 200:
+            if status == 200:
                 return day
-            if resp.status_code == 404:
+            if status == 404:
                 # Not yet published: a definitive answer, step back one day.
                 transient_only = False
                 continue
-            if resp.status_code >= 500:
+            if status >= 500:
                 # Server-side error is transient: step back, remembering it.
-                last_transient = f"HTTP {resp.status_code}"
+                last_transient = f"HTTP {status}"
                 continue
-            # 4xx other than 404 (403/401/bad request, etc.) is a real config or
-            # auth problem, not a not-yet-published day; surface it immediately.
+            # 4xx other than 404 (403/401/bad request, etc.) confirmed by GET is
+            # a real config or auth problem, not a not-yet-published day; surface
+            # it immediately.
             print(
-                f"Error: CHIRPS 'latest' probe got HTTP {resp.status_code} for {url}; "
+                f"Error: CHIRPS 'latest' probe got HTTP {status} for {url}; "
                 "this is a config/auth problem, not a not-yet-published day.",
                 file=sys.stderr,
             )
