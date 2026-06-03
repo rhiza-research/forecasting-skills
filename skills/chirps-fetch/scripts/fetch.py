@@ -343,14 +343,24 @@ def _discover_latest() -> date:
     """Find the newest available CHIRPS prelim day on or before today (UTC) — the
     `latest` resolver for CHIRPS.
 
-    Probes backward day-by-day over HTTPS from today: an HTTP 200 on the day's
-    TIF URL means the day is available, a 404 means not-yet-published. Bounded by
-    ``_LATEST_LOOKBACK_DAYS`` (covers the product's worst-case pentad lag plus
-    margin). Returns the first available day. Exits 2 if none is found in the
-    lookback.
+    Probes backward day-by-day over HTTPS from today, mirroring the status
+    handling in ``_download_day_tif``:
+      - HTTP 200 means the day is available -> return it;
+      - HTTP 404 means not-yet-published -> step back one day;
+      - HTTP 5xx or a transport-level failure is transient -> step back, but
+        remembered: if the probe never reaches a definitive 200/404 answer
+        (every day failed transiently), that is a connectivity/server problem,
+        not "no data", and is surfaced as a real error;
+      - any other status (403/401/other-4xx) is a real config/auth problem ->
+        surface it immediately.
+    Bounded by ``_LATEST_LOOKBACK_DAYS`` (covers the product's worst-case pentad
+    lag plus margin). Exits 2 if no day is available, distinguishing a genuine
+    not-yet-published lookback from a persistent transport/server failure.
     """
     today = datetime.now(UTC).date()
     session = requests.Session()
+    transient_only = True  # cleared as soon as any probe gets a definitive 200/404
+    last_transient = None
     try:
         for offset in range(_LATEST_LOOKBACK_DAYS + 1):
             day = today - timedelta(days=offset)
@@ -358,14 +368,40 @@ def _discover_latest() -> date:
             url = f"{CHIRPS_BASE_URL}/{day.year:04d}/{name}"
             try:
                 resp = session.head(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
-            except requests.RequestException:
-                # Transport-level failure on this probe day: treat as unavailable
-                # and keep walking backward rather than aborting discovery.
+            except requests.RequestException as exc:
+                # Transport-level failure on this probe day is transient: step
+                # back, but record it so an all-transient probe surfaces below
+                # instead of being misreported as "no data".
+                last_transient = f"transport error: {exc}"
                 continue
             if resp.status_code == 200:
                 return day
+            if resp.status_code == 404:
+                # Not yet published: a definitive answer, step back one day.
+                transient_only = False
+                continue
+            if resp.status_code >= 500:
+                # Server-side error is transient: step back, remembering it.
+                last_transient = f"HTTP {resp.status_code}"
+                continue
+            # 4xx other than 404 (403/401/bad request, etc.) is a real config or
+            # auth problem, not a not-yet-published day; surface it immediately.
+            print(
+                f"Error: CHIRPS 'latest' probe got HTTP {resp.status_code} for {url}; "
+                "this is a config/auth problem, not a not-yet-published day.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
     finally:
         session.close()
+    if transient_only and last_transient is not None:
+        print(
+            f"Error: CHIRPS 'latest' probe never reached the data server over the "
+            f"last {_LATEST_LOOKBACK_DAYS} days (last failure: {last_transient}); "
+            "this is a connectivity/server problem, not a not-yet-published day.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     print(
         f"Error: no CHIRPS prelim day available in the last {_LATEST_LOOKBACK_DAYS} "
         f"days (probed back to {(today - timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()}); "
