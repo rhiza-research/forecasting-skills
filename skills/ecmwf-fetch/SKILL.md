@@ -4,7 +4,7 @@ description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ense
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   openclaw:
     requires:
       env:
@@ -31,7 +31,45 @@ uv run scripts/fetch.py --date YYYY-MM-DD --region <region> --output <path.zarr>
 ```
 
 ### Arguments
-- `--date` — forecast init date (ISO).
+- `--date` — forecast init date. The value is one of:
+  - an absolute ISO date `YYYY-MM-DD`;
+  - `now` or `today` — the current UTC date;
+  - `latest` — the newest available forecast init, found by probing init dates
+    backward via ECDS submits;
+  - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
+    days, so `3w` = 21 days). The offset is capped at 36525 days; a larger value,
+    a future `+` offset, a month/year unit, or any malformed value exits 2 before
+    any network call.
+
+  For a relative token the resolved concrete init date is echoed to stderr before
+  fetching, e.g. `resolved "latest" -> 2026-05-30 (single forecast init date)`.
+
+  **`now`/offset values rarely land on a real init day.** ECMWF S2S runs init on
+  fixed days (Mondays and Thursdays), so an arbitrary calendar date — which is
+  what `now`, `today`, and `now-<int>{d|w}` resolve to — usually is not a
+  published init. When the requested init is not retrievable (ECDS rejects the
+  job) the main fetch exits non-zero with a clear "no data for this init (it may
+  not be a valid S2S init day)" message, and a transport/auth failure is
+  likewise surfaced as a clear error — not a raw traceback. The main fetch's
+  submit and poll use the same bounded-poll and error classification as the
+  `latest` probe. Use `latest` (or an explicit init date) as the intended
+  relative form for this skill; `now`/offset are accepted for grammar
+  consistency with the other fetchers but seldom resolve to a valid init.
+
+  **Cost of `latest`:** resolving `latest` is the slow case. Each probe is a real
+  ECDS retrieval submit (the asynchronous queue, polled until results-ready), so
+  discovering the newest init may take several minutes to an hour and steps back
+  one init day at a time until one succeeds. This is acceptable because it is
+  opt-in — an absolute or `now`-based `--date` does no probing. A probe job that
+  ECDS marks failed/rejected means that init is not yet published and the probe
+  steps back; a submit/transport/auth error, or a job still not ready after a
+  bounded wall-clock poll (1 hour), is surfaced and the run exits non-zero rather
+  than being misreported as a missing init or looping forever. (On the poll-cap
+  timeout the run aborts rather than stepping back, because stepping back from a
+  stuck-but-possibly-valid job would report a misleadingly old `latest`.) The
+  completed control retrieval from the winning probe is reused as the control
+  leg of the fetch, so the winning init is not submitted twice. The cache key
+  records the resolved absolute init date, never the relative token.
 - `--region` — one of: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`, `angola`. Matches the named regions accepted by `clip-region`. For an explicit bbox, use `--bbox N/W/S/E` instead.
 - `--bbox` — optional; `N/W/S/E` decimal degrees. Overrides `--region` if both are given.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
@@ -64,6 +102,11 @@ uv run scripts/fetch.py --date 2026-02-15 --region africa --output /tmp/ecmwf.za
 
 ```bash
 uv run scripts/fetch.py --date 2026-02-15 --bbox 7/32/-6/43 --output /tmp/ecmwf_kenya.zarr
+```
+
+```bash
+# Newest available init (slow: probes init dates backward via ECDS submits)
+uv run scripts/fetch.py --date latest --region kenya --output /tmp/ecmwf_latest.zarr
 ```
 
 See [references/REFERENCE.md](references/REFERENCE.md) for the exact ECDS request parameters and how retrieval time scales with area.

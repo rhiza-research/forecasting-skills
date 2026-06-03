@@ -15,6 +15,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -22,7 +23,117 @@ import time
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
+
+# How far back from today the `latest` init probe looks. ECMWF S2S runs init on
+# fixed days; 14 days covers several init cycles plus production lag. Exhausting
+# the probe without a usable init exits non-zero.
+_LATEST_LOOKBACK_DAYS = 14
+
+# Bounded poll for a single `latest` probe day. ECDS retrievals run minutes to
+# ~hour, so each probe job is polled every _PROBE_POLL_SECONDS up to a
+# _PROBE_POLL_MAX_SECONDS wall-clock cap. A job still not results-ready at the
+# cap is treated as stuck (not as "this init is unavailable"): the probe aborts
+# with a clear message rather than looping forever or silently stepping back to
+# an older init, since stepping back on a stuck-but-possibly-valid job would
+# report a misleadingly old `latest`. See SKILL.md.
+_PROBE_POLL_SECONDS = 30
+_PROBE_POLL_MAX_SECONDS = 3600
+
+# --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
+#
+# A --date value is one of:
+#   YYYY-MM-DD                  absolute date
+#   now | today                 current UTC date
+#   latest                      newest available forecast init (discovered)
+#   now-<int>{d|w}              now minus N days   (w = 7 days)
+#   latest-<int>{d|w}           latest minus N days
+# Anything else (months/years, future "+", junk) is rejected pre-network.
+_REL_OFFSET_RE = re.compile(r"^(?P<base>now|latest)-(?P<n>\d+)(?P<unit>[dw])$")
+
+# Strict absolute-date shape. dt.date.fromisoformat on 3.12 also accepts compact
+# (20260501) and ISO-week (2026-W18-1) forms; the documented grammar is exactly
+# YYYY-MM-DD, so we gate on this regex first and reject the looser forms.
+_ABS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# Upper bound on a relative offset's resolved day count. 36525 days (~100 years)
+# is far beyond any real value yet small enough that the date arithmetic cannot
+# raise OverflowError. Rejecting above this cap keeps the failure pre-network.
+_MAX_OFFSET_DAYS = 36525
+
+
+def _parse_token(value: str) -> tuple:
+    """Parse a --date value into a structured token.
+
+    Returns one of:
+      ("abs", date)                              absolute YYYY-MM-DD
+      ("base", "now")                            current UTC date
+      ("base", "latest")                         newest available init (resolved later)
+      ("offset", "now", n_days, unit_phrase)     now minus n_days
+      ("offset", "latest", n_days, unit_phrase)  latest minus n_days
+
+    `unit_phrase` describes the offset in its requested units for the log line
+    (e.g. "3-week", "7-day"). Raises ValueError for anything else (months/years,
+    future "+", malformed), so the failure happens before any network call.
+    "today" is accepted as an alias for "now".
+    """
+    if value in ("now", "today"):
+        return ("base", "now")
+    if value == "latest":
+        return ("base", "latest")
+    m = _REL_OFFSET_RE.match(value)
+    if m is not None:
+        n = int(m.group("n"))
+        if n < 1:
+            raise ValueError(
+                f"invalid date value {value!r}: offset must be >= 1 (e.g. now-1d, latest-3w)"
+            )
+        unit = m.group("unit")
+        n_days = n * 7 if unit == "w" else n
+        if n_days > _MAX_OFFSET_DAYS:
+            raise ValueError(
+                f"invalid date value {value!r}: offset resolves to {n_days} days, "
+                f"above the maximum of {_MAX_OFFSET_DAYS} days (~100 years)"
+            )
+        unit_phrase = f"{n}-{'week' if unit == 'w' else 'day'}"
+        return ("offset", m.group("base"), n_days, unit_phrase)
+    if _ABS_DATE_RE.match(value):
+        try:
+            return ("abs", dt.date.fromisoformat(value))
+        except ValueError:
+            pass
+    raise ValueError(
+        f"invalid date value {value!r}: expected an absolute date YYYY-MM-DD, "
+        "'now'/'today', 'latest', or an offset 'now-<int>{d|w}' / "
+        "'latest-<int>{d|w}'"
+    )
+
+
+def _resolve_date(value: str, latest_fn) -> tuple:
+    """Resolve a single --date value to a concrete date.
+
+    Applies the value grammar; both ends being inclusive is moot for a single
+    date. Returns (resolved_date, log_line) where log_line is a stderr message
+    to print before fetching when a relative token is used, else None. Exits 2
+    (pre-network) on a malformed token. `latest_fn` is called only when the
+    token references `latest`, and at most once (the caller memoizes).
+    """
+    try:
+        tok = _parse_token(value)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    if tok[0] == "abs":
+        return tok[1], None
+
+    now = dt.datetime.now(dt.UTC).date()
+    base = tok[1]
+    base_date = now if base == "now" else latest_fn()
+    resolved = base_date if tok[0] == "base" else base_date - dt.timedelta(days=tok[2])
+    log_line = f'resolved "{value}" -> {resolved.isoformat()} (single forecast init date)'
+    return resolved, log_line
+
 
 REGIONS = {
     "africa": [23.0, -20.0, -37.0, 59.0],
@@ -152,9 +263,106 @@ def _build_request(date_iso: str, area: list[float], forecast_type: str) -> dict
     }
 
 
+def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
+    """`latest` resolver for ECMWF S2S: newest available forecast init on or
+    before today (UTC), found by probing init dates backward.
+
+    For each candidate day back from today, submits a control-forecast retrieval
+    over the requested area and polls it (bounded by ``_PROBE_POLL_MAX_SECONDS``)
+    until results-ready. A job that ECDS marks failed/rejected/dismissed means
+    that init is not published — step back one day. A submit/transport/auth
+    error, or a job still not ready at the poll cap, is NOT "this init is
+    unavailable": it is surfaced and the run exits non-zero, so a stuck job or a
+    credential problem is never silently misreported as a missing init.
+
+    Returns ``(day, remote)`` for the winning init — the completed control
+    retrieval — so the caller reuses it as the control leg rather than
+    re-submitting it. This is the slow/async case (each probe is a real ECDS
+    submit) — acceptable because it is opt-in. Bounded by
+    ``_LATEST_LOOKBACK_DAYS``; exhausting it without a usable init exits 2.
+
+    Existence cost: ECDS exposes no metadata-only "does this init exist" query
+    in the submit/poll model — a non-published init surfaces only as a
+    ProcessingFailedError on poll, and a published init is confirmed only when
+    its job reaches results_ready. So confirming the `latest` init's existence
+    unavoidably polls one control retrieval to completion. When the resolved
+    --date IS that probed init (bare `latest`), main() reuses this completed
+    retrieval as the control leg. When the resolved --date is an OFFSET off
+    latest (`latest-Nd|w`), the probed init differs from the init main() fetches,
+    so this completed control retrieval cannot be reused and is spent solely to
+    confirm `latest` existed — one unavoidable probe retrieval. The offset init
+    is then submitted exactly once in main(); the probed `latest` init is never
+    re-submitted (it is only ever reused, never resubmitted), so no init is ever
+    submitted twice.
+    """
+    from ecmwf.datastores.processing import ProcessingFailedError
+
+    today = dt.datetime.now(dt.UTC).date()
+    for offset in range(_LATEST_LOOKBACK_DAYS + 1):
+        day = today - dt.timedelta(days=offset)
+        req = _build_request(day.isoformat(), area, "control_forecast")
+        print(f"Probing ECMWF init {day.isoformat()} for 'latest'...", file=sys.stderr)
+        # _submit handles the licence-not-accepted case (exits). Any other
+        # submit failure (transport/auth/HTTP) is a real error, not a missing
+        # init: surface it and exit rather than stepping back.
+        try:
+            remote = _submit(client, req)
+        except Exception as exc:  # noqa: BLE001 -- surface; do not misreport as missing init
+            print(
+                f"Error: ECDS submit failed while probing init {day.isoformat()} ({exc}); "
+                "this is a transport/auth problem, not a not-yet-published init.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        waited = 0
+        while True:
+            try:
+                if remote.results_ready:
+                    return day, remote
+            except ProcessingFailedError as exc:
+                # ECDS marked the job failed/rejected/dismissed: this init is not
+                # published. Step back one day.
+                print(f"  {day.isoformat()} not published ({exc}); stepping back", file=sys.stderr)
+                break
+            except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't step back
+                print(
+                    f"Error: polling ECDS job for init {day.isoformat()} failed ({exc}); "
+                    "this is a transport/auth problem, not a not-yet-published init.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if waited >= _PROBE_POLL_MAX_SECONDS:
+                print(
+                    f"Error: ECDS job for init {day.isoformat()} was still not ready after "
+                    f"{_PROBE_POLL_MAX_SECONDS}s; the job is stuck. Aborting rather than "
+                    "stepping back to an older init (which would report a misleadingly old "
+                    "'latest'). Re-run, or pass an explicit init date.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            time.sleep(_PROBE_POLL_SECONDS)
+            waited += _PROBE_POLL_SECONDS
+    print(
+        f"Error: no ECMWF S2S init available in the last {_LATEST_LOOKBACK_DAYS} days "
+        f"(probed back to {(today - dt.timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()}); "
+        "cannot resolve 'latest'.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--date", required=True)
+    p.add_argument(
+        "--date",
+        required=True,
+        help=(
+            "Forecast init date. Either YYYY-MM-DD, 'now'/'today', 'latest', or "
+            "an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
+            "'latest' probes init dates backward via ECDS submits (slow)."
+        ),
+    )
     p.add_argument("--region", choices=sorted(REGIONS))
     p.add_argument("--bbox", help="N/W/S/E bbox overriding --region")
     p.add_argument("--output", "-o", required=True)
@@ -168,10 +376,46 @@ def main() -> None:
     else:
         area = REGIONS[args.region]
 
+    # `latest` discovery probes ECDS, which needs credentials and a Client.
+    # Build them lazily and memoize so the probe runs at most once and only when
+    # a `latest` token is present. An absolute or now-based --date performs no
+    # ECDS call and no import here (absolute behavior is unchanged: env, imports,
+    # and the cache check all run in the same order as before).
+    _client_cache = {}
+
+    def _latest() -> dt.date:
+        if "v" not in _client_cache:
+            _require_env()
+            from ecmwf.datastores import Client
+
+            _client_cache["client"] = Client()
+            # _discover_latest returns (day, completed control retrieval). Cache
+            # the remote so main can reuse the probe's control leg for the
+            # winning init instead of re-submitting it.
+            day, cf_remote = _discover_latest(_client_cache["client"], area)
+            _client_cache["v"] = day
+            _client_cache["cf_remote"] = cf_remote
+        return _client_cache["v"]
+
+    # Resolve --date to a concrete init date. A malformed token exits 2 before
+    # any network call. An absolute YYYY-MM-DD normalizes through
+    # dt.date.fromisoformat, so the resolved isoformat is byte-identical to the
+    # raw input.
+    resolved_date, log_line = _resolve_date(args.date, _latest)
+    date_iso = resolved_date.isoformat()
+    if log_line is not None:
+        print(log_line, file=sys.stderr)
+
+    # Build the cache-key args from the argparse namespace minus the path
+    # strings, then set the resolved concrete init date by explicit assignment
+    # (never the relative token) — matching how imerg/tahmo build their dicts,
+    # rather than a vars(args) | {"date": ...} merge-override.
+    args_dict = {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
+    args_dict["date"] = date_iso
     entry = {
         "skill": "ecmwf-fetch",
         "version": _RHIZA_SKILL_VERSION,
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
+        "args": args_dict,
         "input": None,
     }
     out = Path(args.output)
@@ -186,24 +430,91 @@ def main() -> None:
 
     import xarray as xr
     from ecmwf.datastores import Client
+    from ecmwf.datastores.processing import ProcessingFailedError
 
-    print(f"Fetching ECMWF S2S for area={area} date={args.date}", file=sys.stderr)
+    print(f"Fetching ECMWF S2S for area={area} date={date_iso}", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="ecmwf-fetch-") as tmpdir:
         tmp = Path(tmpdir)
         cf_grib = tmp / "cf.grib"
         pf_grib = tmp / "pf.grib"
 
-        client = Client()
-        cf_req = _build_request(args.date, area, "control_forecast")
-        pf_req = _build_request(args.date, area, "perturbed_forecast")
+        # Reuse the probe's Client when `latest` discovery already built one,
+        # else create it now.
+        client = _client_cache.get("client") or Client()
+        pf_req = _build_request(date_iso, area, "perturbed_forecast")
 
-        # Submit cf and pf in parallel; ECDS retrievals are typically minutes to ~hour.
-        print("Submitting cf and pf retrievals...", file=sys.stderr)
-        cf_remote = _submit(client, cf_req)
-        pf_remote = _submit(client, pf_req)
+        # If `latest` discovery already submitted and completed a control-forecast
+        # retrieval for THIS exact init (i.e. the resolved date is the probed
+        # `latest` day, not an offset off it), reuse that completed retrieval as
+        # the control leg instead of re-submitting it. Otherwise submit cf now.
+        # The perturbed leg is always submitted here. ECDS retrievals are
+        # typically minutes to ~hour.
+        #
+        # _submit handles the licence-not-accepted case (exits). Any other submit
+        # failure (transport/auth/HTTP) is surfaced here and the run exits
+        # non-zero, mirroring the probe's taxonomy so a bad init or a credential
+        # problem yields a clear message rather than a raw traceback.
+        cf_remote = None
+        if resolved_date == _client_cache.get("v"):
+            cf_remote = _client_cache.get("cf_remote")
+        try:
+            if cf_remote is not None:
+                print("Reusing probe's control retrieval; submitting pf...", file=sys.stderr)
+                pf_remote = _submit(client, pf_req)
+            else:
+                print("Submitting cf and pf retrievals...", file=sys.stderr)
+                cf_req = _build_request(date_iso, area, "control_forecast")
+                cf_remote = _submit(client, cf_req)
+                pf_remote = _submit(client, pf_req)
+        except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't traceback
+            print(
+                f"Error: ECDS submit failed for init {date_iso} ({exc}); "
+                "this is a transport/auth problem.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # Bounded poll with the same taxonomy as the probe (reusing its
+        # poll-interval/cap constants):
+        #   - ProcessingFailedError (ECDS marked a leg failed/rejected/dismissed)
+        #     means this init is not retrievable — most often because the
+        #     requested --date is not a valid S2S init day. Exit non-zero with a
+        #     clear message rather than a traceback.
+        #   - a transport/auth error on poll is surfaced and exits non-zero.
+        #   - still-not-ready at the wall-clock cap is a stuck job: abort rather
+        #     than looping forever.
         remotes = [cf_remote, pf_remote]
-        while not all(r.results_ready for r in remotes):
-            time.sleep(30)
+        waited = 0
+        while True:
+            try:
+                if all(r.results_ready for r in remotes):
+                    break
+            except ProcessingFailedError as exc:
+                print(
+                    f"Error: ECDS reported no data for init {date_iso} ({exc}); "
+                    "it may not be a valid S2S init day. ECMWF S2S runs init on "
+                    "fixed days, so 'now'/offset dates rarely align — use 'latest' "
+                    "or pass a known S2S init date.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't step
+                print(
+                    f"Error: polling ECDS job for init {date_iso} failed ({exc}); "
+                    "this is a transport/auth problem.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if waited >= _PROBE_POLL_MAX_SECONDS:
+                print(
+                    f"Error: ECDS job for init {date_iso} was still not ready after "
+                    f"{_PROBE_POLL_MAX_SECONDS}s; the job is stuck. Re-run, or pass a "
+                    "different init date.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            time.sleep(_PROBE_POLL_SECONDS)
+            waited += _PROBE_POLL_SECONDS
 
         print("Downloading cf...", file=sys.stderr)
         cf_remote.download(str(cf_grib))
