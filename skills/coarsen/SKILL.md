@@ -4,7 +4,7 @@ description: Coarsen or align a Rhiza Envelope Zarr by linearly interpolating it
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # coarsen
@@ -37,7 +37,7 @@ most_common); this skill is linear-only.
 ## Usage
 
 ```
-uv run scripts/coarsen.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --output <out.zarr> \
     --target-resolution DEG --offset DEG \
     [--variable NAME] [--dims LAT,LON]
 ```
@@ -82,19 +82,19 @@ hits on basename).
 The `args` dict stores argparse dest names (underscored, e.g.
 `target_resolution`, `offset`), not the hyphenated CLI flag names
 (`--target-resolution`, `--offset`). A consumer reconstructing a
-`uv run scripts/<skill>.py <args>` invocation must translate
+`uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
 underscore → hyphen.
 
 ## Examples
 
 ```bash
 # Onto sheerwater's global0_25 alignment.
-uv run scripts/coarsen.py -i /tmp/imerg.zarr -o /tmp/imerg_p25.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/imerg.zarr -o /tmp/imerg_p25.zarr \
     --target-resolution 0.25 --offset 0.0
 ```
 
 ```bash
 # Onto sheerwater's global0_1 alignment.
-uv run scripts/coarsen.py -i /tmp/chirps.zarr -o /tmp/chirps_p1.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/chirps.zarr -o /tmp/chirps_p1.zarr \
     --target-resolution 0.1 --offset 0.05
 ```

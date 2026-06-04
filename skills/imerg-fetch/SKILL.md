@@ -4,7 +4,7 @@ description: Fetch live IMERG satellite precipitation for a date range and write
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   openclaw:
     requires:
       env:
@@ -24,7 +24,7 @@ Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess
 ## Usage
 
 ```
-uv run scripts/fetch.py --start <date> --end <date> --output <path.zarr> [--version late|final]
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> --output <path.zarr> [--version late|final]
 ```
 
 `--start` and `--end` accept either an absolute ISO date or a relative token
@@ -105,11 +105,11 @@ the `_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept in lockstep with
 
 ```bash
 # Absolute window (10 inclusive days)
-uv run scripts/fetch.py --start 2026-05-01 --end 2026-05-10 --output /tmp/imerg.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-05-01 --end 2026-05-10 --output /tmp/imerg.zarr
 
 # Last 3 weeks ending at the latest available granule (duration idiom: 21 days incl. latest)
-uv run scripts/fetch.py --start latest-3w --end latest --output /tmp/imerg.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start latest-3w --end latest --output /tmp/imerg.zarr
 
 # From a fixed start through today (inclusive both ends)
-uv run scripts/fetch.py --start 2026-06-01 --end now --output /tmp/imerg.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-06-01 --end now --output /tmp/imerg.zarr
 ```

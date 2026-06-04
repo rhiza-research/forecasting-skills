@@ -4,7 +4,7 @@ description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # deaccumulate
@@ -43,7 +43,7 @@ the variable's metadata before differencing:
 ## Usage
 
 ```
-uv run scripts/deaccumulate.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py --input <in.zarr> --output <out.zarr> \
     [--variable NAME]
 ```
 
@@ -81,7 +81,7 @@ workflow.
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Composition with aggregate-temporal
@@ -99,6 +99,6 @@ data) without an extra aggregation step.
 ## Examples
 
 ```bash
-uv run scripts/deaccumulate.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_per_step.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_per_step.zarr \
     --variable tp
 ```

@@ -4,7 +4,7 @@ description: Render a single PNG with one 1D trace per input Zarr overlaid on a 
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
 ---
 
 # plot-timeseries
@@ -33,7 +33,7 @@ without ceremony, use the `plot` skill with `--style timeseries`.
 ## Usage
 
 ```
-uv run scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
     [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT]
 ```
 
@@ -102,7 +102,7 @@ python3 -c "from PIL import Image; import json; img = Image.open('out.png'); pri
 Two forecast Zarrs, both already point-extracted (1D along `step`):
 
 ```bash
-uv run scripts/plot_timeseries.py \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
     -i /tmp/ecmwf_nairobi.zarr -i /tmp/ifs_nairobi.zarr \
     --variable tp --output /tmp/forecasts.png \
     --title "Nairobi precip forecast"
@@ -111,7 +111,7 @@ uv run scripts/plot_timeseries.py \
 Two gridded Zarrs averaged over space and ensemble:
 
 ```bash
-uv run scripts/plot_timeseries.py \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
     -i /tmp/ecmwf_kenya.zarr -i /tmp/imerg_kenya.zarr \
     --variable tp \
     --reduce number --reduce latitude --reduce longitude \

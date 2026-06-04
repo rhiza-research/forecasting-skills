@@ -4,7 +4,7 @@ description: Concatenate two or more Rhiza Envelope Zarr stores along a named di
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # concat
@@ -20,7 +20,7 @@ Source-agnostic concatenation along a named dim. Inputs must share all other dim
 ## Usage
 
 ```
-uv run scripts/concat.py -i a.zarr -i b.zarr [-i ...] --dim DIM --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/concat.py -i a.zarr -i b.zarr [-i ...] --dim DIM --output <out.zarr> \
     [--coords V1,V2,...]
 ```
 
@@ -65,5 +65,5 @@ do not.
 ## Example
 
 ```bash
-uv run scripts/concat.py -i /tmp/cf.zarr -i /tmp/pf.zarr --dim number --output /tmp/ens.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/concat.py -i /tmp/cf.zarr -i /tmp/pf.zarr --dim number --output /tmp/ens.zarr
 ```

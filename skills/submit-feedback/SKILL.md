@@ -4,7 +4,7 @@ description: Build a prefilled GitHub new-issue link the user clicks to file fee
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Builds a URL string only; reads no credentials, makes no network request, and writes no file.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # submit-feedback
@@ -50,7 +50,7 @@ verifies it fits.
 ## Usage
 
 ```
-uv run scripts/build_url.py --title <title> (--body <text> | --body-file <path>)
+uv run ${CLAUDE_SKILL_DIR}/scripts/build_url.py --title <title> (--body <text> | --body-file <path>)
 ```
 
 Issues are always filed to the `rhiza-research/forecasting-skills` repository;
@@ -87,7 +87,7 @@ The issue is filed under their own GitHub account, on the target repository.
 ## Example
 
 ```bash
-uv run scripts/build_url.py \
+uv run ${CLAUDE_SKILL_DIR}/scripts/build_url.py \
     --title "plot produced an empty map for IMERG over Kenya" \
     --body "**What I did:** ran plot on a clipped IMERG zarr.
 

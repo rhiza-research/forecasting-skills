@@ -4,7 +4,7 @@ description: Render an ECMWF-style mediogram PNG comparing a forecast ensemble a
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # plot-mediogram
@@ -29,7 +29,7 @@ Lat/lon selection is nearest-neighbor.
 ## Usage
 
 ```
-uv run scripts/plot_mediogram.py --forecast <forecast.zarr> --mclimate <mclimate.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py --forecast <forecast.zarr> --mclimate <mclimate.zarr> \
     --lat <lat> --lon <lon> --output <out.png> \
     [--variable NAME] [--title TEXT]
 ```
@@ -91,7 +91,7 @@ exiftool out.png
 ## Example
 
 ```bash
-uv run scripts/plot_mediogram.py \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py \
     --forecast /tmp/ecmwf_forecast.zarr \
     --mclimate /tmp/ecmwf_mclimate.zarr \
     --lat -1.3 --lon 36.8 \

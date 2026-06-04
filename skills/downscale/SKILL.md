@@ -4,7 +4,7 @@ description: Downscale a Rhiza Envelope Zarr onto a FINER-OR-EQUAL grid, adding 
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # downscale
@@ -42,7 +42,7 @@ Not for: coarsening a grid onto a strictly-coarser resolution — that is the
 ## Usage
 
 ```
-uv run scripts/downscale.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --output <out.zarr> \
     --method {linear-interpolation,q-q} \
     (--factor N | --target-resolution DEG | --reference-grid REF.zarr) \
     [--dims LAT,LON] [--variable NAME] \
@@ -95,25 +95,25 @@ secondary `reference_inputs` hashes are.
 
 ```bash
 # Factor-4 finer, linear interpolation.
-uv run scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_4x.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_4x.zarr \
     --method linear-interpolation --factor 4
 ```
 
 ```bash
 # Onto a finer 0.05° grid, linear interpolation.
-uv run scripts/downscale.py -i /tmp/imerg.zarr -o /tmp/imerg_p05.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/imerg.zarr -o /tmp/imerg_p05.zarr \
     --method linear-interpolation --target-resolution 0.05
 ```
 
 ```bash
 # Match the (finer) grid of another dataset.
-uv run scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_on_imerg.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_on_imerg.zarr \
     --method linear-interpolation --reference-grid /tmp/imerg.zarr
 ```
 
 ```bash
 # Downscale ECMWF onto a finer 0.05° grid and q-q map onto ERA5 observations
 # that already sit on that grid.
-uv run scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_p05_qq.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_p05_qq.zarr \
     --method q-q --target-resolution 0.05 --qq-reference /tmp/era5_p05.zarr
 ```
