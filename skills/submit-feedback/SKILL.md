@@ -50,7 +50,7 @@ verifies it fits.
 ## Usage
 
 ```
-uv run scripts/build_url.py --title <title> (--body <text> | --body-file <path>)
+uv run ${CLAUDE_SKILL_DIR}/scripts/build_url.py --title <title> (--body <text> | --body-file <path>)
 ```
 
 Issues are always filed to the `rhiza-research/forecasting-skills` repository;
@@ -87,7 +87,7 @@ The issue is filed under their own GitHub account, on the target repository.
 ## Example
 
 ```bash
-uv run scripts/build_url.py \
+uv run ${CLAUDE_SKILL_DIR}/scripts/build_url.py \
     --title "plot produced an empty map for IMERG over Kenya" \
     --body "**What I did:** ran plot on a clipped IMERG zarr.
 

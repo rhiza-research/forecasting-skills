@@ -28,10 +28,10 @@ selected with `--dataset` and validated at runtime against
 
 ```
 # Forecast datasets — a single init date:
-uv run scripts/fetch.py --dataset <id> --date <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --date <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 
 # Analysis datasets — an inclusive date range:
-uv run scripts/fetch.py --dataset <id> --start <date> --end <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --start <date> --end <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 ```
 
 ### Supported datasets
@@ -119,23 +119,23 @@ constant in `scripts/fetch.py`, kept in lockstep with `metadata.version` in
 this SKILL.md by the CI version-bump workflow.
 
 The `args` dict stores argparse dest names (underscored), not the hyphenated
-CLI flag names. A consumer reconstructing a `uv run scripts/fetch.py <args>`
+CLI flag names. A consumer reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
 invocation must translate underscore → hyphen.
 
 ## Examples
 
 ```bash
 # GEFS 35-day ensemble, newest init, Kenya bbox, one variable
-uv run scripts/fetch.py --dataset noaa-gefs-forecast-35-day --date latest \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gefs-forecast-35-day --date latest \
   --bbox 7/32/-6/43 -v precipitation_surface -o /tmp/gefs.zarr
 
 # GFS deterministic forecast for a specific init date, full global grid
-uv run scripts/fetch.py --dataset noaa-gfs-forecast --date 2026-06-01 -o /tmp/gfs.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast --date 2026-06-01 -o /tmp/gfs.zarr
 
 # GFS analysis over a 3-week window ending at the newest available time
-uv run scripts/fetch.py --dataset noaa-gfs-analysis --start latest-3w --end latest \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start latest-3w --end latest \
   --bbox 12/-4/4/2 -o /tmp/gfs_analysis.zarr
 ```
 
-See [references/REFERENCE.md](references/REFERENCE.md) for the full per-dataset
+See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the full per-dataset
 dimension list and the dynamical → envelope coordinate mapping.

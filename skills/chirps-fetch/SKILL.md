@@ -21,7 +21,7 @@ Not suitable for bulk historical reanalysis — only the live/preliminary CHIRPS
 ## Usage
 
 ```
-uv run scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
@@ -73,15 +73,15 @@ minus the `--input`/`--output` path strings; `version` is the
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Example
 
 ```bash
 # Absolute window (inclusive both ends)
-uv run scripts/fetch.py --start 2026-01-01 --end 2026-02-15 --output /tmp/chirps.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-02-15 --output /tmp/chirps.zarr
 
 # Last 3 weeks ending at the newest available CHIRPS day (duration idiom: 21 days incl. latest)
-uv run scripts/fetch.py --start latest-3w --end latest --output /tmp/chirps.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start latest-3w --end latest --output /tmp/chirps.zarr
 ```
