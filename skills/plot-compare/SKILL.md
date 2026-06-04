@@ -52,7 +52,7 @@ end − bin_width + 1 day. Matches `aggregate-temporal` and
 uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--colormap NAME] [--title TEXT] \
     [--panels N] [--time-dim DIM] [--overlay-resample {sum,mean,max,min}] \
-    [--region NAME]
+    [--bbox N/W/S/E] [--mask-geojson PATH]
 ```
 
 ### Arguments
@@ -79,18 +79,18 @@ uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
   (precipitation, radiation) use `sum`; for intensive variables
   (temperature) use `mean`. Coarser-than-base station inputs are left
   untouched.
-- `--region` — optional named region. Two-stage clipping on gridded
-  inputs: (a) `ds.sel(...)` rectangular slice to the region's
-  (N, W, S, E) bbox, then (b) `shapely.contains_xy` polygon mask that
-  NaN's cells outside the country admin-1 polygon. Station inputs are
-  filtered to the bbox (no polygon test). Multi-country names
-  (`africa`) skip the polygon mask — bbox slice only. Axes set to the
-  bbox. Admin-1 boundary overlay drawn on top as decoration. Accepted
-  values mirror `clip-region`'s `REGIONS` dict (`africa`, `kenya`,
-  `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`,
-  `madagascar`, `angola`). Longitudes in `[0, 360]` are auto-wrapped
-  to `[-180, 180]` before slicing so global grids intersect negative-lon
-  regions. Default unset → no slice.
+- `--bbox` — optional `N/W/S/E` decimal degrees. Rectangular clipping:
+  gridded inputs get a `ds.sel(...)` slice to the bbox and station inputs
+  are filtered to the bbox (no polygon test); axes are set to the bbox.
+  To restrict to a country, get its bbox from the `resolve-region` skill. Longitudes in
+  `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing so global
+  grids intersect negative-lon bboxes. Default unset → no slice.
+- `--mask-geojson` — optional path to a GeoJSON boundary polygon. Gridded
+  inputs get a `shapely.contains_xy` polygon mask that NaN's cells outside
+  the polygon (station inputs are unaffected). Use `resolve-region`'s
+  `--geojson` output to produce a country polygon. May be combined with
+  `--bbox` (slice then mask) or used alone (mask, no rectangular slice).
+  Admin-1 boundary overlay is drawn on top as decoration regardless.
 
 ### Behavior
 
@@ -105,10 +105,10 @@ uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
 - **Shared spatial extent.** Both rows' `set_xlim`/`set_ylim` come
   from the gridded input's lat/lon bounds, not from each row's own
   data bounds. Station scatter points outside that extent are clipped.
-- **Longitude wrap before bbox slice.** When `--region` is set and a
-  gridded input has lon in `[0, 360]`, lons are auto-wrapped to
-  `[-180, 180]` (and the dim re-sorted) before the rectangular slice.
-  Inputs already in `[-180, 180]` are unaffected.
+- **Longitude wrap before bbox slice.** When `--bbox` or `--mask-geojson`
+  is set and a gridded input has lon in `[0, 360]`, lons are auto-wrapped
+  to `[-180, 180]` (and the dim re-sorted) before the rectangular slice
+  and polygon mask. Inputs already in `[-180, 180]` are unaffected.
 - **Input units.** Both rows are drawn on one shared colormap and
   normalization. When the two inputs carry the compared variable in
   differing `units`, the figure colors values from different units on a

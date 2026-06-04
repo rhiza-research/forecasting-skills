@@ -135,19 +135,6 @@ def _resolve_date(value: str, latest_fn) -> tuple:
     return resolved, log_line
 
 
-REGIONS = {
-    "africa": [23.0, -20.0, -37.0, 59.0],
-    "kenya": [7.0, 32.0, -6.0, 43.0],
-    "ghana": [12.0, -4.0, 4.0, 2.0],
-    "senegal": [17.0, -17.5, 12.0, -11.0],
-    "ethiopia": [16.0, 32.0, 2.0, 49.0],
-    "namibia": [-15.0, 10.0, -31.0, 27.0],
-    "botswana": [-15.0, 18.0, -28.0, 31.0],
-    "zambia": [-6.0, 20.0, -20.0, 35.0],
-    "madagascar": [-10.0, 42.0, -27.0, 52.0],
-    "angola": [-5.0, 12.0, -18.0, 24.0],
-}
-
 LEADTIME_HOURS = ["0", "168", "240", "336", "480", "504", "672", "720", "840", "960", "1008"]
 
 S2S_LICENCE_URL = "https://ecds.ecmwf.int/datasets/s2s-forecasts?tab=download#manage-licences"
@@ -263,6 +250,68 @@ def _build_request(date_iso: str, area: list[float], forecast_type: str) -> dict
     }
 
 
+def _is_wrapped_area(area: list[float]) -> bool:
+    """True if the bbox crosses +-180 (west > east), an RFC 7946 sec 5.2 box.
+
+    ``area`` is [N, W, S, E]. resolve-region emits west > east for a country
+    that straddles the antimeridian (Russia, Fiji). MARS ``area`` requires
+    west < east west-to-east, so such a box must be split at +-180.
+    """
+    _, w, _, e = area
+    return w > e
+
+
+def _split_wrapped_area(area: list[float]) -> list[list[float]]:
+    """Split a wrapped [N, W, S, E] (W > E) into two MARS-valid areas.
+
+    Returns the western band [N, W, S, 180] and the eastern band [N, -180, S, E],
+    each with west < east so MARS accepts it. For a non-wrapped area, returns the
+    single area unchanged.
+    """
+    n, w, s, e = area
+    if not _is_wrapped_area(area):
+        return [area]
+    return [[n, w, s, 180.0], [n, -180.0, s, e]]
+
+
+def _concat_lon(datasets: list) -> object:
+    """Concatenate per-area decoded datasets along longitude into one envelope.
+
+    Each dataset covers a disjoint longitude band of a wrapped bbox. Concatenate
+    along the longitude dim, then drop any duplicated shared edge (the +-180
+    seam) and sort so the result is a single monotonic longitude axis.
+    """
+    import numpy as np
+    import xarray as xr
+
+    if len(datasets) == 1:
+        return datasets[0]
+    lon_name = None
+    for cand in ("longitude", "lon", "x"):
+        if cand in datasets[0].coords or cand in datasets[0].dims:
+            lon_name = cand
+            break
+    if lon_name is None:
+        # No identifiable longitude axis to concat on; fall back to the first
+        # piece rather than guessing.
+        return datasets[0]
+    # Normalize each piece's longitude to a single [-180, 180) convention before
+    # concatenating so the +-180 seam coincides. Without this, a western band
+    # ending at 180.0 and an eastern band starting at -180.0 carry the same
+    # meridian under two distinct float values; np.unique would treat them as
+    # separate and the duplicate seam would survive. ((lon + 180) % 360) - 180
+    # maps 180.0 to -180.0, so the two pieces' shared meridian becomes one value.
+    normed = [
+        d.assign_coords({lon_name: ((d[lon_name] + 180.0) % 360.0) - 180.0}) for d in datasets
+    ]
+    combined = xr.concat(normed, dim=lon_name)
+    # Drop the now-coincident +-180 seam and any other repeated longitude, then
+    # sort to a monotonic axis.
+    _, unique_idx = np.unique(combined[lon_name].values, return_index=True)
+    combined = combined.isel({lon_name: np.sort(unique_idx)})
+    return combined.sortby(lon_name)
+
+
 def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
     """`latest` resolver for ECMWF S2S: newest available forecast init on or
     before today (UTC), found by probing init dates backward.
@@ -352,6 +401,21 @@ def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
     sys.exit(2)
 
 
+def _attach_bbox_value(argv):
+    # argparse rejects a space-separated --bbox value that starts with '-'
+    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
+    # `--bbox=VAL` so both the space and equals forms parse.
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--bbox" and i + 1 < len(argv):
+            out.append(f"--bbox={argv[i + 1]}")
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -363,18 +427,19 @@ def main() -> None:
             "'latest' probes init dates backward via ECDS submits (slow)."
         ),
     )
-    p.add_argument("--region", choices=sorted(REGIONS))
-    p.add_argument("--bbox", help="N/W/S/E bbox overriding --region")
+    p.add_argument(
+        "--bbox",
+        required=True,
+        help="N/W/S/E decimal degrees (use the resolve-region skill to get a country's bbox)",
+    )
     p.add_argument("--output", "-o", required=True)
-    args = p.parse_args()
+    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
-    if not args.bbox and not args.region:
-        print("Error: one of --region or --bbox is required.", file=sys.stderr)
-        sys.exit(2)
-    if args.bbox:
+    try:
         area = [float(x) for x in args.bbox.split("/")]
-    else:
-        area = REGIONS[args.region]
+    except ValueError:
+        print("Error: --bbox must be N/W/S/E (decimal degrees).", file=sys.stderr)
+        sys.exit(2)
 
     # `latest` discovery probes ECDS, which needs credentials and a Client.
     # Build them lazily and memoize so the probe runs at most once and only when
@@ -392,7 +457,15 @@ def main() -> None:
             # _discover_latest returns (day, completed control retrieval). Cache
             # the remote so main can reuse the probe's control leg for the
             # winning init instead of re-submitting it.
-            day, cf_remote = _discover_latest(_client_cache["client"], area)
+            #
+            # The probe only confirms whether an init exists; the longitude band
+            # does not change which init dates are published. For a wrapped
+            # (west > east) bbox, probe with a single MARS-valid sub-area (the
+            # western band) so the existence probe submits a legal request; the
+            # full wrapped band is fetched as two split legs below and the probe
+            # retrieval is not reused as a leg in that case.
+            probe_area = _split_wrapped_area(area)[0]
+            day, cf_remote = _discover_latest(_client_cache["client"], probe_area)
             _client_cache["v"] = day
             _client_cache["cf_remote"] = cf_remote
         return _client_cache["v"]
@@ -435,37 +508,65 @@ def main() -> None:
     print(f"Fetching ECMWF S2S for area={area} date={date_iso}", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="ecmwf-fetch-") as tmpdir:
         tmp = Path(tmpdir)
-        cf_grib = tmp / "cf.grib"
-        pf_grib = tmp / "pf.grib"
+        # MARS `area` requires west < east. A wrapped (west > east) bbox from
+        # resolve-region (Russia, Fiji) is split at +-180 into a western band
+        # [N, W, S, 180] and an eastern band [N, -180, S, E]; each forecast type
+        # (cf, pf) is then retrieved once per sub-area and the per-area decoded
+        # datasets are concatenated along longitude into one envelope. A normal
+        # (west <= east) bbox yields a single sub-area, so this is one retrieval
+        # per forecast type as before.
+        sub_areas = _split_wrapped_area(area)
+        wrapped = len(sub_areas) > 1
 
         # Reuse the probe's Client when `latest` discovery already built one,
         # else create it now.
         client = _client_cache.get("client") or Client()
-        pf_req = _build_request(date_iso, area, "perturbed_forecast")
 
-        # If `latest` discovery already submitted and completed a control-forecast
-        # retrieval for THIS exact init (i.e. the resolved date is the probed
-        # `latest` day, not an offset off it), reuse that completed retrieval as
-        # the control leg instead of re-submitting it. Otherwise submit cf now.
-        # The perturbed leg is always submitted here. ECDS retrievals are
-        # typically minutes to ~hour.
-        #
+        # A "leg" is one (forecast_type, sub-area) retrieval. Each leg gets its
+        # own remote, grib path, and (after decode) dataset. The probe's control
+        # retrieval is reused only for a non-wrapped fetch of THIS exact init:
+        # in the wrapped case the probe submitted a single sub-area, not the
+        # full split, so it cannot stand in for a leg.
+        legs = []
+        for forecast_type, short in (("control_forecast", "cf"), ("perturbed_forecast", "pf")):
+            for i, sub in enumerate(sub_areas):
+                legs.append(
+                    {
+                        "forecast_type": forecast_type,
+                        "short": short,
+                        "area": sub,
+                        "grib": tmp / f"{short}_{i}.grib",
+                        "remote": None,
+                    }
+                )
+
+        reuse_cf = (
+            (not wrapped)
+            and resolved_date == _client_cache.get("v")
+            and _client_cache.get("cf_remote") is not None
+        )
+
         # _submit handles the licence-not-accepted case (exits). Any other submit
         # failure (transport/auth/HTTP) is surfaced here and the run exits
         # non-zero, mirroring the probe's taxonomy so a bad init or a credential
         # problem yields a clear message rather than a raw traceback.
-        cf_remote = None
-        if resolved_date == _client_cache.get("v"):
-            cf_remote = _client_cache.get("cf_remote")
+        if reuse_cf:
+            print(
+                "Reusing probe's control retrieval; submitting remaining legs...", file=sys.stderr
+            )
+        else:
+            print(f"Submitting {len(legs)} retrieval leg(s)...", file=sys.stderr)
         try:
-            if cf_remote is not None:
-                print("Reusing probe's control retrieval; submitting pf...", file=sys.stderr)
-                pf_remote = _submit(client, pf_req)
-            else:
-                print("Submitting cf and pf retrievals...", file=sys.stderr)
-                cf_req = _build_request(date_iso, area, "control_forecast")
-                cf_remote = _submit(client, cf_req)
-                pf_remote = _submit(client, pf_req)
+            for leg in legs:
+                if (
+                    reuse_cf
+                    and leg["forecast_type"] == "control_forecast"
+                    and leg["remote"] is None
+                ):
+                    leg["remote"] = _client_cache.get("cf_remote")
+                    continue
+                req = _build_request(date_iso, leg["area"], leg["forecast_type"])
+                leg["remote"] = _submit(client, req)
         except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't traceback
             print(
                 f"Error: ECDS submit failed for init {date_iso} ({exc}); "
@@ -483,7 +584,7 @@ def main() -> None:
         #   - a transport/auth error on poll is surfaced and exits non-zero.
         #   - still-not-ready at the wall-clock cap is a stuck job: abort rather
         #     than looping forever.
-        remotes = [cf_remote, pf_remote]
+        remotes = [leg["remote"] for leg in legs]
         waited = 0
         while True:
             try:
@@ -516,14 +617,25 @@ def main() -> None:
             time.sleep(_PROBE_POLL_SECONDS)
             waited += _PROBE_POLL_SECONDS
 
-        print("Downloading cf...", file=sys.stderr)
-        cf_remote.download(str(cf_grib))
-        print("Downloading pf...", file=sys.stderr)
-        pf_remote.download(str(pf_grib))
+        for leg in legs:
+            print(f"Downloading {leg['grib'].name}...", file=sys.stderr)
+            leg["remote"].download(str(leg["grib"]))
 
         print("Decoding GRIB and writing Zarr...", file=sys.stderr)
-        cf = xr.open_dataset(cf_grib, engine="cfgrib").assign_coords(number=0)
-        pf = xr.open_dataset(pf_grib, engine="cfgrib")
+        # Decode each leg, then concatenate the sub-area pieces of each forecast
+        # type along longitude (a no-op for a non-wrapped, single-sub-area fetch).
+        cf_parts = [
+            xr.open_dataset(leg["grib"], engine="cfgrib")
+            for leg in legs
+            if leg["forecast_type"] == "control_forecast"
+        ]
+        pf_parts = [
+            xr.open_dataset(leg["grib"], engine="cfgrib")
+            for leg in legs
+            if leg["forecast_type"] == "perturbed_forecast"
+        ]
+        cf = _concat_lon(cf_parts).assign_coords(number=0)
+        pf = _concat_lon(pf_parts)
         ds = xr.concat([pf, cf], dim="number").sortby("number")
         ds.attrs.update(
             rhiza_source="ecmwf-s2s",
