@@ -29,23 +29,6 @@ from pathlib import Path
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _RHIZA_SKILL_VERSION = "0.1.2"
 
-# Region bbox table accepted by ``--region``. Mirrors ``clip-region``'s
-# REGIONS dict; duplicated per CONVENTIONS.md ("no shared helper module" —
-# skills stay standalone). Keep in lockstep. Tuples are (N, W, S, E) in
-# decimal degrees, same convention as clip-region.
-REGIONS = {
-    "africa": (23, -20, -37, 59),
-    "kenya": (7, 32, -6, 43),
-    "ghana": (12, -4, 4, 2),
-    "senegal": (17, -17.5, 12, -11),
-    "ethiopia": (16, 32, 2, 49),
-    "namibia": (-15, 10, -31, 27),
-    "botswana": (-15, 18, -28, 31),
-    "zambia": (-6, 20, -20, 35),
-    "madagascar": (-10, 42, -27, 52),
-    "angola": (-5, 12, -18, 24),
-}
-
 # Shared categorical colormap and BoundaryNorm for precipitation (mm).
 PRECIP_COLORS = [
     "#bdbdbd",
@@ -208,27 +191,40 @@ def _lat_slice(lat_vals, north, south):
     return slice(south, north)
 
 
-def _country_polygon_from_admin(name):
-    """Return the unioned Natural Earth admin-1 polygon for a country, or None.
+def _polygon_from_geojson(path):
+    """Return the unioned shapely polygon from a GeoJSON file.
 
-    Used to match upstream's sheerwater ``clip_region`` polygon clipping
-    on satellite data — gridded data outside the polygon is NaN'd before
-    plotting so the bottom row matches upstream's country-shaped sat
-    rendering. Returns None for multi-country names (e.g. ``africa``)
-    or when Natural Earth is unavailable.
+    Used to polygon-clip gridded satellite data so cells outside the
+    boundary are NaN'd before plotting (matching upstream's country-shaped
+    sat rendering). Unions every feature's geometry in the file. Exits
+    non-zero if the file is missing or has no usable geometry.
     """
-    gdf = _load_admin_boundaries(bbox=None)
-    if gdf is None:
-        return None
-    sub = gdf[gdf["admin"].str.casefold() == name.casefold()]
-    if sub.empty:
-        return None
+    p = Path(path)
+    if not p.exists():
+        print(f"Error: --mask-geojson file not found: {path}", file=sys.stderr)
+        sys.exit(2)
     try:
-        from shapely.ops import unary_union
+        data = json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Error: could not read --mask-geojson {path}: {exc}", file=sys.stderr)
+        sys.exit(2)
 
-        return unary_union(list(sub.geometry))
-    except Exception:
-        return None
+    if data.get("type") == "FeatureCollection":
+        geoms = [f["geometry"] for f in data.get("features", []) if f.get("geometry")]
+    elif data.get("type") == "Feature":
+        geoms = [data["geometry"]] if data.get("geometry") else []
+    else:
+        # A bare geometry object.
+        geoms = [data]
+
+    if not geoms:
+        print(f"Error: --mask-geojson {path} has no usable geometry.", file=sys.stderr)
+        sys.exit(2)
+
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+
+    return unary_union([shape(g) for g in geoms])
 
 
 def _resample_to_bins(da, time_dim, base_times, bin_width, agg):
@@ -336,6 +332,21 @@ def _ax_bounds(ds, variable):
     )
 
 
+def _attach_bbox_value(argv):
+    # argparse rejects a space-separated --bbox value that starts with '-'
+    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
+    # `--bbox=VAL` so both the space and equals forms parse.
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--bbox" and i + 1 < len(argv):
+            out.append(f"--bbox={argv[i + 1]}")
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -365,14 +376,19 @@ def main() -> None:
         "gridded input's bins using this rule.",
     )
     p.add_argument(
-        "--region",
-        choices=sorted(REGIONS),
-        help="Named region. Slices gridded inputs to the region's (N, W, S, E) "
-        "bbox, drops stations outside the bbox, and sets axes to the bbox. "
-        "Cells inside the bbox but outside the country polygon are kept "
-        "(matching upstream's rectangular slice behavior).",
+        "--bbox",
+        help="N/W/S/E decimal degrees. Slices gridded inputs to the bbox, drops "
+        "stations outside the bbox, and sets axes to the bbox. Cells inside the "
+        "bbox but outside any --mask-geojson polygon are kept (rectangular "
+        "slice). Use the resolve-region skill to get a country's bbox.",
     )
-    args = p.parse_args()
+    p.add_argument(
+        "--mask-geojson",
+        help="Path to a GeoJSON boundary polygon. Gridded cells outside the "
+        "polygon are set to NaN before plotting. Use resolve-region's --geojson "
+        "output to produce a country polygon.",
+    )
+    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
     if len(args.input) != 2:
         print(
@@ -463,37 +479,56 @@ def main() -> None:
     da_a = _flatten(da_a, td_a)
     da_b = _flatten(da_b, td_b)
 
-    # When ``--region NAME`` is set: slice gridded inputs to the region's
-    # rectangular bbox, drop station inputs whose (lon, lat) is outside the
-    # bbox. This matches upstream's ``ds.sel(longitude=slice, latitude=slice)``
-    # rendering — admin polygons are decoration, not a mask.
-    region_bbox = REGIONS[args.region] if args.region else None
-    # Polygon-clip gridded inputs to match upstream sheerwater's clip_region,
-    # which polygon-clips IMERG/CHIRPS before plotting (so cells outside the
-    # country render as NaN/white). Skipped for multi-country regions.
-    region_polygon = (
-        _country_polygon_from_admin(args.region)
-        if (region_bbox is not None and args.region != "africa")
-        else None
-    )
-    if region_bbox is not None:
-        r_n, r_w, r_s, r_e = region_bbox
+    # When ``--bbox`` is set: slice gridded inputs to the rectangular bbox and
+    # drop station inputs whose (lon, lat) is outside the bbox. This matches
+    # upstream's ``ds.sel(longitude=slice, latitude=slice)`` rendering — the
+    # bbox alone is a rectangle, not a country shape.
+    region_bbox = None
+    if args.bbox:
+        try:
+            region_bbox = tuple(float(x) for x in args.bbox.split("/"))
+            if len(region_bbox) != 4:
+                raise ValueError
+        except ValueError:
+            print("Error: --bbox must be N/W/S/E (decimal degrees).", file=sys.stderr)
+            sys.exit(2)
+    # When ``--mask-geojson`` is set: polygon-clip gridded inputs (cells outside
+    # the polygon render as NaN/white), matching upstream sheerwater's
+    # clip_region which polygon-clips IMERG/CHIRPS before plotting.
+    region_polygon = _polygon_from_geojson(args.mask_geojson) if args.mask_geojson else None
+
+    if region_bbox is not None or region_polygon is not None:
+        r_n, r_w, r_s, r_e = region_bbox if region_bbox is not None else (None, None, None, None)
         for side, ds_label in (("a", label_a), ("b", label_b)):
             ds = ds_a if side == "a" else ds_b
             da = da_a if side == "a" else da_b
             if _is_station(ds):
-                lons = ds["longitude"].values
-                lats = ds["latitude"].values
-                keep = (lons >= r_w) & (lons <= r_e) & (lats >= r_s) & (lats <= r_n)
-                keep_ids = ds["station_id"].values[keep]
-                if len(keep_ids) == 0:
-                    print(
-                        f"Warning: 0 stations inside --region {args.region} "
-                        f"bbox on input '{ds_label}'; scatter will render empty.",
-                        file=sys.stderr,
-                    )
-                ds = ds.sel(station_id=keep_ids)
-                da = da.sel(station_id=keep_ids)
+                if region_bbox is not None:
+                    lons = ds["longitude"].values
+                    lats = ds["latitude"].values
+                    # west > east is an RFC 7946 antimeridian-crossing bbox:
+                    # keep stations in either lon band (lon >= r_w OR lon <= r_e).
+                    if r_w > r_e:
+                        lon_keep = (lons >= r_w) | (lons <= r_e)
+                    else:
+                        lon_keep = (lons >= r_w) & (lons <= r_e)
+                    keep = lon_keep & (lats >= r_s) & (lats <= r_n)
+                    keep_ids = ds["station_id"].values[keep]
+                    if len(keep_ids) == 0:
+                        print(
+                            f"Warning: 0 stations inside --bbox {args.bbox} "
+                            f"on input '{ds_label}'; scatter will render empty.",
+                            file=sys.stderr,
+                        )
+                    ds = ds.sel(station_id=keep_ids)
+                    da = da.sel(station_id=keep_ids)
+                    # For a wrapped (west > east) bbox, shift kept stations into
+                    # the same contiguous [r_w, r_e + 360] frame the gridded data
+                    # is remapped to below, so the scatter lands inside the shared
+                    # x-limits instead of being clipped on the eastern band.
+                    if r_w > r_e:
+                        shifted_lon = ((ds["longitude"].values - r_w) % 360.0) + r_w
+                        ds = ds.assign_coords(longitude=("station_id", shifted_lon))
             else:
                 lat_dim = _cf_dim(da, "latitude")
                 lon_dim = _cf_dim(da, "longitude")
@@ -510,11 +545,26 @@ def main() -> None:
                         da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(
                             lon_dim
                         )
-                    lat_vals = da[lat_dim].values
-                    ds = ds.sel({lat_dim: _lat_slice(lat_vals, r_n, r_s), lon_dim: slice(r_w, r_e)})
-                    da = da.sel({lat_dim: _lat_slice(lat_vals, r_n, r_s), lon_dim: slice(r_w, r_e)})
+                    if region_bbox is not None:
+                        lat_vals = da[lat_dim].values
+                        lat_sl = _lat_slice(lat_vals, r_n, r_s)
+                        ds = ds.sel({lat_dim: lat_sl})
+                        da = da.sel({lat_dim: lat_sl})
+                        # west > east is an RFC 7946 antimeridian-crossing bbox:
+                        # select the two lon bands lon >= r_w OR lon <= r_e
+                        # rather than the empty slice(r_w, r_e). The grid is
+                        # already in the [-180, 180] frame here, so the polygon
+                        # mask below still operates in that frame.
+                        if r_w > r_e:
+                            ds = ds.where((ds[lon_dim] >= r_w) | (ds[lon_dim] <= r_e), drop=True)
+                            da = da.where((da[lon_dim] >= r_w) | (da[lon_dim] <= r_e), drop=True)
+                        else:
+                            ds = ds.sel({lon_dim: slice(r_w, r_e)})
+                            da = da.sel({lon_dim: slice(r_w, r_e)})
                     # Polygon-mask gridded sat data to match upstream's
-                    # clip_region-clipped IMERG/CHIRPS (NaN outside country).
+                    # clip_region-clipped IMERG/CHIRPS (NaN outside polygon).
+                    # Done in the [-180, 180] frame, before any wrapped-bbox
+                    # lon shift below, so the polygon coords match the grid.
                     if region_polygon is not None:
                         import shapely
                         import xarray as _xr
@@ -525,10 +575,28 @@ def main() -> None:
                         mask = shapely.contains_xy(region_polygon, lon_grid, lat_grid)
                         mask_da = _xr.DataArray(mask, dims=(lat_dim, lon_dim))
                         da = da.where(mask_da)
-                else:
+                    # For a wrapped (west > east) bbox the two selected lon bands
+                    # are disjoint in [-180, 180]. Remap lon to a contiguous frame
+                    # spanning [r_w, r_e + 360] (values below r_w wrap up by 360)
+                    # and sort, so set_xlim(r_w, r_e + 360) frames the country as
+                    # one block instead of an inverted axis over the empty band.
+                    if region_bbox is not None and r_w > r_e:
+                        ds = ds.assign_coords(
+                            {lon_dim: ((ds[lon_dim] - r_w) % 360.0) + r_w}
+                        ).sortby(lon_dim)
+                        da = da.assign_coords(
+                            {lon_dim: ((da[lon_dim] - r_w) % 360.0) + r_w}
+                        ).sortby(lon_dim)
+                elif region_bbox is not None:
                     print(
                         f"Warning: input '{ds_label}' has no CF lat/lon "
-                        f"dims; --region {args.region} slice not applied.",
+                        f"dims; --bbox {args.bbox} slice not applied.",
+                        file=sys.stderr,
+                    )
+                elif region_polygon is not None:
+                    print(
+                        f"Warning: input '{ds_label}' has no CF lat/lon "
+                        f"dims; --mask-geojson polygon not applied.",
                         file=sys.stderr,
                     )
             if side == "a":
@@ -606,12 +674,36 @@ def main() -> None:
     else:
         gridded_ds = ds_a
     g_xmin, g_xmax, g_ymin, g_ymax = _ax_bounds(gridded_ds, variable)
+    wrapped_bbox = region_bbox is not None and region_bbox[1] > region_bbox[3]
     if region_bbox is not None:
         r_n, r_w, r_s, r_e = region_bbox
-        g_xmin, g_xmax, g_ymin, g_ymax = r_w, r_e, r_s, r_n
+        # For a wrapped bbox the grid was remapped to a contiguous [r_w, r_e+360]
+        # frame above; the x-limits span that same range (a valid x0 < x1).
+        g_xmin, g_ymin, g_ymax = r_w, r_s, r_n
+        g_xmax = r_e + 360.0 if wrapped_bbox else r_e
     gridded_bbox = (g_xmin, g_ymin, g_xmax, g_ymax)
 
-    boundaries = _load_admin_boundaries(bbox=gridded_bbox)
+    # For a wrapped bbox the clip box would live in the contiguous [r_w, r_e+360]
+    # frame while the admin geometries are still in [-180, 180], so a bbox clip
+    # would drop the eastern band. Load unclipped and rely on the shift + xlim
+    # below to frame them; matplotlib clips anything outside the limits.
+    boundaries = _load_admin_boundaries(bbox=None if wrapped_bbox else gridded_bbox)
+    if boundaries is not None and wrapped_bbox:
+        # Admin geometries are in [-180, 180]; shift longitudes below r_w up by
+        # 360 so they line up with the contiguous, remapped grid frame. Uses the
+        # shapely 2.x vectorized transform: the callback receives an (N, 2) array
+        # of coordinates and returns the same shape.
+        import shapely
+
+        def _wrap_coords(coords):
+            out = coords.copy()
+            out[:, 0] = np.where(out[:, 0] < r_w, out[:, 0] + 360.0, out[:, 0])
+            return out
+
+        boundaries = boundaries.copy()
+        boundaries["geometry"] = boundaries.geometry.apply(
+            lambda g: shapely.transform(g, _wrap_coords) if g is not None and not g.is_empty else g
+        )
 
     def _plot_row(axes, row, n_panels):
         ds, da, td, label = row

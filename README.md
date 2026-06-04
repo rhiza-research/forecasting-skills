@@ -19,7 +19,7 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 ### Fetchers (ingress — source-specific)
 | Skill | What it does |
 |---|---|
-| `ecmwf-fetch` | ECMWF S2S ensemble precipitation forecast (cf + pf) via MARS → Zarr |
+| `ecmwf-fetch` | ECMWF S2S ensemble precipitation forecast (cf + pf) over a `--bbox` (use `resolve-region` for a country's bbox) via MARS → Zarr |
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
 | `imerg-fetch` | IMERG satellite precipitation (late release) → Zarr |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
@@ -28,14 +28,15 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 ### Generic middle (operate on any envelope)
 | Skill | What it does |
 |---|---|
-| `clip-region` | Subset a gridded Zarr to a named region or `--bbox N/W/S/E` |
+| `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) from bundled Natural Earth 1:110m boundaries |
+| `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
 | `aggregate-temporal` | Resample along `time` or `step` into daily/weekly/dekadal/monthly windows |
 | `deaccumulate` | Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) into per-step diffs along the `step` axis |
 | `downscale` | Spatial downscaling onto a finer grid (by factor, finer resolution, or a reference grid) via `--method` (linear-interpolation or q-q empirical quantile mapping) |
 | `coarsen` | Coarsen or align a grid by linear interpolation onto a target `(resolution, offset)` — geometry only, adds no information |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
-| `plot` | Heatmap or timeseries PNG from one dataset |
-| `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid) |
+| `plot` | Heatmap (optionally restricted to a `--bbox`) or timeseries PNG from one dataset |
+| `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
 
 ### Egress
@@ -124,8 +125,11 @@ Middle-pipeline skills are designed to chain. Example — daily forecast plus
 satellite validation for one country:
 
 ```bash
+# Resolve the country bbox once, reuse it across the fetch and the clip.
+KENYA_BBOX=$(uv run resolve-region/scripts/resolve.py KEN)
+
 uv run ecmwf-fetch/scripts/fetch.py \
-    --date 2026-02-13 --region kenya --output /tmp/ecmwf.zarr
+    --date 2026-02-13 --bbox "$KENYA_BBOX" --output /tmp/ecmwf.zarr
 uv run aggregate-temporal/scripts/aggregate.py \
     --input /tmp/ecmwf.zarr --period weekly --method sum \
     --output /tmp/ecmwf_weekly.zarr
@@ -136,7 +140,7 @@ uv run plot/scripts/plot.py \
 uv run imerg-fetch/scripts/fetch.py \
     --start 2025-12-24 --end 2026-02-13 --output /tmp/imerg.zarr
 uv run clip-region/scripts/clip.py \
-    --input /tmp/imerg.zarr --region kenya --output /tmp/imerg_kenya.zarr
+    --input /tmp/imerg.zarr --bbox "$KENYA_BBOX" --output /tmp/imerg_kenya.zarr
 uv run aggregate-temporal/scripts/aggregate.py \
     --input /tmp/imerg_kenya.zarr --period dekadal --method sum \
     --output /tmp/imerg_dekadal.zarr
@@ -171,7 +175,7 @@ produce an envelope; consumers only rely on dims, coords, data variables and
 ## CLI flag conventions
 
 Each skill ships its own argparse CLI, but they share canonical flag names so
-common parameters (`--input` / `-o`, `--region`, `--bbox`, `--start` / `--end`,
+common parameters (`--input` / `-o`, `--bbox`, `--start` / `--end`,
 etc.) mean the same thing wherever they appear. See
 [`CONVENTIONS.md`](CONVENTIONS.md) for the full mapping of concept → canonical
 flag.
