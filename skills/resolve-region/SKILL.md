@@ -4,7 +4,7 @@ description: Resolve an ISO 3166-1 alpha-3 country code to a lat/lon bbox (and o
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # resolve-region

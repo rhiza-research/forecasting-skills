@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.2"
+_RHIZA_SKILL_VERSION = "0.1.3"
 
 # How far back from today the `latest` init probe looks. ECMWF S2S runs init on
 # fixed days; 14 days covers several init cycles plus production lag. Exhausting
