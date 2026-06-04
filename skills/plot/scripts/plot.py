@@ -23,23 +23,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.2"
-
-# Region bbox table accepted by ``--region``. Mirrors ``clip-region``'s
-# REGIONS dict; duplicated per CONVENTIONS.md (no shared helper module —
-# skills stay standalone). Tuples are (N, W, S, E) in decimal degrees.
-REGIONS = {
-    "africa": (23, -20, -37, 59),
-    "kenya": (7, 32, -6, 43),
-    "ghana": (12, -4, 4, 2),
-    "senegal": (17, -17.5, 12, -11),
-    "ethiopia": (16, 32, 2, 49),
-    "namibia": (-15, 10, -31, 27),
-    "botswana": (-15, 18, -28, 31),
-    "zambia": (-6, 20, -20, 35),
-    "madagascar": (-10, 42, -27, 52),
-    "angola": (-5, 12, -18, 24),
-}
+_RHIZA_SKILL_VERSION = "0.1.3"
 
 
 def _lat_slice(lat_vals, north, south):
@@ -205,7 +189,7 @@ def _panel_title(da, sdim, step_value, all_steps):
         return fallback
 
 
-def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
+def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize, wrap_lon=True):
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     import matplotlib.pyplot as plt
@@ -214,9 +198,14 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
     if "number" in da.dims:
         da = da.mean("number", keep_attrs=True)
 
-    lon_vals = np.asarray(da[lon_dim].values)
-    if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-        da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+    # Re-wrap a 0..360 global grid into [-180, 180]. Skipped when the caller has
+    # already placed the data in a contiguous shifted frame (a wrapped bbox
+    # spanning the antimeridian, whose lon coords intentionally exceed 180);
+    # re-wrapping there would split the country back into edge slivers.
+    if wrap_lon:
+        lon_vals = np.asarray(da[lon_dim].values)
+        if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
+            da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
 
     sdim = _step_dim(da)
     if sdim is None or da.sizes.get(sdim, 1) == 1:
@@ -282,7 +271,16 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
             vmax=vmax,
             transform=ccrs.PlateCarree(),
         )
-        ax.set_extent(extent, crs=ccrs.PlateCarree())
+        if wrap_lon:
+            ax.set_extent(extent, crs=ccrs.PlateCarree())
+        else:
+            # Wrapped-bbox frame: the x-range spans the antimeridian (e.g. up to
+            # ~190). set_extent would normalize that back into [-180, 180] and
+            # re-split the country; setting the axes limits directly in
+            # PlateCarree projection coordinates (degrees) keeps the contiguous
+            # frame. Data and features are still drawn via transform=PlateCarree.
+            ax.set_xlim(extent[0], extent[1])
+            ax.set_ylim(extent[2], extent[3])
         ax.add_feature(cfeature.COASTLINE, edgecolor="black")
         ax.add_feature(cfeature.BORDERS, linestyle=":", alpha=0.7)
         gl = ax.gridlines(draw_labels=True, alpha=0)
@@ -329,6 +327,21 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize):
     return fig
 
 
+def _attach_bbox_value(argv):
+    # argparse rejects a space-separated --bbox value that starts with '-'
+    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
+    # `--bbox=VAL` so both the space and equals forms parse.
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--bbox" and i + 1 < len(argv):
+            out.append(f"--bbox={argv[i + 1]}")
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", "-i", required=True)
@@ -348,14 +361,12 @@ def main() -> None:
     )
     p.add_argument("--fontsize", type=int, default=16)
     p.add_argument(
-        "--region",
-        choices=sorted(REGIONS),
-        help="Named region. Slices the gridded input to the region's "
-        "(N, W, S, E) bbox and sets the axes extent to that bbox. Cells "
-        "inside the bbox but outside the country polygon are kept "
-        "(rectangular slice, matching the upstream convention).",
+        "--bbox",
+        help="N/W/S/E decimal degrees (heatmap only). Slices the gridded input "
+        "to the bbox and sets the axes extent to it (an explicit --extent still "
+        "overrides). Use the resolve-region skill to get a country's bbox.",
     )
-    args = p.parse_args()
+    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
     import matplotlib
 
@@ -380,9 +391,19 @@ def main() -> None:
     da = ds[variable]
     overrides = _parse_index(args.index)
 
-    if args.region and args.style != "heatmap":
+    bbox = None
+    if args.bbox:
+        try:
+            bbox = tuple(float(x) for x in args.bbox.split("/"))
+            if len(bbox) != 4:
+                raise ValueError
+        except ValueError:
+            print("Error: --bbox must be N/W/S/E (decimal degrees).", file=sys.stderr)
+            sys.exit(2)
+
+    if bbox is not None and args.style != "heatmap":
         print(
-            f"Warning: --region {args.region} is a heatmap-only option; "
+            f"Warning: --bbox {args.bbox} is a heatmap-only option; "
             f"ignored for --style {args.style}.",
             file=sys.stderr,
         )
@@ -402,20 +423,44 @@ def main() -> None:
         extent = _parse_extent(args.extent)
         cities = _parse_cities(args.cities)
         cmap = _parse_colormap(args.colormap)
-        if args.region:
+        wrapped_bbox = False
+        if bbox is not None:
             import numpy as _np_local
 
-            r_n, r_w, r_s, r_e = REGIONS[args.region]
+            r_n, r_w, r_s, r_e = bbox
+            wrapped_bbox = r_w > r_e
             # Wrap 0..360 lons to [-180, 180] before slicing so a global
-            # grid still intersects regions in the negative-lon half (e.g.
+            # grid still intersects bboxes in the negative-lon half (e.g.
             # Senegal). Mirror plot-compare's pre-slice wrap.
             lon_vals_pre = _np_local.asarray(da[lon_dim].values)
             if lon_vals_pre.size and float(_np_local.nanmax(lon_vals_pre)) > 180.0:
                 da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
             lat_vals_pre = da[lat_dim].values
-            da = da.sel({lat_dim: _lat_slice(lat_vals_pre, r_n, r_s), lon_dim: slice(r_w, r_e)})
+            da = da.sel({lat_dim: _lat_slice(lat_vals_pre, r_n, r_s)})
+            # A bbox with west > east is an RFC 7946 antimeridian-crossing box
+            # (e.g. Russia from resolve-region): select the two lon bands
+            # lon >= r_w OR lon <= r_e rather than the empty slice(r_w, r_e).
+            if r_w > r_e:
+                da = da.where((da[lon_dim] >= r_w) | (da[lon_dim] <= r_e), drop=True)
+                # The selected data now lives in two disjoint bands (lon >= r_w
+                # and lon <= r_e). Remap longitudes so the two bands form one
+                # contiguous block: values below r_w wrap up by 360, giving an
+                # axis spanning [r_w, r_e + 360]. Sort so the axis is monotonic.
+                # Coastlines/borders are drawn in PlateCarree, so a shifted axis
+                # spanning >180 is the standard way to render an antimeridian-
+                # crossing region.
+                shifted = ((da[lon_dim] - r_w) % 360.0) + r_w
+                da = da.assign_coords({lon_dim: shifted}).sortby(lon_dim)
+            else:
+                da = da.sel({lon_dim: slice(r_w, r_e)})
             if extent is None:
-                extent = [float(r_w), float(r_e), float(r_s), float(r_n)]
+                # Frame the country. For a wrapped bbox the x-range spans
+                # [r_w, r_e + 360] (a valid x0 < x1) so the contiguous shifted
+                # block is framed, not the empty complementary band.
+                if r_w > r_e:
+                    extent = [float(r_w), float(r_e) + 360.0, float(r_s), float(r_n)]
+                else:
+                    extent = [float(r_w), float(r_e), float(r_s), float(r_n)]
         fig = _heatmap(
             da,
             lat_dim,
@@ -425,6 +470,7 @@ def main() -> None:
             cities,
             args.title,
             args.fontsize,
+            wrap_lon=not wrapped_bbox,
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))

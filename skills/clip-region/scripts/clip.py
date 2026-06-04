@@ -17,20 +17,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.2"
-
-REGIONS = {
-    "africa": (23, -20, -37, 59),
-    "kenya": (7, 32, -6, 43),
-    "ghana": (12, -4, 4, 2),
-    "senegal": (17, -17.5, 12, -11),
-    "ethiopia": (16, 32, 2, 49),
-    "namibia": (-15, 10, -31, 27),
-    "botswana": (-15, 18, -28, 31),
-    "zambia": (-6, 20, -20, 35),
-    "madagascar": (-10, 42, -27, 52),
-    "angola": (-5, 12, -18, 24),
-}
+_RHIZA_SKILL_VERSION = "0.1.3"
 
 
 def _hash_zarr(zarr_path: Path) -> str:
@@ -96,26 +83,38 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
     )
 
 
+def _attach_bbox_value(argv):
+    # argparse rejects a space-separated --bbox value that starts with '-'
+    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
+    # `--bbox=VAL` so both the space and equals forms parse.
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--bbox" and i + 1 < len(argv):
+            out.append(f"--bbox={argv[i + 1]}")
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", "-i", required=True)
     p.add_argument("--output", "-o", required=True)
-    p.add_argument("--region", choices=sorted(REGIONS))
-    p.add_argument("--bbox", help="N/W/S/E decimal degrees")
+    p.add_argument(
+        "--bbox",
+        required=True,
+        help="N/W/S/E decimal degrees (use the resolve-region skill to get a country's bbox)",
+    )
     p.add_argument("--dims", help="Override LAT,LON dim names")
-    args = p.parse_args()
+    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
-    if not args.region and not args.bbox:
-        print("Error: one of --region or --bbox is required.", file=sys.stderr)
+    try:
+        n, w, s, e = (float(x) for x in args.bbox.split("/"))
+    except ValueError:
+        print("Error: --bbox must be N/W/S/E (decimal degrees).", file=sys.stderr)
         sys.exit(2)
-    if args.bbox:
-        try:
-            n, w, s, e = (float(x) for x in args.bbox.split("/"))
-        except ValueError:
-            print("Error: --bbox must be N/W/S/E (decimal degrees).", file=sys.stderr)
-            sys.exit(2)
-    else:
-        n, w, s, e = REGIONS[args.region]
 
     # Build the cheap fields first; defer _hash_zarr until after the
     # cache-hit check so we don't hash hundreds of MB of zarr on hits.
@@ -187,18 +186,25 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(2)
-    lon_slice = slice(w, e)
-
     # Wrap lon to [-180, 180] before the slice so a 0..360 input grid still
     # intersects bboxes that straddle the prime meridian. Mirrors plot.py.
     lon_vals = np.asarray(ds[lon_dim].values)
     if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
         ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
 
+    # A bbox with west > east is an RFC 7946 antimeridian-crossing box (e.g.
+    # Russia from resolve-region): select the two lon bands lon >= w OR lon <= e
+    # rather than the empty slice(w, e). For the ordinary w <= e box, keep the
+    # plain slice.
+    wrapped_lon = w > e
     if lat_slice is None:
-        sub = ds.sel({lon_dim: lon_slice})
+        sub = ds
     else:
-        sub = ds.sel({lat_dim: lat_slice, lon_dim: lon_slice})
+        sub = ds.sel({lat_dim: lat_slice})
+    if wrapped_lon:
+        sub = sub.where((sub[lon_dim] >= w) | (sub[lon_dim] <= e), drop=True)
+    else:
+        sub = sub.sel({lon_dim: slice(w, e)})
     if sub.sizes[lat_dim] == 0 or sub.sizes[lon_dim] == 0:
         print(
             f"Error: clip produced empty result ({dict(sub.sizes)}). "

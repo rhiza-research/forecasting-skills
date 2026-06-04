@@ -4,7 +4,7 @@ description: Render a 2D heatmap or 1D time series PNG from any gridded or stati
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # plot
@@ -32,7 +32,7 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
     [--variable NAME] [--style heatmap|timeseries] \
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
-    [--cities JSON_OR_PATH] [--fontsize N] [--region NAME]
+    [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E]
 ```
 
 ### Arguments
@@ -57,19 +57,15 @@ uv run scripts/plot.py --input <in.zarr> --output <out.png> \
   `'{"Windhoek": [-22.55, 17.08]}'` or a path to such a JSON file. Off by
   default.
 - `--fontsize` — base font size for titles/colorbar label (default 16).
-- `--region` — optional named region. Slices the gridded input to the
-  region's (N, W, S, E) bbox using `da.sel(...)` and sets the heatmap
-  extent to that bbox. Cells inside the bbox but outside the country
-  polygon are kept — this is a rectangular slice, matching the upstream
-  `ECMWF-S2S4AFRICA` convention (admin boundaries are drawn as decoration
-  by `cfeature.BORDERS`/`cfeature.COASTLINE`, not used as a mask).
-  Accepted values mirror `clip-region`'s `REGIONS` dict
-  (`africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`,
-  `zambia`, `madagascar`, `angola`). Longitudes in `[0, 360]` are
-  auto-wrapped to `[-180, 180]` before slicing so global grids still
-  intersect negative-lon regions. `--extent` (if passed) wins over the
-  bbox-derived extent. Heatmap-only — `--style timeseries` ignores
-  `--region` with a stderr warning. Default unset → no slice.
+- `--bbox` — optional `N/W/S/E` decimal degrees. Slices the gridded input to the
+  bbox using `da.sel(...)` and sets the heatmap extent to that bbox. This is a
+  rectangular slice (admin boundaries are drawn as decoration by
+  `cfeature.BORDERS`/`cfeature.COASTLINE`, not used as a mask). To restrict to a
+  country, get its bbox from the `resolve-region` skill. Longitudes in
+  `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing so global grids
+  still intersect negative-lon bboxes. `--extent` (if passed) wins over the
+  bbox-derived extent. Heatmap-only — `--style timeseries` ignores `--bbox` with
+  a stderr warning. Default unset → no slice.
 
 ### Output
 

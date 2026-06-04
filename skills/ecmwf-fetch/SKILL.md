@@ -1,10 +1,10 @@
 ---
 name: ecmwf-fetch
-description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and region, writing a Rhiza Envelope Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting.
+description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and bbox, writing a Rhiza Envelope Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting. To fetch over a country, get its bbox from the resolve-region skill first.
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   openclaw:
     requires:
       env:
@@ -27,7 +27,7 @@ Not for reanalysis, climatology, or deterministic HRES — this skill is S2S onl
 ## Usage
 
 ```
-uv run scripts/fetch.py --date YYYY-MM-DD --region <region> --output <path.zarr>
+uv run scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --output <path.zarr>
 ```
 
 ### Arguments
@@ -70,8 +70,7 @@ uv run scripts/fetch.py --date YYYY-MM-DD --region <region> --output <path.zarr>
   completed control retrieval from the winning probe is reused as the control
   leg of the fetch, so the winning init is not submitted twice. The cache key
   records the resolved absolute init date, never the relative token.
-- `--region` — one of: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`, `angola`. Matches the named regions accepted by `clip-region`. For an explicit bbox, use `--bbox N/W/S/E` instead.
-- `--bbox` — optional; `N/W/S/E` decimal degrees. Overrides `--region` if both are given.
+- `--bbox` — required; `N/W/S/E` decimal degrees. The retrieval area (smaller bbox = faster retrieval). To fetch over a country, get its bbox from the `resolve-region` skill and pass the value here.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
 ### Output
@@ -97,16 +96,20 @@ translate underscore → hyphen.
 ## Examples
 
 ```bash
-uv run scripts/fetch.py --date 2026-02-15 --region africa --output /tmp/ecmwf.zarr
+uv run scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/59 --output /tmp/ecmwf.zarr
 ```
 
 ```bash
-uv run scripts/fetch.py --date 2026-02-15 --bbox 7/32/-6/43 --output /tmp/ecmwf_kenya.zarr
+# Fetch over a country: get its bbox from the resolve-region skill (e.g. KEN → 5.5/33.9/-4.7/41.9)
+BBOX=5.5/33.9/-4.7/41.9
+uv run scripts/fetch.py --date 2026-02-15 --bbox "$BBOX" --output /tmp/ecmwf_kenya.zarr
 ```
 
 ```bash
 # Newest available init (slow: probes init dates backward via ECDS submits)
-uv run scripts/fetch.py --date latest --region kenya --output /tmp/ecmwf_latest.zarr
+# (bbox from the resolve-region skill, e.g. KEN)
+uv run scripts/fetch.py --date latest --bbox 5.5/33.9/-4.7/41.9 \
+    --output /tmp/ecmwf_latest.zarr
 ```
 
 See [references/REFERENCE.md](references/REFERENCE.md) for the exact ECDS request parameters and how retrieval time scales with area.

@@ -1,15 +1,15 @@
 ---
 name: clip-region
-description: Spatially subset a gridded Rhiza Envelope Zarr to a named region or explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a country or custom bounding box before downstream aggregation or plotting.
+description: Spatially subset a gridded Rhiza Envelope Zarr to an explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a custom bounding box before downstream aggregation or plotting. To clip to a country, get its bbox from the resolve-region skill first.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # clip-region
 
-Source-agnostic spatial subset using simple lat/lon slicing. Accepts either a named region (Africa countries used in the daily S2S workflow) or an explicit `--bbox`.
+Source-agnostic spatial subset using simple lat/lon slicing, driven by an explicit `--bbox`. To clip to a country, resolve its bbox with the `resolve-region` skill and pass that value.
 
 ## When to use
 
@@ -22,14 +22,13 @@ Does **not** clip station-schema envelopes (station_id-indexed). For stations, f
 
 ```
 uv run scripts/clip.py --input <in.zarr> --output <out.zarr> \
-    (--region NAME | --bbox N/W/S/E) [--dims LAT,LON]
+    --bbox N/W/S/E [--dims LAT,LON]
 ```
 
 ### Arguments
 - `--input`, `-i` — gridded Zarr.
 - `--output`, `-o` — output Zarr.
-- `--region` — named region: `africa`, `kenya`, `ghana`, `senegal`, `ethiopia`, `namibia`, `botswana`, `zambia`, `madagascar`, `angola`.
-- `--bbox` — explicit `N/W/S/E` in decimal degrees (overrides `--region` if both given).
+- `--bbox` — required; `N/W/S/E` in decimal degrees. To clip to a country, get its bbox from the `resolve-region` skill and pass the value here.
 - `--dims` — optional `LAT,LON` dim name override.
 
 ### Longitude convention
@@ -65,5 +64,7 @@ translate underscore → hyphen.
 ## Example
 
 ```bash
-uv run scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --region kenya
+# Get BBOX from the resolve-region skill for your country (e.g. KEN → 5.5/33.9/-4.7/41.9):
+BBOX=5.5/33.9/-4.7/41.9
+uv run scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --bbox "$BBOX"
 ```
