@@ -25,7 +25,7 @@ import earthaccess
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.2"
+_RHIZA_SKILL_VERSION = "0.1.3"
 
 SHORTNAMES = {
     "late": "GPM_3IMERGDL",

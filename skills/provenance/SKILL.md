@@ -4,7 +4,7 @@ description: Inspect the rhiza_history provenance chain stamped on a Rhiza artif
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # provenance
