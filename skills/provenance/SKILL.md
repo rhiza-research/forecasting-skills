@@ -29,7 +29,7 @@ writes a file or modifies its input.
 ## Usage
 
 ```
-uv run scripts/provenance.py --input <artifact> [--format human|json|script] [--check]
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py --input <artifact> [--format human|json|script] [--check]
 ```
 
 ### Arguments
@@ -118,7 +118,7 @@ Exit codes:
 
 ```bash
 # Validate that a freshly produced artifact conforms to the schema.
-uv run scripts/provenance.py -i /tmp/forecast.zarr --check
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.zarr --check
 ```
 
 ## Reproduction-script caveats
@@ -136,11 +136,11 @@ uv run scripts/provenance.py -i /tmp/forecast.zarr --check
 
 ```bash
 # Human-readable lineage of a clipped forecast zarr.
-uv run scripts/provenance.py -i /tmp/ecmwf_kenya.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/ecmwf_kenya.zarr
 
 # Raw chain as JSON.
-uv run scripts/provenance.py -i /tmp/forecast.png --format json
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format json
 
 # Reproduction script, saved by the user via redirect.
-uv run scripts/provenance.py -i /tmp/forecast.png --format script > repro.sh
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format script > repro.sh
 ```

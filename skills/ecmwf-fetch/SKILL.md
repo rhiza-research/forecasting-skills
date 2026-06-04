@@ -27,7 +27,7 @@ Not for reanalysis, climatology, or deterministic HRES — this skill is S2S onl
 ## Usage
 
 ```
-uv run scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --output <path.zarr>
 ```
 
 ### Arguments
@@ -90,26 +90,26 @@ workflow.
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Examples
 
 ```bash
-uv run scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/59 --output /tmp/ecmwf.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/59 --output /tmp/ecmwf.zarr
 ```
 
 ```bash
 # Fetch over a country: get its bbox from the resolve-region skill (e.g. KEN → 5.5/33.9/-4.7/41.9)
 BBOX=5.5/33.9/-4.7/41.9
-uv run scripts/fetch.py --date 2026-02-15 --bbox "$BBOX" --output /tmp/ecmwf_kenya.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox "$BBOX" --output /tmp/ecmwf_kenya.zarr
 ```
 
 ```bash
 # Newest available init (slow: probes init dates backward via ECDS submits)
 # (bbox from the resolve-region skill, e.g. KEN)
-uv run scripts/fetch.py --date latest --bbox 5.5/33.9/-4.7/41.9 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date latest --bbox 5.5/33.9/-4.7/41.9 \
     --output /tmp/ecmwf_latest.zarr
 ```
 
-See [references/REFERENCE.md](references/REFERENCE.md) for the exact ECDS request parameters and how retrieval time scales with area.
+See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the exact ECDS request parameters and how retrieval time scales with area.

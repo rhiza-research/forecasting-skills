@@ -25,7 +25,7 @@ Downloads TAHMO station observations via the TAHMO SDK for the requested countri
 ## Usage
 
 ```
-uv run scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
@@ -81,16 +81,16 @@ workflow.
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Example
 
 ```bash
 # Absolute window (inclusive both ends)
-uv run scripts/fetch.py --country Kenya --country Ghana --start 2026-01-01 --end 2026-02-15 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --country Ghana --start 2026-01-01 --end 2026-02-15 \
     --output /tmp/tahmo.zarr
 
 # Last 3 weeks ending at the newest available observation (duration idiom: 21 days incl. latest)
-uv run scripts/fetch.py --country Kenya --start latest-3w --end latest --output /tmp/tahmo.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --start latest-3w --end latest --output /tmp/tahmo.zarr
 ```
