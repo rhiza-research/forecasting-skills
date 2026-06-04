@@ -90,6 +90,14 @@ non-zero.
 
 Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the global IMERG 0.1° grid. Stamped with `rhiza_source=imerg`.
 
+### Memory and performance
+
+There is no `--bbox` flag: the full 0.1° global grid (~3600×1800 cells, ~26 MB/day as float32) is always fetched. The output is streamed to Zarr one granule (one day) at a time, so peak resident memory is bounded regardless of window length.
+
+There is no spend-RAM-to-go-faster knob: the wall-clock cost is the NASA Earthdata download (which `earthaccess` parallelizes internally), not the streamed write, so extra memory does not speed up the fetch.
+
+For tight-memory hosts, keep the window short and run the `clip-region` skill immediately after to shrink to your area of interest.
+
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
