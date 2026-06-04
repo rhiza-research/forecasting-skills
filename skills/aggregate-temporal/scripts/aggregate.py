@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_RHIZA_SKILL_VERSION = "0.1.4"
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
@@ -373,6 +373,17 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     p.add_argument("--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"])
     p.add_argument("--method", default="sum", choices=["sum", "mean", "max", "min"])
+    p.add_argument(
+        "--variable",
+        "-v",
+        action="append",
+        default=None,
+        help="Restrict aggregation to this data variable. Repeat once per "
+        "variable to select several. The selected data variables are "
+        "aggregated and relabeled as usual; other DATA variables are dropped "
+        "from the output (coordinates pass through). Default (unset) "
+        "aggregates all data variables.",
+    )
     p.add_argument("--time-dim")
     p.add_argument(
         "--anchor-end",
@@ -430,6 +441,35 @@ def main() -> None:
         print(f"Error: {src} not found.", file=sys.stderr)
         sys.exit(2)
     ds = xr.open_zarr(src, consolidated=False)
+
+    # Variable selection. When --variable is given, restrict the dataset to the
+    # named DATA variable(s) BEFORE aggregating, so that selecting only an
+    # extensive variable (e.g. precip) from a mixed precip+temperature input
+    # does not trip the intensive-quantity guard on the unselected variable.
+    # Indexing with a list of data-var names keeps all coordinates; the
+    # unselected data variables are dropped. Each name must be an actual data
+    # variable (not a coordinate or a missing name).
+    if args.variable is not None:
+        data_vars = list(ds.data_vars)
+        invalid = [v for v in args.variable if v not in ds.data_vars]
+        if invalid:
+            print(
+                f"Error: --variable {invalid} not data variable(s) of {src}. "
+                f"Valid data variables: {data_vars}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        # De-duplicate while preserving first-seen order so a repeated name
+        # doesn't duplicate a column.
+        selected = list(dict.fromkeys(args.variable))
+        dropped = [v for v in data_vars if v not in selected]
+        if dropped:
+            print(
+                f"Note: dropping unselected data variable(s) {dropped}; "
+                f"aggregating only {selected}.",
+                file=sys.stderr,
+            )
+        ds = ds[selected]
 
     if args.time_dim:
         dim = args.time_dim
