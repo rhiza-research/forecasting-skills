@@ -63,10 +63,16 @@ for COUNTRY in "${COUNTRIES[@]}"; do
 
     forecasting-skills tahmo-fetch --country "$COUNTRY" --start "$START_DATE" --end "$END_DATE" --output "$d/tahmo.zarr"
 
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_weekly.zarr"   --variable precip --overlay-resample sum --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_weekly.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/imerg_dekadal.zarr"  --variable precip --overlay-resample sum             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_dekadal.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_weekly.zarr"  --variable precip --overlay-resample sum --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_weekly.png"
-    forecasting-skills plot-compare -i "$d/tahmo.zarr" -i "$d/chirps_dekadal.zarr" --variable precip --overlay-resample sum             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_dekadal.png"
+    # plot-compare requires its two inputs to already share a time axis, so the
+    # daily station data is pre-aggregated to the same window/anchor/method as
+    # the imerg/chirps gridded aggregations before comparing.
+    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_weekly.zarr"  --variable precip --period weekly  --method sum --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_dekadal.zarr" --variable precip --period dekadal --method sum --anchor-end "$END_DATE"
+
+    forecasting-skills plot-compare -i "$d/tahmo_weekly.zarr"  -i "$d/imerg_weekly.zarr"   --variable precip --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_weekly.png"
+    forecasting-skills plot-compare -i "$d/tahmo_dekadal.zarr" -i "$d/imerg_dekadal.zarr"  --variable precip             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_dekadal.png"
+    forecasting-skills plot-compare -i "$d/tahmo_weekly.zarr"  -i "$d/chirps_weekly.zarr"  --variable precip --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_weekly.png"
+    forecasting-skills plot-compare -i "$d/tahmo_dekadal.zarr" -i "$d/chirps_dekadal.zarr" --variable precip             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_dekadal.png"
 
     forecasting-skills email-report \
         --from "$COUNTRY Data Share <demo@example.com>" \

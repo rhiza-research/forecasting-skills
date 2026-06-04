@@ -25,7 +25,7 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
 ```
 uv run scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
     --period daily|weekly|dekadal|monthly [--method sum|mean|max|min] \
-    [--time-dim DIM] [--anchor-end YYYY-MM-DD]
+    [--variable VAR ...] [--time-dim DIM] [--anchor-end YYYY-MM-DD]
 ```
 
 ### Arguments
@@ -33,6 +33,7 @@ uv run scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
 - `--output`, `-o` — output Zarr.
 - `--period` — window size: `daily` (1d), `weekly` (7d), `dekadal` (10d), `monthly` (calendar month for the default forward-anchored resample; 30-day approximation when combined with `--anchor-end`).
 - `--method` — reducer: `sum` (default for totals), `mean`, `max`, `min`.
+- `--variable`, `-v` — repeatable; restricts aggregation to the named data variable(s). Each name must be a data variable of the input; an unknown or non-data-variable name exits non-zero and lists the valid data variables. The selected data variable(s) are aggregated and relabeled as usual; the other data variables are dropped from the output (a stderr note lists which), and coordinates pass through. Default (unset) aggregates all data variables.
 - `--time-dim` — override; by default uses `time` if present, else `step`.
 - `--anchor-end` — ISO date (`YYYY-MM-DD`) used to anchor the LAST bin
   on the obs/time-resample path (no effect on the forecast `step`

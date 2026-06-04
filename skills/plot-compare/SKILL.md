@@ -19,6 +19,21 @@ Handles:
 When exactly one input is a station-schema Zarr, that input is placed
 on the top row to match the canonical "stations vs. satellite" layout.
 
+The two inputs must already be at the same time resolution and are
+compared on the time bins they share. `plot-compare` intersects the two
+axes' bin labels and renders the last `N` of the COMMON labels, selecting
+those same labels from both inputs so panel `i` shows the same time window
+for both rows. A reporting-latency offset that drops one input's trailing
+bin (e.g. a station whose final week is not yet in) is not an error — it
+just yields one fewer common bin. `plot-compare` exits non-zero only when
+the two axes are at different resolutions (different median bin width, or
+one a calendar `time` axis and the other a forecast `step` axis) or have
+no overlapping bins; in either case it asks you to aggregate to a common
+resolution first. To compare data captured at different cadences (e.g.
+daily station observations against weekly or dekadal gridded
+accumulations), aggregate each input to the same window with the
+`aggregate-temporal` skill before comparing.
+
 A shared categorical precipitation colormap with `BoundaryNorm` is the
 default so values are visually comparable across rows. An admin-1
 country boundary overlay (Natural Earth, fetched and cached via
@@ -28,12 +43,9 @@ polygons that straddle the bbox edge are truncated at the edge rather
 than rendered whole and neighboring regions never extend beyond the
 base.
 
-For station-vs-gridded pairs, the station input's time axis is
-aggregated to the gridded input's time bins when the station grid is
-finer (e.g. daily station observations against weekly or dekadal
-gridded accumulations). Both rows always share the gridded input's
-spatial extent so the figure is centered on the gridded base; station
-points outside that extent are clipped by matplotlib.
+Both rows always share the gridded input's spatial extent so the figure
+is centered on the gridded base; station points outside that extent are
+clipped by matplotlib.
 
 Panel titles render the time-bin range as `YYYY-MM-DD to YYYY-MM-DD`
 with the bin coord interpreted as the inclusive right edge: start =
@@ -51,7 +63,7 @@ end − bin_width + 1 day. Matches `aggregate-temporal` and
 ```
 uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--colormap NAME] [--title TEXT] \
-    [--panels N] [--time-dim DIM] [--overlay-resample {sum,mean,max,min}] \
+    [--panels N] [--time-dim DIM] \
     [--bbox N/W/S/E] [--mask-geojson PATH]
 ```
 
@@ -67,18 +79,6 @@ uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
 - `--title` — figure title.
 - `--panels` — number of panels per row (default 3).
 - `--time-dim` — override the time axis. Defaults to `time` if present, else `step`.
-- `--overlay-resample` — aggregation rule (`sum`, `mean`, `max`, `min`;
-  default `sum`) applied when one input is station-schema and its time
-  grid is finer than the gridded input's. For each gridded bin **end**
-  `t` and bin width `w` (median of `diff(gridded_time)`), station
-  values where `t - w < station_time <= t` are aggregated and assigned
-  back to `t`. This matches `aggregate-temporal`'s left-open
-  right-closed bucket convention so the resampled overlay aligns with
-  the base's inclusive-end labels. Generic — works for any
-  station-vs-gridded combination; for accumulating variables
-  (precipitation, radiation) use `sum`; for intensive variables
-  (temperature) use `mean`. Coarser-than-base station inputs are left
-  untouched.
 - `--bbox` — optional `N/W/S/E` decimal degrees. Rectangular clipping:
   gridded inputs get a `ds.sel(...)` slice to the bbox and station inputs
   are filtered to the bbox (no polygon test); axes are set to the bbox.
@@ -94,10 +94,20 @@ uv run scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
 
 ### Behavior
 
-- **Time-bin alignment.** When the station overlay has a finer time
-  grid than the gridded base, the overlay is aggregated to the base's
-  bins per `--overlay-resample` before plotting. Both rows then share
-  the same time-bin labels.
+- **Shared-resolution, overlapping bins.** The two inputs must already be
+  at the same time resolution; `plot-compare` compares them on their
+  overlapping bins. It checks that the two axes are the same kind (both a
+  calendar `time` axis, or both a forecast `step` axis — compared within
+  the native dtype, never cross-cast) and share a median bin width, then
+  intersects the bin labels (matched within a small fraction of the bin
+  width) and renders the last `N` of the COMMON labels, selecting the same
+  labels from both inputs so each panel shows the same window for both
+  rows. A latency offset that drops one input's trailing bin is tolerated
+  (one fewer common bin). The run exits non-zero only on a resolution
+  mismatch ("different time resolutions; aggregate to a common resolution
+  first, e.g. with the `aggregate-temporal` skill") or an empty
+  intersection ("no overlapping time bins"). `plot-compare` performs no
+  temporal aggregation or unit transformation of its own.
 - **Admin-polygon clipping.** The Natural Earth admin-1 GeoDataFrame
   is spatially clipped (`gdf.clip(box(*gridded_bbox))`) so polygons
   that straddle the bbox edge are truncated at the edge rather than
@@ -165,8 +175,12 @@ exiftool out.png
 ## Example
 
 ```bash
-uv run scripts/plot_compare.py -i /tmp/tahmo.zarr -i /tmp/imerg_dekadal.zarr \
+uv run scripts/plot_compare.py -i /tmp/tahmo_dekadal.zarr -i /tmp/imerg_dekadal.zarr \
     --variable precip --output /tmp/sat_vs_station.png \
-    --title "IMERG vs TAHMO dekadal" \
-    --overlay-resample sum
+    --title "IMERG vs TAHMO dekadal"
 ```
+
+Both inputs are on the same dekadal axis here: the station `tahmo.zarr`
+was aggregated to `tahmo_dekadal.zarr` with the `aggregate-temporal`
+skill (same period/method/anchor as the IMERG dekadal aggregation)
+before comparing.

@@ -227,41 +227,6 @@ def _polygon_from_geojson(path):
     return unary_union([shape(g) for g in geoms])
 
 
-def _resample_to_bins(da, time_dim, base_times, bin_width, agg):
-    """Resample ``da`` along ``time_dim`` to ``base_times`` using ``agg``.
-
-    ``base_times`` is a 1-D array of bin-end values (inclusive); ``bin_width``
-    is the (pandas Timedelta) width applied uniformly. For each base time
-    ``t``, values where ``t - bin_width < source_time <= t`` are aggregated.
-    This matches ``aggregate-temporal``'s left-open right-closed bucket
-    convention so the resampled overlay aligns with the gridded base's
-    inclusive-end labels. The returned DataArray's time coord equals
-    ``base_times`` exactly (the ``IntervalIndex`` from ``groupby_bins``
-    is dropped).
-    """
-    import numpy as np
-    import pandas as pd
-
-    base_times = pd.to_datetime(np.asarray(base_times))
-    edges = [base_times[0] - bin_width] + list(base_times)
-    grouped = da.groupby_bins(time_dim, bins=edges, right=True)
-    if agg == "sum":
-        out = grouped.sum()
-    elif agg == "mean":
-        out = grouped.mean()
-    elif agg == "max":
-        out = grouped.max()
-    elif agg == "min":
-        out = grouped.min()
-    else:
-        raise ValueError(f"unknown --overlay-resample agg: {agg}")
-    bin_dim = f"{time_dim}_bins"
-    # Replace the IntervalIndex bin coord with the original base times.
-    out = out.rename({bin_dim: time_dim})
-    out = out.assign_coords({time_dim: base_times.values})
-    return out
-
-
 def _median_bin_width(time_values):
     """Return median spacing of a 1-D time coord as a pandas Timedelta.
 
@@ -368,14 +333,6 @@ def main() -> None:
     p.add_argument("--panels", type=int, default=3)
     p.add_argument("--time-dim")
     p.add_argument(
-        "--overlay-resample",
-        choices=("sum", "mean", "max", "min"),
-        default="sum",
-        help="When one input is station-schema and its time grid is finer "
-        "than the gridded input's, aggregate the station time axis to the "
-        "gridded input's bins using this rule.",
-    )
-    p.add_argument(
         "--bbox",
         help="N/W/S/E decimal degrees. Slices gridded inputs to the bbox, drops "
         "stations outside the bbox, and sets axes to the bbox. Cells inside the "
@@ -436,10 +393,112 @@ def main() -> None:
         )
         sys.exit(2)
 
-    n = min(args.panels, ds_a.sizes[td_a], ds_b.sizes[td_b])
-    if n < 1:
-        print("Error: no overlapping panels to plot.", file=sys.stderr)
+    # Shared-bin panel selection. The two rows share one colormap and render the
+    # same time window per panel, so the inputs must be at the same time
+    # resolution and we compare them on the bins they have in COMMON (their
+    # intersection), not positionally. This tolerates a reporting-latency offset
+    # — e.g. a station whose trailing bin is empty and dropped — which leaves the
+    # inputs the same resolution but at a different last label; that just yields
+    # one fewer common bin instead of a misalignment error.
+    raw_a = ds_a[td_a].values
+    raw_b = ds_b[td_b].values
+
+    def _axis_kind(values):
+        """Classify a time axis as 'datetime', 'timedelta', or None.
+
+        A forecast `step` axis is `timedelta64`; a calendar time axis is
+        `datetime64`. The two are distinct kinds and must not be cross-cast:
+        viewing a `timedelta64` array as `datetime64` reinterprets the same
+        integer counts against the Unix epoch and would let mismatched step
+        axes compare as equal. None means the axis is neither kind.
+        """
+        kind = getattr(values.dtype, "kind", None)
+        if kind == "M":
+            return "datetime"
+        if kind == "m":
+            return "timedelta"
+        return None
+
+    kind_a = _axis_kind(raw_a)
+    kind_b = _axis_kind(raw_b)
+    if kind_a is None or kind_b is None or kind_a != kind_b:
+        print(
+            "Error: the two inputs have different time resolutions "
+            f"('{td_a}' dtype={raw_a.dtype}, '{td_b}' dtype={raw_b.dtype}); "
+            "aggregate both inputs to a common resolution first, e.g. with the "
+            "aggregate-temporal skill.",
+            file=sys.stderr,
+        )
         sys.exit(1)
+
+    # Normalize each axis to integer nanoseconds WITHIN its own kind (never
+    # cross-cast). `datetime64[ns]` for a calendar axis, `timedelta64[ns]` for a
+    # step axis; both then view as int64 ns counts for arithmetic.
+    ns_dtype = "datetime64[ns]" if kind_a == "datetime" else "timedelta64[ns]"
+    int_a = raw_a.astype(ns_dtype).astype("int64")
+    int_b = raw_b.astype(ns_dtype).astype("int64")
+
+    def _median_spacing_ns(int_values):
+        if int_values.size < 2:
+            return None
+        # Use absolute diffs so the spacing is independent of storage order: a
+        # descending axis would otherwise yield a negative median and make an
+        # ascending vs descending pair of the same resolution look different.
+        return float(np.median(np.abs(np.diff(int_values))))
+
+    width_a = _median_spacing_ns(int_a)
+    width_b = _median_spacing_ns(int_b)
+
+    # Resolution check: the two axes must share a median bin width. When an axis
+    # has a single value its spacing is unknown, so the check only runs when both
+    # axes have a measurable spacing; a single-bin overlapping input is matched on
+    # its label alone below.
+    known_widths = [w for w in (width_a, width_b) if w is not None]
+    if len(known_widths) == 2:
+        rel = abs(width_a - width_b) / max(width_a, width_b, 1.0)
+        if rel > 1e-3:
+            print(
+                "Error: the two inputs have different time resolutions "
+                f"(median bin width '{td_a}'≈{width_a:.0f} ns vs "
+                f"'{td_b}'≈{width_b:.0f} ns); aggregate both inputs to a common "
+                "resolution first, e.g. with the aggregate-temporal skill.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    # Overlap: intersect the two axes' labels, matched within a 1-second
+    # tolerance to absorb storage/rounding; bins on a shared anchor are exactly
+    # equal. The same tolerance is reused for the later `.sel`, so the match and
+    # the selection cannot disagree. Build the common labels in chronological
+    # order, taken from input A's own integer labels so a later `.sel` is exact.
+    tol_ns = 1_000_000_000
+    sorted_b = np.sort(int_b)
+    common_int = []
+    for va in np.sort(int_a):
+        idx = np.searchsorted(sorted_b, va)
+        nearest = None
+        for cand in (idx - 1, idx):
+            if 0 <= cand < sorted_b.size:
+                d = abs(int(sorted_b[cand]) - int(va))
+                if nearest is None or d < nearest:
+                    nearest = d
+        if nearest is not None and nearest <= tol_ns:
+            common_int.append(int(va))
+
+    if not common_int:
+        print(
+            f"Error: no overlapping time bins between the two inputs on '{td_a}'/'{td_b}'.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    n = min(args.panels, len(common_int))
+    # Take the last `n` common labels (chronological). Map each back to a native
+    # axis label drawn from input A's coord so per-row `.sel` is exact for A; for
+    # B we select with method="nearest" within the same tolerance.
+    common_int_last = common_int[-n:]
+    common_labels = np.asarray(common_int_last, dtype="int64").astype(ns_dtype)
+    common_tol = np.timedelta64(1, "s")
 
     da_a = ds_a[variable]
     da_b = ds_b[variable]
@@ -604,40 +663,8 @@ def main() -> None:
             else:
                 ds_b, da_b = ds, da
 
-    # When exactly one input is station-schema and its time grid is finer
-    # than the gridded input's, resample the station's time axis to the
-    # gridded input's bins. The gridded input is the "base"; the station
-    # input is the "overlay". This keeps the skill generic — no
-    # TAHMO/IMERG/CHIRPS or variable-specific assumptions.
     a_station = _is_station(ds_a)
     b_station = _is_station(ds_b)
-    base_bin_width = None
-    if a_station ^ b_station:
-        if a_station:
-            station_da, station_td = da_a, td_a
-            base_da, base_td = da_b, td_b
-        else:
-            station_da, station_td = da_b, td_b
-            base_da, base_td = da_a, td_a
-        base_bin_width = _median_bin_width(base_da[base_td].values)
-        station_bin_width = _median_bin_width(station_da[station_td].values)
-        if (
-            base_bin_width is not None
-            and station_bin_width is not None
-            and station_bin_width < base_bin_width
-        ):
-            base_times = base_da[base_td].values
-            station_da = _resample_to_bins(
-                station_da,
-                station_td,
-                base_times,
-                base_bin_width,
-                args.overlay_resample,
-            )
-            if a_station:
-                da_a = station_da
-            else:
-                da_b = station_da
 
     # Decide row layout: when exactly one is station-schema, put it on top.
     if b_station and not a_station:
@@ -708,14 +735,22 @@ def main() -> None:
     def _plot_row(axes, row, n_panels):
         ds, da, td, label = row
         is_station = _is_station(ds)
-        n_avail = da.sizes[td]
-        first = max(0, n_avail - n_panels)
+        # Select this row at the SHARED common labels (same time window per panel
+        # across both rows). `common_labels` were derived from input A's axis; for
+        # either row select by nearest within the matching tolerance so a sub-bin
+        # float offset still lands on the right bin. Both axes passed the
+        # resolution + overlap checks, so every common label exists in each row.
+        row_sel = da.sel({td: common_labels}, method="nearest", tolerance=common_tol)
+        # Render the panel-title range from this row's own time spacing, so a
+        # bin coord interpreted as the inclusive right edge shows `start to end`
+        # (start = end - bin_width + 1 day). None for a single-step axis.
+        bin_width = _median_bin_width(da[td].values)
         last_im = None
         for col in range(n_panels):
             ax = axes[col]
-            sel = da.isel({td: first + col})
-            t_val = da[td].values[first + col]
-            title_t = _format_single(t_val, bin_width=base_bin_width)
+            sel = row_sel.isel({td: col})
+            t_val = row_sel[td].values[col]
+            title_t = _format_single(t_val, bin_width=bin_width)
             if is_station:
                 last_im = _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax)
             else:
