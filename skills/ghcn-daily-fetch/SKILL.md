@@ -70,6 +70,15 @@ temperature) and are scaled to these canonical units on the way out. Only rows
 whose quality flag is empty (passed all QC checks) are kept. Stamped with
 `rhiza_source=ghcn-daily` and `featureType=timeSeries`.
 
+### Memory and performance
+
+Memory scales with the number of stations inside `--bbox` times the window length
+times the selected variables — station rows are small, and the working set is
+bounded by the bbox, not the global station list. Per-station CSVs are fetched
+concurrently and each is held only transiently while its daily values are
+extracted; `--workers` raises download concurrency at a modest, bounded memory
+cost. On tight-memory hosts, narrow the `--bbox` or shorten the window.
+
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
