@@ -240,7 +240,7 @@ DAILY_AGG = {
 # in "mm" per measurement, and our daily sum aggregation produces mm-per-day
 # which is the rate label that pairs with lwe_precipitation_rate.
 CF_META = {
-    "precip": ("lwe_precipitation_rate", "mm/day"),
+    "precip": ("lwe_precipitation_rate", "mm day-1"),
     "temperature": ("air_temperature", None),
     "humidity": ("relative_humidity", None),
     "pressure": ("air_pressure", None),
@@ -661,7 +661,7 @@ def main() -> None:
         short = short_code_for.get(canonical)
         api_meta = var_meta.get(short, {}) if short else {}
         std_name, units_override = CF_META.get(canonical, (None, None))
-        attrs = {}
+        attrs = {"coordinates": "latitude longitude"}
         if std_name:
             attrs["standard_name"] = std_name
         units = units_override or api_meta.get("units")
@@ -676,6 +676,7 @@ def main() -> None:
         rhiza_source="tahmo",
         rhiza_history=json.dumps([entry], sort_keys=True),
         featureType="timeSeries",
+        Conventions="CF-1.13",
     )
     for v in ds.variables:
         ds[v].encoding = {}

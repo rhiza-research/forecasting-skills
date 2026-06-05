@@ -490,9 +490,10 @@ def main() -> None:
         ds.attrs.update(
             rhiza_source="imerg",
             rhiza_history=json.dumps([stamp_entry], sort_keys=True),
+            Conventions="CF-1.13",
         )
         ds["precip"].attrs.update(
-            units="mm/day",
+            units="mm day-1",
             standard_name="lwe_precipitation_rate",
             long_name="IMERG daily precipitation",
         )

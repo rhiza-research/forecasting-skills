@@ -521,6 +521,7 @@ def main() -> None:
     ds.attrs.update(
         rhiza_source=f"dynamical:{args.dataset}",
         rhiza_history=json.dumps([entry], sort_keys=True),
+        Conventions="CF-1.13",
     )
     _stamp_cf_attrs(ds)
     # Per-variable encoding is not part of the envelope contract; clear it so the
