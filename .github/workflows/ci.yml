@@ -26,6 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v8.1.0
       - run: uv run --script tools/check_inline_deps.py skills/
+      - run: uv run --script tools/check_cftime_deps.py skills/
 
   discover:
     runs-on: ubuntu-latest
