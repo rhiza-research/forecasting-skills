@@ -38,6 +38,8 @@ standalone single-file scripts. The convention is enforced by review.
 | --- | --- | --- | --- |
 | Date range | `--start` / `--end` | relative-or-absolute date token (see grammar below); both ends inclusive | Used by archive fetchers covering a span of dates. |
 | Single date | `--date` | relative-or-absolute date token (see grammar below) | Used when a skill operates on one timestamp (e.g. an init date for a forecast). |
+| Target CF calendar | `--calendar` | CF calendar name | Calendar to convert the time axis onto (e.g. `standard`, `proleptic_gregorian`, `noleap`, `360_day`, `all_leap`, `julian`). Used by `convert-calendar`. |
+| Calendar alignment mode | `--align-on` | `date` \| `year` | How `convert-calendar` maps dates across calendars. Required whenever the source or target calendar is `360_day`. `year` translates by relative position in the year (best for daily/sub-daily); `date` conserves month/day and drops invalid dates (best for coarser-than-daily). |
 
 #### Relative-or-absolute date grammar
 
