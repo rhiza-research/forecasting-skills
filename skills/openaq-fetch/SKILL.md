@@ -70,6 +70,14 @@ particulates, ppm/ppb for gases, as the provider reports). `station_id` is the
 OpenAQ location id. Stamped with `rhiza_source=openaq` and
 `featureType=timeSeries`.
 
+### Memory and performance
+
+This is station data: memory scales with the number of sensors inside `--bbox`
+times the window length times the selected pollutants, bounded by the bbox rather
+than any global grid. Per-sensor daily series are fetched concurrently and held
+only transiently; `--workers` raises concurrency at a modest, bounded memory cost.
+On tight-memory hosts, narrow the `--bbox` or shorten the window.
+
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
