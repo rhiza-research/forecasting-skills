@@ -4,7 +4,7 @@ description: Fetch live IMERG satellite precipitation for a date range and write
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   openclaw:
     requires:
       env:
@@ -89,6 +89,14 @@ non-zero.
 ### Output
 
 Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the global IMERG 0.1° grid. Stamped with `rhiza_source=imerg`.
+
+### Memory and performance
+
+There is no `--bbox` flag: the full 0.1° global grid (~3600×1800 cells, ~26 MB/day as float32) is always fetched. The output is streamed to Zarr one granule (one day) at a time, so peak resident memory is bounded regardless of window length.
+
+There is no spend-RAM-to-go-faster knob: the wall-clock cost is the NASA Earthdata download (which `earthaccess` parallelizes internally), not the streamed write, so extra memory does not speed up the fetch.
+
+For tight-memory hosts, keep the window short and run the `clip-region` skill immediately after to shrink to your area of interest.
 
 ### Provenance
 

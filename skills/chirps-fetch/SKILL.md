@@ -4,7 +4,7 @@ description: Fetch live CHIRPS precipitation observations for a date range and w
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS prelim server (data.chc.ucsb.edu); no credentials required.
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
 ---
 
 # chirps-fetch
@@ -55,6 +55,14 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD 
 ### Output
 
 Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the global CHIRPS grid. Stamped with `rhiza_source=chirps`.
+
+### Memory and performance
+
+There is no `--bbox` flag: the full 0.05° global grid (~7200×3600 cells, ~104 MB/day as float32) is always fetched. The output is streamed to Zarr one day at a time, so peak resident memory is bounded to ~one day regardless of how long the window is.
+
+`--workers` is the network-concurrency speed lever and is memory-neutral: each worker transiently holds only the compressed TIF body (a few MB), not a decompressed global array — decompression happens sequentially after the download pool drains. Raising `--workers` speeds the fetch without raising peak memory.
+
+All per-day TIFs are staged to a temp directory before writing, so a very long window is bounded by temp disk, not RAM. For tight-memory hosts, keep the window short and run the `clip-region` skill immediately after to shrink to your area of interest.
 
 ### Production lag and partial-tail behavior
 

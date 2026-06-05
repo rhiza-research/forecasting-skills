@@ -25,7 +25,7 @@ import earthaccess
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_RHIZA_SKILL_VERSION = "0.1.4"
 
 SHORTNAMES = {
     "late": "GPM_3IMERGDL",
@@ -499,8 +499,12 @@ def main() -> None:
         for v in ds.variables:
             ds[v].encoding = {}
 
-        # Materialize before the temp dir vanishes — open_mfdataset is lazy.
-        ds.load().to_zarr(out, mode="w", consolidated=True)
+        # to_zarr streams the lazy open_mfdataset one granule-chunk at a time
+        # (open_mfdataset chunks per file = per day), so peak resident memory is
+        # bounded to ~one granule rather than the whole window. Run inside the
+        # with-block so the downloaded source netCDFs are still on disk while the
+        # streamed write pulls each chunk.
+        ds.to_zarr(out, mode="w", consolidated=True)
 
     print(f"Wrote: {args.output}", file=sys.stderr)
 

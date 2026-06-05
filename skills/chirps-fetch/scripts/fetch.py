@@ -199,7 +199,7 @@ class DayUnavailable(Exception):
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.6"
+_RHIZA_SKILL_VERSION = "0.1.7"
 
 
 def _load_history(zarr_path: Path) -> list:
@@ -626,33 +626,50 @@ def main() -> None:
                 file=sys.stderr,
             )
 
-        arrs = [da for _, da in succeeded]
-        da = xr.concat(arrs, dim="time")
-        da = da.sortby("lat", ascending=True)
-        da.name = "precip"
-        da.attrs["units"] = "mm/day"
-        da.attrs["standard_name"] = "lwe_precipitation_rate"
-        da.attrs["long_name"] = "CHIRPS daily precipitation"
-
         # Cache stamp reflects the EFFECTIVE end actually written, so a re-run
         # against the same --end re-attempts the missing tail days instead of
-        # short-circuiting on a cache hit.
+        # short-circuiting on a cache hit. Built before the write loop because
+        # the first day's provenance stamp needs the effective entry.
         effective_entry = {
             **requested_entry,
             "args": {"start": start, "end": effective_end},
         }
 
-        ds = da.to_dataset()
-        ds.attrs["rhiza_source"] = "chirps"
-        ds.attrs["rhiza_history"] = json.dumps([effective_entry], sort_keys=True)
-        _stamp_cf_attrs(ds)
-        for v in ds.variables:
-            ds[v].encoding = {}
+        # Stream each day to zarr one at a time so peak resident memory is
+        # bounded to ~one day regardless of window length, instead of holding
+        # the whole concatenated window in RAM. `succeeded` is already
+        # day-sorted (built sorted above), so the appended time axis stays
+        # ascending. Per-day lat-sort is equivalent to a single global sort
+        # because every CHIRPS day shares the identical lat grid.
+        for i, (_, da) in enumerate(succeeded):
+            da = da.sortby("lat", ascending=True)
+            da.name = "precip"
+            da.attrs["units"] = "mm/day"
+            da.attrs["standard_name"] = "lwe_precipitation_rate"
+            da.attrs["long_name"] = "CHIRPS daily precipitation"
 
-        if out.exists():
-            shutil.rmtree(out)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        ds.to_zarr(out, mode="w", consolidated=True)
+            ds = da.to_dataset()
+            # Stamp the root provenance/source + CF attrs on EVERY write. A
+            # to_zarr(mode="a", append_dim="time") call rewrites the root group
+            # attrs from the dataset being appended, so stamping only the first
+            # write would clobber rhiza_source/rhiza_history to empty on the
+            # first append. The effective entry is identical for every day, so
+            # the final stamp is stable regardless of how many days are written.
+            ds.attrs["rhiza_source"] = "chirps"
+            ds.attrs["rhiza_history"] = json.dumps([effective_entry], sort_keys=True)
+            _stamp_cf_attrs(ds)
+            for v in ds.variables:
+                ds[v].encoding = {}
+
+            if i == 0:
+                # Only the store creation is first-iteration work; the attrs
+                # above are re-stamped on every append.
+                if out.exists():
+                    shutil.rmtree(out)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                ds.to_zarr(out, mode="w", consolidated=True)
+            else:
+                ds.to_zarr(out, mode="a", append_dim="time", consolidated=True)
         print(f"Wrote: {args.output}", file=sys.stderr)
 
 
