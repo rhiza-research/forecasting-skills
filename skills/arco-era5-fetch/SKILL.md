@@ -67,6 +67,19 @@ A consolidated Rhiza Envelope analysis Zarr with a `time` dimension and dims
 selected. Source variable units are forwarded verbatim. Stamped with
 `rhiza_source=arco-era5`.
 
+### Memory and performance
+
+`--bbox` and `--variable` are the memory levers: peak memory is set by the size of
+the selection (variables × levels × bbox cells × window length), which is read and
+written once — xarray prunes to the selection before pulling any array bytes, so an
+unselected variable or out-of-bbox cell is never materialized.
+
+The dominant cost is the selection's breadth: omitting `--variable` fetches every
+ARCO-ERA5 variable, including all 37 pressure levels — very large. Restrict to the
+variables you need with `-v`, keep `--bbox` tight, and on tight-memory hosts keep
+the window short and run the `clip-region` skill immediately after to shrink to
+your area of interest.
+
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of

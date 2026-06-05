@@ -301,9 +301,12 @@ def main() -> None:
 
     import xarray as xr
 
-    # Lazy open: reads only metadata, so `latest` resolution and the cache check
-    # run before any array bytes are pulled. The store is zarr v3; let xarray pick
-    # the consolidated metadata if present.
+    # Lazy open with chunks=None: reads only metadata, so `latest` resolution and
+    # the cache check run before any array bytes are pulled, and xarray's lazy
+    # indexing prunes to the bbox/time/variable selection before reading — so only
+    # that selection is materialized. (A dask-backed open forces the longitude
+    # normalization sort to pull the whole global grid per step, which is far slower
+    # for a bbox request with no memory benefit; the selection itself is the bound.)
     ds = xr.open_zarr(_ARCO_STORE, storage_options=_STORAGE_OPTIONS, chunks=None)
 
     # `latest` resolves from the store's own time coord max; memoized so it is
