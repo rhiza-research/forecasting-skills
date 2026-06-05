@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#   "cftime",
 #   "requests",
 #   "xarray",
 #   "zarr",

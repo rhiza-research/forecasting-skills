@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#   "cftime",
 #   "ecmwf-datastores-client==0.4.2",
 #   "requests",
 #   "xarray",

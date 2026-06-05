@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#   "cftime",
 #   "earthaccess",
 #   "h5netcdf",
 #   "h5py",

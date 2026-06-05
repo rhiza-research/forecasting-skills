@@ -3,8 +3,10 @@
 # dependencies = [
 #   "cartopy",
 #   "cf-xarray",
+#   "cftime",
 #   "geopandas>=1",
 #   "matplotlib",
+#   "nc-time-axis",
 #   "numpy",
 #   "pandas",
 #   "shapely>=2.1",
@@ -118,8 +120,26 @@ def _format_single(t, bin_width=None):
     matching upstream pipelines. For sub-daily ``bin_width`` the +1
     day adjustment is approximate; see deferred-work.md. When
     ``bin_width`` is None, fall back to a single ISO date.
+
+    A cftime right edge (a non-standard model calendar, where ``t`` is an
+    object with a ``.calendar`` attribute and ``bin_width`` is a
+    ``datetime.timedelta``) is rendered the same way using calendar-aware
+    ``timedelta`` arithmetic, so a ``noleap``/``360_day`` bin gets a correct
+    ``YYYY-MM-DD to YYYY-MM-DD`` label instead of degrading to ``str(t)``.
     """
+    import datetime as _dt
+
     import pandas as pd
+
+    if hasattr(t, "calendar"):
+        # cftime right edge.
+        if bin_width is None:
+            return t.strftime("%Y-%m-%d")
+        try:
+            start = t - bin_width + _dt.timedelta(days=1)
+        except (TypeError, ValueError):
+            return t.strftime("%Y-%m-%d")
+        return f"{start.strftime('%Y-%m-%d')} to {t.strftime('%Y-%m-%d')}"
 
     try:
         end = pd.Timestamp(t)
@@ -228,10 +248,14 @@ def _polygon_from_geojson(path):
 
 
 def _median_bin_width(time_values):
-    """Return median spacing of a 1-D time coord as a pandas Timedelta.
+    """Return median spacing of a 1-D time coord.
 
-    Returns ``None`` when the array has fewer than two values or cannot
-    be coerced to datetimes.
+    For a datetime64/timedelta64 axis the result is a ``pandas.Timedelta``.
+    For an object-dtype cftime axis (a non-standard model calendar) the
+    result is a ``datetime.timedelta``, computed from the cftime objects'
+    own differences so a ``noleap``/``360_day`` axis yields a correct
+    spacing instead of ``None``. Returns ``None`` when the array has fewer
+    than two values or cannot be coerced to datetimes.
     """
     import numpy as np
     import pandas as pd
@@ -239,6 +263,18 @@ def _median_bin_width(time_values):
     arr = np.asarray(time_values)
     if arr.size < 2:
         return None
+    if arr.dtype.kind == "O" and hasattr(arr.flat[0], "calendar"):
+        # cftime axis: subtracting two cftime objects yields a
+        # datetime.timedelta; take the median of the positive day-deltas.
+        ordered = np.sort(arr)
+        deltas = [
+            abs((ordered[i + 1] - ordered[i]).total_seconds()) for i in range(ordered.size - 1)
+        ]
+        if not deltas:
+            return None
+        import datetime as _dt
+
+        return _dt.timedelta(seconds=float(np.median(deltas)))
     try:
         diffs = np.diff(pd.to_datetime(arr).values)
     except (TypeError, ValueError):
@@ -403,20 +439,38 @@ def main() -> None:
     raw_a = ds_a[td_a].values
     raw_b = ds_b[td_b].values
 
+    def _is_cftime_axis(values):
+        """True when ``values`` is an object array of cftime datetimes.
+
+        A valid CF Zarr whose time axis uses a non-standard model calendar
+        (`noleap`, `360_day`) decodes to object-dtype cftime datetimes, which
+        carry a `.calendar` attribute. Such an axis is a calendar/datetime
+        axis even though its dtype kind is `O`, not `M`.
+        """
+        return (
+            getattr(values.dtype, "kind", None) == "O"
+            and values.size > 0
+            and hasattr(np.asarray(values).flat[0], "calendar")
+        )
+
     def _axis_kind(values):
         """Classify a time axis as 'datetime', 'timedelta', or None.
 
         A forecast `step` axis is `timedelta64`; a calendar time axis is
-        `datetime64`. The two are distinct kinds and must not be cross-cast:
-        viewing a `timedelta64` array as `datetime64` reinterprets the same
-        integer counts against the Unix epoch and would let mismatched step
-        axes compare as equal. None means the axis is neither kind.
+        `datetime64` (standard calendar) or object-dtype cftime (a non-standard
+        model calendar such as `noleap`/`360_day`). The datetime and timedelta
+        kinds are distinct and must not be cross-cast: viewing a `timedelta64`
+        array as `datetime64` reinterprets the same integer counts against the
+        Unix epoch and would let mismatched step axes compare as equal. None
+        means the axis is neither kind.
         """
         kind = getattr(values.dtype, "kind", None)
         if kind == "M":
             return "datetime"
         if kind == "m":
             return "timedelta"
+        if _is_cftime_axis(values):
+            return "datetime"
         return None
 
     kind_a = _axis_kind(raw_a)
@@ -431,23 +485,78 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # Normalize each axis to integer nanoseconds WITHIN its own kind (never
-    # cross-cast). `datetime64[ns]` for a calendar axis, `timedelta64[ns]` for a
-    # step axis; both then view as int64 ns counts for arithmetic.
-    ns_dtype = "datetime64[ns]" if kind_a == "datetime" else "timedelta64[ns]"
-    int_a = raw_a.astype(ns_dtype).astype("int64")
-    int_b = raw_b.astype(ns_dtype).astype("int64")
+    # Calendar-compatibility guards, before any cross-axis encoding. A cftime
+    # (model-calendar) axis and a datetime64 (standard-calendar) axis cannot be
+    # placed on a shared numeric line, and two different model calendars do not
+    # agree on which dates exist; either case would produce silently-wrong
+    # overlap math. Require the user to put both inputs on a common calendar
+    # first with the convert-calendar skill.
+    a_is_cftime = _is_cftime_axis(raw_a)
+    b_is_cftime = _is_cftime_axis(raw_b)
+    if a_is_cftime != b_is_cftime:
+        cf_td = td_a if a_is_cftime else td_b
+        std_td = td_b if a_is_cftime else td_a
+        print(
+            "Error: cannot compare a model-calendar (cftime) time axis "
+            f"('{cf_td}') against a standard-calendar (datetime64) time axis "
+            f"('{std_td}'); convert both to a common calendar first with the "
+            "convert-calendar skill.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if a_is_cftime and b_is_cftime:
+        cal_a = raw_a.flat[0].calendar
+        cal_b = raw_b.flat[0].calendar
+        if cal_a != cal_b:
+            print(
+                "Error: the two inputs use different model calendars "
+                f"('{td_a}' calendar={cal_a!r} vs '{td_b}' calendar={cal_b!r}); "
+                "convert both to a common calendar first with the "
+                "convert-calendar skill.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    def _median_spacing_ns(int_values):
-        if int_values.size < 2:
+    # Encode each axis to a 1-D numeric array in a single consistent unit, never
+    # cross-casting between the datetime and timedelta kinds. For a cftime
+    # calendar axis, encode to float DAYS-since-epoch with that axis's own
+    # calendar (`astype("datetime64[ns]")` cannot represent a noleap/360_day
+    # date), and carry a tolerance and back-mapping in days. For datetime64 /
+    # timedelta64 axes, keep the exact integer-nanoseconds encoding.
+    cftime_axes = _is_cftime_axis(raw_a) and _is_cftime_axis(raw_b)
+    if cftime_axes:
+        import cftime
+
+        _epoch = "days since 1970-01-01"
+        enc_a = np.asarray(
+            cftime.date2num(raw_a, units=_epoch, calendar=raw_a.flat[0].calendar),
+            dtype="float64",
+        )
+        enc_b = np.asarray(
+            cftime.date2num(raw_b, units=_epoch, calendar=raw_b.flat[0].calendar),
+            dtype="float64",
+        )
+        # 1 second expressed in the float-days unit, matching the datetime64
+        # path's 1-second match/selection tolerance.
+        tol_enc = 1.0 / 86400.0
+    else:
+        # `datetime64[ns]` for a calendar axis, `timedelta64[ns]` for a step
+        # axis; both then view as int64 ns counts for arithmetic.
+        ns_dtype = "datetime64[ns]" if kind_a == "datetime" else "timedelta64[ns]"
+        enc_a = raw_a.astype(ns_dtype).astype("int64")
+        enc_b = raw_b.astype(ns_dtype).astype("int64")
+        tol_enc = 1_000_000_000
+
+    def _median_spacing(enc_values):
+        if enc_values.size < 2:
             return None
         # Use absolute diffs so the spacing is independent of storage order: a
         # descending axis would otherwise yield a negative median and make an
         # ascending vs descending pair of the same resolution look different.
-        return float(np.median(np.abs(np.diff(int_values))))
+        return float(np.median(np.abs(np.diff(enc_values))))
 
-    width_a = _median_spacing_ns(int_a)
-    width_b = _median_spacing_ns(int_b)
+    width_a = _median_spacing(enc_a)
+    width_b = _median_spacing(enc_b)
 
     # Resolution check: the two axes must share a median bin width. When an axis
     # has a single value its spacing is unknown, so the check only runs when both
@@ -457,10 +566,19 @@ def main() -> None:
     if len(known_widths) == 2:
         rel = abs(width_a - width_b) / max(width_a, width_b, 1.0)
         if rel > 1e-3:
+            # cftime widths are float days; datetime64/timedelta64 widths are
+            # integer nanosecond counts. Format each in its own unit so the ns
+            # path prints whole counts rather than scientific notation.
+            if cftime_axes:
+                wa_str = f"{width_a:.4g} days"
+                wb_str = f"{width_b:.4g} days"
+            else:
+                wa_str = f"{width_a:.0f} ns"
+                wb_str = f"{width_b:.0f} ns"
             print(
                 "Error: the two inputs have different time resolutions "
-                f"(median bin width '{td_a}'≈{width_a:.0f} ns vs "
-                f"'{td_b}'≈{width_b:.0f} ns); aggregate both inputs to a common "
+                f"(median bin width '{td_a}'≈{wa_str} vs "
+                f"'{td_b}'≈{wb_str}); aggregate both inputs to a common "
                 "resolution first, e.g. with the aggregate-temporal skill.",
                 file=sys.stderr,
             )
@@ -470,35 +588,48 @@ def main() -> None:
     # tolerance to absorb storage/rounding; bins on a shared anchor are exactly
     # equal. The same tolerance is reused for the later `.sel`, so the match and
     # the selection cannot disagree. Build the common labels in chronological
-    # order, taken from input A's own integer labels so a later `.sel` is exact.
-    tol_ns = 1_000_000_000
-    sorted_b = np.sort(int_b)
-    common_int = []
-    for va in np.sort(int_a):
-        idx = np.searchsorted(sorted_b, va)
+    # order, taken from input A's own labels so a later `.sel` is exact. Track
+    # the source index in A's (sorted) axis so a cftime axis can map back to the
+    # native cftime object — its encoded float is not a `.sel` label.
+    order_a = np.argsort(enc_a, kind="stable")
+    sorted_enc_a = enc_a[order_a]
+    sorted_enc_b = np.sort(enc_b)
+    common_enc = []
+    common_src = []
+    for pos, va in zip(order_a, sorted_enc_a, strict=True):
+        idx = np.searchsorted(sorted_enc_b, va)
         nearest = None
         for cand in (idx - 1, idx):
-            if 0 <= cand < sorted_b.size:
-                d = abs(int(sorted_b[cand]) - int(va))
+            if 0 <= cand < sorted_enc_b.size:
+                d = abs(float(sorted_enc_b[cand]) - float(va))
                 if nearest is None or d < nearest:
                     nearest = d
-        if nearest is not None and nearest <= tol_ns:
-            common_int.append(int(va))
+        if nearest is not None and nearest <= tol_enc:
+            common_enc.append(va)
+            common_src.append(int(pos))
 
-    if not common_int:
+    if not common_enc:
         print(
             f"Error: no overlapping time bins between the two inputs on '{td_a}'/'{td_b}'.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    n = min(args.panels, len(common_int))
+    n = min(args.panels, len(common_enc))
     # Take the last `n` common labels (chronological). Map each back to a native
     # axis label drawn from input A's coord so per-row `.sel` is exact for A; for
     # B we select with method="nearest" within the same tolerance.
-    common_int_last = common_int[-n:]
-    common_labels = np.asarray(common_int_last, dtype="int64").astype(ns_dtype)
-    common_tol = np.timedelta64(1, "s")
+    src_last = common_src[-n:]
+    if cftime_axes:
+        # Native cftime objects from A's axis; `.sel` with method="nearest" and a
+        # datetime.timedelta tolerance works on a cftime index.
+        import datetime as _dt
+
+        common_labels = np.asarray(raw_a, dtype=object)[src_last]
+        common_tol = _dt.timedelta(seconds=1)
+    else:
+        common_labels = np.asarray(common_enc[-n:], dtype="int64").astype(ns_dtype)
+        common_tol = np.timedelta64(1, "s")
 
     da_a = ds_a[variable]
     da_b = ds_b[variable]

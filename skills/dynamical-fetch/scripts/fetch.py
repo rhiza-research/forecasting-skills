@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#   "cftime",
 #   "dynamical-catalog==0.5.0",
 #   "xarray",
 #   "zarr",
