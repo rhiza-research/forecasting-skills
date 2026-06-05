@@ -348,8 +348,6 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
-    import xarray as xr
-
     out = Path(args.output)
 
     # `latest` discovery needs an earthaccess.login() before the CMR search.
@@ -405,31 +403,39 @@ def main() -> None:
         sys.exit(1)
     print(f"Found {len(in_window)} granule day(s)", file=sys.stderr)
 
-    slices = []
-    times = []
+    # Stream one day at a time: download a granule, read its (latitude, longitude)
+    # slice, then write/append it to Zarr as a single time step before moving to the
+    # next day. Peak resident memory is bounded to one day's grid rather than the
+    # whole window. rhiza_source/history and CF attrs are stamped on every write
+    # because a to_zarr append rewrites the root group attrs from the appended
+    # dataset; the entry is identical each time, so the final stamp is stable.
+    first = True
+    total_time = 0
     with tempfile.TemporaryDirectory(prefix="smap-fetch-") as td:
         for d in sorted(in_window):
             files = earthaccess.download([in_window[d]], local_path=td)
             da = _slice_from_file(files[0], args.overpass)
             if args.bbox:
                 da = _bbox_subset(da.to_dataset(name="soil_moisture"), args.bbox)["soil_moisture"]
-            slices.append(da)
-            times.append(np.datetime64(d.isoformat()))
+            ds_day = da.expand_dims(time=[np.datetime64(d.isoformat())]).to_dataset()
+            ds_day.attrs.update(
+                rhiza_source="smap",
+                rhiza_history=json.dumps([entry], sort_keys=True),
+            )
+            _stamp_cf_attrs(ds_day)
+            for v in ds_day.variables:
+                ds_day[v].encoding = {}
+            if first:
+                if out.exists():
+                    shutil.rmtree(out)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                ds_day.to_zarr(out, mode="w", consolidated=True)
+                first = False
+            else:
+                ds_day.to_zarr(out, mode="a", append_dim="time", consolidated=True)
+            total_time += 1
 
-    ds = xr.concat(slices, dim="time").assign_coords(time=("time", times)).to_dataset()
-    ds.attrs.update(
-        rhiza_source="smap",
-        rhiza_history=json.dumps([entry], sort_keys=True),
-    )
-    _stamp_cf_attrs(ds)
-    for v in ds.variables:
-        ds[v].encoding = {}
-
-    if out.exists():
-        shutil.rmtree(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    ds.to_zarr(out, mode="w", consolidated=True)
-    print(f"Wrote: {args.output} ({dict(ds.sizes)})", file=sys.stderr)
+    print(f"Wrote: {args.output} (time={total_time})", file=sys.stderr)
 
 
 if __name__ == "__main__":

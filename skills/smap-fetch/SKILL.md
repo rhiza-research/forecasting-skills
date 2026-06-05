@@ -67,6 +67,16 @@ A consolidated Rhiza Envelope analysis Zarr with a `time` dimension and dims
 Latitude is the EASE-Grid 2.0 global vector (non-uniformly spaced, descending);
 ocean and no-retrieval cells are NaN. Stamped with `rhiza_source=smap`.
 
+### Memory and performance
+
+The output is streamed one day at a time — each daily granule is downloaded, read
+into a single (latitude, longitude) array, written/appended to Zarr, and released
+before the next — so peak resident memory is bounded to one day's grid (~50 MB for
+the full global 9 km grid) regardless of how long the window is. Downloaded
+granules are large (~690 MB each) and are staged to a temp directory, so a long
+window is bounded by temp disk, not RAM. On tight-memory or tight-disk hosts keep
+the window short and `--bbox` tight, and run the `clip-region` skill afterward.
+
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
