@@ -303,8 +303,6 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
-    import xarray as xr
-
     def _latest() -> date:
         # Newest available day lives in the current-year file; fall back to the
         # previous year early in January before the new year's file appears.
@@ -347,10 +345,16 @@ def main() -> None:
     years = list(range(start_date.year, end_date.year + 1))
     print(f"Fetching oisst {start_iso}..{end_iso} (years {years[0]}..{years[-1]})", file=sys.stderr)
 
-    # Subset each year to the bbox + window and pull just that slice into memory,
-    # then concatenate. Reading the small selection eagerly per year keeps memory
-    # bounded and avoids the dask-over-OPeNDAP path.
-    pieces = []
+    # Stream one year at a time: subset each year to the bbox + window, pull just
+    # that slice into memory (eager per-year load avoids the dask-over-OPeNDAP path
+    # that silently wrote zeros), then write/append it to Zarr before moving to the
+    # next year. Peak resident memory is bounded to a single year's selection rather
+    # than the whole multi-year window. rhiza_source/history and CF attrs are
+    # stamped on every write because a to_zarr append rewrites the root group attrs
+    # from the appended dataset; the entry is identical each time, so the final
+    # stamp is stable.
+    first = True
+    total_time = 0
     for year in years:
         try:
             dy = _open_year(year)
@@ -362,31 +366,33 @@ def main() -> None:
             piece = _normalize_longitude(piece)
             if bbox is not None:
                 piece = _bbox_subset(piece, *bbox)
-            piece = piece.sel(time=time_slice)
-            if piece.sizes.get("time", 0) > 0:
-                pieces.append(piece.load())
+            piece = piece.sel(time=time_slice).load()
+        if piece.sizes.get("time", 0) == 0:
+            continue
+        piece.attrs.update(
+            rhiza_source="oisst",
+            rhiza_history=json.dumps([entry], sort_keys=True),
+        )
+        _stamp_cf_attrs(piece)
+        # Per-variable encoding is not part of the envelope contract; clear it so the
+        # output is written with this skill's own codecs.
+        for v in piece.variables:
+            piece[v].encoding = {}
+        if first:
+            if out.exists():
+                shutil.rmtree(out)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            piece.to_zarr(out, mode="w", consolidated=True)
+            first = False
+        else:
+            piece.to_zarr(out, mode="a", append_dim="time", consolidated=True)
+        total_time += piece.sizes["time"]
 
-    if not pieces:
+    if first:
         print(f"Error: OISST has no data in {start_iso}..{end_iso}.", file=sys.stderr)
         sys.exit(1)
-    ds = xr.concat(pieces, dim="time") if len(pieces) > 1 else pieces[0]
 
-    ds.attrs.update(
-        rhiza_source="oisst",
-        rhiza_history=json.dumps([entry], sort_keys=True),
-    )
-    _stamp_cf_attrs(ds)
-    # Per-variable encoding is not part of the envelope contract; clear it so the
-    # output is written with this skill's own codecs.
-    for v in ds.variables:
-        ds[v].encoding = {}
-
-    if out.exists():
-        shutil.rmtree(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    ds.to_zarr(out, mode="w", consolidated=True)
-
-    print(f"Wrote: {args.output} ({dict(ds.sizes)})", file=sys.stderr)
+    print(f"Wrote: {args.output} (time={total_time})", file=sys.stderr)
 
 
 if __name__ == "__main__":

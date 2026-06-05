@@ -56,6 +56,16 @@ A consolidated Rhiza Envelope analysis Zarr with a `time` dimension and dims
 `(time, latitude, longitude)`, carrying `sst` (sea-surface temperature, °C).
 Land cells are NaN. Stamped with `rhiza_source=oisst`.
 
+### Memory and performance
+
+There is one variable (`sst`); `--bbox` and the window length are the memory
+levers. The output is streamed one year at a time — each year's bbox selection is
+loaded, written, and released before the next — so peak resident memory is bounded
+to a single year's selection regardless of how many years the window spans (the
+full global grid is ~720×1440, roughly 4 MB per day as float32). On tight-memory
+hosts keep `--bbox` tight and the window short, and run the `clip-region` skill
+afterward.
+
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
