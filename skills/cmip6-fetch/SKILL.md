@@ -72,6 +72,14 @@ units are forwarded verbatim. Times are decoded with the dataset's native
 calendar (often `noleap` or `360_day`). Stamped with
 `rhiza_source=cmip6:<model>/<experiment>/<member>/<table>/<variable>/<grid>`.
 
+### Memory and performance
+
+The store is opened dask-backed, so the bbox/time selection streams to Zarr
+chunk-by-chunk on write and peak resident memory stays bounded to a few chunks
+regardless of how long the window is. `--bbox` and the window length are the
+levers. On tight-memory hosts keep the window short and the bbox tight, and run
+the `clip-region` skill immediately after to shrink to your area of interest.
+
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
