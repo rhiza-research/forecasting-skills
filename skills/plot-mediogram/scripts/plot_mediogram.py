@@ -102,7 +102,10 @@ def _inner_stats(values):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument("--forecast", required=True, help="Forecast Zarr (number × step × spatial)")
     p.add_argument("--mclimate", required=True, help="M-climate Zarr (same schema)")
     p.add_argument("--lat", type=float, required=True)

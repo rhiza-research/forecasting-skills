@@ -106,7 +106,10 @@ def _bbox_from_geometry(geometry):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument("code", help="ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN")
     p.add_argument(
         "--geojson", help="Optional path: write the country's boundary polygon as GeoJSON"

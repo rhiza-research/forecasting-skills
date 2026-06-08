@@ -577,7 +577,10 @@ def _render_script(data: dict) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument(
         "--input", "-i", required=True, help="Artifact to inspect: a zarr dir or a .png file."
     )

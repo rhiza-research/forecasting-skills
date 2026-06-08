@@ -422,7 +422,10 @@ def _aggregate_step(ds, period, method):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument("--input", "-i", required=True)
     p.add_argument("--output", "-o", required=True)
     p.add_argument("--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"])
