@@ -86,6 +86,23 @@ resolved concrete dates, the day count, and the boundary mode and its reason.
 | Time-dim override | `--time-dim` | string | Name of the time-like dim when not auto-detectable. Distinct from `--dims`, which is spatial only. |
 | Overpass selector | `--overpass` | string from a per-skill fixed list | Which satellite half-orbit overpass to read when a product splits ascending/descending passes (e.g. `smap-fetch` uses `choices={AM, PM}`: AM = ~6am descending, PM = ~6pm ascending). |
 
+### Catalog facet selectors
+
+Some sources are catalogs faceted along several axes rather than a single
+dataset id. A fetcher fronting such a catalog (e.g. `cmip6-fetch`) resolves a
+single store from these facet flags. Reuse these names; add new ones here.
+
+| Concept | Flag | Value shape | Notes |
+| --- | --- | --- | --- |
+| Model / source | `--model` | string | The source model id (CMIP6 `source_id`). |
+| Experiment / scenario | `--experiment` | string | The experiment or scenario id (CMIP6 `experiment_id`, e.g. `historical`, `ssp245`). |
+| Ensemble member | `--member` | string | The ensemble member / variant id (CMIP6 `member_id`, e.g. `r1i1p1f1`). |
+| Catalog table / frequency | `--table` | string | The catalog table id that fixes the variable's frequency/realm (CMIP6 `table_id`, e.g. `Amon`, `day`). |
+| Grid label | `--grid` | string | The catalog grid label (CMIP6 `grid_label`, e.g. `gn`, `gr1`). Required only when more than one matches the other facets. |
+
+When the catalog stores one variable per dataset (CMIP6), `--variable`/`-v`
+selects that variable facet (and is the output variable).
+
 ### Reductions and rendering
 
 | Concept | Flag | Value shape | Notes |
