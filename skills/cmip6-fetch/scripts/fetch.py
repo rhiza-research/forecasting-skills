@@ -43,6 +43,42 @@ _CATALOG_URL = "https://storage.googleapis.com/cmip6/pangeo-cmip6.csv"
 # transform repairs the dataset to the current CF release and re-stamps it.
 _CF_CONVENTIONS = "CF-1.13"
 
+# --- Source -> output transforms ---
+#
+# Everything not listed here is passed through from the raw CMIP6 source
+# verbatim. The transforms this fetcher applies are:
+#
+#   VARIABLE/COORD RENAMES:
+#     - `lat` -> `latitude`
+#     - `lon` -> `longitude`
+#     (the data variable keeps its CMIP6 name, e.g. `tas`, `pr`)
+#
+#   LONGITUDE NORMALIZATION:
+#     - The source 0..360 longitude axis is mapped onto [-180, 180) and the
+#       dataset is re-sorted ascending by longitude (via `_normalize_longitude`,
+#       called in the pipeline).
+#
+#   UNITS:
+#     - PASS THROUGH VERBATIM. The source CF units string on the data variable is
+#       forwarded unchanged; it is only validated as udunits-parseable
+#       (cf_units.Unit) before write, never remapped or converted.
+#
+#   GLOBAL ATTRS:
+#     - `Conventions` is OVERWRITTEN to the CF release above (_CF_CONVENTIONS).
+#     - All other source CMIP6 global attrs are PRESERVED.
+#     - `history` has one line APPENDED describing this subset.
+#     - `rhiza_source` and `rhiza_history` keys are ADDED.
+#
+#   BOUNDS (structural):
+#     - Every `*_bnds` / `*_bounds` cell-bounds variable is DROPPED, the orphaned
+#       bounds index dim is removed, and each variable's now-dangling `bounds`
+#       attr is STRIPPED (the Rhiza Envelope carries no cell bounds).
+#
+#   standard_name / long_name:
+#     - PRESERVED from source; this skill does not assign them. Coord CF attrs
+#       (standard_name/units/axis on latitude/longitude/time) are only filled
+#       via setdefault when absent after the rename, leaving source values intact.
+
 # --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
 #
 # A --start/--end value is one of:
