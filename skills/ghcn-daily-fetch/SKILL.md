@@ -20,8 +20,7 @@ The output is a fully CF-1.13 timeSeries Discrete Sampling Geometries (DSG) Zarr
 plus the `rhiza_history` provenance key — a superset of CF, not a separate format.
 
 GHCN-Daily has ~130k stations and each is a separate whole-history download, so a
-`--bbox` bounds the work to the stations you need; the examples below use a
-bounded box and a short window.
+`--bbox` bounds the work to the stations you need.
 
 ## When to use
 
