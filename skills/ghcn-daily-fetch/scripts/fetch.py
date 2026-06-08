@@ -8,6 +8,7 @@
 #   "requests",
 #   "cf_xarray",
 #   "cf_units",
+#   "cftime",
 # ]
 # ///
 """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema Rhiza Envelope Zarr."""
