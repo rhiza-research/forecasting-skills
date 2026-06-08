@@ -34,14 +34,54 @@ _STORAGE_OPTIONS = {"token": "anon"}
 _ARCO_REFERENCE = "https://github.com/google-research/arco-era5"
 _ARCO_INSTITUTION = "ECMWF (ERA5 reanalysis), republished as ARCO-ERA5 by Google Research"
 
-# udunits-invalid unit strings the ARCO store carries, mapped to a CF-valid
-# equivalent. UDUNITS-2 accepts the store's GRIB-style `**` exponent notation
-# (e.g. `m s**-1`, `J m**-2`) as-is, so those pass through untouched; only these
-# few non-parseable placeholders need rewriting. "1" is the CF/udunits spelling
-# of a dimensionless quantity; ERA5's water-equivalent depths are meters.
+# --- Source -> output transforms ---
+# Pass-through is the default: source values, coords, and attrs are forwarded
+# unchanged unless listed below. The only transforms this fetcher applies are:
+#
+#   1. Unit fixups (data vars), value-preserving same-unit relabels via
+#      `_UNIT_FIXUPS`: "(0 - 1)" -> "1" and "dimensionless" -> "1" (the
+#      dimensionless unit spelled for udunits), "m of water equivalent" -> "m"
+#      (water-equivalent depth in meters). Same unit made to comply with
+#      udunits; no numeric conversion. All other source units pass through.
+#
+#   2. Longitude normalization (`_normalize_longitude`): ERA5's native 0..360
+#      longitude is mapped onto [-180, 180) and the axis re-sorted ascending so
+#      negative-west/east bboxes select correctly. Coordinate relabel of the
+#      same grid; sample values are unchanged.
+#
+#   3. Data-var standard_name / long_name (`_stamp_data_var_attrs`): source
+#      passthrough plus a curated map. `long_name` and `standard_name` are
+#      forwarded from the source when present; a variable with no source
+#      `standard_name` gets one only from `_CURATED_STANDARD_NAME`, else carries
+#      none (CF permits omission); `long_name` falls back to the variable name
+#      only when the source omits it. The source attr block is otherwise
+#      replaced so GRIB bookkeeping does not ride along.
+#
+#   4. Level coord attrs (`_stamp_coord_attrs`): the `level` units label
+#      "Hectopascal(hPa)" is relabeled to "hPa" (values already in hPa; relabel,
+#      not conversion) and standard_name=air_pressure, positive=down, axis=Z,
+#      long_name="pressure level" are set. Latitude/longitude/time coords get
+#      their CF standard_name/units/axis stamped likewise.
+
+# Source `units` strings the ARCO store carries that are the SAME unit spelled in
+# a form udunits won't parse; each is rewritten to the udunits spelling of the
+# identical unit (same value, no conversion). UDUNITS-2 accepts the store's
+# GRIB-style `**` exponent notation (e.g. `m s**-1`, `J m**-2`) as-is, so those
+# pass through untouched. Every entry here is an unambiguous same-unit relabel:
+#   "1" is the CF/udunits spelling of the dimensionless unit; "dimensionless"
+#   and ERA5's range notation "(0 - 1)" (carried by albedos, cloud/vegetation
+#   cover, land-sea mask, sea-ice fraction — all 0..1 fractions, several with
+#   CF fraction standard_names) both name that same dimensionless unit. ERA5's
+#   water-equivalent depths are meters.
+# The store also carries "~" on a handful of vars (sub-gridscale-orography
+# ratios, Charnock, and integer classification codes like soil_type /
+# type_of_high_vegetation). "~" is ERA5's placeholder for "no stated unit", not
+# a spelling of the dimensionless unit, and it spans category-index variables
+# that are not dimensionless physical quantities — so it is NOT mapped; it
+# passes through verbatim and the udunits check rejects it loudly rather than
+# guessing it means "1".
 _UNIT_FIXUPS = {
     "(0 - 1)": "1",
-    "~": "1",
     "dimensionless": "1",
     "m of water equivalent": "m",
 }
