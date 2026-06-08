@@ -27,6 +27,28 @@ import xarray as xr
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _RHIZA_SKILL_VERSION = "0.1.0"
 
+# --- Source -> output transforms ---
+#
+# Divergences this skill applies to the raw NOAA OISST v2.1 source. Everything not
+# listed here passes through unchanged (the unstated default).
+#
+# - VARIABLE RENAMES: the source dimension/coord `lat` is renamed to `latitude`
+#   and `lon` to `longitude` (`.rename({"lat": "latitude", "lon": "longitude"})`).
+# - UNITS: `sst` units PASS THROUGH VERBATIM. The source value (`degC`) is
+#   forwarded unchanged; it is only validated as a udunits temperature unit
+#   convertible to K before the standard_name is stamped — no remap, no conversion.
+# - standard_name ASSIGNMENT: the source `sst` carries long_name + units but no
+#   standard_name; this skill stamps `standard_name=sea_surface_temperature`, a
+#   valid CF standard name (CF standard name table; canonical units K, to which the
+#   source `degC` is udunits-convertible), after the units validation above.
+# - LONGITUDE NORMALIZATION: the source's native 0..360 longitude axis is mapped
+#   onto [-180, 180) and sorted ascending.
+# - STALE/DANGLING ATTR STRIPPING: source attrs that describe the pre-subset
+#   global/per-year extent or contradict the written data are removed —
+#   `actual_range`, `valid_range`, `_ChunkSizes`, `missing_value`, `valid_min`,
+#   `valid_max` — and a dangling `bounds` attr is dropped when its bounds variable
+#   was not carried over.
+
 # Public, credential-free NOAA PSL OPeNDAP server. One file per year holds daily
 # 0.25-degree global SST (variable `sst`, degC) on dims (time, lat, lon), lon
 # 0..360. OPeNDAP lets us subset a bbox/time window without downloading the whole
