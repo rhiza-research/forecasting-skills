@@ -16,6 +16,13 @@ candidate station's per-station CSV concurrently, keeps only QC-passed rows for
 the requested elements and date range, scales them to canonical units, and writes
 a station-schema Zarr store.
 
+The output is a fully CF-1.13 timeSeries Discrete Sampling Geometries (DSG) Zarr
+plus the `rhiza_history` provenance key — a superset of CF, not a separate format.
+
+GHCN-Daily has ~130k stations and each is a separate whole-history download, so a
+`--bbox` bounds the work to the stations you need; the examples below use a
+bounded box and a short window.
+
 ## When to use
 
 - A task needs recent or historical daily station observations anywhere in the
@@ -50,8 +57,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start <date> --en
   `B-<int>{d|w}` with end exactly base `B`) yields an N-day window inclusive of
   `B`. The cache key records the resolved absolute dates, never the token.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees, used to select stations
-  from the GHCN station metadata. Omit to select ALL stations (very large — GHCN
-  has 100k+ stations). To fetch over a country, get its bbox from the
+  from the GHCN station metadata. Bounds the work to the stations inside the box;
+  omitting it (or giving an over-wide box) selects many stations, each a separate
+  whole-history download. To fetch over a country, get its bbox from the
   `resolve-region` skill.
 - `--variable`, `-v` — restrict to one variable; repeat once per variable. Choices:
   `precip`, `tmax`, `tmin`, `tavg`. Omit for the default `precip tmax tmin`.
@@ -60,6 +68,13 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start <date> --en
   concurrency knob only; it does not change the output and is excluded from the
   cache key. Lower it if the server returns throttling errors.
 
+### Dropped-station observability
+
+A per-station fetch that fails is retried once; if it still fails the station is
+dropped and the run continues. Each drop is logged per-line, and an aggregate
+count of dropped stations is printed to stderr at the end so failures are never
+silently lost.
+
 ### Output
 
 Zarr with dims `(time, station_id)`, coords `latitude(station_id)`,
@@ -67,8 +82,28 @@ Zarr with dims `(time, station_id)`, coords `latitude(station_id)`,
 (mm/day), `tmax`/`tmin`/`tavg` (°C) — whichever were requested and present.
 GHCN-Daily values are stored in tenths (tenths of mm for PRCP, tenths of °C for
 temperature) and are scaled to these canonical units on the way out. Only rows
-whose quality flag is empty (passed all QC checks) are kept. Stamped with
-`rhiza_source=ghcn-daily` and `featureType=timeSeries`.
+whose quality flag is empty (passed all QC checks) are kept.
+
+The store is fully **CF-1.13 timeSeries DSG** compliant — verified with
+`cf-xarray` before writing — plus the Rhiza `rhiza_history` provenance key:
+
+- Global attrs: `Conventions="CF-1.13"`, `featureType="timeSeries"`, plus
+  `title`, `source`, `institution`, `references`, and `history`.
+- `station_id` carries `cf_role="timeseries_id"` (the attr cf-xarray keys the
+  geometry off).
+- Every data variable carries `coordinates="latitude longitude time"`,
+  udunits-valid `units`, a CF-table `standard_name`, a `long_name`,
+  `cell_methods`, and an explicit `_FillValue` (in the write encoding) for the
+  ragged station-time cells a station did not report.
+- `latitude`/`longitude` carry `standard_name`/`units`
+  (`degrees_north`/`degrees_east`); `time` carries `standard_name=time` with
+  udunits `units` + `calendar` in the write encoding.
+- `rhiza_source=ghcn-daily`.
+
+Missing station-time cells are NaN (with a matching `_FillValue` carried in the
+write encoding). Units are
+validated against udunits before the write; if a variable's units string is not
+udunits-valid the run fails rather than emit a false CF claim.
 
 ### Memory and performance
 
@@ -86,7 +121,8 @@ per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="ghcn-daily-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, the sorted
 `variable` list, and the resolved concrete `start`/`end` — `--workers` is
-excluded (concurrency, not data). `version` is the `_RHIZA_SKILL_VERSION`
+excluded (a concurrency knob that does not change the data). `version` is the
+`_RHIZA_SKILL_VERSION`
 constant in `scripts/fetch.py`, kept in lockstep with `metadata.version` by the
 CI version-bump workflow.
 
