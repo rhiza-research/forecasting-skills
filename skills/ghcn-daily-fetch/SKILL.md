@@ -120,10 +120,9 @@ per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="ghcn-daily-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, the sorted
 `variable` list, and the resolved concrete `start`/`end` — `--workers` is
-excluded (a concurrency knob that does not change the data). `version` is the
-`_RHIZA_SKILL_VERSION`
-constant in `scripts/fetch.py`, kept in lockstep with `metadata.version` by the
-CI version-bump workflow.
+excluded (a concurrency knob that does not change the data). `version` is this
+skill's version, also printed by `--help`. Inspect a written output's provenance
+with the `provenance` skill.
 
 ## Examples
 
