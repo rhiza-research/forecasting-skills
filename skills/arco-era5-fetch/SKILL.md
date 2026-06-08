@@ -4,7 +4,7 @@ description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, press
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads the public ARCO-ERA5 analysis-ready Zarr from Google Cloud (gs://gcp-public-data-arco-era5) over anonymous access; no credentials required.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # arco-era5-fetch
@@ -128,14 +128,14 @@ only "Killed").
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="arco-era5-fetch"` and `input=null`; downstream
-zarr-writing skills append their own entry. `args` is the argparse namespace
-minus the `--output` path string, with the resolved concrete dates substituted
-for any relative token. `version` is the `_RHIZA_SKILL_VERSION` constant in
-`scripts/fetch.py`, kept in lockstep with `metadata.version` in this SKILL.md by
-the CI version-bump workflow.
+zarr-writing skills append their own entry. `args` records every option except
+the `--output` path — `start`, `end`, `bbox`, and `variable` — with the resolved
+concrete dates substituted for any relative token. `version` is this skill's
+version, also printed by `--help`. Inspect a written output's provenance with the
+`provenance` skill.
 
-The `args` dict stores argparse dest names (underscored), not the hyphenated CLI
-flag names. A consumer reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
+The `args` dict stores option names with underscores, not the hyphenated CLI flag
+names. A consumer reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
 invocation must translate underscore → hyphen.
 
 ## Examples
