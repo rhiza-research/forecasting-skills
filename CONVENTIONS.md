@@ -84,6 +84,7 @@ resolved concrete dates, the day count, and the boundary mode and its reason.
 | Catalog dataset selector | `--dataset` | string | Names which dataset to fetch from a multi-dataset source catalog. Validated at runtime against the source's own listing (e.g. `dynamical-fetch` checks `dynamical_catalog.list()`); an unknown id prints the valid list and exits. Used by fetchers that front a catalog of datasets rather than a single product. |
 | Spatial dim-name override | `--dims` | `LAT,LON` | Comma-separated names of the latitude and longitude dims when they're not auto-detectable. |
 | Time-dim override | `--time-dim` | string | Name of the time-like dim when not auto-detectable. Distinct from `--dims`, which is spatial only. |
+| Overpass selector | `--overpass` | string from a per-skill fixed list | Which satellite half-orbit overpass to read when a product splits ascending/descending passes (e.g. `smap-fetch` uses `choices={AM, PM}`: AM = ~6am descending, PM = ~6pm ascending). |
 
 ### Reductions and rendering
 
