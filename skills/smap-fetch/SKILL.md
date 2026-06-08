@@ -124,9 +124,9 @@ The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="smap-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, `overpass`,
-and the resolved concrete `start`/`end`. `version` is the `_RHIZA_SKILL_VERSION`
-constant in `scripts/fetch.py`, kept in lockstep with `metadata.version` by the
-CI version-bump workflow.
+and the resolved concrete `start`/`end`. `version` is this skill's version, also
+printed by `--help`. Inspect a written output's provenance with the `provenance`
+skill.
 
 ### Memory and performance
 
