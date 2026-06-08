@@ -55,6 +55,36 @@ DEFAULT_WORKERS = 8
 _TIME_UNITS = "days since 1970-01-01"
 _TIME_CALENDAR = "proleptic_gregorian"
 
+# --- Source -> output transforms ---
+# Everything not listed here is a verbatim pass-through from the raw GHCN-Daily
+# source. The transforms applied below (all encoded in VAR_MAP and the per-value
+# scaling in _station_frame) are:
+#
+# Value conversions (scale 0.1, applied in _station_frame as wide[element] *
+# scale):
+#   - PRCP: raw integer "tenths of a mm" -> mm/day
+#   - TMAX/TMIN/TAVG: raw integer "tenths of a degree C" -> degC
+#   There is no verbatim pass-through of the raw values because GHCN's "tenths"
+#   integer is a documented storage encoding with no udunits unit of its own; a
+#   conversion to whole mm / degC is required. This is a value conversion, not a
+#   unit remap.
+#
+# Variable renames (GHCN element code -> canonical envelope variable name, from
+# the VAR_MAP keys/element fields):
+#   - PRCP -> precip
+#   - TMAX -> tmax
+#   - TMIN -> tmin
+#   - TAVG -> tavg
+#
+# Metadata assignment basis (per variable, from VAR_MAP):
+#   - units: the udunits-valid string in VAR_MAP (precip "mm/day"; tmax/tmin/tavg
+#     "degC"), validated at write time by _validate_udunits.
+#   - standard_name: the CF standard name in VAR_MAP (precip
+#     "lwe_precipitation_rate"; tmax/tmin/tavg "air_temperature").
+#   - long_name: the descriptive string in VAR_MAP (precip "daily total
+#     precipitation"; tmax "daily maximum air temperature"; tmin "daily minimum
+#     air temperature"; tavg "daily mean air temperature").
+#
 # Canonical envelope variable -> (GHCN element, scale, units, standard_name,
 # cell_method, long_name).
 # GHCN stores PRCP in tenths of mm and TMAX/TMIN/TAVG in tenths of degrees C, so
