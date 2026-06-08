@@ -565,7 +565,10 @@ def _verify_written_calendar(out: Path, variable: str, source_calendar: str) -> 
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument("--model", required=True, help="CMIP6 source_id (e.g. GFDL-CM4).")
     p.add_argument(
         "--experiment", required=True, help="CMIP6 experiment_id (e.g. historical, ssp245)."

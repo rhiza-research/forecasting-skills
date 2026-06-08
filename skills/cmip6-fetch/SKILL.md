@@ -124,10 +124,10 @@ Failures are reactive and each emits a one-line actionable message:
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="cmip6-fetch"` and `input=null`. `args` records the
-resolved facets (including the chosen `grid` and the dataset `data_version`), the
-`bbox`, and the resolved concrete `start`/`end`. `version` is the
-`_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept in lockstep with
-`metadata.version` by the CI version-bump workflow.
+resolved facets (`model`, `experiment`, `variable`, `member`, `table`, the chosen
+`grid`, and the dataset `data_version`), the `bbox`, and the resolved concrete
+`start`/`end`. `version` is this skill's version, also printed by `--help`.
+Inspect a written output's provenance with the `provenance` skill.
 
 ## Examples
 
