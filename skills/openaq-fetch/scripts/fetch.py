@@ -8,6 +8,7 @@
 #   "requests",
 #   "cf_xarray",
 #   "cf_units",
+#   "cftime",
 # ]
 # ///
 """Fetch OpenAQ v3 air-quality station observations and write a station-schema Rhiza Envelope Zarr.
