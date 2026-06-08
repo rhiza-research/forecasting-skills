@@ -4,7 +4,7 @@ description: Render a single PNG with one 1D trace per input Zarr overlaid on a 
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
 ---
 
 # plot-timeseries

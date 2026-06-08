@@ -4,7 +4,7 @@ description: Assemble an email message with optional file attachments and write 
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Stdlib only.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # email-report

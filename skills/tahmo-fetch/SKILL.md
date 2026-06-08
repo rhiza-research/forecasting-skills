@@ -4,7 +4,7 @@ description: Fetch TAHMO station observations for one or more African countries 
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Installs the TAHMO Python SDK directly from GitHub (git+https://github.com/rhiza-research/tahmo-api) via uv script metadata. Requires TAHMO_API_USERNAME and TAHMO_API_PASSWORD in the environment.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   openclaw:
     requires:
       env:
