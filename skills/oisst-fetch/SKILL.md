@@ -128,9 +128,6 @@ version-bump workflow.
 
 ## Examples
 
-OISST is daily observation data; typical requests span days to a few weeks over a
-bounded region.
-
 ```bash
 # SST over the seas around East Africa for three days
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start 2024-06-01 --end 2024-06-03 \
