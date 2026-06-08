@@ -140,10 +140,6 @@ invocation must translate underscore → hyphen.
 
 ## Examples
 
-ARCO-ERA5 is hourly, so every example uses a short window (days to a small number
-of weeks), a tight `--bbox`, and explicit `-v` variables. That combination keeps
-the selection small and the fetch fast.
-
 ```bash
 # 2m temperature over Kenya for two days
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-02 \
