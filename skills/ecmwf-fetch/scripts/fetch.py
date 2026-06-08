@@ -418,7 +418,10 @@ def _attach_bbox_value(argv):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument(
         "--date",
         required=True,
