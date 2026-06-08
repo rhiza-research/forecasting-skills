@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_RHIZA_SKILL_VERSION = "0.1.4"
 
 # Coords dynamical attaches that are not part of the Rhiza Envelope: forecast
 # bookkeeping (valid_time, *_forecast_length) and the CRS scalar (spatial_ref).
@@ -294,7 +294,10 @@ def _bbox_subset(ds, bbox: str):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument(
         "--dataset",
         required=True,

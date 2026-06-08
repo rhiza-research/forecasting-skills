@@ -30,7 +30,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.5"
+_RHIZA_SKILL_VERSION = "0.1.6"
 
 # How far back from today the `latest` resolver requests observations to find
 # the newest available TAHMO observation date. Station reporting can lag a few
@@ -377,7 +377,10 @@ def _cache_hit(out: Path, entry: dict) -> bool:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument(
         "--country",
         action="append",

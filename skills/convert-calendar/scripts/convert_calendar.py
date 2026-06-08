@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 
 def _hash_zarr(zarr_path: Path) -> str:
@@ -111,7 +111,10 @@ def _source_calendar(time_coord) -> str:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument("--input", "-i", required=True)
     p.add_argument("--output", "-o", required=True)
     p.add_argument(

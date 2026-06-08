@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.6"
+_RHIZA_SKILL_VERSION = "0.1.7"
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
@@ -422,7 +422,10 @@ def _aggregate_step(ds, period, method):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument("--input", "-i", required=True)
     p.add_argument("--output", "-o", required=True)
     p.add_argument("--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"])

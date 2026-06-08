@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.5"
+_RHIZA_SKILL_VERSION = "0.1.6"
 
 # How far back from today the `latest` init probe looks. ECMWF S2S runs init on
 # fixed days; 14 days covers several init cycles plus production lag. Exhausting
@@ -418,7 +418,10 @@ def _attach_bbox_value(argv):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument(
         "--date",
         required=True,

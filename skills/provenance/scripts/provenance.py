@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.4"
+_RHIZA_SKILL_VERSION = "0.1.5"
 
 
 def _parse_chain(raw: str) -> list:
@@ -577,7 +577,10 @@ def _render_script(data: dict) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument(
         "--input", "-i", required=True, help="Artifact to inspect: a zarr dir or a .png file."
     )

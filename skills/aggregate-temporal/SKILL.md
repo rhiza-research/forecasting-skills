@@ -4,7 +4,7 @@ description: Roll up a Rhiza Envelope Zarr along its time axis (or forecast step
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
 ---
 
 # aggregate-temporal

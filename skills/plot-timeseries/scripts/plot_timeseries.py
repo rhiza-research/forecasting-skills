@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.5"
+_RHIZA_SKILL_VERSION = "0.1.6"
 
 
 def _cf_dim(obj, cf_name):
@@ -92,7 +92,10 @@ def _pick_time_dim(da, override):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument(
         "--input",
         "-i",
