@@ -93,6 +93,48 @@ _STD_NAME_MOLE = {
 # mole fraction. cf_units wraps udunits-2, so this is a real dimensional check.
 _MASS_CONCENTRATION_REF = cf_units.Unit("kg m-3")
 
+# --- Source -> output transforms ---
+#
+# Everything from the raw OpenAQ v3 source is passed through unchanged unless
+# listed below. Pass-through is the default; these are the only divergences.
+#
+# UNITS: pass through verbatim. Each pollutant's `parameter.units` from the API
+#   response is written unchanged as the variable's CF `units` attr, validated
+#   under udunits (cf_units / udunits-2) at write time. No remap, no unit
+#   conversion, no normalization — verbatim forwarding is the default-and-only
+#   units behavior. A unit that does not parse halts the run rather than being
+#   coerced; a sensor whose unit differs from the first-seen unit for the same
+#   pollutant is dropped, never relabeled.
+#
+# VARIABLE NAMING: no rename. The output data variables ARE the OpenAQ parameter
+#   names (pm25/pm10/no2/o3/so2/co); SUPPORTED_PARAMETERS is used directly as the
+#   variable names.
+#
+# standard_name ASSIGNMENT (the notable transform): assigned per pollutant on a
+#   basis that depends on the reported unit family. A mass-concentration unit
+#   (e.g. µg/m³) yields a `mass_concentration_of_*_in_air` name; a mole-fraction
+#   unit (ppm/ppb) yields a `mole_fraction_of_*_in_air` name. The name is omitted
+#   where no verified CF standard-name-table entry applies to that pollutant in
+#   that unit family (e.g. PM reported in a mole-fraction unit — particulate
+#   matter has no mole-fraction CF name); units + long_name alone remain CF-valid
+#   there. The mass/mole/none classification comes from a real udunits
+#   dimensional check (see `_unit_family`), not the unit string's text.
+#
+# long_name ASSIGNMENT: a human-readable label per pollutant (the `_LONG_NAME`
+#   table), defaulting to the parameter name itself when absent.
+#
+# cell_methods ASSIGNMENT: every data variable gets `cell_methods="time: mean"`,
+#   declaring each daily value as the within-day mean of that sensor's sub-daily
+#   measurements.
+#
+# STATION ENVELOPE ASSEMBLY: the OpenAQ location `id` becomes the `station_id`
+#   coordinate (cf_role="timeseries_id"); the location's `coordinates.latitude`
+#   and `coordinates.longitude` become the `latitude`/`longitude` station
+#   coordinates; the location `name` becomes the `name` coordinate (falling back
+#   to the location id when absent). This is the only field rename in the
+#   transform set (location id -> station_id); the lat/lon/name values are
+#   carried through unchanged.
+
 # --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
 #
 # A --start/--end value is one of:
