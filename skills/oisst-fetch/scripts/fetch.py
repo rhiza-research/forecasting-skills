@@ -6,7 +6,8 @@
 #   "numpy",
 #   "netCDF4",
 #   "cf_xarray",
-#   "cf-units",
+#   "cf_units",
+#   "cftime",
 # ]
 # ///
 """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a Rhiza Envelope Zarr."""
