@@ -151,7 +151,3 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start 2024-06
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start now-1w --end now \
   -v no2 -v o3 -o /tmp/openaq_gases.zarr
 ```
-
-Examples default to short windows (days to a week or two of daily observations).
-Longer or all-pollutant pulls are not forbidden, but they fetch one daily series
-per sensor in the bbox and grow with both the window and the sensor count.
