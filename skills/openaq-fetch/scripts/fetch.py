@@ -6,6 +6,8 @@
 #   "numpy",
 #   "pandas",
 #   "requests",
+#   "cf_xarray",
+#   "cf_units",
 # ]
 # ///
 """Fetch OpenAQ v3 air-quality station observations and write a station-schema Rhiza Envelope Zarr.
@@ -24,6 +26,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+# Imported at module top (not deferred into functions) so a missing dependency
+# fails fast at startup — before any per-sensor network work — rather than only
+# at the final write after every download has already run.
+import cf_units
+import cf_xarray  # noqa: F401 -- registers the `.cf` accessor
+import numpy as np
+import pandas as pd
+import requests
+import xarray as xr
+
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _RHIZA_SKILL_VERSION = "0.1.0"
 
@@ -32,10 +44,54 @@ HTTP_TIMEOUT = 60
 DEFAULT_WORKERS = 8
 _PAGE_LIMIT = 1000
 
+# CF time-coordinate encoding. udunits-valid reference-time units plus a
+# calendar, carried in the write encoding so the on-disk time axis is fully CF.
+_TIME_UNITS = "days since 1970-01-01"
+_TIME_CALENDAR = "proleptic_gregorian"
+
 # OpenAQ parameter names exposed as canonical envelope variables. Units are NOT
-# hardcoded — they are forwarded from each sensor's parameter.units in the API
-# response (µg/m³ for particulates, ppm/ppb for gases, varying by provider).
+# hardcoded — they are forwarded verbatim from each sensor's parameter.units in
+# the API response (µg/m³ for particulates, ppm/ppb for gases, varying by
+# provider) and validated under udunits at write time.
 SUPPORTED_PARAMETERS = ["pm25", "pm10", "no2", "o3", "so2", "co"]
+
+# Human-readable label per pollutant, used for the CF `long_name`.
+_LONG_NAME = {
+    "pm25": "daily mean PM2.5 mass concentration",
+    "pm10": "daily mean PM10 mass concentration",
+    "no2": "daily mean nitrogen dioxide",
+    "o3": "daily mean ozone",
+    "so2": "daily mean sulfur dioxide",
+    "co": "daily mean carbon monoxide",
+}
+
+# CF standard names per pollutant, split by reported-unit family. A pollutant's
+# CF standard name is unit-dependent: a mass-concentration reading (µg/m³, mg/m³)
+# pairs with a `mass_concentration_of_*_in_air` name, a mole-fraction reading
+# (ppm, ppb) with a `mole_fraction_of_*_in_air` name. Each entry below was
+# verified at implementation against the CF standard name table (current). Where
+# a family has no clean CF entry the key is absent and `standard_name` is omitted
+# (units + long_name alone is CF-valid): particulate matter has no mole-fraction
+# CF name, so pm25/pm10 carry a standard_name only on the mass-concentration path.
+_STD_NAME_MASS = {
+    "pm25": "mass_concentration_of_pm2p5_ambient_aerosol_particles_in_air",
+    "pm10": "mass_concentration_of_pm10_ambient_aerosol_particles_in_air",
+    "no2": "mass_concentration_of_nitrogen_dioxide_in_air",
+    "o3": "mass_concentration_of_ozone_in_air",
+    "so2": "mass_concentration_of_sulfur_dioxide_in_air",
+    "co": "mass_concentration_of_carbon_monoxide_in_air",
+}
+_STD_NAME_MOLE = {
+    "no2": "mole_fraction_of_nitrogen_dioxide_in_air",
+    "o3": "mole_fraction_of_ozone_in_air",
+    "so2": "mole_fraction_of_sulfur_dioxide_in_air",
+    "co": "mole_fraction_of_carbon_monoxide_in_air",
+}
+
+# Reference unit for the mass-concentration family. A reported unit that converts
+# to this is a mass concentration; a dimensionless unit (ppm/ppb -> "1") is a
+# mole fraction. cf_units wraps udunits-2, so this is a real dimensional check.
+_MASS_CONCENTRATION_REF = cf_units.Unit("kg m-3")
 
 # --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
 #
@@ -181,8 +237,6 @@ def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
 
 def _load_history(zarr_path: Path) -> list:
     try:
-        import xarray as xr
-
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
             raw = ds.attrs.get("rhiza_history")
     except (FileNotFoundError, KeyError, ValueError):
@@ -240,14 +294,49 @@ def _is_transient(exc: Exception) -> bool:
     return any(m in text for m in markers)
 
 
+def _classify_api_error(exc: Exception, context: str) -> str:
+    """Map an API exception to a one-line actionable message that never echoes
+    the key.
+
+    The X-API-Key header value is never read here — only the HTTP status on the
+    response (when present) is inspected. A 401/403 means the key is missing or
+    rejected; everything else is reported with its status/text as-is.
+    """
+    status = None
+    resp = getattr(exc, "response", None)
+    if resp is not None:
+        status = getattr(resp, "status_code", None)
+    if status in (401, 403):
+        return (
+            f"OpenAQ rejected the request while {context} (HTTP {status}): the "
+            "OPENAQ_API_KEY is missing, invalid, or lacks access. Check the key "
+            "registered at https://explore.openaq.org/register."
+        )
+    if status is not None:
+        return f"OpenAQ request failed while {context} (HTTP {status})."
+    return f"OpenAQ request failed while {context} ({exc})."
+
+
+def _auth_status(exc: Exception):
+    """Return the HTTP status if `exc` is an auth failure (401/403), else None.
+
+    Only the status code on the attached response is inspected — never the key.
+    Used to tell a per-sensor auth failure (key expired mid-run, or authorized
+    for /locations but not /sensors) apart from a routine transient drop.
+    """
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return None
+    status = getattr(resp, "status_code", None)
+    return status if status in (401, 403) else None
+
+
 def _get_pages(session, url: str, params: dict):
     """Yield each result across all pages of an OpenAQ v3 listing endpoint.
 
     Pages with `limit`/`page` until a short page is returned. A single transient
     error per page is retried once after a short backoff.
     """
-    import requests
-
     page = 1
     while True:
         page_params = dict(params, limit=_PAGE_LIMIT, page=page)
@@ -272,31 +361,43 @@ def _find_sensors(session, bbox: tuple, wanted: set) -> list:
     """Return a list of sensor descriptors inside the bbox for the wanted params.
 
     Each descriptor: {sensor_id, parameter, units, station_id, name, latitude,
-    longitude}. OpenAQ v3 bbox order is min-lon, min-lat, max-lon, max-lat.
+    longitude}. OpenAQ v3 bbox order is min-lon, min-lat, max-lon, max-lat, so
+    the N/W/S/E argument is reordered here.
+
+    A failure of the locations query (auth, transport, HTTP) is classified into a
+    one-line actionable message that never echoes the key, then exits non-zero —
+    rather than surfacing as a raw traceback.
     """
     north, west, south, east = bbox
     bbox_param = f"{west},{south},{east},{north}"
     sensors = []
-    for loc in _get_pages(session, f"{_API_BASE}/locations", {"bbox": bbox_param}):
-        coords = loc.get("coordinates") or {}
-        lat, lon = coords.get("latitude"), coords.get("longitude")
-        if lat is None or lon is None:
-            continue
-        for s in loc.get("sensors", []):
-            param = (s.get("parameter") or {}).get("name")
-            if param not in wanted:
+    try:
+        pages = _get_pages(session, f"{_API_BASE}/locations", {"bbox": bbox_param})
+        for loc in pages:
+            coords = loc.get("coordinates") or {}
+            lat, lon = coords.get("latitude"), coords.get("longitude")
+            if lat is None or lon is None:
                 continue
-            sensors.append(
-                {
-                    "sensor_id": s["id"],
-                    "parameter": param,
-                    "units": (s.get("parameter") or {}).get("units"),
-                    "station_id": str(loc["id"]),
-                    "name": loc.get("name") or str(loc["id"]),
-                    "latitude": float(lat),
-                    "longitude": float(lon),
-                }
-            )
+            for s in loc.get("sensors", []):
+                param = (s.get("parameter") or {}).get("name")
+                if param not in wanted:
+                    continue
+                sensors.append(
+                    {
+                        "sensor_id": s["id"],
+                        "parameter": param,
+                        "units": (s.get("parameter") or {}).get("units"),
+                        "station_id": str(loc["id"]),
+                        "name": loc.get("name") or str(loc["id"]),
+                        "latitude": float(lat),
+                        "longitude": float(lon),
+                    }
+                )
+    except requests.RequestException as exc:
+        print(
+            f"Error: {_classify_api_error(exc, 'listing locations in the bbox')}", file=sys.stderr
+        )
+        sys.exit(1)
     return sensors
 
 
@@ -313,6 +414,150 @@ def _sensor_daily(session, desc: dict, start_iso: str, end_iso: str):
             continue
         rows.append((stamp[:10], float(value)))
     return rows or None
+
+
+def _is_blank_units(units) -> bool:
+    """True if a reported unit is missing/empty and so cannot back a CF claim.
+
+    `cf_units.Unit(None)` and `cf_units.Unit("")` do NOT raise — they return an
+    "unknown" unit — so a None/empty/whitespace units value would pass the
+    udunits guard and be written verbatim, yielding a variable with `units=None`
+    (or empty) under a `Conventions="CF-1.13"` global: a false CF claim. Such a
+    value is treated as invalid everywhere it could reach an output variable.
+    """
+    return units is None or (isinstance(units, str) and not units.strip())
+
+
+def _unit_family(units: str):
+    """Classify a udunits-valid unit string into the CF standard-name family.
+
+    Returns "mass" for a mass-concentration unit (µg/m³, mg/m³ — convertible to
+    kg m-3), "mole" for a dimensionless mole-fraction unit (ppm, ppb -> "1"), or
+    None when neither applies. Used to pick the unit-consistent CF standard_name.
+    Assumes `units` already parsed under cf_units (validated by the caller).
+    """
+    if _is_blank_units(units):
+        # Never let cf_units.Unit(None/"") through as a silent "unknown" unit.
+        return None
+    u = cf_units.Unit(units)
+    if u.is_convertible(_MASS_CONCENTRATION_REF):
+        return "mass"
+    if u.is_dimensionless():
+        return "mole"
+    return None
+
+
+def _validate_udunits(units: str, variable: str) -> None:
+    """Raise SystemExit with an actionable message if `units` is not udunits-valid.
+
+    A CF data variable's `units` must parse under udunits; emitting an
+    unparseable string while claiming CF compliance is a false claim. cf_units
+    wraps the same udunits-2 library cf-checker uses, so this is a real check,
+    not a regex. OpenAQ units are forwarded verbatim and never converted, so a
+    genuine parse failure means the provider reported a unit this skill cannot
+    pass through honestly — it halts rather than fabricate a normalization.
+
+    A missing/empty units value is rejected up front: `cf_units.Unit(None)` and
+    `cf_units.Unit("")` return an "unknown" unit instead of raising, so without
+    this guard a `units=None`/empty variable would slip through under a CF-1.13
+    claim. Such sensors are dropped earlier (in reconciliation), so reaching here
+    with a blank unit is a stamping bug — fail loudly rather than write it.
+    """
+    if _is_blank_units(units):
+        print(
+            f"Error: parameter {variable!r} has a missing/empty units value; a CF "
+            "data variable must carry udunits-valid units, and writing `units=None` "
+            "under a CF-1.13 claim is invalid.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    try:
+        cf_units.Unit(units)
+    except ValueError as exc:
+        print(
+            f"Error: OpenAQ unit {units!r} for parameter {variable!r} is not "
+            f"udunits-valid ({exc}); refusing to write a non-CF store under a "
+            "CF-1.13 claim and refusing to fabricate a conversion.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _stamp_cf_dsg(ds, units_by_param: dict) -> None:
+    """Stamp full CF-1.13 timeSeries DSG attributes onto a station dataset.
+
+    Sets the auxiliary-coordinate attrs (lat/lon/time + the timeseries_id role),
+    and on every data variable the load-bearing `coordinates` attr, the verbatim
+    OpenAQ `units` (validated here), `long_name`, `cell_methods`, and a CF
+    `standard_name` only where one cleanly applies to the reported unit family.
+    The ragged station-time cells that are NaN where a sensor did not report on a
+    given day are handled via the `_FillValue` write encoding set by the caller.
+    The global attrs (Conventions/featureType/title/source/...) are set by the
+    caller.
+    """
+    ds["latitude"].attrs.update(
+        standard_name="latitude", long_name="station latitude", units="degrees_north", axis="Y"
+    )
+    ds["longitude"].attrs.update(
+        standard_name="longitude", long_name="station longitude", units="degrees_east", axis="X"
+    )
+    ds["time"].attrs.update(standard_name="time", long_name="time", axis="T")
+    ds["station_id"].attrs.update(cf_role="timeseries_id", long_name="OpenAQ location identifier")
+    if "name" in ds.coords or "name" in ds.variables:
+        ds["name"].attrs.update(long_name="location name")
+
+    for param in ds.data_vars:
+        units = units_by_param[param]
+        _validate_udunits(units, param)
+        attrs = {
+            # `coordinates` is the load-bearing DSG attr: it ties each data
+            # variable to its auxiliary lat/lon coords and the time coord.
+            "coordinates": "latitude longitude time",
+            "units": units,
+            "long_name": _LONG_NAME.get(param, param),
+            # Each OpenAQ daily value is the within-day mean of the sub-daily
+            # measurements for that sensor.
+            "cell_methods": "time: mean",
+        }
+        # standard_name only where a CF-table entry matches the reported unit
+        # family; omitted otherwise (units + long_name alone is CF-valid).
+        family = _unit_family(units)
+        std_name = None
+        if family == "mass":
+            std_name = _STD_NAME_MASS.get(param)
+        elif family == "mole":
+            std_name = _STD_NAME_MOLE.get(param)
+        if std_name:
+            attrs["standard_name"] = std_name
+        ds[param].attrs.update(attrs)
+
+
+def _verify_cf_dsg(ds) -> None:
+    """Confirm cf-xarray resolves the timeSeries geometry before writing.
+
+    cf-xarray identifies the DSG off `cf_role="timeseries_id"` and resolves the
+    spatiotemporal axes off the coord attrs. If any of those do not resolve, the
+    stamping is wrong and the store would falsely claim CF-1.13 compliance, so
+    fail loudly rather than write it.
+    """
+    problems = []
+    cf_roles = ds.cf.cf_roles
+    # Membership, not exact list-equality: cf-xarray returns the resolved role as
+    # a list, and a correctly-stamped store must not be rejected over that list's
+    # shape or order — only over station_id being absent from it.
+    if "station_id" not in cf_roles.get("timeseries_id", []):
+        problems.append(f"cf_role timeseries_id did not resolve to station_id (got {cf_roles})")
+    for name in ("latitude", "longitude", "time"):
+        try:
+            ds.cf[name]
+        except KeyError:
+            problems.append(f"cf-xarray could not resolve the {name} coordinate")
+    if problems:
+        print(
+            "Error: CF-1.13 DSG verification failed before write:\n  - " + "\n  - ".join(problems),
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def main() -> None:
@@ -365,10 +610,6 @@ def main() -> None:
 
     variables = args.variable or list(SUPPORTED_PARAMETERS)
 
-    import pandas as pd
-    import requests
-    import xarray as xr
-
     # `latest` resolves to today (UTC): OpenAQ has no cheap global day-precise
     # discovery, and a thin trailing tail of not-yet-reported days is normal.
     def _latest() -> date:
@@ -413,12 +654,52 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(1)
-    print(f"Fetching {len(sensors)} sensors for {start_iso}..{end_iso}", file=sys.stderr)
 
-    # units per parameter, taken from the API (first sensor that reports each).
-    units = {}
+    # Per-parameter unit reconciliation. OpenAQ reports a unit per sensor; for a
+    # given pollutant they are normally identical, but a provider that reports a
+    # different unit for the same pollutant cannot be merged into one column
+    # without mislabeling it. The first-seen unit per parameter is canonical;
+    # any sensor reporting a different unit is dropped with a stderr note and
+    # rolled into the aggregate dropped count, never silently relabeled.
+    units_by_param = {}
+    kept_sensors = []
+    dropped = 0
     for s in sensors:
-        units.setdefault(s["parameter"], s["units"])
+        param = s["parameter"]
+        unit = s["units"]
+        if _is_blank_units(unit):
+            # A sensor with no reported unit cannot back a CF `units` attr; drop
+            # it (counted below) rather than write `units=None` under CF-1.13.
+            dropped += 1
+            print(
+                f"sensor {s['sensor_id']} ({param}): DROPPED, missing/empty units; "
+                "cannot write a CF data variable without udunits-valid units.",
+                file=sys.stderr,
+            )
+            continue
+        canonical = units_by_param.setdefault(param, unit)
+        if unit != canonical:
+            dropped += 1
+            print(
+                f"sensor {s['sensor_id']} ({param}): DROPPED, unit {unit!r} differs "
+                f"from {canonical!r} already seen for {param}; cannot merge mismatched "
+                "units into one column.",
+                file=sys.stderr,
+            )
+            continue
+        kept_sensors.append(s)
+    sensors = kept_sensors
+
+    if not sensors:
+        print(
+            f"Error: no OpenAQ sensors for {sorted(variables)} in bbox {args.bbox} "
+            "survived unit reconciliation.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    candidate_count = len(sensors)
+    print(f"Fetching {candidate_count} sensors for {start_iso}..{end_iso}", file=sys.stderr)
 
     def _fetch_one(desc):
         rows = _sensor_daily(session, desc, start_iso, end_iso)
@@ -439,6 +720,23 @@ def main() -> None:
             try:
                 result = fut.result()
             except Exception as exc:  # noqa: BLE001 -- isolate per-sensor failures
+                # An auth failure (401/403) is NOT a routine per-sensor drop: a
+                # key that expired mid-run or lacks /sensors scope would 401 on
+                # EVERY sensor and the run would otherwise exit "no observations"
+                # with the real cause hidden. Surface it as fatal and stop, so
+                # the auth problem is not silently swallowed. Only the response
+                # status is inspected — the key is never read or echoed.
+                status = _auth_status(exc)
+                if status is not None:
+                    print(
+                        f"Error: {_classify_api_error(exc, 'fetching daily sensor values')}",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                # A genuine transient (timeout/5xx/429) that survived the single
+                # in-flight retry drops the sensor (not silently lost): logged
+                # per-line here and rolled into the aggregate count below.
+                dropped += 1
                 print(
                     f"sensor {d['sensor_id']} ({d['parameter']}): DROPPED ({exc})", file=sys.stderr
                 )
@@ -455,6 +753,16 @@ def main() -> None:
                     "name": desc["name"],
                 }
             )
+
+    # Aggregate observability: per-sensor drops (failed fetch + retry, and unit
+    # mismatches) are logged above; this rolls them into a single count so a
+    # caller can see at a glance how many sensors were lost.
+    if dropped:
+        print(
+            f"Dropped {dropped} sensors (failed fetch + one retry, unit mismatch, "
+            "or missing units).",
+            file=sys.stderr,
+        )
 
     if not frames:
         print(
@@ -476,22 +784,58 @@ def main() -> None:
         longitude=("station_id", meta.loc[ds["station_id"].values, "longitude"].values),
         name=("station_id", meta.loc[ds["station_id"].values, "name"].values),
     )
-    ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
-    ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
-    ds["time"].attrs.update(standard_name="time", axis="T")
-    ds["station_id"].attrs.update(cf_role="timeseries_id", long_name="OpenAQ location identifier")
-    ds["name"].attrs.update(long_name="location name")
-    for param in ds.data_vars:
-        unit = units.get(param)
-        if unit:
-            ds[param].attrs.update(units=unit)
+
+    # A requested pollutant whose sensors all returned no in-window data (or were
+    # all dropped on fetch failure / unit mismatch / missing units) produces no
+    # data column and so is silently absent from the output. Name each such
+    # variable on stderr; the run still succeeds with the variables that do have
+    # data (this is not a failure, just a visible omission).
+    missing_vars = [v for v in variables if v not in ds.data_vars]
+    if missing_vars:
+        print(
+            f"Warning: requested variable(s) {sorted(missing_vars)} yielded no in-window "
+            f"data for {start_iso}..{end_iso} (no sensor reported, or all were dropped on "
+            "fetch failure / unit mismatch / missing units); they are omitted from the "
+            "output. The store still carries the variables that had data.",
+            file=sys.stderr,
+        )
+
+    # Units carried onto each data variable are the reconciled per-parameter
+    # units restricted to the parameters that actually produced a column.
+    units_present = {param: units_by_param[param] for param in ds.data_vars}
+
+    _stamp_cf_dsg(ds, units_present)
     ds.attrs.update(
+        Conventions="CF-1.13",
+        featureType="timeSeries",
+        title="OpenAQ air-quality station observations",
+        source="OpenAQ v3 API (https://api.openaq.org/v3)",
+        institution="OpenAQ",
+        references="https://docs.openaq.org/",
+        history=f"{datetime.now(UTC).isoformat()} openaq-fetch {start_iso}..{end_iso}",
         rhiza_source="openaq",
         rhiza_history=json.dumps([entry], sort_keys=True),
-        featureType="timeSeries",
     )
+
+    # Clear per-variable encoding (not part of the envelope contract), then carry
+    # udunits-valid reference-time units + a calendar in the time encoding so the
+    # on-disk time axis is fully CF. Encoding is reset BEFORE setting time units
+    # so the clear cannot drop them.
     for v in ds.variables:
         ds[v].encoding = {}
+    ds["time"].encoding["units"] = _TIME_UNITS
+    ds["time"].encoding["calendar"] = _TIME_CALENDAR
+    # `_FillValue` is an encoding key, not a CF attribute: set it here, after the
+    # per-variable encoding clear, so the on-disk store represents missing
+    # station-time cells with a real fill (and reopens with the NaNs intact).
+    for param in ds.data_vars:
+        ds[param].encoding["_FillValue"] = np.float64(np.nan)
+
+    # Write-side decode check: confirm cf-xarray resolves the DSG geometry
+    # (timeseries_id) and the lat/lon/time axes BEFORE writing. A failure here
+    # means the stamping is wrong, so fail loudly rather than emit a store that
+    # falsely claims CF compliance.
+    _verify_cf_dsg(ds)
 
     if out.exists():
         shutil.rmtree(out)
