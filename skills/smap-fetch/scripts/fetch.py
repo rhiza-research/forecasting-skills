@@ -31,7 +31,7 @@ import xarray as xr
 from earthaccess.exceptions import LoginAttemptFailure, LoginStrategyUnavailable
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.0"
+_RHIZA_SKILL_VERSION = "0.1.1"
 
 _SHORT_NAME = "SPL3SMP_E"
 _FILL = -9999.0
