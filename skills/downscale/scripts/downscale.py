@@ -2,6 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #   "cf-xarray",
+#   "cftime",
 #   "xarray",
 #   "xarray-regrid",
 #   "zarr",
@@ -18,7 +19,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_RHIZA_SKILL_VERSION = "0.1.4"
 
 
 def _hash_zarr(zarr_path: Path) -> str:

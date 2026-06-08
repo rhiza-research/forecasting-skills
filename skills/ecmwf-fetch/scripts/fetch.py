@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#   "cftime",
 #   "ecmwf-datastores-client==0.4.2",
 #   "requests",
 #   "xarray",
@@ -23,7 +24,7 @@ import time
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.4"
+_RHIZA_SKILL_VERSION = "0.1.5"
 
 # How far back from today the `latest` init probe looks. ECMWF S2S runs init on
 # fixed days; 14 days covers several init cycles plus production lag. Exhausting
@@ -640,12 +641,14 @@ def main() -> None:
         ds.attrs.update(
             rhiza_source="ecmwf-s2s",
             rhiza_history=json.dumps([entry], sort_keys=True),
+            Conventions="CF-1.13",
         )
         _stamp_cf_attrs(ds)
         # Stamp explicit units on tp so downstream consumers don't have to reverse-engineer
-        # them from value ranges. GRIB carries `kg m**-2` (numerically equivalent to mm depth
-        # over the accumulation period); we forward that exact string rather than convert.
-        ds["tp"].attrs["units"] = "kg m**-2"
+        # them from value ranges. GRIB carries `kg m-2` (numerically equivalent to mm depth
+        # over the accumulation period); we forward that quantity rather than convert.
+        ds["tp"].attrs["standard_name"] = "precipitation_amount"
+        ds["tp"].attrs["units"] = "kg m-2"
         ds["tp"].attrs["long_name"] = "Total precipitation"
         for v in ds.variables:
             ds[v].encoding = {}

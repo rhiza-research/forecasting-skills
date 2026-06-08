@@ -2,6 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #   "cf-xarray>=0.11",
+#   "cftime>=1.6",
 #   "xarray>=2026.4",
 #   "zarr>=3.2",
 #   "numpy>=2.4",
@@ -25,7 +26,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_RHIZA_SKILL_VERSION = "0.1.4"
 
 # Time-unit tokens that, when they appear as a per-time denominator, mark a
 # rate. Deliberately excludes length/mass/etc. tokens (e.g. ``m``) so that a

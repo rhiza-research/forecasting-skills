@@ -4,7 +4,7 @@ description: Fetch live CHIRPS precipitation observations for a date range and w
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS prelim server (data.chc.ucsb.edu); no credentials required.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
 ---
 
 # chirps-fetch

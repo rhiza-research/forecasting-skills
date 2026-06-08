@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#   "cftime",
 #   "dynamical-catalog==0.5.0",
 #   "xarray",
 #   "zarr",
@@ -20,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.2"
+_RHIZA_SKILL_VERSION = "0.1.3"
 
 # Coords dynamical attaches that are not part of the Rhiza Envelope: forecast
 # bookkeeping (valid_time, *_forecast_length) and the CRS scalar (spatial_ref).
@@ -520,6 +521,7 @@ def main() -> None:
     ds.attrs.update(
         rhiza_source=f"dynamical:{args.dataset}",
         rhiza_history=json.dumps([entry], sort_keys=True),
+        Conventions="CF-1.13",
     )
     _stamp_cf_attrs(ds)
     # Per-variable encoding is not part of the envelope contract; clear it so the

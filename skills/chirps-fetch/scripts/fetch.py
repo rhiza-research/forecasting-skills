@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#   "cftime",
 #   "requests",
 #   "xarray",
 #   "zarr",
@@ -199,7 +200,7 @@ class DayUnavailable(Exception):
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.7"
+_RHIZA_SKILL_VERSION = "0.1.8"
 
 
 def _load_history(zarr_path: Path) -> list:
@@ -644,7 +645,7 @@ def main() -> None:
         for i, (_, da) in enumerate(succeeded):
             da = da.sortby("lat", ascending=True)
             da.name = "precip"
-            da.attrs["units"] = "mm/day"
+            da.attrs["units"] = "mm day-1"
             da.attrs["standard_name"] = "lwe_precipitation_rate"
             da.attrs["long_name"] = "CHIRPS daily precipitation"
 
@@ -657,6 +658,7 @@ def main() -> None:
             # the final stamp is stable regardless of how many days are written.
             ds.attrs["rhiza_source"] = "chirps"
             ds.attrs["rhiza_history"] = json.dumps([effective_entry], sort_keys=True)
+            ds.attrs["Conventions"] = "CF-1.13"
             _stamp_cf_attrs(ds)
             for v in ds.variables:
                 ds[v].encoding = {}

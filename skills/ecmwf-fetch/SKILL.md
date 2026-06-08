@@ -4,7 +4,7 @@ description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ense
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   openclaw:
     requires:
       env:

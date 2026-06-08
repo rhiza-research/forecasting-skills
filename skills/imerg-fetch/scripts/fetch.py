@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#   "cftime",
 #   "earthaccess",
 #   "h5netcdf",
 #   "h5py",
@@ -25,7 +26,7 @@ import earthaccess
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.4"
+_RHIZA_SKILL_VERSION = "0.1.5"
 
 SHORTNAMES = {
     "late": "GPM_3IMERGDL",
@@ -489,9 +490,10 @@ def main() -> None:
         ds.attrs.update(
             rhiza_source="imerg",
             rhiza_history=json.dumps([stamp_entry], sort_keys=True),
+            Conventions="CF-1.13",
         )
         ds["precip"].attrs.update(
-            units="mm/day",
+            units="mm day-1",
             standard_name="lwe_precipitation_rate",
             long_name="IMERG daily precipitation",
         )
