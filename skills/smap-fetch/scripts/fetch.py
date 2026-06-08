@@ -8,6 +8,7 @@
 #   "numpy",
 #   "cf_xarray",
 #   "cf_units",
+#   "cftime",
 # ]
 # ///
 """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a Rhiza Envelope Zarr."""
