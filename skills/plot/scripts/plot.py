@@ -3,7 +3,9 @@
 # dependencies = [
 #   "cartopy",
 #   "cf-xarray",
+#   "cftime",
 #   "matplotlib",
+#   "nc-time-axis",
 #   "numpy",
 #   "xarray",
 #   "zarr",
@@ -373,6 +375,7 @@ def main() -> None:
     matplotlib.use("Agg")
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
+    import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
     import xarray as xr
 
     src = Path(args.input)

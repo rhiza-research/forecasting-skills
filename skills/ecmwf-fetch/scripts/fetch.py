@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
+#   "cftime",
 #   "ecmwf-datastores-client==0.4.2",
 #   "requests",
 #   "xarray",
@@ -640,12 +641,14 @@ def main() -> None:
         ds.attrs.update(
             rhiza_source="ecmwf-s2s",
             rhiza_history=json.dumps([entry], sort_keys=True),
+            Conventions="CF-1.13",
         )
         _stamp_cf_attrs(ds)
         # Stamp explicit units on tp so downstream consumers don't have to reverse-engineer
-        # them from value ranges. GRIB carries `kg m**-2` (numerically equivalent to mm depth
-        # over the accumulation period); we forward that exact string rather than convert.
-        ds["tp"].attrs["units"] = "kg m**-2"
+        # them from value ranges. GRIB carries `kg m-2` (numerically equivalent to mm depth
+        # over the accumulation period); we forward that quantity rather than convert.
+        ds["tp"].attrs["standard_name"] = "precipitation_amount"
+        ds["tp"].attrs["units"] = "kg m-2"
         ds["tp"].attrs["long_name"] = "Total precipitation"
         for v in ds.variables:
             ds[v].encoding = {}

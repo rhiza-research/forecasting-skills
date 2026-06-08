@@ -2,6 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #   "cf-xarray",
+#   "cftime",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -289,18 +290,67 @@ def _aggregate_time_anchored(ds, dim, period, method, anchor_end):
     the right-edge convention used by ``_aggregate_step``.
     """
     import numpy as np
-    import pandas as pd
     import xarray as xr
 
     period_days = ANCHOR_PERIOD_DAYS[period]
-    bin_width = pd.Timedelta(days=period_days)
-    times = pd.to_datetime(np.asarray(ds[dim].values))
-    if times.size == 0:
+    raw = np.asarray(ds[dim].values)
+    if raw.size == 0:
         return ds.isel({dim: slice(0, 0)})
-    data_min = pd.Timestamp(times.min())
+
+    # The bins are fixed-day windows, so the arithmetic is the same for a
+    # datetime64 axis and an object-dtype cftime axis (non-standard model
+    # calendars such as `noleap`/`360_day`). The window step is a plain
+    # `datetime.timedelta(days=N)`; on a cftime object this respects that
+    # object's calendar. The only type-specific parts are: the value used to
+    # represent `anchor_end` in the same type as the axis, and the right-edge
+    # label appended for each bin (kept native to the axis type so the output
+    # coord round-trips). The datetime64 path is preserved exactly.
+    if raw.dtype.kind == "O" and hasattr(raw.flat[0], "calendar"):
+        import cftime
+
+        calendar = raw.flat[0].calendar
+        bin_width = _dt.timedelta(days=period_days)
+        data_min = raw.min()
+        ae = anchor_end
+        # The parsed anchor date may name a day that does not exist in this
+        # axis's model calendar (e.g. day 31 of any month in 360_day, or Feb 29
+        # in noleap). cftime.datetime raises ValueError for such a date; surface
+        # it as a clean exit-2 error rather than a raw traceback.
+        try:
+            right = cftime.datetime(
+                ae.year,
+                ae.month,
+                ae.day,
+                ae.hour,
+                ae.minute,
+                ae.second,
+                ae.microsecond,
+                calendar=calendar,
+            )
+        except ValueError:
+            print(
+                f"Error: --anchor-end {ae.date().isoformat()} is not a valid "
+                f"date in calendar {calendar!r}.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+        # Right-edge label kept as the native cftime object so the output coord
+        # stays on the input's calendar.
+        def _label(edge):
+            return edge
+    else:
+        import pandas as pd
+
+        times = pd.to_datetime(raw)
+        bin_width = pd.Timedelta(days=period_days)
+        data_min = pd.Timestamp(times.min())
+        right = pd.Timestamp(anchor_end)
+
+        def _label(edge):
+            return np.datetime64(edge)
 
     bins = []
-    right = pd.Timestamp(anchor_end)
     while True:
         left = right - bin_width
         if left < data_min:
@@ -313,11 +363,15 @@ def _aggregate_time_anchored(ds, dim, period, method, anchor_end):
     for left, right in bins:
         # (left, right] window: select strictly after `left` and up to and
         # including `right` to match the left-open, right-closed convention.
-        sel = ds.sel({dim: slice(left + pd.Timedelta(nanoseconds=1), right)})
-        if sel.sizes.get(dim, 0) == 0:
+        # A boolean mask over the native coord values applies identically to a
+        # datetime64 axis and a cftime axis, where the per-microsecond `.sel`
+        # slice nudge used for datetime64 has no equivalent.
+        keep = np.nonzero((raw > left) & (raw <= right))[0]
+        if keep.size == 0:
             continue
+        sel = ds.isel({dim: keep})
         chunks.append(_reduce(sel, method=method, dim=dim))
-        labels.append(np.datetime64(right))
+        labels.append(_label(right))
 
     if not chunks:
         return ds.isel({dim: slice(0, 0)})

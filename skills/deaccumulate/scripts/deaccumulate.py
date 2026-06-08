@@ -2,6 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #   "cf-xarray>=0.11",
+#   "cftime>=1.6",
 #   "xarray>=2026.4",
 #   "zarr>=3.2",
 #   "numpy>=2.4",
