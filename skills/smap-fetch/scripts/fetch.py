@@ -41,22 +41,36 @@ _LATEST_LOOKBACK_DAYS = 30
 # SMAP_L3_SM_P_E_20240601_R19240_001.h5.
 _GRANULE_DATE_RE = re.compile(r"_(\d{8})_")
 
-# CF metadata for the soil_moisture data variable. The standard name was
-# confirmed against the CF standard-name table v93 (current at implementation):
+# CF standard_name for the soil_moisture data variable, confirmed against the CF
+# standard-name table v93 (current at implementation):
 # `volume_fraction_of_condensed_water_in_soil` has canonical_units "1". The SMAP
-# file labels the same quantity `cm3/cm3` (a dimensionless ratio). CF's canonical
-# form is "1"; the chosen output units are "m3 m-3" — dimensionally identical to
-# "1", udunits-valid, and more meaningful to downstream tools than a bare "1". The
-# value is identical, so this is a relabel (not a conversion).
+# file labels the same quantity `cm3/cm3` (a dimensionless volumetric ratio),
+# which parses under udunits and is therefore already CF-conformant. Per the units
+# principle, the source units pass through verbatim onto the output variable
+# (read-and-validate, not relabel); only the standard_name is asserted here.
 _SM_STANDARD_NAME = "volume_fraction_of_condensed_water_in_soil"
-_SM_OUTPUT_UNITS = "m3 m-3"
-_SM_HUMAN_UNITS = "cm3/cm3"
-# Accepted source-units strings on the granule's soil_moisture dataset. The file
-# labels the dimensionless volumetric ratio one of these spellings; anything else
-# is unexpected and triggers a fail rather than a silent relabel.
-_SM_EXPECTED_SOURCE_UNITS = frozenset(
-    {"cm3/cm3", "cm**3/cm**3", "cm^3/cm^3", "cm3 cm-3", "cm3cm-3"}
-)
+
+# --- Source -> output transforms ---
+# Pass-through is the default for everything not listed here (values, fill, dtype,
+# time). The divergences this skill introduces between the raw SPL3SMP_E granule
+# and the output Envelope are:
+#
+#   - soil_moisture units: PASS THROUGH VERBATIM. The granule's `units` attribute
+#     (cm3/cm3, a dimensionless volumetric ratio) is read off the dataset and
+#     written unchanged on the output variable after udunits validation. No remap,
+#     no relabel, no numeric conversion.
+#   - Geolocation 2-D -> 1-D: SPL3SMP_E stores latitude/longitude as 2-D EASE-Grid
+#     arrays that are row-constant in latitude and column-constant in longitude;
+#     they are reduced to 1-D latitude/longitude coordinate vectors
+#     (_reduce_geolocation), checked for row/column constancy within tolerance.
+#   - soil_moisture standard_name: assigned `volume_fraction_of_condensed_water_in_soil`
+#     from the CF standard-name table (the granule carries no CF standard_name).
+#   - grid_mapping: a `latitude_longitude` CF grid_mapping container variable is
+#     added to carry the WGS84 geographic CRS for the lat/lon presentation of the
+#     EASE-Grid 2.0 cells.
+#
+# Longitude is left in the granule's native order/range; no lon normalization is
+# applied.
 
 # CF global attrs describing the source product.
 _CF_CONVENTIONS = "CF-1.13"
@@ -366,38 +380,29 @@ def _reduce_geolocation(lat2d, lon2d, day_iso: str) -> tuple:
     return lat1d, lon1d
 
 
-def _verify_source_units(grp, day_iso: str) -> None:
-    """Verify the granule's soil_moisture units are the expected dimensionless ratio.
+def _read_source_units(grp, day_iso: str) -> str:
+    """Read the granule's soil_moisture `units` attribute for verbatim pass-through.
 
-    The output units are relabeled to the canonical CF value on the assumption that
-    the file stores a dimensionless volumetric ratio (cm3/cm3). Read the actual
-    `units` attribute and confirm it is one of the expected spellings before
-    relabeling; if it is something unexpected the value may not be the ratio we
-    assume, so fail with an actionable message rather than silently mislabel. A
-    missing units attribute is tolerated (older granules omit it) and noted on
-    stderr, since the SPL3SMP_E product is documented as cm3/cm3.
+    SPL3SMP_E labels soil_moisture with a dimensionless volumetric ratio
+    (cm3/cm3), which parses under udunits and is already CF-conformant, so the
+    units pass through verbatim onto the output variable rather than being
+    relabeled. Return the source units string unchanged (decoded if stored as
+    bytes); the caller validates it under udunits before writing. A genuinely
+    missing units attribute cannot be passed through, and fabricating one is not
+    allowed, so fail with an actionable message rather than inventing a value.
     """
     raw = grp["soil_moisture"].attrs.get("units")
     if raw is None:
-        print(
-            f"WARNING: granule for {day_iso} has no units attribute on "
-            "soil_moisture; assuming the documented dimensionless cm3/cm3 ratio.",
-            file=sys.stderr,
-        )
-        return
-    if isinstance(raw, bytes):
-        raw = raw.decode("utf-8", "replace")
-    normalized = str(raw).strip().replace(" ", "")
-    if normalized.lower() not in {u.replace(" ", "").lower() for u in _SM_EXPECTED_SOURCE_UNITS}:
         # Raise rather than sys.exit: this runs (via _slice_from_file) inside the
         # per-day loop, so the caller routes it through `_fail` to clean up any
         # partial store first.
         raise RuntimeError(
-            f"granule for {day_iso} reports unexpected soil_moisture units "
-            f"{str(raw)!r}; expected a dimensionless volumetric ratio "
-            f"({', '.join(sorted(_SM_EXPECTED_SOURCE_UNITS))}). Refusing to relabel "
-            f"to {_SM_OUTPUT_UNITS!r} without confirming the source quantity."
+            f"granule for {day_iso} has no units attribute on soil_moisture; "
+            "cannot pass source units through verbatim and will not fabricate one."
         )
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", "replace")
+    return str(raw).strip()
 
 
 def _slice_from_file(path: str, group: str, day_iso: str):
@@ -423,7 +428,7 @@ def _slice_from_file(path: str, group: str, day_iso: str):
                         f"{dataset!r} dataset (overpass {group}); "
                         f"available datasets: {list(grp.keys())}"
                     )
-            _verify_source_units(grp, day_iso)
+            source_units = _read_source_units(grp, day_iso)
             sm = grp["soil_moisture"][:].astype("float64")
             lat2d = grp["latitude"][:].astype("float64")
             lon2d = grp["longitude"][:].astype("float64")
@@ -447,6 +452,9 @@ def _slice_from_file(path: str, group: str, day_iso: str):
         dims=("latitude", "longitude"),
         coords={"latitude": lat1d, "longitude": lon1d},
         name="soil_moisture",
+        # Carry the granule's source units through to the CF stamping step, where
+        # they are validated under udunits and written verbatim on the output.
+        attrs={"units": source_units},
     )
     return da
 
@@ -579,11 +587,14 @@ def _stamp_cf(ds, entry: dict) -> None:
 
     Global Conventions/title/source/institution/references/history; coordinate
     standard_name/units/axis on lat/lon/time; soil_moisture standard_name +
-    canonical units + long_name + grid_mapping; a latitude_longitude grid_mapping
-    container variable. Validates the data-var units against udunits. The time
-    udunits/calendar and the soil_moisture _FillValue are NOT set here — they live
-    in the WRITE ENCODING so the per-variable .encoding clear cannot drop them.
+    verbatim source units + long_name + grid_mapping; a latitude_longitude
+    grid_mapping container variable. Validates the data-var units against udunits.
+    The time udunits/calendar and the soil_moisture _FillValue are NOT set here —
+    they live in the WRITE ENCODING so the per-variable .encoding clear cannot
+    drop them.
     """
+    # Source units carried through from _slice_from_file; passed through verbatim.
+    source_units = ds["soil_moisture"].attrs["units"]
     now_iso = datetime.now(UTC).isoformat(timespec="seconds")
     ds.attrs.clear()
     ds.attrs.update(
@@ -601,11 +612,11 @@ def _stamp_cf(ds, entry: dict) -> None:
     ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
     ds["time"].attrs.update(standard_name="time", axis="T")
 
-    _validate_units(_SM_OUTPUT_UNITS)
+    _validate_units(source_units)
     ds["soil_moisture"].attrs.update(
         standard_name=_SM_STANDARD_NAME,
-        units=_SM_OUTPUT_UNITS,
-        long_name=f"volumetric soil moisture ({_SM_HUMAN_UNITS})",
+        units=source_units,
+        long_name=f"volumetric soil moisture ({source_units})",
         grid_mapping=_GRID_MAPPING_NAME,
     )
 
@@ -823,7 +834,7 @@ def main() -> None:
                         "soil_moisture"
                     ]
             except RuntimeError as exc:
-                # _slice_from_file, _verify_source_units, _reduce_geolocation, and
+                # _slice_from_file, _read_source_units, _reduce_geolocation, and
                 # _bbox_subset all raise RuntimeError; route them through _fail so a
                 # mid-loop failure removes any partial store before exiting.
                 _fail(f"Error: {exc}")
