@@ -7,17 +7,28 @@
 #   "numpy",
 #   "pandas",
 #   "cftime",
+#   "cf_xarray",
+#   "cf_units",
 # ]
 # ///
 """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a Rhiza Envelope Zarr."""
 
 import argparse
+import calendar
 import json
 import re
 import shutil
 import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+
+# Third-party imports are at module top so a missing inline dependency fails the
+# script immediately, before any argument parsing or network access.
+import cf_units
+import cf_xarray  # noqa: F401  (registers the .cf accessor used below)
+import gcsfs
+import pandas as pd
+import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _RHIZA_SKILL_VERSION = "0.1.0"
@@ -26,6 +37,11 @@ _RHIZA_SKILL_VERSION = "0.1.0"
 # CSV maps facet combinations to a Zarr store path (`zstore`); data is read
 # anonymously.
 _CATALOG_URL = "https://storage.googleapis.com/cmip6/pangeo-cmip6.csv"
+
+# CF Conventions version this fetcher stamps on the output. CMIP6 source stores
+# carry an older inherited value (e.g. "CF-1.7 CMIP-6.0 UGRID-1.0"); the envelope
+# transform repairs the dataset to the current CF release and re-stamps it.
+_CF_CONVENTIONS = "CF-1.13"
 
 # --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
 #
@@ -171,8 +187,6 @@ def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
 
 def _load_history(zarr_path: Path) -> list:
     try:
-        import xarray as xr
-
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
             raw = ds.attrs.get("rhiza_history")
     except (FileNotFoundError, KeyError, ValueError):
@@ -196,24 +210,65 @@ def _load_history(zarr_path: Path) -> list:
     return parsed
 
 
-def _cache_hit(out: Path, entry: dict) -> bool:
-    """Return True if the zarr at `out` was produced by this same entry."""
+def _store_is_complete(out: Path, variable: str) -> bool:
+    """Cheaply verify a candidate cache store is a fully written, readable Zarr.
+
+    A previous run interrupted mid-write can leave a directory whose
+    `rhiza_history` is present (it is a top-level attr written early) but whose
+    array data is absent or truncated. Honoring such a store as a cache hit would
+    skip the fetch and leave the caller with a broken output. Re-open the store
+    consolidated, confirm the requested variable's dims have non-zero extent, then
+    read one corner cell of the variable: a truncated store can keep intact
+    metadata while a chunk is missing, so a metadata-only check is not enough. The
+    corner read forces the backing chunk to load; a missing/corrupt chunk raises
+    and is caught as incomplete.
+    """
+    try:
+        with xr.open_zarr(out, consolidated=True) as ds:
+            if variable not in ds.data_vars:
+                return False
+            if not all(ds.sizes.get(d, 0) > 0 for d in ds[variable].dims):
+                return False
+            corner = {d: 0 for d in ds[variable].dims}
+            ds[variable].isel(**corner).compute()
+            return True
+    except Exception:  # noqa: BLE001
+        # Any failure to open the store or decode the corner chunk -- a truncated
+        # or corrupt chunk surfaces as a backend-specific decompression error
+        # (RuntimeError), not just OSError -- means the store is not a trustworthy
+        # cache hit, so re-fetch.
+        return False
+
+
+def _cache_hit(out: Path, entry: dict, variable: str) -> bool:
+    """Return True if the zarr at `out` was produced by this same entry.
+
+    Requires both a matching provenance entry AND a structurally complete store,
+    so a partially written store from an interrupted run is not trusted.
+    """
     if not out.exists():
         return False
     history = _load_history(out)
     if not history:
         return False
     existing_entry = history[0]
-    return (
+    matches = (
         existing_entry.get("skill") == entry["skill"]
         and existing_entry.get("version") == entry["version"]
         and existing_entry.get("args") == entry["args"]
         and existing_entry.get("input") == entry["input"]
     )
+    if not matches:
+        return False
+    return _store_is_complete(out, variable)
 
 
-def _stamp_cf_attrs(ds):
-    """Stamp CF standard_name/units/axis on spatial + time coords (non-destructive)."""
+def _ensure_coord_cf_attrs(ds):
+    """Ensure latitude/longitude/time coords carry CF standard_name/units/axis.
+
+    CMIP6 source coords already carry these; this fills only any that are absent
+    after the rename so the rest of the source metadata survives untouched.
+    """
     if "latitude" in ds.coords:
         ds["latitude"].attrs.setdefault("standard_name", "latitude")
         ds["latitude"].attrs.setdefault("units", "degrees_north")
@@ -228,6 +283,33 @@ def _stamp_cf_attrs(ds):
     return ds
 
 
+def _drop_bounds(ds):
+    """Drop every `*_bnds` bounds variable and the dangling `bounds` attr it leaves.
+
+    The Rhiza Envelope does not carry cell bounds. Removing the bounds variables
+    without also clearing the coords' `bounds` attrs would leave each coord
+    pointing at an absent variable, which is a CF section 7.1 violation
+    (cf-xarray's bounds resolution and any CF checker would flag it). This drops
+    the bounds variables and the now-orphaned `bnds` index dim, then strips the
+    `bounds` attr from every variable so no dangling reference remains.
+    """
+    bounds_vars = [
+        v for v in ds.variables if str(v).endswith("_bnds") or str(v).endswith("_bounds")
+    ]
+    if bounds_vars:
+        ds = ds.drop_vars(bounds_vars)
+    # The bounds dim ("bnds") becomes an orphan index coord once its bounds
+    # variables are gone; drop it too if it is a coord with no remaining users.
+    for dim_coord in ("bnds", "bounds", "nv"):
+        if dim_coord in ds.coords and dim_coord not in ds.dims:
+            ds = ds.drop_vars(dim_coord)
+    # Remove every `bounds` attr; each one now points at a removed variable.
+    for v in ds.variables:
+        if "bounds" in ds[v].attrs:
+            del ds[v].attrs["bounds"]
+    return ds
+
+
 def _normalize_longitude(ds):
     """Map a 0..360 longitude onto [-180, 180) and sort ascending, so an N/W/S/E
     bbox with negative west/east values selects correctly."""
@@ -239,8 +321,10 @@ def _normalize_longitude(ds):
 def _bbox_subset(ds, bbox: str):
     """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox.
 
-    The slice direction follows each axis's own monotonic order, so the same
-    bbox works regardless of how the dataset stores latitude.
+    The slice direction follows each axis's own monotonic order. A bbox whose
+    west > east crosses the antimeridian (e.g. a Pacific-spanning region): select
+    the two longitude bands `lon >= west OR lon <= east` rather than the empty
+    `slice(west, east)`, keeping the grid in monotonic-ascending longitude.
     """
     try:
         north, west, south, east = (float(x) for x in bbox.split("/"))
@@ -248,10 +332,16 @@ def _bbox_subset(ds, bbox: str):
         print("Error: --bbox must be four decimal degrees N/W/S/E.", file=sys.stderr)
         sys.exit(2)
     lat = ds["latitude"].values
-    lon = ds["longitude"].values
     lat_slice = slice(north, south) if lat[0] > lat[-1] else slice(south, north)
-    lon_slice = slice(west, east) if lon[0] < lon[-1] else slice(east, west)
-    ds = ds.sel(latitude=lat_slice, longitude=lon_slice)
+    ds = ds.sel(latitude=lat_slice)
+    if west > east:
+        # Antimeridian-crossing box: keep both longitude bands. drop=True removes
+        # the interior cells while preserving the ascending longitude order.
+        ds = ds.where((ds["longitude"] >= west) | (ds["longitude"] <= east), drop=True)
+    else:
+        lon = ds["longitude"].values
+        lon_slice = slice(west, east) if lon[0] < lon[-1] else slice(east, west)
+        ds = ds.sel(longitude=lon_slice)
     if ds.sizes.get("latitude", 0) == 0 or ds.sizes.get("longitude", 0) == 0:
         print(
             f"Error: --bbox {bbox} selects no grid cells; check the extent and N/W/S/E order.",
@@ -265,11 +355,19 @@ def _resolve_zstore(args) -> tuple:
     """Resolve the facet flags against the CMIP6 catalog to exactly one zstore.
 
     Returns (zstore, grid_label, version). Exits 2 with diagnostics on zero
-    matches or an ambiguous grid.
+    matches or an ambiguous grid; exits 1 with an actionable message if the
+    catalog CSV cannot be downloaded.
     """
-    import pandas as pd
-
-    df = pd.read_csv(_CATALOG_URL)
+    try:
+        df = pd.read_csv(_CATALOG_URL)
+    except Exception as exc:  # noqa: BLE001 (network/parse failures vary by backend)
+        print(
+            f"Error: failed to download or parse the CMIP6 catalog from {_CATALOG_URL} "
+            f"({type(exc).__name__}: {exc}). Check network access to "
+            "storage.googleapis.com, then retry.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     mask = (
         (df.source_id == args.model)
         & (df.experiment_id == args.experiment)
@@ -311,7 +409,123 @@ def _resolve_zstore(args) -> tuple:
         sys.exit(2)
     # Several versions may remain for the same facets; take the latest.
     row = sub.sort_values("version").iloc[-1]
-    return row["zstore"], grids[0], str(row["version"])
+    # Withdrawn/retracted catalog entries can carry a NaN or empty zstore. Passing
+    # that to get_mapper fails opaquely; validate it here and point at the facets.
+    zstore = row["zstore"]
+    if not isinstance(zstore, str) or not zstore.strip():
+        print(
+            f"Error: the matched CMIP6 entry (model={args.model} experiment={args.experiment} "
+            f"variable={args.variable} member={args.member} table={args.table} "
+            f"grid={grids[0]} version={row['version']}) has no zstore path "
+            "(the catalog row is empty/withdrawn). Try different facets or another "
+            "--grid/--member.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return zstore, grids[0], str(row["version"])
+
+
+def _validate_units(ds, variable: str) -> None:
+    """Fail loudly if the data variable's units are not udunits-parseable.
+
+    The output claims CF-1.13 compliance, so the data variable must carry a
+    udunits-valid `units` string. CMIP6 stores carry CF-correct units, but a
+    missing or malformed value would make the CF claim false; emit an actionable
+    error rather than write it.
+    """
+    units = ds[variable].attrs.get("units")
+    if units is None:
+        print(
+            f"Error: variable {variable!r} has no `units` attribute; cannot write a "
+            "CF-compliant store. The source dataset is missing CF units.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    try:
+        cf_units.Unit(units)
+    except ValueError as exc:
+        print(
+            f"Error: variable {variable!r} has units {units!r}, which is not a valid "
+            f"udunits string ({exc}); refusing to write it under a CF-1.13 claim.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _verify_cf_decode(ds, variable: str) -> None:
+    """Confirm cf-xarray can resolve the X/Y/T axes before writing.
+
+    A write-side guard: if the coord attrs do not let cf-xarray identify the
+    longitude (X), latitude (Y), and time (T) axes, the output would not be the
+    CF-navigable store the envelope promises. Fail with an actionable message.
+    """
+    axes = ds.cf.axes
+    missing = [name for name in ("X", "Y", "T") if name not in axes]
+    if missing:
+        print(
+            f"Error: cf-xarray cannot resolve axes {missing} on the output "
+            f"(resolved: {sorted(axes)}); the coord CF attrs are incomplete.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _normalize_calendar(cal: str) -> str:
+    """Fold CF calendar aliases to a canonical name for comparison.
+
+    CF/cftime treat three pairs of names as aliases of the same calendar, so a
+    source labeled with one name and a written store labeled with its alias (or
+    vice versa) are the same calendar and must compare equal:
+
+    - `gregorian` -> `standard`
+    - `365_day` -> `noleap`
+    - `366_day` -> `all_leap`
+
+    `proleptic_gregorian` is a genuinely DISTINCT calendar (it extrapolates the
+    Gregorian rule before 1582), not an alias of `standard`, and xarray
+    round-trips it verbatim, so it is left unmapped here — a coercion between it
+    and `standard` is a real change to flag.
+    """
+    aliases = {
+        "gregorian": "standard",
+        "365_day": "noleap",
+        "366_day": "all_leap",
+    }
+    return aliases.get(cal, cal)
+
+
+def _verify_written_calendar(out: Path, variable: str, source_calendar: str) -> None:
+    """Re-open the written store and confirm the time calendar was not coerced.
+
+    xarray can silently coerce a non-standard CMIP6 calendar (noleap, 360_day)
+    to a proleptic-gregorian "standard" calendar on write if the time encoding is
+    not preserved, which would corrupt the date axis. Read the calendar back off
+    the written store and fail if it does not match the source, folding the
+    CF `gregorian`/`standard` alias so a correct store is not falsely rejected.
+    """
+    with xr.open_zarr(out, consolidated=True, decode_times=False) as ds:
+        written = ds["time"].attrs.get("calendar") or ds["time"].encoding.get("calendar")
+        units = ds["time"].attrs.get("units") or ds["time"].encoding.get("units")
+    if written is None:
+        print(
+            "Error: the written store has no `calendar` on its time axis; the source "
+            f"calendar {source_calendar!r} was not preserved.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if _normalize_calendar(str(written)) != _normalize_calendar(str(source_calendar)):
+        print(
+            f"Error: time calendar was coerced to {written!r} on write but the source "
+            f"calendar is {source_calendar!r}; refusing to emit a corrupted date axis.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if units is None:
+        print(
+            "Error: the written store has no udunits `units` on its time axis.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def main() -> None:
@@ -348,9 +562,6 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
-    import gcsfs
-    import xarray as xr
-
     zstore, grid_label, version = _resolve_zstore(args)
 
     fs = gcsfs.GCSFileSystem(token="anon")
@@ -364,6 +575,22 @@ def main() -> None:
         ds = xr.open_zarr(mapper, consolidated=True, decode_times=time_coder)
     except AttributeError:
         ds = xr.open_zarr(mapper, consolidated=True, use_cftime=True)
+
+    # Capture the source calendar and time units from the time encoding before
+    # any transform so they can be re-asserted on the written store. xarray
+    # populates encoding["calendar"] and encoding["units"] when decoding times
+    # with cftime. units may legitimately be absent; if so it is omitted from the
+    # write encoding and xarray regenerates a correct value for the decoded cftime
+    # values (no fabricated epoch).
+    source_calendar = ds["time"].encoding.get("calendar")
+    source_time_units = ds["time"].encoding.get("units")
+    if source_calendar is None:
+        print(
+            "Error: could not determine the source time calendar from the CMIP6 store; "
+            "refusing to write a store whose calendar cannot be verified.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # This fetcher handles regular 1-D lat/lon grids only. Ocean/curvilinear
     # CMIP6 grids carry 2-D latitude/longitude over (i, j) index dims, which the
@@ -379,8 +606,16 @@ def main() -> None:
         sys.exit(2)
 
     def _latest() -> date:
+        # The time axis is cftime under a possibly non-standard CF calendar
+        # (360_day, noleap, all_leap, julian), where a day value can be invalid
+        # for the stdlib (e.g. Feb 30 on 360_day). Clamp the day to the
+        # stdlib-valid maximum for that year/month so date() never raises. This
+        # value only seeds the relative-date grammar window; the real selection
+        # is string slicing on the cftime index (ds.sel(time=slice(...))), so a
+        # day clamped by a day or two is acceptable here.
         t = ds["time"].values.max()
-        return date(t.year, t.month, t.day)
+        last_day = calendar.monthrange(t.year, t.month)[1]
+        return date(t.year, t.month, min(t.day, last_day))
 
     start_date, end_date, log_line = _resolve_window(args.start, args.end, _latest)
     start_iso = start_date.isoformat()
@@ -406,15 +641,13 @@ def main() -> None:
         "input": None,
     }
     out = Path(args.output)
-    if _cache_hit(out, entry):
+    if _cache_hit(out, entry, args.variable):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping fetch.",
             file=sys.stderr,
         )
         return
 
-    # Keep only the requested variable (this drops *_bnds bounds variables and
-    # their dims), then map coords onto the envelope.
     if args.variable not in ds.data_vars:
         print(
             f"Error: variable {args.variable!r} not present in the dataset; "
@@ -422,8 +655,18 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(2)
+
+    # Capture the rich CMIP6 global attrs before any selection so they survive
+    # onto the envelope. The transform preserves them, overwrites only
+    # `Conventions`, and appends a history line.
+    source_globals = dict(ds.attrs)
+
+    # Keep only the requested variable. Selecting ds[[variable]] drops the
+    # *_bnds bounds variables; _drop_bounds then clears the now-dangling `bounds`
+    # attrs the coords would otherwise still carry.
     ds = ds[[args.variable]]
     ds = ds.rename({"lat": "latitude", "lon": "longitude"})
+    ds = _drop_bounds(ds)
     ds = _normalize_longitude(ds)
     if args.bbox:
         ds = _bbox_subset(ds, args.bbox)
@@ -443,23 +686,61 @@ def main() -> None:
         file=sys.stderr,
     )
 
-    ds.attrs.update(
-        rhiza_source=(
-            f"cmip6:{args.model}/{args.experiment}/{args.member}/"
-            f"{args.table}/{args.variable}/{grid_label}"
-        ),
-        rhiza_history=json.dumps([entry], sort_keys=True),
+    # Global attrs: preserve the source CMIP6 globals, overwrite Conventions to
+    # the current CF release, append a history line, and add the rhiza_* keys.
+    history_line = (
+        f"{datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')} cmip6-fetch: "
+        f"subset {args.variable} to {start_iso}..{end_iso}"
+        + (f" bbox {args.bbox}" if args.bbox else "")
+        + f"; mapped onto the Rhiza Envelope and re-stamped {_CF_CONVENTIONS}."
     )
-    _stamp_cf_attrs(ds)
+    prior_history = source_globals.get("history", "")
+    new_globals = dict(source_globals)
+    new_globals["Conventions"] = _CF_CONVENTIONS
+    new_globals["history"] = (
+        (prior_history + "\n" + history_line) if prior_history else history_line
+    )
+    new_globals["rhiza_source"] = (
+        f"cmip6:{args.model}/{args.experiment}/{args.member}/"
+        f"{args.table}/{args.variable}/{grid_label}"
+    )
+    new_globals["rhiza_history"] = json.dumps([entry], sort_keys=True)
+    ds.attrs = new_globals
+
+    _ensure_coord_cf_attrs(ds)
+    _validate_units(ds, args.variable)
+    _verify_cf_decode(ds, args.variable)
+
     # Per-variable encoding is not part of the envelope contract; clear it so the
-    # output is written with this skill's own codecs.
+    # output is written with this skill's own codecs. The time axis is the
+    # exception: its source `calendar` (and `units` when the source carried them)
+    # must be carried into the write encoding so the non-standard CMIP6 calendar
+    # is not coerced. A _FillValue, if present, belongs in the write encoding, not
+    # in attrs, and is restored only on data variables -- CF discourages a
+    # _FillValue on coordinate variables, so coords are cleared outright.
     for v in ds.variables:
+        fill = ds[v].encoding.get("_FillValue") if v in ds.data_vars else None
         ds[v].encoding = {}
+        if fill is not None:
+            ds[v].encoding["_FillValue"] = fill
+    # Omit units when the source did not carry them; xarray then generates a
+    # correct udunits string for the decoded cftime values rather than us
+    # inventing an epoch.
+    if source_time_units is not None:
+        ds["time"].encoding["units"] = source_time_units
+    ds["time"].encoding["calendar"] = source_calendar
 
     if out.exists():
-        shutil.rmtree(out)
+        if out.is_dir():
+            shutil.rmtree(out)
+        else:
+            out.unlink()
     out.parent.mkdir(parents=True, exist_ok=True)
     ds.to_zarr(out, mode="w", consolidated=True)
+
+    # Verify on the WRITTEN store that the source calendar survived; do not
+    # assume the write preserved it.
+    _verify_written_calendar(out, args.variable, source_calendar)
 
     print(f"Wrote: {args.output} ({dict(ds.sizes)})", file=sys.stderr)
 

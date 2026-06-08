@@ -23,8 +23,9 @@ are validated against the catalog CSV.
 - A downstream skill will clip, aggregate, compare, or plot the result as a Rhiza
   Envelope Zarr.
 
-CMIP6 is model projection, not observation or short-range forecast. For
-reanalysis ground truth use `arco-era5-fetch`.
+CMIP6 is model projection, not observation or short-range forecast. Historical
+runs cover 1850–2014 and scenario (`ssp*`) runs continue to 2100, so the natural
+windows are multi-year to multi-decadal.
 
 ## Usage
 
@@ -67,18 +68,56 @@ regular 1-D lat/lon grids.
 ### Output
 
 A consolidated Rhiza Envelope analysis Zarr with a `time` dimension and dims
-`(time, latitude, longitude)`, carrying the requested variable. Source variable
-units are forwarded verbatim. Times are decoded with the dataset's native
-calendar (often `noleap` or `360_day`). Stamped with
-`rhiza_source=cmip6:<model>/<experiment>/<member>/<table>/<variable>/<grid>`.
+`(time, latitude, longitude)`, carrying the requested variable.
+
+The output is fully CF-1.13 compliant. CMIP6 source data is already strongly
+CF-compliant, so the transform preserves the source metadata and repairs what
+mapping onto the envelope would otherwise break:
+
+- **Global attrs.** The rich CMIP6 globals (`title`, `source`, `institution`,
+  `references`, `tracking_id`, etc.) are preserved; `Conventions` is overwritten
+  to `CF-1.13` (the source carries an older inherited value such as
+  `CF-1.7 CMIP-6.0 UGRID-1.0`); a `history` line is appended; and
+  `rhiza_source=cmip6:<model>/<experiment>/<member>/<table>/<variable>/<grid>`
+  plus the provenance `rhiza_history` are added.
+- **Coordinates.** `latitude`/`longitude`/`time` carry CF `standard_name`,
+  `units` (`degrees_north`/`degrees_east`), and `axis` (`Y`/`X`/`T`). cf-xarray
+  resolves the X/Y/T axes — verified on the way out.
+- **Bounds integrity.** The Rhiza Envelope does not carry cell bounds, so the
+  `*_bnds` variables are dropped. The `bounds` attr each coordinate would
+  otherwise still carry (a dangling CF §7.1 reference to an absent variable) is
+  removed, so no coordinate points at a missing variable.
+- **Calendar.** Times are decoded with the dataset's native calendar (often
+  `noleap` or `360_day`); that source calendar and a udunits-valid `units` are
+  carried into the written time encoding and re-verified on the written store, so
+  the non-standard calendar is never silently coerced to `standard`.
+- **Units.** The data variable's source `units`, `standard_name`, and
+  `long_name` are forwarded verbatim; the `units` are validated with a real
+  udunits check before writing.
 
 ### Memory and performance
 
 The store is opened dask-backed, so the bbox/time selection streams to Zarr
 chunk-by-chunk on write and peak resident memory stays bounded to a few chunks
-regardless of how long the window is. `--bbox` and the window length are the
-levers. On tight-memory hosts keep the window short and the bbox tight, and run
-the `clip-region` skill immediately after to shrink to your area of interest.
+regardless of how long the window is. There is no size threshold or refusal —
+what to fetch is your call, from a few months over a small bbox to a global
+multi-decadal pull. `--bbox` restricts the spatial extent; the `clip-region`
+skill can shrink an existing output further. Monthly tables (`Amon`) are compact
+(a full 1850–2014 historical monthly slice is on the order of ~100 MB); daily
+tables (`day`) are correspondingly larger.
+
+### Errors
+
+Failures are reactive and each emits a one-line actionable message:
+
+- A catalog-CSV download/network failure reports the catalog URL and what to
+  check, then exits non-zero.
+- Facets that match no dataset list the available experiments, variables, and
+  members for the chosen model and exit 2.
+- Several matching `grid_label`s list the grids and ask for `--grid` (exit 2).
+- An ocean/curvilinear (2-D lat/lon) grid is rejected with a reprojection
+  message (exit 2).
+- A store open or write failure surfaces the underlying error.
 
 ### Provenance
 
@@ -93,11 +132,16 @@ resolved facets (including the chosen `grid` and the dataset `data_version`), th
 ## Examples
 
 ```bash
-# GFDL-CM4 historical near-surface air temperature over Kenya, six months
+# GFDL-CM4 historical near-surface air temperature over East Africa,
+# a multi-decade monthly slice
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
-  --start 2010-01-01 --end 2010-06-30 --bbox 7/32/-6/43 -o /tmp/cmip6.zarr
+  --table Amon --start 1980-01-01 --end 2014-12-31 --bbox 7/32/-6/43 -o /tmp/cmip6_hist.zarr
 
-# A future scenario: precipitation under ssp245, full global grid, one year
+# Full historical monthly record (1850–2014), global grid
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
+  --table Amon --start 1850-01-01 --end 2014-12-31 -o /tmp/cmip6_full_hist.zarr
+
+# A future scenario: monthly precipitation under ssp245, mid-century decade
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment ssp245 -v pr \
-  --start 2050-01-01 --end 2050-12-31 -o /tmp/cmip6_ssp245.zarr
+  --table Amon --start 2040-01-01 --end 2049-12-31 -o /tmp/cmip6_ssp245.zarr
 ```
