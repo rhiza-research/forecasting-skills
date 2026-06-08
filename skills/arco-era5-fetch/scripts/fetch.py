@@ -7,6 +7,7 @@
 #   "numpy",
 #   "cf_xarray",
 #   "cf_units",
+#   "cftime",
 # ]
 # ///
 """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a Rhiza Envelope Zarr."""
