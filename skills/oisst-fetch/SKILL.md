@@ -56,15 +56,65 @@ A consolidated Rhiza Envelope analysis Zarr with a `time` dimension and dims
 `(time, latitude, longitude)`, carrying `sst` (sea-surface temperature, °C).
 Land cells are NaN. Stamped with `rhiza_source=oisst`.
 
+The store is fully **CF-1.13** compliant (the Rhiza Envelope is a CF superset —
+CF plus the `rhiza_history` provenance key):
+
+- Global attrs: `Conventions="CF-1.13"`, `title`, `source` (NOAA OISST v2.1, read
+  over NOAA PSL OPeNDAP), `institution`, `references`, `history`.
+- `latitude`/`longitude`: `standard_name`, `units` (`degrees_north`/
+  `degrees_east`), `axis` (`Y`/`X`).
+- `time`: `standard_name=time`, `axis=T`, with an explicit udunits `units` and
+  `calendar` in the write encoding.
+- `sst`: `standard_name=sea_surface_temperature`, `long_name`, `units` (`degC`,
+  validated as a udunits temperature unit), and an explicit NaN `_FillValue` in
+  the encoding for land cells.
+
+cf-xarray resolves the X/Y/T axes on the output, and the write is gated on that
+decode succeeding.
+
 ### Memory and performance
 
 There is one variable (`sst`); `--bbox` and the window length are the memory
 levers. The output is streamed one year at a time — each year's bbox selection is
 loaded, written, and released before the next — so peak resident memory is bounded
-to a single year's selection regardless of how many years the window spans (the
-full global grid is ~720×1440, roughly 4 MB per day as float32). On tight-memory
-hosts keep `--bbox` tight and the window short, and run the `clip-region` skill
-afterward.
+to a single year's selection (the full global grid is ~720×1440, roughly 4 MB per
+day as float32). Keep `--bbox` tight and the window short; run the `clip-region`
+skill afterward to trim further.
+
+### Errors
+
+OISST is served over NOAA PSL's OPeNDAP server, which limits request size. The
+skill reports failures reactively — it does not pre-estimate request size or
+refuse against any threshold — so the messages below appear only after the
+provider or the resolver fails:
+
+- **Transport / oversized request** — the data transfer is rejected at load time
+  (a DAP failure, typically a large `--bbox` over a long window). The message
+  names the remedy: reduce `--bbox` and/or shorten the date range; this is not a
+  credentials or availability problem, so retrying the same request will not help.
+- **Availability** — a year file cannot be opened. The year may be outside the
+  served range (1981-09 to present) or the server is unreachable; check the date
+  range. Distinct from the oversized case.
+- **Empty window** — the resolved window is in range but contains no data; exits
+  with a "no data in window" message, kept distinct from a failure.
+- **`latest` resolution** — when neither the current nor previous year file can be
+  read, the message distinguishes a transport failure (server unreachable) from a
+  genuine absence of the year files (use an absolute `--start`/`--end` in the
+  served range instead).
+
+Exit codes: exit `2` covers two groups — the pre-network argument/parse errors
+(a malformed `--start`/`--end` date token, a reversed resolved range, or a
+malformed `--bbox`) and the load-time data-transfer failures on a year's slice
+(transport, availability, or an unexpected read failure). Exit `1` covers the
+remaining failures: the empty-window case (no data in the resolved range), a
+`latest` resolution failure, a year-file open failure, a `--bbox` that selects
+no grid cells, and a CF stamping or decode failure.
+
+If a multi-year window fails partway through (a later year's transfer fails after
+an earlier year was written), the partial store is removed before the non-zero
+exit, so a later identical run does not falsely accept it as a cache hit. The
+cache-hit check also reads back a corner of `sst` to confirm the store is complete
+before honoring a hit.
 
 ### Provenance
 
@@ -78,11 +128,15 @@ version-bump workflow.
 
 ## Examples
 
+OISST is daily observation data; typical requests span days to a few weeks over a
+bounded region.
+
 ```bash
 # SST over the seas around East Africa for three days
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start 2024-06-01 --end 2024-06-03 \
   -o /tmp/oisst.zarr
 
-# Last 3 weeks ending at the newest available day, full global grid
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start latest-3w --end latest -o /tmp/oisst_week.zarr
+# Last 3 weeks ending at the newest available day, over a bounded region
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start latest-3w --end latest \
+  -o /tmp/oisst_week.zarr
 ```
