@@ -7,6 +7,7 @@
 #   "numpy",
 #   "cf_xarray",
 #   "cf_units",
+#   "cftime",
 # ]
 # ///
 """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a Rhiza Envelope Zarr."""
@@ -532,7 +533,10 @@ def _bbox_subset(ds, bbox: str):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+    )
     p.add_argument(
         "--start",
         required=True,
