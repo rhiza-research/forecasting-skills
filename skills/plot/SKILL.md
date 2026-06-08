@@ -4,7 +4,7 @@ description: Render a 2D heatmap or 1D time series PNG from any gridded or stati
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
 ---
 
 # plot

@@ -200,7 +200,7 @@ class DayUnavailable(Exception):
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.7"
+_RHIZA_SKILL_VERSION = "0.1.8"
 
 
 def _load_history(zarr_path: Path) -> list:
