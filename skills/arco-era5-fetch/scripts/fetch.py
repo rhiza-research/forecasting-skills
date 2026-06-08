@@ -5,6 +5,8 @@
 #   "zarr",
 #   "gcsfs",
 #   "numpy",
+#   "cf_xarray",
+#   "cf_units",
 # ]
 # ///
 """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a Rhiza Envelope Zarr."""
@@ -27,6 +29,36 @@ _RHIZA_SKILL_VERSION = "0.1.0"
 # Path is the published value from the arco-era5 README, not a guess.
 _ARCO_STORE = "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
 _STORAGE_OPTIONS = {"token": "anon"}
+
+# Provenance recorded in the output's global `history` attr and `source` attr.
+_ARCO_REFERENCE = "https://github.com/google-research/arco-era5"
+_ARCO_INSTITUTION = "ECMWF (ERA5 reanalysis), republished as ARCO-ERA5 by Google Research"
+
+# udunits-invalid unit strings the ARCO store carries, mapped to a CF-valid
+# equivalent. UDUNITS-2 accepts the store's GRIB-style `**` exponent notation
+# (e.g. `m s**-1`, `J m**-2`) as-is, so those pass through untouched; only these
+# few non-parseable placeholders need rewriting. "1" is the CF/udunits spelling
+# of a dimensionless quantity; ERA5's water-equivalent depths are meters.
+_UNIT_FIXUPS = {
+    "(0 - 1)": "1",
+    "~": "1",
+    "dimensionless": "1",
+    "m of water equivalent": "m",
+}
+
+# Curated CF standard_name fills for common surface variables the ARCO store
+# leaves without a `standard_name`. Each value is grounded in the store's own
+# attrs: the pressure-level `temperature` var carries `air_temperature` with the
+# same units (K), and the pressure-level `u/v_component_of_wind` vars carry
+# `eastward_wind`/`northward_wind` with the same units (m s**-1). The map is
+# deliberately small; a variable absent here simply carries no `standard_name`,
+# which CF permits (units + long_name remain mandatory and present).
+_CURATED_STANDARD_NAME = {
+    "2m_temperature": "air_temperature",
+    "2m_dewpoint_temperature": "dew_point_temperature",
+    "10m_u_component_of_wind": "eastward_wind",
+    "10m_v_component_of_wind": "northward_wind",
+}
 
 # --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
 #
@@ -204,36 +236,184 @@ def _load_history(zarr_path: Path) -> list:
     return parsed
 
 
-def _cache_hit(out: Path, entry: dict) -> bool:
-    """Return True if the zarr at `out` was produced by this same entry."""
+def _store_is_complete(zarr_path: Path, expected_vars) -> bool:
+    """Return True if the Zarr at `zarr_path` is a complete, readable store.
+
+    A `to_zarr` that crashed after the group metadata + attrs were flushed but
+    before all chunks landed leaves a store whose `rhiza_history` already matches
+    the request — a stale-but-matching attr would otherwise be trusted as a cache
+    hit even though the arrays are truncated or absent. This check guards against
+    that: it opens the store consolidated and confirms each expected data
+    variable is present and that a one-element corner slice actually computes
+    (forcing a real chunk read). Any open/read failure, or a missing expected
+    variable, means the store is incomplete and must be re-fetched.
+
+    `expected_vars` is the requested variable list, or None for "all variables";
+    when None, every data variable already in the store is probed (the store's
+    own variable set is the only available expectation).
+    """
+    import xarray as xr
+
+    try:
+        with xr.open_zarr(zarr_path, consolidated=True) as ds:
+            present = set(ds.data_vars)
+            wanted = set(expected_vars) if expected_vars else present
+            if not wanted or not wanted.issubset(present):
+                return False
+            for name in wanted:
+                var = ds[name]
+                # Read a single corner element to force a chunk read; a truncated
+                # store raises here rather than returning a value.
+                corner = {dim: 0 for dim in var.dims}
+                var.isel(**corner).compute()
+    except Exception:  # noqa: BLE001 — any failure means the store is not usable as a cache hit
+        return False
+    return True
+
+
+def _cache_hit(out: Path, entry: dict, expected_vars) -> bool:
+    """Return True if the zarr at `out` was produced by this same entry AND is a
+    complete, readable store.
+
+    The history-attr match alone is not sufficient: a partial prior write can
+    leave a matching `rhiza_history` over truncated arrays. `_store_is_complete`
+    confirms the arrays are actually present and readable before the prior output
+    is trusted; an incomplete store is treated as a miss and overwritten.
+    """
     if not out.exists():
         return False
     history = _load_history(out)
     if not history:
         return False
     existing_entry = history[0]
-    return (
+    matches = (
         existing_entry.get("skill") == entry["skill"]
         and existing_entry.get("version") == entry["version"]
         and existing_entry.get("args") == entry["args"]
         and existing_entry.get("input") == entry["input"]
     )
+    if not matches:
+        return False
+    if not _store_is_complete(out, expected_vars):
+        print(
+            f"Note: {out} matches the request but is an incomplete/unreadable store "
+            "(likely a prior interrupted write); re-fetching.",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
-def _stamp_cf_attrs(ds):
-    """Stamp CF standard_name/units/axis on spatial + time coords (non-destructive)."""
+def _fix_units(units):
+    """Return a candidate CF unit string for an ARCO source `units` value, or
+    None when the source carries no units.
+
+    UDUNITS-2 accepts the store's GRIB-style exponent notation directly, so only
+    the handful of non-parseable placeholders in `_UNIT_FIXUPS` are rewritten;
+    everything else is passed through unchanged. A missing/empty source units
+    value returns None rather than a fabricated dimensionless "1" — silently
+    relabeling a units-less variable as dimensionless would manufacture false
+    CF compliance, so the caller fails loudly on None instead.
+    """
+    if not units:
+        return None
+    return _UNIT_FIXUPS.get(units, units)
+
+
+def _udunits_valid(units: str) -> bool:
+    """Return True if `units` parses as a UDUNITS-2 unit string.
+
+    cf_units.Unit raises ValueError for a non-parseable unit; any such failure
+    (and any other parse-time error) means the string is not udunits-valid.
+    """
+    import cf_units
+
+    try:
+        cf_units.Unit(units)
+    except Exception:  # noqa: BLE001 — cf_units signals an unparseable unit by raising
+        return False
+    return True
+
+
+def _stamp_data_var_attrs(ds) -> None:
+    """Stamp CF `units` (mandatory), `long_name` (mandatory), and `standard_name`
+    (when a valid CF value applies) on every data variable, validating each final
+    `units` string against udunits.
+
+    Source attrs from the ARCO store are used when present: `long_name` and
+    `standard_name` are authored by the ERA5->Zarr pipeline and forwarded as-is,
+    `units` is forwarded after the small udunits fixup. A variable with no source
+    `standard_name` gets one only from the curated map; otherwise it carries none
+    (CF permits omission). `long_name` falls back to the variable name only when
+    the source omits it; it never masks a units failure.
+
+    Output is written under `Conventions="CF-1.13"`, so every data variable's
+    final `units` must parse as a UDUNITS-2 unit. A variable whose source units
+    are missing, or are non-parseable and not covered by `_UNIT_FIXUPS`, raises
+    ValueError naming the variable and the offending string rather than writing
+    an invalid (or fabricated-dimensionless) unit under a false CF claim.
+    """
+    for name in ds.data_vars:
+        src = ds[name].attrs
+        raw_units = src.get("units")
+        units = _fix_units(raw_units)
+        if units is None:
+            raise ValueError(
+                f"data variable {name!r} has no source `units`; refusing to write it "
+                "under Conventions=CF-1.13. A genuinely dimensionless quantity must "
+                'carry units "1" at the source; a missing-units variable is not '
+                "silently relabeled dimensionless. Select a variable that carries units."
+            )
+        if not _udunits_valid(units):
+            raise ValueError(
+                f"data variable {name!r} has units {units!r} that are not udunits-valid "
+                f"(source units were {raw_units!r}); refusing to write it under "
+                "Conventions=CF-1.13. Add a CF-valid mapping for this unit to the "
+                "fixup table, or select a variable whose units parse."
+            )
+        long_name = src.get("long_name") or str(name)
+        standard_name = src.get("standard_name") or _CURATED_STANDARD_NAME.get(name)
+        # Replace the source attr block so GRIB bookkeeping (short_name, etc.)
+        # does not ride along into the envelope.
+        new_attrs = {"units": units, "long_name": long_name}
+        if standard_name:
+            new_attrs["standard_name"] = standard_name
+        ds[name].attrs = new_attrs
+
+
+def _stamp_coord_attrs(ds) -> None:
+    """Stamp CF standard_name/units/axis on spatial, time, and level coords."""
     if "latitude" in ds.coords:
-        ds["latitude"].attrs.setdefault("standard_name", "latitude")
-        ds["latitude"].attrs.setdefault("units", "degrees_north")
-        ds["latitude"].attrs.setdefault("axis", "Y")
+        ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
     if "longitude" in ds.coords:
-        ds["longitude"].attrs.setdefault("standard_name", "longitude")
-        ds["longitude"].attrs.setdefault("units", "degrees_east")
-        ds["longitude"].attrs.setdefault("axis", "X")
+        ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
     if "time" in ds.coords:
-        ds["time"].attrs.setdefault("standard_name", "time")
-        ds["time"].attrs.setdefault("axis", "T")
-    return ds
+        ds["time"].attrs["standard_name"] = "time"
+        ds["time"].attrs["axis"] = "T"
+    if "level" in ds.coords:
+        # ARCO stores `level` as integer pressure in hPa with a non-CF units
+        # label ("Hectopascal(hPa)"). The values are already hPa, so this is a
+        # relabel, not a conversion; CF orders pressure increasing downward.
+        ds["level"].attrs.update(
+            standard_name="air_pressure",
+            units="hPa",
+            positive="down",
+            axis="Z",
+            long_name="pressure level",
+        )
+
+
+def _global_attrs(start_iso: str, end_iso: str) -> dict:
+    """Build the CF-1.13 global attrs for the output store."""
+    stamped = datetime.now(UTC).isoformat(timespec="seconds")
+    return {
+        "Conventions": "CF-1.13",
+        "title": f"ARCO-ERA5 reanalysis {start_iso}..{end_iso}",
+        "institution": _ARCO_INSTITUTION,
+        "source": _ARCO_STORE,
+        "references": _ARCO_REFERENCE,
+        "history": f"{stamped}: fetched by arco-era5-fetch {_RHIZA_SKILL_VERSION}",
+    }
 
 
 def _normalize_longitude(ds):
@@ -251,9 +431,21 @@ def _normalize_longitude(ds):
 def _bbox_subset(ds, bbox: str):
     """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox.
 
-    The slice direction follows each axis's own monotonic order (ERA5 latitude is
-    descending; longitude is ascending after normalization), so the same bbox
-    works regardless of axis order.
+    Latitude is sliced following the axis's own monotonic order (ERA5 latitude is
+    descending), so the same bbox works regardless of axis order.
+
+    Longitude is normalized to ascending [-180, 180) upstream. A bbox with
+    west <= east selects the contiguous span [west, east]. A bbox with
+    west > east crosses the antimeridian (e.g. 10/170/-10/-170): the requested
+    span wraps past +180/-180, so it is selected as the union `lon >= west` OR
+    `lon <= east`, dropping the interior (non-selected) band while preserving the
+    grid's native ascending longitude order. The result is monotonic ascending
+    and holds the two dateline-flanking spans (the high-positive cells near +180
+    and the negative cells near -180) in that ascending order; they are not
+    physically contiguous across the dateline, but the coordinate stays sorted so
+    downstream `.sel(slice(...))` tools keep working. Selecting that as a single
+    slice(west, east) would instead pick the empty or inverted interval, which is
+    the bug this branch avoids.
     """
     try:
         north, west, south, east = (float(x) for x in bbox.split("/"))
@@ -261,15 +453,40 @@ def _bbox_subset(ds, bbox: str):
         print("Error: --bbox must be four decimal degrees N/W/S/E.", file=sys.stderr)
         sys.exit(2)
     lat = ds["latitude"].values
-    lon = ds["longitude"].values
     lat_slice = slice(north, south) if lat[0] > lat[-1] else slice(south, north)
-    lon_slice = slice(west, east) if lon[0] < lon[-1] else slice(east, west)
-    ds = ds.sel(latitude=lat_slice, longitude=lon_slice)
+    ds = ds.sel(latitude=lat_slice)
+
+    if west <= east:
+        # Contiguous longitude span. Slice in the axis's own ascending order.
+        lon = ds["longitude"].values
+        lon_slice = slice(west, east) if len(lon) == 0 or lon[0] < lon[-1] else slice(east, west)
+        ds = ds.sel(longitude=lon_slice)
+    else:
+        # Antimeridian crossing (west > east): the span runs west .. +180 and
+        # -180 .. east. Select the union `lon >= west` OR `lon <= east` with a
+        # boolean mask and drop the interior band, keeping the grid's native
+        # ascending longitude order. This preserves a monotonic ascending
+        # coordinate (the high-positive cells near +180 come first, the negative
+        # cells near -180 follow), so downstream tools that assume a sorted
+        # longitude and use `.sel(slice(...))` keep working. A concat of the two
+        # halves would instead jump downward at the seam and break them.
+        lon = ds["longitude"]
+        ds = ds.where((lon >= west) | (lon <= east), drop=True)
+
     if ds.sizes.get("latitude", 0) == 0 or ds.sizes.get("longitude", 0) == 0:
-        print(
-            f"Error: --bbox {bbox} selects no grid cells; check the extent and N/W/S/E order.",
-            file=sys.stderr,
-        )
+        antimeridian = west > east
+        if antimeridian:
+            print(
+                f"Error: --bbox {bbox} crosses the antimeridian (west {west} > east {east}) "
+                "but selects no grid cells; check the N/S extent and that west/east "
+                "bracket the intended dateline-crossing span.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Error: --bbox {bbox} selects no grid cells; check the extent and N/W/S/E order.",
+                file=sys.stderr,
+            )
         sys.exit(1)
     return ds
 
@@ -299,6 +516,16 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
+    # Reject a malformed date token before any network call: parse both endpoints
+    # for syntax now (no `latest` resolution, which needs the store). A bad token
+    # exits 2 here, before the store is opened, per the CONVENTIONS.md grammar.
+    for value in (args.start, args.end):
+        try:
+            _parse_token(value)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(2)
+
     import xarray as xr
 
     # Lazy open with chunks=None: reads only metadata, so `latest` resolution and
@@ -307,7 +534,18 @@ def main() -> None:
     # that selection is materialized. (A dask-backed open forces the longitude
     # normalization sort to pull the whole global grid per step, which is far slower
     # for a bbox request with no memory benefit; the selection itself is the bound.)
-    ds = xr.open_zarr(_ARCO_STORE, storage_options=_STORAGE_OPTIONS, chunks=None)
+    # Store-open failures (network, bad path, gcsfs error) surface as a one-line
+    # actionable message rather than a raw traceback.
+    try:
+        ds = xr.open_zarr(_ARCO_STORE, storage_options=_STORAGE_OPTIONS, chunks=None)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"Error: could not open the ARCO-ERA5 store at {_ARCO_STORE} "
+            f"({type(exc).__name__}: {exc}). Check network access to Google Cloud "
+            "Storage; the store is read anonymously, so no credentials are needed.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # `latest` resolves from the store's own time coord max; memoized so it is
     # read at most once and only when a token references `latest`.
@@ -336,23 +574,14 @@ def main() -> None:
         "input": None,
     }
     out = Path(args.output)
-    if _cache_hit(out, entry):
+    if _cache_hit(out, entry, args.variable):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping fetch.",
             file=sys.stderr,
         )
         return
 
-    ds = _normalize_longitude(ds)
-    if args.bbox:
-        ds = _bbox_subset(ds, args.bbox)
-
-    # Inclusive whole-day window over the hourly time axis.
-    ds = ds.sel(time=slice(np.datetime64(f"{start_iso}T00:00"), np.datetime64(f"{end_iso}T23:59")))
-    if ds.sizes.get("time", 0) == 0:
-        print(f"Error: ARCO-ERA5 has no data in {start_iso}..{end_iso}.", file=sys.stderr)
-        sys.exit(1)
-
+    # Selection: variable -> bbox -> time. Each step prunes before the eager load.
     if args.variable:
         missing = [v for v in args.variable if v not in ds.data_vars]
         if missing:
@@ -365,26 +594,107 @@ def main() -> None:
         ds = ds[args.variable]
     else:
         print(
-            "Note: no --variable given; fetching all data variables (large). Pass -v to restrict.",
+            "Note: no --variable given; selecting all data variables (large). Pass -v to restrict.",
             file=sys.stderr,
         )
 
-    print(f"Fetching arco-era5 {start_iso}..{end_iso}", file=sys.stderr)
+    ds = _normalize_longitude(ds)
+    if args.bbox:
+        ds = _bbox_subset(ds, args.bbox)
 
-    ds.attrs.update(
-        rhiza_source="arco-era5",
-        rhiza_history=json.dumps([entry], sort_keys=True),
+    # Inclusive whole-day window over the hourly time axis.
+    ds = ds.sel(time=slice(np.datetime64(f"{start_iso}T00:00"), np.datetime64(f"{end_iso}T23:59")))
+    if ds.sizes.get("time", 0) == 0:
+        print(f"Error: ARCO-ERA5 has no data in {start_iso}..{end_iso}.", file=sys.stderr)
+        sys.exit(1)
+
+    print(
+        f"Fetching arco-era5 {start_iso}..{end_iso}",
+        file=sys.stderr,
     )
-    _stamp_cf_attrs(ds)
+
+    ds.attrs.clear()
+    ds.attrs.update(_global_attrs(start_iso, end_iso))
+    ds.attrs["rhiza_source"] = "arco-era5"
+    ds.attrs["rhiza_history"] = json.dumps([entry], sort_keys=True)
+    _stamp_coord_attrs(ds)
+    # Validate and stamp every data variable's CF attrs. A variable whose final
+    # `units` cannot be made udunits-valid (missing, or non-parseable and not in
+    # the fixup map) fails here rather than being written under a false CF claim.
+    try:
+        _stamp_data_var_attrs(ds)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
     # Per-variable encoding is not part of the envelope contract; clear it so the
-    # output is written with this skill's own codecs.
+    # output is written with this skill's own codecs. The time coord's CF units +
+    # calendar are set explicitly in the write encoding so the on-disk time axis
+    # is self-describing per CF.
     for v in ds.variables:
         ds[v].encoding = {}
+    time_encoding = {}
+    if "time" in ds.coords:
+        ref = start_iso
+        ds["time"].encoding = {
+            "units": f"hours since {ref} 00:00:00",
+            "calendar": "proleptic_gregorian",
+        }
+        time_encoding = ds["time"].encoding
 
-    if out.exists():
-        shutil.rmtree(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    ds.to_zarr(out, mode="w", consolidated=True)
+    # Write-side CF decode check: re-encode then decode the in-memory dataset with
+    # cf_xarray's machinery and confirm every axis resolves. This catches a coord
+    # attr regression before the store is written rather than at read time.
+    import cf_xarray  # noqa: F401 — registers the .cf accessor
+
+    try:
+        axes = ds.cf.axes
+        for required in ("X", "Y", "T"):
+            if required not in axes:
+                raise ValueError(f"CF axis {required} did not resolve from coord attrs")
+        if "level" in ds.coords and "Z" not in ds.cf.axes and "vertical" not in ds.cf.coordinates:
+            raise ValueError("level present but did not resolve as a CF vertical coordinate")
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"Error: the output failed the CF decode check before writing ({exc}). "
+            "This is a bug in the fetcher's CF stamping, not a data problem.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        # Clear any prior output. A Zarr store is a directory, but the path may
+        # already exist as a regular file (or symlink): rmtree raises
+        # NotADirectoryError on a file, so branch on the path kind and unlink a
+        # file vs. remove a directory tree.
+        if out.is_dir():
+            shutil.rmtree(out)
+        elif out.exists():
+            out.unlink()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        encoding = {"time": time_encoding} if time_encoding else None
+        ds.to_zarr(out, mode="w", consolidated=True, encoding=encoding)
+    except MemoryError:
+        # Reactive backstop only: the eager `.to_zarr()` load materializes the
+        # whole pruned selection into host memory at once, so a very large
+        # selection can exhaust memory. This handler is best-effort — under Linux
+        # memory overcommit an OOM typically arrives as a SIGKILL (the process is
+        # killed outright, printing only "Killed"), so a catchable MemoryError is
+        # not guaranteed. When it is catchable, surface it actionably so a caller
+        # narrows the request rather than blindly retrying the same dead call.
+        print(
+            "Error: ran out of memory materializing the selection. "
+            "Narrow it with -v, --bbox, or a shorter window.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"Error: failed while reading from the ARCO-ERA5 store or writing {args.output} "
+            f"({type(exc).__name__}: {exc}).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     print(f"Wrote: {args.output}", file=sys.stderr)
 

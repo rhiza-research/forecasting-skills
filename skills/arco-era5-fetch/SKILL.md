@@ -53,32 +53,75 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox 
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention, so negative west/east values select correctly on
   ERA5's native 0..360 grid. The slice follows each axis's own order, so any
-  region works. Omit to fetch the full native grid. To fetch over a country, get
-  its bbox from the `resolve-region` skill.
+  region works. A bbox whose west is greater than its east is read as crossing
+  the antimeridian (e.g. `10/170/-10/-170`): the cells with `lon >= west` or
+  `lon <= east` are kept and the interior band is dropped, preserving the grid's
+  native ascending longitude order. The two dateline-flanking spans (the cells
+  near +180 followed by the cells near -180) stay in ascending order — monotonic,
+  though not physically contiguous across the dateline — so downstream tools that
+  assume a sorted longitude keep working.
+  Omit to fetch the full native grid. To fetch over a country, get its bbox from
+  the `resolve-region` skill.
 - `--variable`, `-v` — restrict to one data variable; repeat once per variable
-  (`-v 2m_temperature -v total_precipitation`). Omit to fetch all variables
-  (large — ERA5 has many surface and pressure-level fields).
+  (`-v 2m_temperature -v total_precipitation`). Almost always supply at least one:
+  ARCO-ERA5 carries hundreds of surface and pressure-level fields, and omitting
+  `--variable` selects all of them. An unknown name exits 2 and prints the
+  available variables.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
 ### Output
 
-A consolidated Rhiza Envelope analysis Zarr with a `time` dimension and dims
-`(time, latitude, longitude)` — plus `level` when a pressure-level variable is
-selected. Source variable units are forwarded verbatim. Stamped with
-`rhiza_source=arco-era5`.
+A consolidated, fully CF-1.13 compliant Rhiza Envelope analysis Zarr with a
+`time` dimension and dims `(time, latitude, longitude)` — plus `level` when a
+pressure-level variable is selected. The Rhiza Envelope is a CF superset: the
+output passes CF first, then carries the `rhiza_history` provenance key.
 
-### Memory and performance
+CF stamping on the output:
 
-`--bbox` and `--variable` are the memory levers: peak memory is set by the size of
-the selection (variables × levels × bbox cells × window length), which is read and
-written once — xarray prunes to the selection before pulling any array bytes, so an
-unselected variable or out-of-bbox cell is never materialized.
+- **Global attrs:** `Conventions="CF-1.13"`, plus `title`, `institution`,
+  `source` (the ARCO-ERA5 store path), `references`, and `history`.
+- **Coordinates:** `latitude` (`standard_name=latitude`, `units=degrees_north`,
+  `axis=Y`), `longitude` (`standard_name=longitude`, `units=degrees_east`,
+  `axis=X`), `time` (`standard_name=time`, `axis=T`, with CF `units` and
+  `calendar=proleptic_gregorian` carried in the on-disk encoding). When a
+  pressure-level variable is selected, `level` carries `standard_name=air_pressure`,
+  `units=hPa`, and `positive=down`.
+- **Data variables:** every variable carries a udunits-valid `units` and a
+  `long_name`. The ARCO store's own `units`/`long_name`/`standard_name` are
+  forwarded; a few udunits-invalid unit placeholders the store uses
+  (`(0 - 1)`, `~`, `dimensionless`, `m of water equivalent`) are normalized to a
+  CF-valid spelling. Each variable's final `units` string is then validated
+  against udunits: a variable whose source units are missing, or are
+  non-parseable and not covered by that normalization map, is a hard failure —
+  the fetcher exits non-zero naming the variable and its offending units rather
+  than writing invalid units under a `Conventions="CF-1.13"` claim. A
+  missing-units variable is never silently relabeled dimensionless.
+  `standard_name` is set when the store supplies one or a curated value applies,
+  and omitted otherwise (CF permits this).
 
-The dominant cost is the selection's breadth: omitting `--variable` fetches every
-ARCO-ERA5 variable, including all 37 pressure levels — very large. Restrict to the
-variables you need with `-v`, keep `--bbox` tight, and on tight-memory hosts keep
-the window short and run the `clip-region` skill immediately after to shrink to
-your area of interest.
+Stamped with `rhiza_source=arco-era5`.
+
+### Memory, performance, and error handling
+
+`--bbox` and `--variable` are the levers that set how much data is pulled: the
+selection size is variables × levels × bbox cells × window length, read and
+written once — xarray prunes to the selection before pulling any array bytes, so
+an unselected variable or out-of-bbox cell is never materialized.
+
+The selection is materialized into host memory in a single eager `.to_zarr()`
+load, so a very large request (no `--bbox`, all variables, a pressure-level
+variable spanning all 37 levels, or a long window) is slow and may exhaust
+memory. The fetcher does not refuse a request on a size estimate — what to fetch
+is your call. Keep a request affordable by selecting the specific variables you
+need, keeping `--bbox` tight, and keeping the window to days or a small number of
+weeks; run `clip-region` afterward to shrink further.
+
+Errors are reported reactively. Store-open, network, and path failures emit a
+one-line actionable message instead of a raw traceback. If the eager load
+actually runs out of memory and raises a catchable `MemoryError`, the fetcher
+reports it and suggests narrowing with `-v`, `--bbox`, or a shorter window (under
+Linux memory overcommit an OOM may instead kill the process outright, printing
+only "Killed").
 
 ### Provenance
 
@@ -97,6 +140,10 @@ invocation must translate underscore → hyphen.
 
 ## Examples
 
+ARCO-ERA5 is hourly, so every example uses a short window (days to a small number
+of weeks), a tight `--bbox`, and explicit `-v` variables. That combination keeps
+the selection small and the fetch fast.
+
 ```bash
 # 2m temperature over Kenya for two days
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-02 \
@@ -105,4 +152,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-02 
 # Last week ending at the newest available time, two variables
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start latest-1w --end latest \
   --bbox 23/-20/-37/59 -v 2m_temperature -v total_precipitation -o /tmp/arco_week.zarr
+
+# A pressure-level variable for one day — adds a CF `level` (air_pressure) dim
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-01 \
+  --bbox 7/32/-6/43 -v temperature -o /tmp/arco_level.zarr
 ```
