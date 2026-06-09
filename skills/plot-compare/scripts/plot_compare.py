@@ -18,8 +18,10 @@
 
 Top row is dataset A, bottom row is dataset B. When exactly one of A/B
 is a station-schema Zarr, it is placed on the top row to match the
-canonical "stations vs. satellite" presentation. A shared colormap and
-normalization are used across both rows.
+canonical "stations vs. satellite" presentation. Each row can draw its
+own variable (--variable-a/-b). The color scale is shared across both
+rows when they are the same variable with matching units, and per-row
+independent otherwise (--shared-scale / --independent-scale override).
 """
 
 import argparse
@@ -29,7 +31,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.7"
+_RHIZA_SKILL_VERSION = "0.1.8"
 
 # Shared categorical colormap and BoundaryNorm for precipitation (mm).
 PRECIP_COLORS = [
@@ -52,6 +54,33 @@ def _cf_dim(obj, cf_name):
         return obj.cf[cf_name].name
     except KeyError:
         return None
+
+
+def _real_data_vars(ds):
+    """Data vars that hold actual data, not a CF grid-mapping container.
+
+    A CF grid-mapping variable (e.g. ``latitude_longitude``) is a
+    zero-data CRS container: it carries a ``grid_mapping_name`` attr and is
+    named by another var's ``grid_mapping`` attr. Such vars are skipped so a
+    no-flag auto-pick lands on a real data var instead of the CRS container.
+    """
+    mapping_targets = {
+        ds[d].attrs.get("grid_mapping") for d in ds.data_vars if ds[d].attrs.get("grid_mapping")
+    }
+    return [
+        v
+        for v in ds.data_vars
+        if "grid_mapping_name" not in ds[v].attrs and v not in mapping_targets
+    ]
+
+
+def _auto_variable(ds):
+    """First real (non-CRS) data var, preferring one with >= 2 dims."""
+    candidates = _real_data_vars(ds)
+    if not candidates:
+        return None
+    multidim = [v for v in candidates if len(ds[v].dims) >= 2]
+    return (multidim or candidates)[0]
 
 
 def _hash_zarr(zarr_path: Path) -> str:
@@ -361,12 +390,54 @@ def main() -> None:
         help="Input Zarr; pass exactly twice (first = A, second = B)",
     )
     p.add_argument("--output", "-o", required=True)
-    p.add_argument("--variable", "-v")
+    p.add_argument(
+        "--variable",
+        "-v",
+        help="Variable for both rows. Per-row --variable-a/-b take precedence.",
+    )
+    p.add_argument(
+        "--variable-a",
+        help="Variable for row A. Overrides --variable for that row. "
+        "Default: --variable, else first real data var of input A.",
+    )
+    p.add_argument(
+        "--variable-b",
+        help="Variable for row B. Overrides --variable for that row. "
+        "Default: --variable, else first real data var of input B.",
+    )
     p.add_argument(
         "--colormap",
         default=None,
-        help="matplotlib colormap name. When omitted, the categorical "
-        "precipitation colormap with BoundaryNorm is used.",
+        help="matplotlib colormap name. In shared-scale mode, when omitted the "
+        "categorical precipitation colormap with BoundaryNorm is used. In "
+        "independent-scale mode it is the per-row default (falls back to "
+        "'viridis'); --colormap-a/-b override it per row.",
+    )
+    p.add_argument(
+        "--colormap-a",
+        default=None,
+        help="matplotlib colormap for row A in independent-scale mode "
+        "(precedence: --colormap-a, then --colormap, then 'viridis').",
+    )
+    p.add_argument(
+        "--colormap-b",
+        default=None,
+        help="matplotlib colormap for row B in independent-scale mode "
+        "(precedence: --colormap-b, then --colormap, then 'viridis').",
+    )
+    scale_grp = p.add_mutually_exclusive_group()
+    scale_grp.add_argument(
+        "--shared-scale",
+        action="store_true",
+        help="Force one shared color scale across both rows. Default: shared "
+        "when both rows resolve to the same variable AND matching units, else "
+        "independent per-row scales.",
+    )
+    scale_grp.add_argument(
+        "--independent-scale",
+        action="store_true",
+        help="Force per-row color scales (each row its own vmin/vmax/colorbar). "
+        "Default: independent unless both rows are the same variable + units.",
     )
     p.add_argument("--title")
     p.add_argument("--panels", type=int, default=3)
@@ -414,14 +485,18 @@ def main() -> None:
     ds_a = xr.open_zarr(path_a, consolidated=False)
     ds_b = xr.open_zarr(path_b, consolidated=False)
 
-    variable = args.variable or (list(ds_a.data_vars)[0] if ds_a.data_vars else None)
-    if variable is None or variable not in ds_a or variable not in ds_b:
-        print(
-            f"Error: variable '{variable}' must exist in both inputs. "
-            f"A: {list(ds_a.data_vars)}  B: {list(ds_b.data_vars)}",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+    # Per-row variable resolution: explicit per-row flag, then the shared
+    # --variable, then that input's own first real (non-CRS) data var.
+    var_a = args.variable_a or args.variable or _auto_variable(ds_a)
+    var_b = args.variable_b or args.variable or _auto_variable(ds_b)
+    for side, var, ds in (("A", var_a, ds_a), ("B", var_b, ds_b)):
+        if var is None or var not in ds:
+            print(
+                f"Error: variable '{var}' must exist in input {side}. "
+                f"{side} real data vars: {_real_data_vars(ds)}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     td_a = _pick_time_dim(ds_a, args.time_dim)
     td_b = _pick_time_dim(ds_b, args.time_dim)
@@ -634,23 +709,40 @@ def main() -> None:
         common_labels = np.asarray(common_enc[-n:], dtype="int64").astype(ns_dtype)
         common_tol = np.timedelta64(1, "s")
 
-    da_a = ds_a[variable]
-    da_b = ds_b[variable]
+    da_a = ds_a[var_a]
+    da_b = ds_b[var_b]
 
-    # Input-units check. The two rows share one colormap and normalization, so
-    # if the inputs hold the variable in different units the panels are colored
-    # on a single scale that does not correspond to either input's quantity,
-    # making the comparison misleading. This only affects the rendering, so warn
-    # and proceed. Compare only when both inputs carry a string `units` attr; a
-    # missing or non-string value can't be checked. Units are compared after
-    # stripping surrounding whitespace so a trailing space is not read as a real
-    # difference.
+    # Scale-mode decision. SHARED draws both rows on one colormap/norm/vmin/vmax;
+    # INDEPENDENT gives each row its own scale and colorbar. Default to SHARED
+    # only when the two rows are the same quantity: same variable name AND
+    # matching (stripped) units. Either of --shared-scale / --independent-scale
+    # forces the mode (argparse already made them mutually exclusive).
     units_a = da_a.attrs.get("units")
     units_b = da_b.attrs.get("units")
-    if isinstance(units_a, str) and isinstance(units_b, str) and units_a.strip() != units_b.strip():
+    units_match = (
+        isinstance(units_a, str) and isinstance(units_b, str) and units_a.strip() == units_b.strip()
+    )
+    if args.shared_scale:
+        shared_scale = True
+    elif args.independent_scale:
+        shared_scale = False
+    else:
+        shared_scale = var_a == var_b and units_match
+
+    # Input-units check (SHARED mode only). When both rows share one colormap and
+    # normalization but hold their variable in different units, the panels are
+    # colored on a single scale that does not correspond to either input's
+    # quantity, making the comparison misleading. This only affects the
+    # rendering, so warn and proceed. Compare only when both inputs carry a
+    # string `units` attr; a missing or non-string value can't be checked. Units
+    # are compared after stripping surrounding whitespace so a trailing space is
+    # not read as a real difference. In INDEPENDENT mode each row has its own
+    # scale and colorbar, so there is no cross-row units mismatch to warn about.
+    if shared_scale and not units_match and isinstance(units_a, str) and isinstance(units_b, str):
         print(
-            f"Warning: variable '{variable}' has differing units between the "
-            f"inputs ({label_a} units={units_a!r}, {label_b} units={units_b!r}). "
+            f"Warning: the two rows have differing units "
+            f"({label_a} {var_a!r} units={units_a!r}, "
+            f"{label_b} {var_b!r} units={units_b!r}). "
             f"The two rows are drawn on one shared color scale, so values in "
             f"different units are not directly comparable in this figure.",
             file=sys.stderr,
@@ -800,23 +892,54 @@ def main() -> None:
     a_station = _is_station(ds_a)
     b_station = _is_station(ds_b)
 
+    # Per-row scale parameters. SHARED mode computes one (cmap, norm, vmin, vmax)
+    # used by both rows; INDEPENDENT mode computes them per row from that row's
+    # own data, with its own colormap (precedence: --colormap-X, --colormap,
+    # "viridis") and a continuous norm. Each row also keeps its variable/units so
+    # the colorbar can be labeled "{file} {var} [{units}]" in INDEPENDENT mode.
+    def _row_units(da):
+        u = da.attrs.get("units")
+        return u if isinstance(u, str) else None
+
+    if shared_scale:
+        if args.colormap is None:
+            shared_cmap = LinearSegmentedColormap.from_list("wgbrp", PRECIP_COLORS)
+            shared_norm = BoundaryNorm(PRECIP_BOUNDS, shared_cmap.N)
+            shared_vmin = shared_vmax = None
+        else:
+            shared_cmap = args.colormap
+            shared_norm = None
+            shared_vmax = float(np.nanmax([da_a.max().values, da_b.max().values]))
+            shared_vmin = float(np.nanmin([da_a.min().values, da_b.min().values]))
+        scale_a = (shared_cmap, shared_norm, shared_vmin, shared_vmax)
+        scale_b = (shared_cmap, shared_norm, shared_vmin, shared_vmax)
+    else:
+        cmap_a = args.colormap_a or args.colormap or "viridis"
+        cmap_b = args.colormap_b or args.colormap or "viridis"
+        scale_a = (
+            cmap_a,
+            None,
+            float(da_a.min().values),
+            float(da_a.max().values),
+        )
+        scale_b = (
+            cmap_b,
+            None,
+            float(da_b.min().values),
+            float(da_b.max().values),
+        )
+
+    # Per-side render bundles: (ds, da, td, label, variable, units, scale).
+    side_a = (ds_a, da_a, td_a, label_a, var_a, _row_units(da_a), scale_a)
+    side_b = (ds_b, da_b, td_b, label_b, var_b, _row_units(da_b), scale_b)
+
     # Decide row layout: when exactly one is station-schema, put it on top.
     if b_station and not a_station:
-        top = (ds_b, da_b, td_b, label_b)
-        bottom = (ds_a, da_a, td_a, label_a)
+        top = side_b
+        bottom = side_a
     else:
-        top = (ds_a, da_a, td_a, label_a)
-        bottom = (ds_b, da_b, td_b, label_b)
-
-    if args.colormap is None:
-        cmap = LinearSegmentedColormap.from_list("wgbrp", PRECIP_COLORS)
-        norm = BoundaryNorm(PRECIP_BOUNDS, cmap.N)
-        vmin = vmax = None
-    else:
-        cmap = args.colormap
-        norm = None
-        vmax = float(np.nanmax([da_a.max().values, da_b.max().values]))
-        vmin = float(np.nanmin([da_a.min().values, da_b.min().values]))
+        top = side_a
+        bottom = side_b
 
     fig = plt.figure(figsize=(22, 10))
     gs = GridSpec(2, n, figure=fig, wspace=0.08, hspace=0.15)
@@ -829,12 +952,12 @@ def main() -> None:
     # the shared spatial extent across both rows. Pick whichever of A/B
     # is NOT station-schema; if neither is station-schema, default to A.
     if a_station and not b_station:
-        gridded_ds = ds_b
+        gridded_ds, gridded_var = ds_b, var_b
     elif b_station and not a_station:
-        gridded_ds = ds_a
+        gridded_ds, gridded_var = ds_a, var_a
     else:
-        gridded_ds = ds_a
-    g_xmin, g_xmax, g_ymin, g_ymax = _ax_bounds(gridded_ds, variable)
+        gridded_ds, gridded_var = ds_a, var_a
+    g_xmin, g_xmax, g_ymin, g_ymax = _ax_bounds(gridded_ds, gridded_var)
     wrapped_bbox = region_bbox is not None and region_bbox[1] > region_bbox[3]
     if region_bbox is not None:
         r_n, r_w, r_s, r_e = region_bbox
@@ -867,7 +990,8 @@ def main() -> None:
         )
 
     def _plot_row(axes, row, n_panels):
-        ds, da, td, label = row
+        ds, da, td, label, _var, _units, scale = row
+        cmap, norm, vmin, vmax = scale
         is_station = _is_station(ds)
         # Select this row at the SHARED common labels (same time window per panel
         # across both rows). `common_labels` were derived from input A's axis; for
@@ -918,10 +1042,20 @@ def main() -> None:
         ax.set_ylim(g_ymin, g_ymax)
         ax.set_xlabel("lon" if col == n // 2 else "")
 
+    def _cbar_label(row):
+        # row = (ds, da, td, label, variable, units, scale). In SHARED mode the
+        # label stays "{file} {var}" (current behavior); in INDEPENDENT mode it
+        # also carries that row's own units as "{file} {var} [{units}]" so each
+        # colorbar identifies its own quantity.
+        _ds, _da, _td, label, var, units, _scale = row
+        if not shared_scale and units:
+            return f"{label} {var} [{units}]"
+        return f"{label} {var}"
+
     fig.colorbar(
         sc_top,
         ax=top_axes,
-        label=f"{top[3]} {variable}",
+        label=_cbar_label(top),
         shrink=0.6,
         fraction=0.02,
         pad=0.02,
@@ -929,7 +1063,7 @@ def main() -> None:
     fig.colorbar(
         im_bottom,
         ax=bottom_axes,
-        label=f"{bottom[3]} {variable}",
+        label=_cbar_label(bottom),
         shrink=0.6,
         fraction=0.02,
         pad=0.02,
