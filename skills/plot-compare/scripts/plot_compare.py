@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.8"
+_RHIZA_SKILL_VERSION = "0.1.9"
 
 # Shared categorical colormap and BoundaryNorm for precipitation (mm).
 PRECIP_COLORS = [
@@ -858,6 +858,12 @@ def main() -> None:
                         post_lon = da[lon_dim].values
                         lon_grid, lat_grid = np.meshgrid(post_lon, post_lat)
                         mask = shapely.contains_xy(region_polygon, lon_grid, lat_grid)
+                        if not bool(mask.any()):
+                            print(
+                                f"Warning: --mask-geojson polygon does not intersect "
+                                f"input '{ds_label}'; its panel will be entirely empty.",
+                                file=sys.stderr,
+                            )
                         mask_da = _xr.DataArray(mask, dims=(lat_dim, lon_dim))
                         da = da.where(mask_da)
                     # For a wrapped (west > east) bbox the two selected lon bands
