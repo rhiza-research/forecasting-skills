@@ -7,6 +7,7 @@
 #   "matplotlib",
 #   "nc-time-axis",
 #   "numpy",
+#   "shapely>=2.1",
 #   "xarray",
 #   "zarr",
 # ]
@@ -153,6 +154,42 @@ def _parse_cities(spec):
         else:
             out[name] = (float(val[0]), float(val[1]))
     return out
+
+
+def _polygon_from_geojson(path):
+    """Return the unioned shapely polygon from a GeoJSON file.
+
+    Used to polygon-mask the gridded heatmap: cells whose centers fall
+    outside the boundary are NaN'd before plotting. Unions every feature's
+    geometry in the file. Exits non-zero if the file is missing, unreadable,
+    or has no usable geometry.
+    """
+    p = Path(path)
+    if not p.exists():
+        print(f"Error: --mask-geojson file not found: {path}", file=sys.stderr)
+        sys.exit(2)
+    try:
+        data = json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Error: could not read --mask-geojson {path}: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    if data.get("type") == "FeatureCollection":
+        geoms = [f["geometry"] for f in data.get("features", []) if f.get("geometry")]
+    elif data.get("type") == "Feature":
+        geoms = [data["geometry"]] if data.get("geometry") else []
+    else:
+        # A bare geometry object.
+        geoms = [data]
+
+    if not geoms:
+        print(f"Error: --mask-geojson {path} has no usable geometry.", file=sys.stderr)
+        sys.exit(2)
+
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+
+    return unary_union([shape(g) for g in geoms])
 
 
 def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
@@ -394,6 +431,12 @@ def main() -> None:
         "to the bbox and sets the axes extent to it (an explicit --extent still "
         "overrides). Use the resolve-region skill to get a country's bbox.",
     )
+    p.add_argument(
+        "--mask-geojson",
+        help="Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
+        "outside the polygon are set to NaN before plotting. Use resolve-region's "
+        "--geojson output to produce a country polygon.",
+    )
     args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
     import matplotlib
@@ -437,6 +480,12 @@ def main() -> None:
             file=sys.stderr,
         )
 
+    if args.mask_geojson and args.style != "heatmap":
+        print(
+            f"Warning: --mask-geojson is a heatmap-only option; ignored for --style {args.style}.",
+            file=sys.stderr,
+        )
+
     if args.style == "heatmap":
         lat_dim = _cf_dim(da, "latitude")
         lon_dim = _cf_dim(da, "longitude")
@@ -452,44 +501,68 @@ def main() -> None:
         extent = _parse_extent(args.extent)
         cities = _parse_cities(args.cities)
         cmap = _parse_colormap(args.colormap)
-        wrapped_bbox = False
-        if bbox is not None:
+        region_polygon = _polygon_from_geojson(args.mask_geojson) if args.mask_geojson else None
+        wrapped_bbox = bbox is not None and bbox[1] > bbox[3]
+        if bbox is not None or region_polygon is not None:
             import numpy as _np_local
 
-            r_n, r_w, r_s, r_e = bbox
-            wrapped_bbox = r_w > r_e
-            # Wrap 0..360 lons to [-180, 180] before slicing so a global
-            # grid still intersects bboxes in the negative-lon half (e.g.
-            # Senegal). Mirror plot-compare's pre-slice wrap.
+            # Wrap 0..360 lons to [-180, 180] before slicing/masking so a global
+            # grid still intersects a negative-lon bbox (e.g. Senegal) and the
+            # polygon coords (which live in [-180, 180]) align with the grid.
+            # Mirror plot-compare's pre-slice wrap.
             lon_vals_pre = _np_local.asarray(da[lon_dim].values)
             if lon_vals_pre.size and float(_np_local.nanmax(lon_vals_pre)) > 180.0:
                 da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
-            lat_vals_pre = da[lat_dim].values
-            da = da.sel({lat_dim: _lat_slice(lat_vals_pre, r_n, r_s)})
-            # A bbox with west > east is an RFC 7946 antimeridian-crossing box
-            # (e.g. Russia from resolve-region): select the two lon bands
-            # lon >= r_w OR lon <= r_e rather than the empty slice(r_w, r_e).
-            if r_w > r_e:
-                da = da.where((da[lon_dim] >= r_w) | (da[lon_dim] <= r_e), drop=True)
-                # The selected data now lives in two disjoint bands (lon >= r_w
-                # and lon <= r_e). Remap longitudes so the two bands form one
-                # contiguous block: values below r_w wrap up by 360, giving an
-                # axis spanning [r_w, r_e + 360]. Sort so the axis is monotonic.
-                # Coastlines/borders are drawn in PlateCarree, so a shifted axis
-                # spanning >180 is the standard way to render an antimeridian-
-                # crossing region.
-                shifted = ((da[lon_dim] - r_w) % 360.0) + r_w
-                da = da.assign_coords({lon_dim: shifted}).sortby(lon_dim)
-            else:
-                da = da.sel({lon_dim: slice(r_w, r_e)})
-            if extent is None:
-                # Frame the country. For a wrapped bbox the x-range spans
-                # [r_w, r_e + 360] (a valid x0 < x1) so the contiguous shifted
-                # block is framed, not the empty complementary band.
+            if bbox is not None:
+                r_n, r_w, r_s, r_e = bbox
+                lat_vals_pre = da[lat_dim].values
+                da = da.sel({lat_dim: _lat_slice(lat_vals_pre, r_n, r_s)})
+                # A bbox with west > east is an RFC 7946 antimeridian-crossing
+                # box (e.g. Russia from resolve-region): select the two lon bands
+                # lon >= r_w OR lon <= r_e rather than the empty slice(r_w, r_e).
+                # The wrapped-bbox lon shift happens after the polygon mask below
+                # so the mask still operates in the [-180, 180] frame.
                 if r_w > r_e:
-                    extent = [float(r_w), float(r_e) + 360.0, float(r_s), float(r_n)]
+                    da = da.where((da[lon_dim] >= r_w) | (da[lon_dim] <= r_e), drop=True)
                 else:
-                    extent = [float(r_w), float(r_e), float(r_s), float(r_n)]
+                    da = da.sel({lon_dim: slice(r_w, r_e)})
+            # Polygon-mask in the [-180, 180] frame: cells whose centers fall
+            # outside the boundary become NaN. Done before any wrapped-bbox lon
+            # shift so the polygon coords match the grid. Mirrors plot-compare.
+            if region_polygon is not None:
+                import shapely
+
+                post_lat = da[lat_dim].values
+                post_lon = da[lon_dim].values
+                lon_grid, lat_grid = _np_local.meshgrid(post_lon, post_lat)
+                mask = shapely.contains_xy(region_polygon, lon_grid, lat_grid)
+                if not bool(mask.any()):
+                    print(
+                        "Warning: --mask-geojson polygon does not intersect the grid; "
+                        "the map will be entirely empty.",
+                        file=sys.stderr,
+                    )
+                mask_da = xr.DataArray(mask, dims=(lat_dim, lon_dim))
+                da = da.where(mask_da)
+            if bbox is not None:
+                if r_w > r_e:
+                    # The selected data now lives in two disjoint bands (lon >= r_w
+                    # and lon <= r_e). Remap longitudes so the two bands form one
+                    # contiguous block: values below r_w wrap up by 360, giving an
+                    # axis spanning [r_w, r_e + 360]. Sort so the axis is monotonic.
+                    # Coastlines/borders are drawn in PlateCarree, so a shifted axis
+                    # spanning >180 is the standard way to render an antimeridian-
+                    # crossing region.
+                    shifted = ((da[lon_dim] - r_w) % 360.0) + r_w
+                    da = da.assign_coords({lon_dim: shifted}).sortby(lon_dim)
+                if extent is None:
+                    # Frame the country. For a wrapped bbox the x-range spans
+                    # [r_w, r_e + 360] (a valid x0 < x1) so the contiguous shifted
+                    # block is framed, not the empty complementary band.
+                    if r_w > r_e:
+                        extent = [float(r_w), float(r_e) + 360.0, float(r_s), float(r_n)]
+                    else:
+                        extent = [float(r_w), float(r_e), float(r_s), float(r_n)]
         fig = _heatmap(
             da,
             lat_dim,
