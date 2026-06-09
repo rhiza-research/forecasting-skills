@@ -9,7 +9,7 @@
 #   "rioxarray",
 # ]
 # ///
-"""Fetch CHIRPS prelim precipitation over HTTPS and write a Rhiza Envelope Zarr."""
+"""Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a Rhiza Envelope Zarr."""
 
 import argparse
 import json
@@ -27,7 +27,17 @@ import requests
 import rioxarray  # noqa: F401 — registers .rio accessor
 import xarray as xr
 
-CHIRPS_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/prelim/sat"
+# Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
+# validated archive (per-year folders, 1998-to-present); the PRELIM product is
+# the rolling recent-only feed published ~2 days after each pentad closes. Each
+# requested day prefers final and falls back to prelim (see _download_day_tif),
+# so historical dates resolve from final while the recent tail final has not
+# finalized yet resolves from prelim.
+CHIRPS_FINAL_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/sat"
+CHIRPS_PRELIM_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/prelim/sat"
+# Earliest year the final `sat` product covers; used only for the friendly
+# all-missing diagnostic, not as a hard pre-network gate.
+CHIRPS_FINAL_START_YEAR = 1998
 CHIRPS_NODATA = -9999.0
 HTTP_TIMEOUT = 60
 
@@ -285,28 +295,32 @@ class _SessionPool:
             s.close()
 
 
-def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> Path:
-    name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
-    url = f"{CHIRPS_BASE_URL}/{day.year:04d}/{name}"
-    out = dest_dir / name
+# Sentinel returned by _get_tif_body when a URL answers 404 (the day is not
+# published at that product) — distinct from None and from a validated body, so
+# the caller can fall back to the other product rather than failing the day.
+_NOT_FOUND = object()
+
+
+def _get_tif_body(session: requests.Session, url: str):
+    """Fetch one CHIRPS day TIF URL and return its validated bytes.
+
+    Returns ``_NOT_FOUND`` on HTTP 404 (the day is not published at this
+    product, so the caller may try the other product). Raises ``DayUnavailable``
+    for transient failures (transport error, 5xx, truncated/empty/non-TIFF body)
+    so the post-loop tail-vs-mid-gap classifier handles them the same way it
+    handles a missing day. Re-raises for other 4xx (auth/bad request), which
+    indicate a real config problem rather than a not-yet-published day.
+    """
     try:
         resp = session.get(url, timeout=HTTP_TIMEOUT)
     except requests.RequestException as exc:
-        # Connection resets, timeouts, and other transport-level failures:
-        # treat the day as missing so the post-loop classifier handles
-        # tail-vs-mid-gap the same way it does for a 404.
         raise DayUnavailable(f"transient network error: {exc}") from exc
 
     if resp.status_code == 404:
-        # The day's file is not yet published.
-        raise DayUnavailable(f"not posted: HTTP 404 for {url}")
+        return _NOT_FOUND
     if resp.status_code >= 500:
-        # Server-side errors are transient: classify as a missing day so the
-        # post-loop tail-vs-mid-gap logic handles them the same way as a 404.
         raise DayUnavailable(f"transient server error: HTTP {resp.status_code} for {url}")
     if resp.status_code != 200:
-        # 4xx other than 404 (auth, bad request, etc.) indicates a real
-        # config problem rather than a not-yet-published day; surface it.
         resp.raise_for_status()
 
     body = resp.content
@@ -335,6 +349,44 @@ def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> P
     if body[:4] not in (b"II*\x00", b"MM\x00*"):
         raise DayUnavailable(f"non-TIFF body for {url}: leading bytes {body[:4]!r}")
 
+    return body
+
+
+def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> Path:
+    """Fetch one day, preferring the validated final product over prelim.
+
+    Try the final `sat` URL first. ANY final-side failure — a 404 (not finalized
+    yet), a transient 5xx, an auth/throttle 4xx, or a corrupt 200 — falls through
+    to the prelim URL; only if prelim ALSO fails is the day unavailable. This
+    keeps a final-server glitch from dropping a day prelim can serve, or aborting
+    the whole run on a final-only 4xx. The day is written to a temp file named
+    after whichever product served it; the post-loop classifier decides
+    tail-vs-mid-gap from the days that ultimately had no data anywhere.
+    """
+    final_name = f"chirps-v3.0.sat.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
+    final_url = f"{CHIRPS_FINAL_BASE_URL}/{day.year:04d}/{final_name}"
+    prelim_name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
+    prelim_url = f"{CHIRPS_PRELIM_BASE_URL}/{day.year:04d}/{prelim_name}"
+
+    # Final 404 yields the _NOT_FOUND sentinel; any other final-side failure
+    # (DayUnavailable for 5xx/transient/corrupt, HTTPError for other-4xx) is
+    # caught and also routed to the prelim fallback. Prelim's own result then
+    # stands: a prelim failure propagates normally (DayUnavailable -> the day is
+    # classified missing; HTTPError -> a real site-wide config problem aborts).
+    try:
+        body = _get_tif_body(session, final_url)
+    except (DayUnavailable, requests.HTTPError):
+        body = _NOT_FOUND
+    name = final_name
+    if body is _NOT_FOUND:
+        body = _get_tif_body(session, prelim_url)
+        name = prelim_name
+        if body is _NOT_FOUND:
+            raise DayUnavailable(
+                f"day unavailable from final ({final_url}) or prelim ({prelim_url})"
+            )
+
+    out = dest_dir / name
     with open(out, "wb") as f:
         f.write(body)
     return out
@@ -396,7 +448,7 @@ def _discover_latest() -> date:
         for offset in range(_LATEST_LOOKBACK_DAYS + 1):
             day = today - timedelta(days=offset)
             name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
-            url = f"{CHIRPS_BASE_URL}/{day.year:04d}/{name}"
+            url = f"{CHIRPS_PRELIM_BASE_URL}/{day.year:04d}/{name}"
             status, transient = _probe_status(url)
             if status is None:
                 # Transport-level failure on this probe day is transient: step
@@ -535,7 +587,7 @@ def main() -> None:
         )
         return
 
-    print(f"Fetching CHIRPS prelim {start} -> {end}", file=sys.stderr)
+    print(f"Fetching CHIRPS {start} -> {end} (final product, prelim fallback)", file=sys.stderr)
 
     expected_days = list(_daterange(start, end))
     succeeded: list[tuple[date, xr.DataArray]] = []
@@ -593,11 +645,15 @@ def main() -> None:
         # Classify outcome.
         if not succeeded:
             print(
-                f"Error: no days available in range {start}..{end} "
-                f"from the CHIRPS data server. CHIRPS v3.0 preliminary is "
-                "published 2 days after each pentad closes (pentads end on "
-                "days 5, 10, 15, 20, 25, and last of month), so worst-case "
-                "lag is ~7 days; try an earlier --end.",
+                f"Error: no days available in range {start}..{end} from the "
+                f"CHIRPS data server (final or prelim sat product). CHIRPS v3.0 "
+                f"sat coverage runs {CHIRPS_FINAL_START_YEAR}-to-present, so a "
+                "date before that range yields nothing; otherwise this is a "
+                "server-side data gap. The validated final product also lags, so "
+                "very recent days come from the preliminary product (published 2 "
+                "days after each pentad closes — pentads end on days 5, 10, 15, "
+                "20, 25, and last of month, worst-case lag ~7 days); for a very "
+                "recent --end, try an earlier one.",
                 file=sys.stderr,
             )
             sys.exit(2)
