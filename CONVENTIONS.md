@@ -30,7 +30,7 @@ standalone single-file scripts. The convention is enforced by review.
 | Explicit bbox | `--bbox` | `N/W/S/E` decimal degrees | Slash-separated four floats. The canonical way to spatially restrict a skill. To get a country's bbox, resolve it with the `resolve-region` skill. |
 | Country code (resolve input) | positional `<CODE>` | ISO 3166-1 alpha-3, uppercase | `resolve-region`'s positional argument. The script does an exact `iso3` → geometry lookup; mapping a free-text place name to the code is the agent's job. |
 | Boundary polygon output | `--geojson` | path | `resolve-region` output: writes the resolved country's boundary polygon as a single-feature GeoJSON `FeatureCollection`. |
-| Polygon-mask input | `--mask-geojson` | path | A GeoJSON boundary polygon used to NaN-mask gridded cells outside it. Used by `plot-compare`; feed it `resolve-region`'s `--geojson` output. |
+| Polygon-mask input | `--mask-geojson` | path | A GeoJSON boundary polygon used to NaN-mask gridded cells outside it. Used by `plot` and `plot-compare`; feed it `resolve-region`'s `--geojson` output. |
 
 ### Time
 

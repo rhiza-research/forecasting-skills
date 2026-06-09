@@ -32,7 +32,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
     [--variable NAME] [--style heatmap|timeseries] \
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
-    [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E]
+    [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E] \
+    [--mask-geojson PATH]
 ```
 
 ### Arguments
@@ -66,6 +67,13 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   still intersect negative-lon bboxes. `--extent` (if passed) wins over the
   bbox-derived extent. Heatmap-only — `--style timeseries` ignores `--bbox` with
   a stderr warning. Default unset → no slice.
+- `--mask-geojson` — optional path to a GeoJSON boundary polygon (e.g. the
+  `--geojson` output of the `resolve-region` skill). Gridded cells whose centers
+  fall outside the polygon are set to NaN before plotting, so the heatmap shows
+  the country shape rather than its bounding rectangle. All features in the file
+  are unioned. Combine with `--bbox` to crop to the rectangle first, then mask to
+  the polygon within it. Heatmap-only — `--style timeseries` ignores it with a
+  stderr warning. Default unset → no mask.
 
 ### Output
 
@@ -121,6 +129,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ec
     --variable tp --index step=0 \
     --extent 11,29,-30,-15 \
     --cities '{"Windhoek": [-22.55, 17.08]}'
+```
+
+Country-shaped map masked to a boundary polygon:
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/chirps_kenya.zarr -o /tmp/kenya.png \
+    --variable precip --bbox 5.0/33.9/-4.7/41.9 --mask-geojson /tmp/kenya.geojson
 ```
 
 Time series:
