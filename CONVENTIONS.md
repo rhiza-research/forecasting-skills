@@ -81,6 +81,7 @@ resolved concrete dates, the day count, and the boundary mode and its reason.
 | Concept | Flag | Value shape | Notes |
 | --- | --- | --- | --- |
 | Variable selector | `--variable` / `-v` | string | Restricts an operation to one data variable in a multi-variable Zarr. Repeat once per variable to select several. |
+| Per-input variable selector | `--variable-a` / `--variable-b` | string | Selects the variable for each input independently when a skill compares two inputs that may hold different variables. Used by `plot-compare`. Precedence per row: `--variable-a`/`-b`, then `--variable`, then that input's first real data var. |
 | Catalog dataset selector | `--dataset` | string | Names which dataset to fetch from a multi-dataset source catalog. Validated at runtime against the source's own listing (e.g. `dynamical-fetch` checks `dynamical_catalog.list()`); an unknown id prints the valid list and exits. Used by fetchers that front a catalog of datasets rather than a single product. |
 | Spatial dim-name override | `--dims` | `LAT,LON` | Comma-separated names of the latitude and longitude dims when they're not auto-detectable. |
 | Time-dim override | `--time-dim` | string | Name of the time-like dim when not auto-detectable. Distinct from `--dims`, which is spatial only. |
@@ -109,6 +110,9 @@ selects that variable facet (and is the output variable).
 | --- | --- | --- | --- |
 | Explicit dim reduction | `--reduce` | string, repeatable | Names a non-time dim to mean-reduce before producing a 1-D output. Repeat once per dim (`--reduce number --reduce latitude --reduce longitude`). Required (rather than silently averaging) when an input still has non-time dims after `--variable` selection. |
 | Figure title | `--title` | string | Optional figure title. Used by `plot`, `plot-compare`, `plot-mediogram`, and `plot-timeseries`. |
+| Colormap | `--colormap` | string | matplotlib colormap name. Used by `plot-compare` (when omitted in shared-scale mode, the categorical precipitation colormap with `BoundaryNorm` is used). |
+| Per-input colormap | `--colormap-a` / `--colormap-b` | string | matplotlib colormap for each input independently in `plot-compare`'s independent-scale mode. Precedence per row: `--colormap-a`/`-b`, then `--colormap`, then `viridis`. |
+| Color-scale mode | `--shared-scale` / `--independent-scale` | flag (mutually exclusive) | Forces one shared color scale across both rows, or a per-row scale + colorbar. Used by `plot-compare`. Default: shared when both rows resolve to the same variable AND matching units, else independent. |
 | Output view | `--format` | `human` \| `json` \| `script` | Selects how a read-only inspector renders its result. Used by `provenance`: `human` lineage, raw `json` chain, or a runnable reproduction `script`. |
 
 ### Spatial grid targets
