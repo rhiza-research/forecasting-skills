@@ -35,6 +35,29 @@ def _lat_slice(lat_vals, north, south):
     return slice(south, north)
 
 
+def _auto_variable(ds):
+    """First real data var, skipping CF grid-mapping (CRS) containers.
+
+    A CF grid-mapping variable (e.g. ``latitude_longitude``) is a zero-data
+    CRS container: it carries a ``grid_mapping_name`` attr and is named by
+    another var's ``grid_mapping`` attr. Skip those so a no-flag auto-pick
+    lands on a real data var. Prefer a var with >= 2 dims (spatial/data),
+    falling back to the first remaining candidate.
+    """
+    mapping_targets = {
+        ds[d].attrs.get("grid_mapping") for d in ds.data_vars if ds[d].attrs.get("grid_mapping")
+    }
+    candidates = [
+        v
+        for v in ds.data_vars
+        if "grid_mapping_name" not in ds[v].attrs and v not in mapping_targets
+    ]
+    if not candidates:
+        return None
+    multidim = [v for v in candidates if len(ds[v].dims) >= 2]
+    return (multidim or candidates)[0]
+
+
 def _hash_zarr(zarr_path: Path) -> str:
     """Stable content hash of a zarr's stored bytes. Walks the zarr dir
     deterministically and hashes relative-path bytes + each file's
@@ -387,7 +410,7 @@ def main() -> None:
         sys.exit(2)
     ds = xr.open_zarr(src, consolidated=False)
 
-    variable = args.variable or (list(ds.data_vars)[0] if ds.data_vars else None)
+    variable = args.variable or _auto_variable(ds)
     if not variable or variable not in ds:
         print(
             f"Error: no usable variable. Available: {list(ds.data_vars)}",

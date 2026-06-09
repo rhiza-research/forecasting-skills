@@ -34,10 +34,20 @@ daily station observations against weekly or dekadal gridded
 accumulations), aggregate each input to the same window with the
 `aggregate-temporal` skill before comparing.
 
-A shared categorical precipitation colormap with `BoundaryNorm` is the
-default so values are visually comparable across rows. An admin-1
-country boundary overlay (Natural Earth, fetched and cached via
-`cartopy`) is drawn on every panel. The polygon overlay is spatially
+Each row can draw a different variable: `--variable-a`/`--variable-b`
+select per-row, with `--variable` as a both-rows shorthand. This lets
+you compare different quantities (e.g. soil moisture vs. precipitation)
+on one figure.
+
+The color scale adapts to what is being compared. When both rows resolve
+to the same variable and matching units, one shared scale is used (a
+categorical precipitation colormap with `BoundaryNorm` by default, so
+values are visually comparable across rows). When the rows are different
+variables or have differing units, each row gets its own independent
+scale, colormap, and labeled colorbar. `--shared-scale` and
+`--independent-scale` force either mode. An admin-1 country boundary
+overlay (Natural Earth, fetched and cached via `cartopy`) is drawn on
+every panel. The polygon overlay is spatially
 *clipped* to the gridded input's bbox (`gdf.clip(box(*bbox))`), so
 polygons that straddle the bbox edge are truncated at the edge rather
 than rendered whole and neighboring regions never extend beyond the
@@ -62,7 +72,9 @@ end − bin_width + 1 day. Matches `aggregate-temporal` and
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
-    [--variable NAME] [--colormap NAME] [--title TEXT] \
+    [--variable NAME] [--variable-a NAME] [--variable-b NAME] \
+    [--colormap NAME] [--colormap-a NAME] [--colormap-b NAME] \
+    [--shared-scale | --independent-scale] [--title TEXT] \
     [--panels N] [--time-dim DIM] \
     [--bbox N/W/S/E] [--mask-geojson PATH]
 ```
@@ -70,12 +82,26 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
 ### Arguments
 - `--input`, `-i` — pass exactly twice. The first input is row A, the second is row B. Station-schema is allowed on either.
 - `--output`, `-o` — PNG path.
-- `--variable` — variable name (must be present in both inputs; default: first var in A).
-- `--colormap` — matplotlib colormap. When omitted, the categorical
-  precipitation cmap (`["#bdbdbd", "wheat", "lightgreen", "green",
-  "lightblue", "blue", "yellow", "orange", "red", "purple"]`) with
-  `BoundaryNorm` over `[0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]`
-  mm is used.
+- `--variable`, `-v` — variable for both rows. Per-row `--variable-a`/`-b`
+  override it. Each resolved variable must exist in its own input.
+- `--variable-a` — variable for row A (overrides `--variable` for that row).
+  Default per row: `--variable`, else that input's first real data var
+  (CF grid-mapping/CRS container vars such as `latitude_longitude` are
+  skipped during auto-pick).
+- `--variable-b` — variable for row B (same resolution as `--variable-a`).
+- `--colormap` — matplotlib colormap. In shared-scale mode, when omitted
+  the categorical precipitation cmap (`["#bdbdbd", "wheat", "lightgreen",
+  "green", "lightblue", "blue", "yellow", "orange", "red", "purple"]`)
+  with `BoundaryNorm` over `[0, 10, 20, 40, 60, 80, 110, 150, 200, 250,
+  350]` mm is used. In independent-scale mode it is the per-row default
+  (falling back to `viridis`).
+- `--colormap-a` / `--colormap-b` — per-row matplotlib colormap in
+  independent-scale mode. Precedence per row: `--colormap-a`/`-b`, then
+  `--colormap`, then `viridis`.
+- `--shared-scale` / `--independent-scale` — mutually exclusive; force one
+  shared color scale across both rows or a per-row scale + colorbar. When
+  neither is given, the mode is chosen automatically: shared when both
+  rows resolve to the same variable AND matching units, else independent.
 - `--title` — figure title.
 - `--panels` — number of panels per row (default 3).
 - `--time-dim` — override the time axis. Defaults to `time` if present, else `step`.
@@ -119,13 +145,21 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
   is set and a gridded input has lon in `[0, 360]`, lons are auto-wrapped
   to `[-180, 180]` (and the dim re-sorted) before the rectangular slice
   and polygon mask. Inputs already in `[-180, 180]` are unaffected.
-- **Input units.** Both rows are drawn on one shared colormap and
-  normalization. When the two inputs carry the compared variable in
-  differing `units`, the figure colors values from different units on a
-  single scale, so a warning naming both units is printed to stderr.
-  This is a rendering caveat only — the figure is still produced and the
-  exit status is 0. The check applies only when both inputs carry a
-  `units` attr; a missing value is not compared.
+- **Color-scale mode.** By default the scale is shared when both rows
+  resolve to the same variable AND matching (stripped) `units`, and
+  independent otherwise. `--shared-scale` / `--independent-scale` force
+  the mode. In shared mode both rows use one colormap, normalization,
+  vmin, and vmax. In independent mode each row computes its own vmin/vmax
+  from its own data, uses its own colormap (precedence `--colormap-a`/`-b`,
+  then `--colormap`, then `viridis`) with a continuous norm, and gets its
+  own colorbar labeled `{file} {var} [{units}]`.
+- **Input units.** In shared mode, when the two rows carry differing
+  `units`, the figure colors values from different units on a single
+  scale, so a warning naming both units is printed to stderr. This is a
+  rendering caveat only — the figure is still produced and the exit status
+  is 0. The check applies only when both rows carry a string `units` attr;
+  a missing value is not compared. In independent mode each row has its
+  own scale, so no cross-row units warning is emitted.
 
 ### Output
 
