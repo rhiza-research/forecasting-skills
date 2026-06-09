@@ -81,6 +81,8 @@ resolved concrete dates, the day count, and the boundary mode and its reason.
 | Concept | Flag | Value shape | Notes |
 | --- | --- | --- | --- |
 | Variable selector | `--variable` / `-v` | string | Restricts an operation to one data variable in a multi-variable Zarr. Repeat once per variable to select several. |
+| Target units | `--to-units` | UDUNITS/CF units string | The units to convert a variable's values to; becomes the output variable's `units` attr. Used by `unit-convert`. |
+| CF standard name | `--standard-name` | CF standard_name string | The CF `standard_name` to write on the output variable, overriding any inferred value. Used by `unit-convert` to keep `standard_name` consistent with converted units. |
 | Per-input variable selector | `--variable-a` / `--variable-b` | string | Selects the variable for each input independently when a skill compares two inputs that may hold different variables. Used by `plot-compare`. Precedence per row: `--variable-a`/`-b`, then `--variable`, then that input's first real data var. |
 | Catalog dataset selector | `--dataset` | string | Names which dataset to fetch from a multi-dataset source catalog. Validated at runtime against the source's own listing (e.g. `dynamical-fetch` checks `dynamical_catalog.list()`); an unknown id prints the valid list and exits. Used by fetchers that front a catalog of datasets rather than a single product. |
 | Spatial dim-name override | `--dims` | `LAT,LON` | Comma-separated names of the latitude and longitude dims when they're not auto-detectable. |

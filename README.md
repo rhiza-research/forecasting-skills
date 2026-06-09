@@ -32,6 +32,7 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
 | `aggregate-temporal` | Resample along `time` or `step` into daily/weekly/dekadal/monthly windows |
 | `deaccumulate` | Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) into per-step diffs along the `step` axis |
+| `unit-convert` | Convert a variable to target `--to-units` (e.g. precip flux `kg m-2 s-1` → depth rate `mm/day`, via a liquid-water density bridge) |
 | `downscale` | Spatial downscaling onto a finer grid (by factor, finer resolution, or a reference grid) via `--method` (linear-interpolation or q-q empirical quantile mapping) |
 | `coarsen` | Coarsen or align a grid by linear interpolation onto a target `(resolution, offset)` — geometry only, adds no information |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
