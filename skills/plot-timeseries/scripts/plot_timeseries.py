@@ -256,15 +256,17 @@ def main() -> None:
                     file=sys.stderr,
                 )
                 sys.exit(2)
-            # A trace that crosses a calendar-year boundary (or spans multiple
-            # years) has non-monotonic day-of-year values: it wraps back to 1
-            # and draws over itself on the shared axis. Rendering caveat only —
-            # warn and proceed.
+            # A non-monotonic day-of-year sequence draws over itself on the
+            # shared axis. This happens when a trace crosses a year boundary,
+            # spans multiple years, or has an out-of-order time axis. Rendering
+            # caveat only — warn and proceed.
             if len(xvals) > 1 and np.any(np.diff(xvals) < 0):
                 print(
-                    f"Warning ({pth}): trace wraps day-of-year (crosses a "
-                    f"calendar-year boundary or spans multiple years) and will "
-                    f"overplot itself on the shared day-of-year axis.",
+                    f"Warning ({pth}): day-of-year values are non-monotonic "
+                    f"(decrease at some point — a trace crossing a year boundary, "
+                    f"spanning multiple years, or an out-of-order time axis); "
+                    f"rendering anyway, but it may overplot itself on the shared "
+                    f"day-of-year axis.",
                     file=sys.stderr,
                 )
         else:
