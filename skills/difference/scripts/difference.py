@@ -45,8 +45,9 @@ def _to_signed(da, np):
     hold a negative difference, leaving signed-int / float / other dtypes
     untouched. Boolean becomes int16; an unsigned int becomes the next signed
     int wide enough to represent its negatives (uint8->int16, uint16->int32,
-    uint32->int64, uint64->int64 with possible saturation), so A - B does not
-    return a wrapped-around modulo-2**nbits value."""
+    uint32->int64, uint64->int64 — the int64 cast does not clamp, so a uint64
+    value above int64 max overflows/wraps), so A - B does not return a
+    wrapped-around modulo-2**nbits value."""
     kind = da.dtype.kind
     if kind == "b":
         return da.astype(np.int16)
@@ -313,8 +314,12 @@ def main() -> None:
     # dim carries no labels to confirm the rows actually correspond.
     shared_dims = set(ds_a.dims) & set(ds_b.dims)
     for d in sorted(shared_dims):
-        if d in ds_a.indexes or d in ds_b.indexes:
-            continue  # an indexed side is label-aligned, not positional
+        if d in ds_a.indexes and d in ds_b.indexes:
+            continue  # indexed on BOTH sides => label-aligned, not positional
+        # A dim indexed on only one side cannot be label-aligned either: xarray
+        # has no labels on the other side to join against. Fall through to the
+        # positional size check so a mismatch exits cleanly here rather than
+        # surfacing an opaque broadcast/alignment error downstream.
         size_a = ds_a.sizes[d]
         size_b = ds_b.sizes[d]
         if size_a != size_b:
