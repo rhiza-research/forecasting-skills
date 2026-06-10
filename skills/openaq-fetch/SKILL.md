@@ -57,9 +57,9 @@ https://explore.openaq.org/register).
   Choices: `pm25`, `pm10`, `no2`, `o3`, `so2`, `co`. Omit for all six.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--workers` — max concurrent per-sensor fetch threads (default 8). A
-  concurrency knob only; it does not change the output and is excluded from the
-  cache key. Threads overlap response waits only: all requests are client-side
-  rate-limited well under OpenAQ's published limits (60/minute, 2,000/hour), so
+  concurrency knob only; it does not affect the output or caching. Threads
+  overlap response waits only: all requests are client-side rate-limited well
+  under OpenAQ's published limits (60/minute, 2,000/hour), so
   raising `--workers` does not raise the request rate.
 
 ### Output
@@ -140,9 +140,9 @@ The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="openaq-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, the sorted
-`variable` list, and the resolved concrete `start`/`end` — `--workers` is
-excluded (concurrency, not data). `version` is this skill's version, also printed
-by `--help`. Inspect a written output's provenance with the `provenance` skill.
+`variable` list, and the resolved concrete `start`/`end` — `--workers` is not
+recorded. `version` is the value printed by `--help`. Inspect a written
+output's provenance with the `provenance` skill.
 
 ## Examples
 

@@ -11,17 +11,17 @@ metadata:
 
 Source-agnostic multi-input timeseries plotting. Takes one or more Rhiza
 Envelope Zarrs and draws each as a 1D line on a single set of axes against
-its time/step coord. Each trace is labelled in the legend by the input
+its time/step coord. Each trace is labeled in the legend by the input
 filename stem.
 
-This is a first-pass timeseries skill: it plots data that is already 1D
-(only a time-like dim left after picking `--variable`) or data the caller
-has explicitly told it how to reduce to 1D via repeated `--reduce DIM`
-flags. There is no silent averaging of unspecified dims, and no reference /
-climatology overlay support.
+It plots data that is already 1D (only a time-like dim left after picking
+`--variable`) or data the caller has explicitly told it how to reduce to 1D
+via repeated `--reduce DIM` flags. There is no silent averaging of
+unspecified dims, and no reference / climatology overlay support.
 
-For a single-input quick-look that averages across all non-time dims
-without ceremony, use the `plot` skill with `--style timeseries`.
+For a single-input quick-look, use the `plot` skill with
+`--style timeseries`, which averages across all non-time dims by default
+(no `--reduce` flags needed).
 
 ## When to use
 
@@ -85,8 +85,7 @@ Only inputs that carry a `units` attr participate in the comparison.
 
 ### Provenance
 
-Every PNG carries a per-input `tEXt` chunk plus a producer key, written via
-matplotlib's `savefig(metadata=...)`:
+Every PNG carries a per-input `tEXt` chunk plus a producer key:
 
 - `rhiza_history_a`, `rhiza_history_b`, `rhiza_history_c`, ... — one key per
   `-i` input, lettered by CLI position (first input → `_a`, second → `_b`,
@@ -97,16 +96,10 @@ matplotlib's `savefig(metadata=...)`:
   `{basename, hash}`. Preceding entries are the upstream chain inherited
   from that input's `rhiza_history` (empty if the input had none — a stderr
   warning is emitted and the array contains only the rendering entry).
-  Inputs beyond 26 are rejected at argparse-validation time because the
-  letter scheme stops at `z`.
+  Inputs beyond 26 are rejected at argument-validation time, before any
+  rendering.
 - `Software` — set to `forecasting-skills` so generic image tools like
   `exiftool` surface the producer prominently.
-
-One key per input (not one tree-shaped key) because `plot-timeseries`
-inputs typically have no common ancestor (e.g. two independent fetcher
-branches). Per-branch linear chains keep the on-disk schema identical to
-the other plotters: a consumer reading any single `rhiza_history_<letter>`
-uses one parse path and gets the full lineage of that branch.
 
 Read-back:
 

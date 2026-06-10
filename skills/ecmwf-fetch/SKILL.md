@@ -55,33 +55,27 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
   not be a valid S2S init day)" message, and a transport/auth failure is
   likewise surfaced as a clear error — not a raw traceback. If the requested
   init is inside the S2S real-time embargo (access-restricted), the error says
-  so explicitly and points at `latest` or an older init date. The main fetch's
-  submit and poll use the same bounded-poll and error classification as the
-  `latest` probe. Use `latest` (or an explicit init date) as the intended
-  relative form for this skill; `now`/offset are accepted for grammar
-  consistency with the other fetchers but seldom resolve to a valid init.
+  so explicitly and points at `latest` or an older init date. Prefer `latest`
+  (or an explicit init date); `now`/offset values are accepted but seldom
+  resolve to a valid init.
 
   **Cost of `latest`:** resolving `latest` is the slow case. Each probe is a real
   ECDS retrieval submit (the asynchronous queue, polled until results-ready), so
-  discovering the newest init may take several minutes to an hour and steps back
-  one init day at a time until one succeeds. This is acceptable because it is
-  opt-in — an absolute or `now`-based `--date` does no probing. Two probe
-  failures step back one day. A job ECDS marks failed/rejected because that init
-  is not yet published steps back. A probe failure matching the S2S real-time
-  embargo signature ("Restricted access to S2S" in the error text) also steps
-  back, since `latest` resolves to the newest accessible init. That signature is
-  the dividing line: a credential, transport, or HTTP failure does not match it,
-  so the run exits non-zero with the original error instead of misreporting it
-  as a missing init. A probe job still not results-ready after a bounded
-  wall-clock poll (1 hour) is treated as stuck and also exits non-zero rather
-  than stepping back, because stepping back from a stuck-but-possibly-valid job
-  would report a misleadingly old `latest`. The whole discovery loop is
-  additionally bounded by a one-hour time budget. If every probed init in the
-  lookback window was access-restricted, the run exits non-zero with a message
-  to check S2S access and licence terms. The completed control retrieval from
-  the winning probe is reused as the control leg of the fetch, so the winning
-  init is not submitted twice. The cache key records the resolved absolute init
-  date, never the relative token.
+  one init day at a time until one succeeds. An absolute or `now`-based `--date`
+  does no probing. A job ECDS marks failed/rejected because that init is not yet
+  published steps back. A probe failure matching the S2S real-time embargo
+  signature ("Restricted access to S2S" in the error text) also steps back,
+  since `latest` resolves to the newest accessible init. That signature is the
+  dividing line: a credential, transport, or HTTP failure does not match it, so
+  the run exits non-zero with the original error instead of misreporting it as a
+  missing init. A probe job still not results-ready after a bounded wall-clock
+  poll (1 hour) is treated as stuck and also exits non-zero rather than stepping
+  back, because stepping back from a stuck-but-possibly-valid job would report a
+  misleadingly old `latest`. The whole discovery loop is additionally bounded by
+  a one-hour time budget. If every probed init in the lookback window was
+  access-restricted, the run exits non-zero with a message to check S2S access
+  and licence terms. The cache key records the resolved absolute init date,
+  never the relative token.
 - `--bbox` — required; `N/W/S/E` decimal degrees. The retrieval area (smaller bbox = faster retrieval). To fetch over a country, get its bbox from the `resolve-region` skill and pass the value here.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
@@ -94,16 +88,9 @@ A Zarr store with data variable `tp` (total precipitation, `kg m⁻²` — numer
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For a fetcher this is a
 length-1 array; downstream zarr-writing skills append their own entry. `args`
-is the argparse namespace minus the `--input`/`--output` path strings;
-`version` is the `_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept
-in lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow.
-
-The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
-(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
-translate underscore → hyphen.
+records the run's flag values under underscored names (e.g. a flag
+`--time-dim` is recorded as `time_dim`); `version` is the value printed by
+`--help`. Inspect a written output's provenance with the `provenance` skill.
 
 ## Examples
 

@@ -85,29 +85,19 @@ dims, coords, and pass-through variables are unchanged.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
-of per-step entries `{skill, version, args, input}`. This skill reads the
-upstream input's `rhiza_history` (default `[]` and stderr warning if absent)
-and appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings (with `--dim` deduped and sorted, and
-`--variable` deduped and sorted, so reordered or repeated flags stamp
-identically); `input` is a `{basename, hash}` dict — `basename` is the
-upstream zarr's filename and `hash` is a sha256 of its stored bytes;
-`version` is the skill's version, as printed by `--help`.
+The output stamps a JSON-encoded `rhiza_history` attr: the input's chain plus
+an entry for this run, each entry `{skill, version, args, input}` (`version`
+is the value printed by `--help`). Flag values in `args` are recorded under
+underscored names (e.g. a flag `--time-dim` is recorded as `time_dim`);
+translate underscore → hyphen when reconstructing a CLI invocation. Inspect a
+written output's lineage with the `provenance` skill.
 
-A cache hit requires the same skill `version`, the same flags, the same input
-name (`basename`), the same input content (`hash`), and the same upstream
-history; any modification to the input forces a recompute. Concretely, a
-renamed-but-unchanged input misses (the basename differs) and a modified
-same-named input misses (the content hash differs). Cache-hit comparison
-reads the existing output's `rhiza_history`: a hit requires the upstream
-entries to match and the last entry's `skill`, `version`, `args`, and `input`
-(both `basename` and `hash`) to match the proposed new entry.
-
-The `args` dict stores argparse dest names (underscored), not the hyphenated
-CLI flag names. A consumer reconstructing a
-`uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
-translate underscore → hyphen.
+Re-running with identical arguments against an unchanged input and an existing
+output is a cheap no-op — reuse the same output path. A cache hit requires the
+same skill `version`, the same flags, the same input name, the same input
+content, and the same upstream history; any modification to the input forces a
+recompute (a renamed-but-unchanged input misses, and a modified same-named
+input misses).
 
 ## Examples
 
