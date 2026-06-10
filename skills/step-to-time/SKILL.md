@@ -28,9 +28,12 @@ times.
 ## Input precondition
 
 The input must have a `step` dim whose values are `timedelta64` lead times AND
-a scalar (0-d) `time` coord holding the forecast init date (`datetime64`). An
-input that already has a `time` dim is already on a wall-clock axis and is
-rejected.
+a scalar (0-d) `time` coord holding the forecast init date. The init may be a
+standard `datetime64` or, for a non-standard model calendar (`noleap`,
+`360_day`), an object-dtype `cftime` datetime. An input that already has a
+`time` dim is already on a wall-clock axis and is rejected; an input that has
+BOTH a `time` dim and a `step` dim (a multi-init/hindcast cube) is rejected with
+a message to select a single init first.
 
 ## Usage
 
@@ -47,14 +50,24 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py --input <in.zarr> --output <o
 
 Same data variables, values, and non-temporal dims/coords (`number`, lat/lon)
 as the input, EXCEPT the `step` dim is replaced by a `time` dim of the same
-length whose coord holds the realized valid times (`init + step`,
-`datetime64`), stamped with CF attrs (`standard_name: time`, `axis: T`). The
-scalar `time` init coord and the `step` coord are dropped; the init date is
-written to the dataset attr `rhiza_forecast_init` (ISO 8601).
+length whose coord holds the realized valid times (`init + step`), stamped with
+CF attrs (`standard_name: time`, `axis: T`). For a `datetime64` init the
+realized axis is cast to `datetime64[ns]` so the output resolution is consistent
+regardless of the init/step source resolution; for a `cftime` init the realized
+axis stays as `cftime` objects. The valid times carry the init's time-of-day
+(midnight if the init is date-only, e.g. `datetime64[D]`). The scalar `time`
+init coord and the `step` coord are dropped, as is any pre-existing
+`valid_time` coord (it would otherwise pass through stale alongside the new
+axis); the init date is written to the dataset attr `rhiza_forecast_init`
+(ISO 8601, the `cftime` ISO string for a non-standard-calendar init).
 
-If the input lacks a `step` dim, the `step` values are not `timedelta64`, the
-input already has a `time` dim, or there is no scalar `datetime64` `time` init
-coord, the skill exits with code 2 and a clear message.
+If the input lacks a `step` dim, the `step` dim is empty, the `step` values are
+not `timedelta64`, the input already has a `time` dim (or both a `time` and a
+`step` dim), there is no scalar `time` init coord, the init is neither
+`datetime64` nor `cftime`, the init is missing/NaT, or the realized valid times
+are not strictly increasing, the skill exits with code 2 and a clear message. A
+path that exists but is not a readable Zarr store also exits 2 with a clear
+message.
 
 ### Provenance
 
