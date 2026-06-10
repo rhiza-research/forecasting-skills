@@ -91,28 +91,19 @@ One data variable per differenced variable, holding A − B on the aligned
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
-of per-step entries `{skill, version, args, input}`. Because difference takes
-two inputs, its entry's `input` field is a list of `{basename, hash, history}`
-dicts (one per input, in the order given on the command line: A then B). Each
-item's `history` holds that input's full `rhiza_history` chain (an empty list
-when the input had no `rhiza_history`), so the difference entry records every
-input branch and the output is fully reproducible from its own provenance.
-The output's top-level `rhiza_history` is a single linear array: the first
-input's chain followed by this difference entry, matching the attr
-passthrough already done on the dataset. `args` is the argparse namespace
-minus the `--input`/`--output` path strings (with `--variable` deduped and
-sorted, so reordered or repeated flags stamp identically); `version` is the
-skill's version, as printed by `--help`. Each input's `hash` is a sha256 over
-its stored bytes.
+of per-step entries `{skill, version, args, input}` (`version` is the value
+printed by `--help`). Because difference takes two inputs, its entry's `input`
+is a list with one item per input (A then B), each carrying that input's full
+upstream chain, so both branches are recorded; the top-level chain is the first
+input's chain followed by the difference entry. Inspect a written output's
+lineage with the `provenance` skill.
 
-A cache hit requires the same skill `version`, the same flags, the same input
-names (each `basename`), the same input content (each `hash`), and the same
-upstream history; any modification to either input forces a recompute.
-Concretely, a renamed-but-unchanged input misses (the basename differs) and a
-modified same-named input misses (the content hash differs). Cache-hit
-comparison reads the existing output's `rhiza_history`: a hit requires the
-upstream entries to match and the last entry's `skill`, `version`, `args`, and
-per-input `{basename, hash, history}` to match the proposed new entry.
+Re-running with identical arguments against unchanged inputs and an existing
+output is a cheap no-op — reuse the same output path. A cache hit requires the
+same skill `version`, the same flags, the same input names, the same input
+content, and the same upstream history; any modification to either input forces
+a recompute (a renamed-but-unchanged input misses, and a modified same-named
+input misses).
 
 ## Examples
 

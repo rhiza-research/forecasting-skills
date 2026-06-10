@@ -71,17 +71,12 @@ message.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
-of per-step entries `{skill, version, args, input}`. This skill reads the
-upstream input's `rhiza_history` (default `[]` and stderr warning if absent)
-and appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
-`basename` is the upstream zarr's filename and `hash` is a sha256 of its
-stored bytes, so a renamed-but-unchanged input still cache-hits and a
-same-named-but-modified input correctly cache-misses; `version` is the
-`_RHIZA_SKILL_VERSION` constant in `scripts/step_to_time.py`, kept in
-lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow.
+The output stamps a JSON-encoded `rhiza_history` attr: the input's chain plus
+an entry for this run, each entry `{skill, version, args, input}` (`version`
+is the value printed by `--help`). Inspect a written output's lineage with
+the `provenance` skill. Re-running with identical arguments against an
+unchanged input and an existing output is a cheap no-op — reuse the same
+output path.
 
 ## Example
 
