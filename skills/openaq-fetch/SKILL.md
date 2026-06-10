@@ -58,9 +58,9 @@ https://explore.openaq.org/register).
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--workers` — max concurrent per-sensor fetch threads (default 8). A
   concurrency knob only, not data: it is excluded from the cache key. Threads
-  overlap response waits only: all requests are client-side rate-limited well
-  under OpenAQ's published limits (60/minute, 2,000/hour), so
-  raising `--workers` does not raise the request rate.
+  overlap response waits only: all requests are client-side rate-limited
+  under OpenAQ's published limits (60/minute, 2,000/hour), with a small margin
+  on the hourly cap, so raising `--workers` does not raise the request rate.
 
 ### Output
 

@@ -60,8 +60,9 @@ _PAGE_LIMIT = 1000
 #
 # 1.85 s between request starts is a sustained ~32.4 requests/minute and
 # ~1,946 requests/hour (3600 / 1.85) — strictly under BOTH published limits
-# (60/minute and 2,000/hour) with real margin, no longer sitting exactly at the
-# hourly cap. The hourly figure is the binding one: 3600/1.85 < 2000.
+# (60/minute and 2,000/hour) with real margin, staying just under the hourly cap
+# rather than sitting exactly on it. The hourly figure is the binding one:
+# 3600/1.85 < 2000.
 _REQUEST_SPACING_S = 1.85
 # Generous fallback backoff before retrying a 429 that carries no usable
 # Retry-After header (the limiter should make 429s rare to begin with). Also
@@ -78,7 +79,7 @@ _next_request_start = 0.0  # monotonic time of the next free request slot
 def _rate_limit_wait() -> None:
     """Block until this thread may start the next API request.
 
-    Reserves the next free 1.8 s-spaced start slot under the lock, then sleeps
+    Reserves the next free 1.85 s-spaced start slot under the lock, then sleeps
     outside it, so concurrent threads queue up on the spacing grid without
     serializing their response waits.
     """
