@@ -18,6 +18,7 @@ Uses the OpenAQ v3 REST API. The API key comes from the environment: OPENAQ_API_
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -57,12 +58,19 @@ _PAGE_LIMIT = 1000
 # rate. Worker threads still overlap on response waits; only request STARTS
 # are spaced.
 #
-# 1.8 s between request starts is ~33 requests/minute and exactly 2,000/hour
-# at a sustained rate — under both published limits with margin.
-_REQUEST_SPACING_S = 1.8
+# 1.85 s between request starts is a sustained ~32.4 requests/minute and
+# ~1,946 requests/hour (3600 / 1.85) — strictly under BOTH published limits
+# (60/minute and 2,000/hour) with real margin, no longer sitting exactly at the
+# hourly cap. The hourly figure is the binding one: 3600/1.85 < 2000.
+_REQUEST_SPACING_S = 1.85
 # Generous fallback backoff before retrying a 429 that carries no usable
-# Retry-After header (the limiter should make 429s rare to begin with).
+# Retry-After header (the limiter should make 429s rare to begin with). Also
+# serves as the lower floor on the honored 429 wait (see _retry_backoff).
 _BACKOFF_429_S = 60.0
+# Upper cap on a honored Retry-After. A server asking us to wait longer than
+# this is treated as "wait the cap, then give up on the single retry" rather
+# than blocking the run for an unbounded interval.
+_RETRY_AFTER_MAX_S = 300.0  # 5 minutes
 _rate_lock = threading.Lock()
 _next_request_start = 0.0  # monotonic time of the next free request slot
 
@@ -379,22 +387,44 @@ def _is_transient(exc: Exception) -> bool:
 def _retry_backoff(exc: Exception) -> float:
     """Return how long to sleep before the single retry of a transient error.
 
-    A 429 means OpenAQ is throttling, so the retry must never be tight: honor a
-    numeric Retry-After header when the response carries one, else back off
-    generously (60 s). A Retry-After in HTTP-date form (or any unparseable
-    value) falls back to the same generous default. Non-429 transients keep the
-    short 2 s backoff. The retried request itself still passes through the
-    global rate limiter.
+    A 429 means OpenAQ is throttling, so the retry must never be tight. The 429
+    wait is clamped into a sane band:
+
+        delay = min(max(parsed_or_fallback, _BACKOFF_429_S), _RETRY_AFTER_MAX_S)
+
+    where `parsed_or_fallback` is a finite non-negative numeric Retry-After
+    header if present, else `_BACKOFF_429_S`. The floor (`_BACKOFF_429_S`, 60 s)
+    keeps a `Retry-After: 0` — or any value below the floor — from producing a
+    near-zero, hammering retry; a larger numeric value is honored upward up to
+    the cap (`_RETRY_AFTER_MAX_S`, 300 s), beyond which we wait the cap and then
+    give up on the single retry. The resulting 429 policy:
+
+        Retry-After: 0      -> 60 s  (floored)
+        Retry-After: 5      -> 60 s  (floored)
+        Retry-After: 120    -> 120 s (honored)
+        Retry-After: 99999  -> 300 s (capped)
+        missing / garbage   -> 60 s  (fallback, then floored)
+        HTTP-date form      -> 60 s  (not a number -> fallback)
+        inf / nan           -> 60 s  (non-finite rejected to fallback)
+
+    A non-finite header (inf/nan) is rejected to the fallback via math.isfinite.
+    Non-429 transients keep the short 2 s backoff. The retried request itself
+    still passes through the global rate limiter.
     """
     resp = getattr(exc, "response", None)
     if resp is None or getattr(resp, "status_code", None) != 429:
         return 2.0
     raw = (getattr(resp, "headers", None) or {}).get("Retry-After")
     try:
-        delay = float(raw)
+        parsed = float(raw)
     except (TypeError, ValueError):
-        return _BACKOFF_429_S
-    return delay if delay >= 0 else _BACKOFF_429_S
+        parsed = _BACKOFF_429_S
+    else:
+        # Reject non-finite (inf/nan) and negative values to the fallback;
+        # an HTTP-date Retry-After is non-numeric and already fell into except.
+        if not math.isfinite(parsed) or parsed < 0:
+            parsed = _BACKOFF_429_S
+    return min(max(parsed, _BACKOFF_429_S), _RETRY_AFTER_MAX_S)
 
 
 def _classify_api_error(exc: Exception, context: str) -> str:
@@ -439,8 +469,8 @@ def _get_pages(session, url: str, params: dict):
 
     Pages with `limit`/`page` until a short page is returned. Every request
     start passes through the global rate limiter. A single transient error per
-    page is retried once after a backoff (2 s, or Retry-After/60 s for a 429 —
-    see `_retry_backoff`).
+    page is retried once after a backoff (2 s for a non-429 transient, or a
+    60–300 s clamped wait for a 429 — see `_retry_backoff`).
     """
     page = 1
     while True:

@@ -59,7 +59,7 @@ https://explore.openaq.org/register).
 - `--workers` — max concurrent per-sensor fetch threads (default 8). A
   concurrency knob only; it does not change the output and is excluded from the
   cache key. Threads overlap response waits only: all requests are client-side
-  rate-limited under OpenAQ's published limits (60/minute, 2,000/hour), so
+  rate-limited well under OpenAQ's published limits (60/minute, 2,000/hour), so
   raising `--workers` does not raise the request rate.
 
 ### Output
