@@ -72,11 +72,19 @@ message.
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: the input's chain plus
-an entry for this run, each entry `{skill, version, args, input}` (`version`
-is the value printed by `--help`). Inspect a written output's lineage with
-the `provenance` skill. Re-running with identical arguments against an
-unchanged input and an existing output is a cheap no-op — reuse the same
-output path.
+an entry for this run, each entry `{skill, version, args, input}` (the
+`version` recorded in this skill's own entry is the value printed by its
+`--help`; inherited upstream entries carry their own versions). Flag values in
+`args` are recorded under underscored names (e.g. a flag `--time-dim` is
+recorded as `time_dim`); translate underscore → hyphen when reconstructing a
+CLI invocation. Inspect a written output's lineage with the `provenance` skill.
+
+Re-running with identical arguments against an unchanged input and an existing
+output is a cheap no-op — reuse the same output path. A cache hit requires the
+same skill `version`, the same flags, the same input name, the same input
+content, and the same upstream history; any modification to the input forces a
+recompute (a renamed-but-unchanged input misses, and a modified same-named
+input misses).
 
 ## Example
 

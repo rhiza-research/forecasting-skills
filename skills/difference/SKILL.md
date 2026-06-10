@@ -91,8 +91,9 @@ One data variable per differenced variable, holding A − B on the aligned
 ### Provenance
 
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
-of per-step entries `{skill, version, args, input}` (`version` is the value
-printed by `--help`). Because difference takes two inputs, its entry's `input`
+of per-step entries `{skill, version, args, input}` (the `version` recorded in
+this skill's own entry is the value printed by its `--help`; inherited upstream
+entries carry their own versions). Because difference takes two inputs, its entry's `input`
 is a list with one item per input (A then B), each carrying that input's full
 upstream chain, so both branches are recorded; the top-level chain is the first
 input's chain followed by the difference entry. Inspect a written output's
