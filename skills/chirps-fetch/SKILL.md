@@ -50,7 +50,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD 
   when a token references `latest`. The cache key records the resolved absolute
   dates, never the relative token.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
-- `--workers` — max concurrent per-day download threads (default 8). Bounds the thread pool that fetches each day's TIF over HTTPS. A concurrency knob only: it does not affect the output or caching. Lower it if the CHIRPS server returns throttling errors.
+- `--workers` — max concurrent per-day download threads (default 8). Bounds the thread pool that fetches each day's TIF over HTTPS. A concurrency knob only, not data: it is excluded from the cache key. Lower it if the CHIRPS server returns throttling errors.
 
 ### Output
 

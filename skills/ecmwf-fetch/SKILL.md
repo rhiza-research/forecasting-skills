@@ -74,7 +74,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
   misleadingly old `latest`. The whole discovery loop is additionally bounded by
   a one-hour time budget. If every probed init in the lookback window was
   access-restricted, the run exits non-zero with a message to check S2S access
-  and licence terms. The cache key records the resolved absolute init date,
+  and license terms. The cache key records the resolved absolute init date,
   never the relative token.
 - `--bbox` — required; `N/W/S/E` decimal degrees. The retrieval area (smaller bbox = faster retrieval). To fetch over a country, get its bbox from the `resolve-region` skill and pass the value here.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
