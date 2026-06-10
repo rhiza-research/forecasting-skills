@@ -58,7 +58,9 @@ https://explore.openaq.org/register).
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--workers` — max concurrent per-sensor fetch threads (default 8). A
   concurrency knob only; it does not change the output and is excluded from the
-  cache key. Lower it if OpenAQ returns 429/throttling errors.
+  cache key. Threads overlap response waits only: all requests are client-side
+  rate-limited under OpenAQ's published limits (60/minute, 2,000/hour), so
+  raising `--workers` does not raise the request rate.
 
 ### Output
 
@@ -117,9 +119,12 @@ stderr warning; the run still succeeds with the variables that do have data.
 - No sensors or no observations for the bbox/window: a non-zero exit with a
   clear message.
 
-There is no proactive size or request-count guard: `--bbox` is required (a global
-query would be unbounded), but within it the caller decides the window, and
-provider rate/size failures are handled reactively (retry-once, then drop).
+There is no proactive size guard: `--bbox` is required (a global query would be
+unbounded), but within it the caller decides the window. Request rate, however,
+is guarded proactively (the client-side rate limiter above); a 429 that still
+arrives is retried once after honoring its `Retry-After` header (or a 60 s
+backoff without one), and other transient failures are handled reactively
+(retry-once, then drop).
 
 ### Memory and performance
 
