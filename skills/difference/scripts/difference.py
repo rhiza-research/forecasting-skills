@@ -2,6 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #   "cftime>=1.6",
+#   "numpy>=2.4",
 #   "xarray>=2026.4",
 #   "zarr>=3.2",
 # ]
@@ -39,6 +40,22 @@ def _hash_zarr(zarr_path: Path) -> str:
     return h.hexdigest()
 
 
+def _to_signed(da, np):
+    """Promote a boolean or unsigned-integer DataArray to a type that can
+    hold a negative difference, leaving signed-int / float / other dtypes
+    untouched. Boolean becomes int16; an unsigned int becomes the next signed
+    int wide enough to represent its negatives (uint8->int16, uint16->int32,
+    uint32->int64, uint64->int64 with possible saturation), so A - B does not
+    return a wrapped-around modulo-2**nbits value."""
+    kind = da.dtype.kind
+    if kind == "b":
+        return da.astype(np.int16)
+    if kind == "u":
+        widen = {1: np.int16, 2: np.int32, 4: np.int64, 8: np.int64}
+        return da.astype(widen.get(da.dtype.itemsize, np.int64))
+    return da
+
+
 def _load_history(zarr_path: Path) -> list:
     try:
         import xarray as xr
@@ -67,10 +84,14 @@ def _load_history(zarr_path: Path) -> list:
 
 
 def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
-    """Cache check that compares everything except each input's hash.
+    """Cache check that compares skill version, flags, each input's name,
+    each input's content hash, and upstream history.
 
-    The hash over an input zarr is expensive; the per-input basename +
-    history chain is sufficient to identify whether a recompute is needed.
+    Each recorded input's `hash` (a sha256 over that input's stored bytes) is
+    compared too, so any modification to either input forces a recompute even
+    when the basename is unchanged, and a renamed-but-unchanged input misses
+    on the differing basename. The caller passes a fully-populated `entry`
+    (each input carrying its `hash`) so this comparison is exact.
     """
     if not out.exists():
         return False
@@ -87,6 +108,7 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
     inputs_match = all(
         isinstance(li, dict)
         and li.get("basename") == ei["basename"]
+        and li.get("hash") == ei["hash"]
         and li.get("history") == ei["history"]
         for li, ei in zip(last_inputs, entry_inputs, strict=True)
     )
@@ -131,33 +153,57 @@ def main() -> None:
 
     paths = [Path(s) for s in args.input]
     out = Path(args.output)
-    # Reject an in-place run: the write path below deletes the output store
-    # before the dataset's values (still lazily backed by the inputs) are
-    # read, so differencing onto an input would destroy it.
-    if any(ip.resolve() == out.resolve() for ip in paths):
-        print(
-            f"Error: --output resolves to the same store as an --input ({args.output}); "
-            "difference writes to a distinct output path.",
-            file=sys.stderr,
-        )
+
+    # Validate input existence before any hashing or cache check: a missing
+    # input is a clean user error, not something to discover partway through.
+    missing = [str(ip) for ip in paths if not ip.exists()]
+    if missing:
+        for m in missing:
+            print(f"Error: {m} not found.", file=sys.stderr)
         sys.exit(2)
 
-    # Build the cheap fields first; defer _hash_zarr until after the
-    # cache-hit check so we don't hash hundreds of MB of zarr on hits.
+    # Reject an in-place run: the write path below deletes the output store
+    # before the dataset's values (still lazily backed by the inputs) are
+    # read, so differencing onto an input would destroy it. The guard also
+    # rejects an output nested inside an input store (or an input nested
+    # inside the output): rmtree of either would corrupt the other before the
+    # lazily-backed values are read.
+    out_r = out.resolve()
+    for ip in paths:
+        ip_r = ip.resolve()
+        if ip_r == out_r or out_r.is_relative_to(ip_r) or ip_r.is_relative_to(out_r):
+            print(
+                f"Error: --output ({args.output}) overlaps with an --input ({ip}) "
+                "as the same store or one nested inside the other; "
+                "difference writes to a distinct output path.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+    # Normalize provenance args before stamping so reordered or duplicated
+    # --variable flags don't cause spurious cache misses: dedupe and sort.
+    norm_args = {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
+    if args.variable is not None:
+        norm_args["variable"] = sorted(set(args.variable))
+
     # Multi-input entry: `input` is a list of per-input dicts in CLI order
-    # (concat's schema), each carrying that input's full history chain.
+    # (concat's schema), each carrying its content hash and full history
+    # chain. The recorded per-input hash (sha256 over the input's stored
+    # bytes) is part of the cache key, so build the full entry up front: a
+    # renamed-but-unchanged input misses on basename and a modified
+    # same-named input misses on hash.
     input_histories = [_load_history(ip) for ip in paths]
     upstream = input_histories[0]
-    partial_entry = {
+    entry = {
         "skill": "difference",
         "version": _RHIZA_SKILL_VERSION,
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
+        "args": norm_args,
         "input": [
-            {"basename": ip.name, "history": hist}
+            {"basename": ip.name, "hash": _hash_zarr(ip), "history": hist}
             for ip, hist in zip(paths, input_histories, strict=True)
         ],
     }
-    if _cache_hit(out, upstream, partial_entry):
+    if _cache_hit(out, upstream, entry):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping difference.",
             file=sys.stderr,
@@ -166,12 +212,29 @@ def main() -> None:
 
     import xarray as xr
 
-    missing = [str(ip) for ip in paths if not ip.exists()]
-    if missing:
-        print(f"Error: missing inputs: {missing}", file=sys.stderr)
-        sys.exit(2)
+    # Wrap each input open so an existing-but-not-a-Zarr path exits cleanly
+    # instead of surfacing a backend traceback.
+    opened = []
+    for ip in paths:
+        try:
+            opened.append(xr.open_zarr(ip, consolidated=False))
+        except Exception as exc:  # noqa: BLE001 - normalize any backend error
+            print(
+                f"Error: {ip} is not a readable Zarr store ({type(exc).__name__}: {exc}).",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+    ds_a, ds_b = opened
 
-    ds_a, ds_b = (xr.open_zarr(ip, consolidated=False) for ip in paths)
+    # Flag each input that carries no upstream rhiza_history as opaque (same
+    # note reduce prints for its single input), so a non-reproducible input
+    # branch is surfaced per input rather than silently recorded as `[]`.
+    for ip, hist in zip(paths, input_histories, strict=True):
+        if not hist:
+            print(
+                f"Warning: no upstream rhiza_history on input {ip.name}; treating input as opaque.",
+                file=sys.stderr,
+            )
 
     # Variable selection. Explicit --variable names must be data variables of
     # BOTH inputs. Default selection takes every data variable present in
@@ -223,11 +286,14 @@ def main() -> None:
     # surrounding whitespace so a trailing space is not read as a real
     # difference.
     for var in selected:
+        # Key by full input path (not basename) so two inputs that share a
+        # filename in different directories are still compared as distinct
+        # inputs rather than collapsing onto one key.
         seen_units = {}
         for ip, ds in zip(paths, (ds_a, ds_b), strict=True):
             u = ds[var].attrs.get("units")
             if isinstance(u, str):
-                seen_units[ip.name] = u.strip()
+                seen_units[str(ip)] = u.strip()
         if len(set(seen_units.values())) > 1:
             detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
             print(
@@ -239,10 +305,40 @@ def main() -> None:
                 file=sys.stderr,
             )
 
+    # Shared dims WITHOUT an index coordinate can't be label-aligned: xarray
+    # pairs them positionally by integer position. A size mismatch there can't
+    # be reconciled (the subtraction would raise an opaque broadcast error),
+    # so exit cleanly naming the dim; on equal sizes warn that the pairing is
+    # positional (element i of A minus element i of B), since a coordinateless
+    # dim carries no labels to confirm the rows actually correspond.
+    shared_dims = set(ds_a.dims) & set(ds_b.dims)
+    for d in sorted(shared_dims):
+        if d in ds_a.indexes or d in ds_b.indexes:
+            continue  # an indexed side is label-aligned, not positional
+        size_a = ds_a.sizes[d]
+        size_b = ds_b.sizes[d]
+        if size_a != size_b:
+            print(
+                f"Error: shared dim '{d}' has no index coordinate, so it is "
+                f"paired positionally, but the inputs disagree on its size "
+                f"({paths[0].name}={size_a}, {paths[1].name}={size_b}); "
+                "there is no way to align unlabeled rows of different length.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        print(
+            f"Warning: shared dim '{d}' has no index coordinate; pairing it "
+            f"positionally (element i of {paths[0].name} minus element i of "
+            f"{paths[1].name}). Verify the rows correspond.",
+            file=sys.stderr,
+        )
+
     print(
         f"Differencing {paths[0].name} - {paths[1].name} variables={selected}",
         file=sys.stderr,
     )
+
+    import numpy as np
 
     # A - B per variable. xarray arithmetic inner-joins the shared dims and
     # broadcasts over dims present on only one side, so a (time, latitude,
@@ -250,28 +346,49 @@ def main() -> None:
     # per-time anomalies. Arithmetic drops attrs; restore the first input's.
     data_vars = {}
     for var in selected:
-        diff = ds_a[var] - ds_b[var]
+        da_a = ds_a[var]
+        da_b = ds_b[var]
+
+        # Cast boolean and unsigned-integer operands to a signed/float type
+        # before subtracting: bool subtraction is nonsensical (and numpy
+        # deprecates it), and unsigned subtraction wraps around modulo
+        # 2**nbits, turning a small negative result into a huge positive one.
+        # Promote bool -> int16 and unsigned int -> the next signed int wide
+        # enough to hold negatives (falling back to int64).
+        da_a = _to_signed(da_a, np)
+        da_b = _to_signed(da_b, np)
+
+        # An input dim that is already empty before alignment is distinct from
+        # an alignment that produced no overlap; report which.
+        pre_empty = [
+            d
+            for d in set(da_a.sizes) | set(da_b.sizes)
+            if da_a.sizes.get(d, 1) == 0 or da_b.sizes.get(d, 1) == 0
+        ]
+        diff = da_a - da_b
         empty = [d for d, s in diff.sizes.items() if s == 0]
         if empty:
-            print(
-                f"Error: aligning the inputs left variable '{var}' empty along "
-                f"dim(s) {empty}: the inputs have no overlapping coordinate "
-                f"values there, so there is nothing to subtract.",
-                file=sys.stderr,
-            )
+            if set(empty) & set(pre_empty):
+                print(
+                    f"Error: variable '{var}' is already empty along dim(s) "
+                    f"{sorted(set(empty) & set(pre_empty))} in an input before "
+                    "alignment: there is nothing to subtract.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"Error: aligning the inputs left variable '{var}' empty "
+                    f"along dim(s) {empty}: the inputs have no overlapping "
+                    "coordinate values there, so there is nothing to subtract.",
+                    file=sys.stderr,
+                )
             sys.exit(2)
         diff.attrs = dict(ds_a[var].attrs)
         data_vars[var] = diff
     out_ds = xr.Dataset(data_vars)
 
-    # Cache miss: now compute the per-input hashes and build the final entry.
-    entry = {
-        **partial_entry,
-        "input": [
-            {"basename": ip.name, "hash": _hash_zarr(ip), "history": hist}
-            for ip, hist in zip(paths, input_histories, strict=True)
-        ],
-    }
+    # `entry` (with per-input hashes) was built above for the cache check and
+    # is reused verbatim for the stamp.
     # Top-level chain stays a single linear array — the first input's chain
     # plus this entry — so single-attr readers keep working; the entry's
     # `input` list records every input branch in full.

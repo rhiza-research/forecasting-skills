@@ -50,20 +50,38 @@ where `--output` resolves to either `--input` path.
 ### Alignment
 
 Shared dims are aligned with an inner join, so only overlapping coordinate
-values participate; dims present on only one input broadcast. When alignment
-leaves a variable empty along a dim (no overlapping coordinate values), the
-skill exits non-zero naming the variable and the empty dim(s); no output is
-written.
+values participate; dims present on only one input broadcast. When a variable
+ends up empty along a dim the skill exits non-zero (no output is written) and
+distinguishes the two causes: a dim that was already empty in an input before
+alignment, versus a dim left empty because alignment found no overlapping
+coordinate values.
+
+A shared dim that has no index coordinate cannot be label-aligned, so it is
+paired positionally (element *i* of A minus element *i* of B). If the two
+inputs disagree on such a dim's size, the run exits non-zero naming the dim
+(unlabeled rows of different length cannot be aligned); if the sizes are
+equal, the run proceeds but warns on stderr that the pairing is positional, so
+you can confirm the rows actually correspond.
+
+### Operand dtypes
+
+Boolean and unsigned-integer variables are cast before subtracting: boolean
+becomes a signed integer (bool subtraction is nonsensical), and an unsigned
+integer is promoted to a signed integer wide enough to hold negatives, so a
+result that should be negative is not wrapped around modulo `2**nbits`. Signed
+integer, floating-point, and other dtypes are left untouched.
 
 ### Input units
 
 The output variable keeps the first input's attrs, including its `units`.
 When the two inputs carry a variable's `units` attr in differing values, the
-subtraction would mix incompatible scales, so a warning naming each input and
-its units is printed to stderr and the run proceeds — convert the inputs onto
-one units basis with `unit-convert` first. Only string `units` values are
-compared, after stripping surrounding whitespace; an input that omits `units`
-is not treated as a difference.
+subtraction would mix incompatible scales, so a warning naming each input (by
+its full path) and its units is printed to stderr and the run proceeds —
+convert the inputs onto one units basis with `unit-convert` first. The check
+keys on the full input path rather than the basename, so two inputs that share
+a filename in different directories are still compared as distinct inputs.
+Only string `units` values are compared, after stripping surrounding
+whitespace; an input that omits `units` is not treated as a difference.
 
 ### Output
 
@@ -82,21 +100,34 @@ input branch and the output is fully reproducible from its own provenance.
 The output's top-level `rhiza_history` is a single linear array: the first
 input's chain followed by this difference entry, matching the attr
 passthrough already done on the dataset. `args` is the argparse namespace
-minus the `--input`/`--output` path strings; `version` is the
-`_RHIZA_SKILL_VERSION` constant in `scripts/difference.py`, kept in lockstep
-with `metadata.version` in this SKILL.md by the CI version-bump workflow.
-Each input's `hash` is a sha256 over its stored bytes, so
-renamed-but-unchanged inputs still match and same-named-but-modified inputs
-do not. Cache-hit comparison reads the existing output's `rhiza_history`: a
-hit requires the upstream entries to match and the last entry's `skill`,
-`args`, and per-input `{basename, history}` to match the proposed new entry.
+minus the `--input`/`--output` path strings (with `--variable` deduped and
+sorted, so reordered or repeated flags stamp identically); `version` is the
+skill's version, as printed by `--help`. Each input's `hash` is a sha256 over
+its stored bytes.
+
+A cache hit requires the same skill `version`, the same flags, the same input
+names (each `basename`), the same input content (each `hash`), and the same
+upstream history; any modification to either input forces a recompute.
+Concretely, a renamed-but-unchanged input misses (the basename differs) and a
+modified same-named input misses (the content hash differs). Cache-hit
+comparison reads the existing output's `rhiza_history`: a hit requires the
+upstream entries to match and the last entry's `skill`, `version`, `args`, and
+per-input `{basename, hash, history}` to match the proposed new entry.
 
 ## Examples
 
+SST anomalies are a two-skill recipe: build the time-mean baseline with the
+`reduce` skill, then subtract it with this skill. Each script runs under its
+own skill's directory — `reduce.py` from the `reduce` skill (its
+`${CLAUDE_SKILL_DIR}`), `difference.py` from this one — so the reduce step is
+*not* invoked under difference's `${CLAUDE_SKILL_DIR}`.
+
 ```bash
-# SST anomalies: field minus its time-mean baseline (broadcast over time).
-uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py -i /tmp/sst.zarr -o /tmp/sst_baseline.zarr \
+# Step 1 — reduce skill: time-mean baseline.
+uv run ${REDUCE_SKILL_DIR}/scripts/reduce.py -i /tmp/sst.zarr -o /tmp/sst_baseline.zarr \
     --dim time --method mean
+
+# Step 2 — difference skill: field minus its baseline (broadcast over time).
 uv run ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/sst.zarr -i /tmp/sst_baseline.zarr \
     --output /tmp/sst_anom.zarr
 ```
