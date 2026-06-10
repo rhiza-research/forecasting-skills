@@ -545,19 +545,53 @@ def main() -> None:
         try:
             cf_time = ds.cf["time"].name
         except KeyError:
-            cf_time = None
+            # cf resolution failed (no T axis, or multiple candidates make it
+            # ambiguous). Prefer a literal `time` dim before falling back to
+            # `step` below.
+            cf_time = "time" if "time" in ds.dims else None
         if cf_time is not None and cf_time in ds.dims:
-            dim = cf_time
+            if ds.sizes[cf_time] == 1 and "step" in ds.dims:
+                # Forecast-shaped: a size-1 init-time dim alongside a lead
+                # axis. Aggregating the size-1 dim would yield one degenerate
+                # bin, so aggregate the lead axis instead.
+                print(
+                    f"Note: time dim '{cf_time}' has size 1 alongside a "
+                    f"'step' dim; aggregating over step instead. Pass "
+                    f"--time-dim {cf_time} to override.",
+                    file=sys.stderr,
+                )
+                dim = "step"
+            else:
+                if "step" in ds.dims:
+                    print(
+                        f"Note: both '{cf_time}' and 'step' dims are present; "
+                        f"aggregating over {cf_time}. Pass --time-dim step to "
+                        f"aggregate the forecast lead axis instead.",
+                        file=sys.stderr,
+                    )
+                dim = cf_time
         elif "step" in ds.dims:
             dim = "step"
         else:
             dim = None
         if dim is None:
-            print(
-                f"Error: no time/step dim identified in {list(ds.dims)}. "
-                f"Pass --time-dim to override.",
-                file=sys.stderr,
-            )
+            non_dim_time = cf_time
+            if non_dim_time is None and "time" in ds.coords:
+                non_dim_time = "time"
+            if non_dim_time is not None:
+                print(
+                    f"Error: found a '{non_dim_time}' coordinate, but it is "
+                    f"not a dimension of the data (a scalar coordinate has no "
+                    f"axis to aggregate over) and no 'step' dim is present. "
+                    f"Dims: {list(ds.dims)}. Pass --time-dim to override.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"Error: no time/step dim identified in {list(ds.dims)}. "
+                    f"Pass --time-dim to override.",
+                    file=sys.stderr,
+                )
             sys.exit(2)
 
     print(
