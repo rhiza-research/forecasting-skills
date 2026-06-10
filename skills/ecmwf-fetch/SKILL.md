@@ -34,8 +34,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
 - `--date` — forecast init date. The value is one of:
   - an absolute ISO date `YYYY-MM-DD`;
   - `now` or `today` — the current UTC date;
-  - `latest` — the newest available forecast init, found by probing init dates
-    backward via ECDS submits;
+  - `latest` — the newest *accessible* forecast init, found by probing init dates
+    backward via ECDS submits. ECMWF S2S real-time data is access-restricted
+    (embargoed) for roughly the most recent 3 weeks, so `latest` skips embargoed
+    inits and resolves to the newest init you can actually retrieve (typically
+    ~3+ weeks old);
   - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
     days, so `3w` = 21 days). The offset is capped at 36525 days; a larger value,
     a future `+` offset, a month/year unit, or any malformed value exits 2 before
@@ -62,7 +65,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
   one init day at a time until one succeeds. This is acceptable because it is
   opt-in — an absolute or `now`-based `--date` does no probing. A probe job that
   ECDS marks failed/rejected means that init is not yet published and the probe
-  steps back; a submit/transport/auth error, or a job still not ready after a
+  steps back; a probe job that fails with the S2S real-time embargo (an
+  access-restriction error) also steps back, since `latest` resolves to the
+  newest accessible init; a submit/transport/auth error, or a job still not ready
+  after a
   bounded wall-clock poll (1 hour), is surfaced and the run exits non-zero rather
   than being misreported as a missing init or looping forever. (On the poll-cap
   timeout the run aborts rather than stepping back, because stepping back from a
