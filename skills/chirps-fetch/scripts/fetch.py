@@ -13,6 +13,7 @@
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -206,7 +207,17 @@ DEFAULT_WORKERS = 8
 class DayUnavailable(Exception):
     """Raised when a day's TIF cannot be retrieved: not yet published (HTTP 404),
     a transient server (5xx) or network error, or a non-TIFF / truncated / empty
-    body. The post-loop classifier then handles tail-vs-mid-gap."""
+    body. The post-loop classifier then handles tail-vs-mid-gap.
+
+    ``status`` carries the HTTP status code when the failure had one (the 5xx
+    raise site); transport-error, truncated, empty, and non-TIFF failures leave
+    it None. The post-loop classifier uses it to tell an all-days 5xx refusal
+    (server throttling the whole run) apart from genuinely absent data.
+    """
+
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -319,7 +330,10 @@ def _get_tif_body(session: requests.Session, url: str):
     if resp.status_code == 404:
         return _NOT_FOUND
     if resp.status_code >= 500:
-        raise DayUnavailable(f"transient server error: HTTP {resp.status_code} for {url}")
+        raise DayUnavailable(
+            f"transient server error: HTTP {resp.status_code} for {url}",
+            status=resp.status_code,
+        )
     if resp.status_code != 200:
         resp.raise_for_status()
 
@@ -350,6 +364,39 @@ def _get_tif_body(session: requests.Session, url: str):
         raise DayUnavailable(f"non-TIFF body for {url}: leading bytes {body[:4]!r}")
 
     return body
+
+
+def _http_refusal_message(exc: requests.HTTPError, workers: int) -> str:
+    """Build the abort message for an HTTPError escaping a download worker.
+
+    Always includes status, reason, and URL when a response is attached. The
+    hint is status-aware: 403/429 (and a response-less error) read as rate
+    limiting / a temporary IP block, where waiting and lowering --workers help;
+    any other status reads as a request/auth/layout problem, where retrying
+    will not help. ``resp.reason`` can be None (no reason phrase on the status
+    line), so the detail is rebuilt with whitespace collapsed rather than
+    printing a literal "None" or a double space.
+    """
+    resp = exc.response
+    if resp is None:
+        status = None
+        detail = str(exc)
+    else:
+        status = resp.status_code
+        detail = " ".join(f"HTTP {status} {resp.reason or ''} for {resp.url}".split())
+    if status is None or status in (403, 429):
+        return (
+            f"Error: the CHIRPS data server refused the request ({detail}). "
+            "This usually means rate limiting / a temporary IP block from "
+            "too many requests — wait and retry later, and consider "
+            f"lowering --workers (current: {workers})."
+        )
+    return (
+        f"Error: the CHIRPS data server refused the request ({detail}). "
+        f"This looks like a request/auth/layout problem (HTTP {status}); "
+        "retrying will not help — check that the CHIRPS product layout "
+        "has not changed."
+    )
 
 
 def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> Path:
@@ -592,6 +639,9 @@ def main() -> None:
     expected_days = list(_daterange(start, end))
     succeeded: list[tuple[date, xr.DataArray]] = []
     missing_days: list[date] = []
+    # HTTP status (or None) of each missing day's DayUnavailable, keyed by day;
+    # lets the all-missing classifier recognize an all-5xx site-wide refusal.
+    missing_status: dict[date, int | None] = {}
 
     with tempfile.TemporaryDirectory(prefix="chirps_") as tmpdir:
         tmp = Path(tmpdir)
@@ -615,13 +665,15 @@ def main() -> None:
                     day = futures[fut]
                     try:
                         # A DayUnavailable (404/5xx/transient/truncated/non-TIFF)
-                        # marks the day missing. An HTTPError (a non-404 4xx on
-                        # the prelim last-resort URL, e.g. a 403 throttle) means
-                        # the server is refusing requests site-wide, so the run
-                        # aborts with a clean message. Any other exception is
-                        # unexpected and is re-raised by future.result(), so the
-                        # run fails loudly rather than silently dropping a day or
-                        # hanging the pool.
+                        # marks the day missing. ANY requests.HTTPError escaping
+                        # a worker (today that is the prelim-side non-404 4xx
+                        # raise — a final-side HTTPError is swallowed by the
+                        # prelim fallback — but the clause is not limited to
+                        # that by construction) means the server is refusing
+                        # requests, so the run aborts with a clean message. Any
+                        # other exception is unexpected and is re-raised by
+                        # future.result(), so the run fails loudly rather than
+                        # silently dropping a day or hanging the pool.
                         result_day, tif = fut.result()
                     except DayUnavailable as e:
                         print(
@@ -630,26 +682,18 @@ def main() -> None:
                             file=sys.stderr,
                         )
                         missing_days.append(day)
+                        missing_status[day] = e.status
                         continue
                     except requests.HTTPError as e:
-                        # Cancel not-yet-started downloads so the pool's exit
-                        # join only waits for requests already in flight,
-                        # instead of working through every remaining day.
+                        # Cancel not-yet-started downloads so no new request
+                        # starts while the abort message is built and printed.
                         pool.shutdown(wait=False, cancel_futures=True)
-                        resp = e.response
-                        detail = (
-                            f"HTTP {resp.status_code} {resp.reason} for {resp.url}"
-                            if resp is not None
-                            else str(e)
-                        )
-                        print(
-                            f"Error: the CHIRPS data server refused the request ({detail}). "
-                            "This usually means rate limiting / a temporary IP block from "
-                            "too many requests — wait and retry later, and consider "
-                            f"lowering --workers (current: {args.workers}).",
-                            file=sys.stderr,
-                        )
-                        sys.exit(2)
+                        print(_http_refusal_message(e, args.workers), file=sys.stderr)
+                        sys.stderr.flush()
+                        # os._exit: SystemExit would block on the pool join
+                        # waiting for in-flight requests; temp files are in /tmp
+                        # and the OS reclaims them.
+                        os._exit(2)
                     print(f"  {result_day.isoformat()}", file=sys.stderr)
                     downloaded.append((result_day, tif))
         finally:
@@ -666,6 +710,22 @@ def main() -> None:
 
         # Classify outcome.
         if not succeeded:
+            # When EVERY missing day failed with a 5xx, the server refused the
+            # whole run (likely throttling) — not a data gap, so say so instead
+            # of the genuinely-absent-data diagnostic below. This branch runs
+            # after the pool has fully drained, so a normal sys.exit is fine.
+            statuses = [missing_status.get(d) for d in missing_days]
+            if statuses and all(s is not None and s >= 500 for s in statuses):
+                codes = ", ".join(str(c) for c in sorted(set(statuses)))
+                print(
+                    f"Error: the CHIRPS data server refused every request in "
+                    f"range {start}..{end} (HTTP {codes} on all days). This "
+                    "usually means rate limiting / a temporary server-side "
+                    "block from too many requests — wait and retry later, and "
+                    f"consider lowering --workers (current: {args.workers}).",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
             print(
                 f"Error: no days available in range {start}..{end} from the "
                 f"CHIRPS data server (final or prelim sat product). CHIRPS v3.0 "
