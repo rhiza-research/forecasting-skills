@@ -26,10 +26,13 @@ from pathlib import Path
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _RHIZA_SKILL_VERSION = "0.1.6"
 
-# How far back from today the `latest` init probe looks. ECMWF S2S runs init on
-# fixed days; 14 days covers several init cycles plus production lag. Exhausting
-# the probe without a usable init exits non-zero.
-_LATEST_LOOKBACK_DAYS = 14
+# How far back from today the `latest` init probe looks. ECMWF S2S real-time
+# data is access-restricted (embargoed) for roughly the most recent 3 weeks, so
+# the newest *accessible* init is typically ~21+ days old; the probe must be able
+# to step past that embargo to reach an init the user can actually retrieve. 28
+# days covers the ~3-week embargo plus several init cycles and production lag.
+# Exhausting the probe without a usable init exits non-zero.
+_LATEST_LOOKBACK_DAYS = 28
 
 # Bounded poll for a single `latest` probe day. ECDS retrievals run minutes to
 # ~hour, so each probe job is polled every _PROBE_POLL_SECONDS up to a
@@ -313,17 +316,50 @@ def _concat_lon(datasets: list) -> object:
     return combined.sortby(lon_name)
 
 
+# Signatures of the ECMWF S2S real-time embargo, matched on the failed job's
+# error text. When a probed init falls inside the access-restricted window, the
+# ECDS/MARS job fails and the failure surfaces with a message containing one of
+# these. The relevant MARS exception type (MarsRuntimeError) is not reliably
+# importable from the ecmwf.datastores stack, so detection is a defensive
+# substring match (case-insensitive) on the exception text rather than an
+# isinstance check.
+_S2S_EMBARGO_SIGNATURES = (
+    "restricted access to s2s data",
+    "restricted access to s2s",
+    "accesserror",
+)
+
+
+def _is_s2s_embargo_error(exc: BaseException) -> bool:
+    """True if `exc` is the ECMWF S2S real-time embargo (access-restriction) failure.
+
+    The most-recent ~3 weeks of S2S real-time data are access-restricted; probing
+    such an init makes the ECDS/MARS job fail with an access-restriction error
+    (e.g. a message containing "Restricted access to S2S data" / "AccessError",
+    typically a MarsRuntimeError-type exception). Such an init is not retrievable
+    *yet* but is also not a genuine transport/auth/HTTP problem — during `latest`
+    discovery it should be skipped (step back), not treated as fatal.
+    """
+    msg = str(exc).lower()
+    return any(sig in msg for sig in _S2S_EMBARGO_SIGNATURES)
+
+
 def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
     """`latest` resolver for ECMWF S2S: newest available forecast init on or
     before today (UTC), found by probing init dates backward.
 
     For each candidate day back from today, submits a control-forecast retrieval
     over the requested area and polls it (bounded by ``_PROBE_POLL_MAX_SECONDS``)
-    until results-ready. A job that ECDS marks failed/rejected/dismissed means
-    that init is not published — step back one day. A submit/transport/auth
-    error, or a job still not ready at the poll cap, is NOT "this init is
-    unavailable": it is surfaced and the run exits non-zero, so a stuck job or a
-    credential problem is never silently misreported as a missing init.
+    until results-ready. Two non-fatal cases step back one day: a job ECDS marks
+    failed/rejected/dismissed because that init is not published, and a job that
+    fails with the ECMWF S2S real-time embargo (access-restriction error) because
+    the ~3 most-recent weeks of S2S real-time data are access-restricted. Since
+    `latest` means "the newest init you can actually get", an embargoed init is
+    skipped, not fatal — the probe steps past the embargo to the newest accessible
+    init. A submit/transport/auth error, or a job still not ready at the poll cap,
+    is NOT "this init is unavailable": it is surfaced and the run exits non-zero,
+    so a stuck job or a credential problem is never silently misreported as a
+    missing init.
 
     Returns ``(day, remote)`` for the winning init — the completed control
     retrieval — so the caller reuses it as the control leg rather than
@@ -371,11 +407,37 @@ def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
                 if remote.results_ready:
                     return day, remote
             except ProcessingFailedError as exc:
-                # ECDS marked the job failed/rejected/dismissed: this init is not
-                # published. Step back one day.
-                print(f"  {day.isoformat()} not published ({exc}); stepping back", file=sys.stderr)
+                # ECDS marked the job failed/rejected/dismissed. Two non-fatal
+                # cases both step back one day:
+                #   - the S2S real-time embargo (access restriction), whose detail
+                #     surfaces in the ProcessingFailedError message, and
+                #   - a not-yet-published init.
+                if _is_s2s_embargo_error(exc):
+                    print(
+                        f"  {day.isoformat()} not accessible "
+                        f"(S2S real-time embargo); stepping back",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"  {day.isoformat()} not published ({exc}); stepping back",
+                        file=sys.stderr,
+                    )
                 break
             except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't step back
+                # The S2S real-time embargo can also surface as a non-
+                # ProcessingFailedError (e.g. a MARS access error / MarsRuntimeError
+                # whose message contains "Restricted access to S2S data" /
+                # "AccessError"). That init is access-restricted, not a real
+                # transport/auth problem, so step back like the not-published case
+                # rather than exiting. Genuine transport/auth/HTTP errors still exit.
+                if _is_s2s_embargo_error(exc):
+                    print(
+                        f"  {day.isoformat()} not accessible "
+                        f"(S2S real-time embargo); stepping back",
+                        file=sys.stderr,
+                    )
+                    break
                 print(
                     f"Error: polling ECDS job for init {day.isoformat()} failed ({exc}); "
                     "this is a transport/auth problem, not a not-yet-published init.",
