@@ -538,12 +538,21 @@ def main() -> None:
             sys.exit(2)
     else:
         # CF "T" axis first (finds wall-clock time even when named unusually),
-        # then `step` (forecast lead time — timedelta64, not CF T).
+        # then `step` (forecast lead time — timedelta64, not CF T). Only accept
+        # the cf-resolved name if it is an actual dimension: on a forecast
+        # envelope `time` is a scalar init-date coordinate, not a dim, so cf
+        # returns "time" but the real aggregation axis is `step`.
         try:
-            dim = ds.cf["time"].name
+            cf_time = ds.cf["time"].name
         except KeyError:
-            dim = "step" if "step" in ds.dims else None
-        if dim is None or dim not in ds.dims:
+            cf_time = None
+        if cf_time is not None and cf_time in ds.dims:
+            dim = cf_time
+        elif "step" in ds.dims:
+            dim = "step"
+        else:
+            dim = None
+        if dim is None:
             print(
                 f"Error: no time/step dim identified in {list(ds.dims)}. "
                 f"Pass --time-dim to override.",
