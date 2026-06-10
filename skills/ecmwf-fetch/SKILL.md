@@ -35,10 +35,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
   - an absolute ISO date `YYYY-MM-DD`;
   - `now` or `today` — the current UTC date;
   - `latest` — the newest *accessible* forecast init, found by probing init dates
-    backward via ECDS submits. ECMWF S2S real-time data is access-restricted
-    (embargoed) for roughly the most recent 3 weeks, so `latest` skips embargoed
-    inits and resolves to the newest init you can actually retrieve (typically
-    ~3+ weeks old);
+    backward via ECDS submits. Recent ECMWF S2S real-time data is
+    access-restricted (embargoed) for a window of variable width, so `latest`
+    skips embargoed inits and resolves to the newest init you can actually
+    retrieve;
   - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
     days, so `3w` = 21 days). The offset is capped at 36525 days; a larger value,
     a future `+` offset, a month/year unit, or any malformed value exits 2 before
@@ -53,7 +53,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
   published init. When the requested init is not retrievable (ECDS rejects the
   job) the main fetch exits non-zero with a clear "no data for this init (it may
   not be a valid S2S init day)" message, and a transport/auth failure is
-  likewise surfaced as a clear error — not a raw traceback. The main fetch's
+  likewise surfaced as a clear error — not a raw traceback. If the requested
+  init is inside the S2S real-time embargo (access-restricted), the error says
+  so explicitly and points at `latest` or an older init date. The main fetch's
   submit and poll use the same bounded-poll and error classification as the
   `latest` probe. Use `latest` (or an explicit init date) as the intended
   relative form for this skill; `now`/offset are accepted for grammar
@@ -63,19 +65,23 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
   ECDS retrieval submit (the asynchronous queue, polled until results-ready), so
   discovering the newest init may take several minutes to an hour and steps back
   one init day at a time until one succeeds. This is acceptable because it is
-  opt-in — an absolute or `now`-based `--date` does no probing. A probe job that
-  ECDS marks failed/rejected means that init is not yet published and the probe
-  steps back; a probe job that fails with the S2S real-time embargo (an
-  access-restriction error) also steps back, since `latest` resolves to the
-  newest accessible init; a submit/transport/auth error, or a job still not ready
-  after a
-  bounded wall-clock poll (1 hour), is surfaced and the run exits non-zero rather
-  than being misreported as a missing init or looping forever. (On the poll-cap
-  timeout the run aborts rather than stepping back, because stepping back from a
-  stuck-but-possibly-valid job would report a misleadingly old `latest`.) The
-  completed control retrieval from the winning probe is reused as the control
-  leg of the fetch, so the winning init is not submitted twice. The cache key
-  records the resolved absolute init date, never the relative token.
+  opt-in — an absolute or `now`-based `--date` does no probing. Two probe
+  failures step back one day. A job ECDS marks failed/rejected because that init
+  is not yet published steps back. A probe failure matching the S2S real-time
+  embargo signature ("Restricted access to S2S" in the error text) also steps
+  back, since `latest` resolves to the newest accessible init. That signature is
+  the dividing line: a credential, transport, or HTTP failure does not match it,
+  so the run exits non-zero with the original error instead of misreporting it
+  as a missing init. A probe job still not results-ready after a bounded
+  wall-clock poll (1 hour) is treated as stuck and also exits non-zero rather
+  than stepping back, because stepping back from a stuck-but-possibly-valid job
+  would report a misleadingly old `latest`. The whole discovery loop is
+  additionally bounded by a one-hour time budget. If every probed init in the
+  lookback window was access-restricted, the run exits non-zero with a message
+  to check S2S access and licence terms. The completed control retrieval from
+  the winning probe is reused as the control leg of the fetch, so the winning
+  init is not submitted twice. The cache key records the resolved absolute init
+  date, never the relative token.
 - `--bbox` — required; `N/W/S/E` decimal degrees. The retrieval area (smaller bbox = faster retrieval). To fetch over a country, get its bbox from the `resolve-region` skill and pass the value here.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
