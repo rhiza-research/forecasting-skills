@@ -418,6 +418,16 @@ def main() -> None:
             combine="by_coords",
         )
         ds = ds[["precipitation"]].rename({"precipitation": "precip"})
+        # The IMERG source names its spatial dims `lat`/`lon`; normalize to the
+        # canonical `latitude`/`longitude` used across the other fetchers and
+        # ENVELOPE.md. Conditional so the rename only touches dims present.
+        spatial_rename = {
+            src: dst
+            for src, dst in {"lat": "latitude", "lon": "longitude"}.items()
+            if src in ds.dims
+        }
+        if spatial_rename:
+            ds = ds.rename(spatial_rename)
         # CMR's temporal filter is overlap-based and can return granules just
         # outside [start, end]; trim to exact requested bounds to match the
         # prior sheerwater @timeseries() post-process.

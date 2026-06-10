@@ -34,7 +34,7 @@ without ceremony, use the `plot` skill with `--style timeseries`.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
-    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT]
+    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] [--align-day-of-year]
 ```
 
 ### Arguments
@@ -50,6 +50,19 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   has any non-time dims after variable selection; the skill exits with an
   error rather than silently averaging.
 - `--title` — optional figure title.
+- `--align-day-of-year` — opt-in (default off). Plot each trace against its
+  day-of-year (1–366) instead of its absolute date, so inputs from different
+  years overlay on a shared x-axis; the x-axis label becomes `day of year`.
+  Caveats:
+  - Requires a calendar-date time axis. It errors (exit 2) on a non-date axis,
+    such as a forecast `step` timedelta; drop the flag or select a date dim
+    with `--time-dim`.
+  - Intended for within-year seasons. A season that crosses the calendar-year
+    boundary (e.g. Dec–Feb) wraps day-of-year 365→1 and will not align as one
+    contiguous block.
+  - Leap vs non-leap years offset day-of-year by ~1 after Feb 29, so dates
+    after February in a leap year land one day-of-year higher than the same
+    date in a non-leap year.
 
 ### Output
 
