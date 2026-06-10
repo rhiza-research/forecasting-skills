@@ -36,6 +36,8 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 | `downscale` | Spatial downscaling onto a finer grid (by factor, finer resolution, or a reference grid) via `--method` (linear-interpolation or q-q empirical quantile mapping) |
 | `coarsen` | Coarsen or align a grid by linear interpolation onto a target `(resolution, offset)` — geometry only, adds no information |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
+| `reduce` | Collapse named dims with a statistic (mean/std/min/max/sum/median) — e.g. ensemble spread as the std across `number`, or a time-mean baseline |
+| `difference` | Subtract one envelope from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
 | `plot` | Heatmap (optionally restricted to a `--bbox` and/or masked to a `--mask-geojson` polygon) or timeseries PNG from one dataset |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |

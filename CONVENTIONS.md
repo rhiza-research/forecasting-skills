@@ -85,6 +85,7 @@ resolved concrete dates, the day count, and the boundary mode and its reason.
 | CF standard name | `--standard-name` | CF standard_name string | The CF `standard_name` to write on the output variable, overriding any inferred value. Used by `unit-convert` to keep `standard_name` consistent with converted units. |
 | Per-input variable selector | `--variable-a` / `--variable-b` | string | Selects the variable for each input independently when a skill compares two inputs that may hold different variables. Used by `plot-compare`. Precedence per row: `--variable-a`/`-b`, then `--variable`, then that input's first real data var. |
 | Catalog dataset selector | `--dataset` | string | Names which dataset to fetch from a multi-dataset source catalog. Validated at runtime against the source's own listing (e.g. `dynamical-fetch` checks `dynamical_catalog.list()`); an unknown id prints the valid list and exits. Used by fetchers that front a catalog of datasets rather than a single product. |
+| Operation dim | `--dim` | string; repeatable where noted | Names the dimension an operation acts along. `concat` takes it once (the axis to concatenate along); `reduce` repeats it once per dim to collapse. |
 | Spatial dim-name override | `--dims` | `LAT,LON` | Comma-separated names of the latitude and longitude dims when they're not auto-detectable. |
 | Time-dim override | `--time-dim` | string | Name of the time-like dim when not auto-detectable. Distinct from `--dims`, which is spatial only. |
 | Overpass selector | `--overpass` | string from a per-skill fixed list | Which satellite half-orbit overpass to read when a product splits ascending/descending passes (e.g. `smap-fetch` uses `choices={AM, PM}`: AM = ~6am descending, PM = ~6pm ascending). |
@@ -125,7 +126,7 @@ selects that variable facet (and is the output variable).
 | Target grid spacing | `--target-resolution` | float (degrees) | Target grid spacing in degrees. For `downscale` it must be finer-or-equal (`<=`) to the input on each axis; for `coarsen` it must be coarser-or-equal (`>=`) on each axis. Equal resolution is a valid no-op in both. |
 | Grid offset | `--offset` | float (degrees) | Used by `coarsen`: target points fall at `offset + k*resolution`. |
 | Reference-grid target | `--reference-grid` | path | Path to a Zarr whose lat/lon grid defines the target grid. Used by `downscale` to match another dataset's (finer-or-equal) grid. |
-| Downscaling method | `--method` | string from a per-skill fixed list | How a downscaling step adds information. `downscale` uses `choices={linear-interpolation, q-q}`. (Note: `aggregate-temporal` also uses `--method` for its temporal reducer — a per-skill fixed list, distinct values.) |
+| Downscaling method | `--method` | string from a per-skill fixed list | How a downscaling step adds information. `downscale` uses `choices={linear-interpolation, q-q}`. (Note: `aggregate-temporal` and `reduce` also use `--method` for their reducers — per-skill fixed lists, distinct values.) |
 
 ### Bias correction
 
