@@ -164,6 +164,7 @@ def main() -> None:
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
+    import numpy as np
     import xarray as xr
 
     for pth in args.input:
@@ -255,6 +256,17 @@ def main() -> None:
                     file=sys.stderr,
                 )
                 sys.exit(2)
+            # A trace that crosses a calendar-year boundary (or spans multiple
+            # years) has non-monotonic day-of-year values: it wraps back to 1
+            # and draws over itself on the shared axis. Rendering caveat only —
+            # warn and proceed.
+            if len(xvals) > 1 and np.any(np.diff(xvals) < 0):
+                print(
+                    f"Warning ({pth}): trace wraps day-of-year (crosses a "
+                    f"calendar-year boundary or spans multiple years) and will "
+                    f"overplot itself on the shared day-of-year axis.",
+                    file=sys.stderr,
+                )
         else:
             xvals = da[tdim].values
         ax.plot(xvals, da.values, label=label)

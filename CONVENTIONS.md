@@ -112,6 +112,7 @@ selects that variable facet (and is the output variable).
 | Concept | Flag | Value shape | Notes |
 | --- | --- | --- | --- |
 | Explicit dim reduction | `--reduce` | string, repeatable | Names a non-time dim to mean-reduce before producing a 1-D output. Repeat once per dim (`--reduce number --reduce latitude --reduce longitude`). Required (rather than silently averaging) when an input still has non-time dims after `--variable` selection. |
+| Day-of-year alignment | `--align-day-of-year` | boolean flag | Used by `plot-timeseries`: plots each trace against its day-of-year so inputs from different years overlay on a shared x-axis. Requires a calendar-date time axis. |
 | Figure title | `--title` | string | Optional figure title. Used by `plot`, `plot-compare`, `plot-mediogram`, and `plot-timeseries`. |
 | Colormap | `--colormap` | string | matplotlib colormap name. Used by `plot-compare` (when omitted in shared-scale mode, the categorical precipitation colormap with `BoundaryNorm` is used). |
 | Per-input colormap | `--colormap-a` / `--colormap-b` | string | matplotlib colormap for each input independently in `plot-compare`'s independent-scale mode. Precedence per row: `--colormap-a`/`-b`, then `--colormap`, then `viridis`. |
