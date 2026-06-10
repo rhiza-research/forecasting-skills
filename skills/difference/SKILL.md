@@ -108,18 +108,15 @@ input misses).
 
 ## Examples
 
-SST anomalies are a two-skill recipe: build the time-mean baseline with the
-`reduce` skill, then subtract it with this skill. Each script runs under its
-own skill's directory — `reduce.py` from the `reduce` skill (its
-`${CLAUDE_SKILL_DIR}`), `difference.py` from this one — so the reduce step is
-*not* invoked under difference's `${CLAUDE_SKILL_DIR}`.
+SST anomalies are a two-skill recipe: first the `reduce` skill produces a
+time-mean baseline (e.g. `/tmp/sst_baseline.zarr` from `/tmp/sst.zarr`), then
+this skill subtracts that baseline from the field, broadcasting over time. Only
+the `difference` step is shown here; run the `reduce` skill separately to make
+the baseline.
 
 ```bash
-# Step 1 — reduce skill: time-mean baseline.
-uv run ${REDUCE_SKILL_DIR}/scripts/reduce.py -i /tmp/sst.zarr -o /tmp/sst_baseline.zarr \
-    --dim time --method mean
-
-# Step 2 — difference skill: field minus its baseline (broadcast over time).
+# Field minus its time-mean baseline (the baseline produced by the reduce
+# skill), broadcast over time.
 uv run ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/sst.zarr -i /tmp/sst_baseline.zarr \
     --output /tmp/sst_anom.zarr
 ```
