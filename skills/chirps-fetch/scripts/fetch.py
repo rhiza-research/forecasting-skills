@@ -615,7 +615,10 @@ def main() -> None:
                     day = futures[fut]
                     try:
                         # A DayUnavailable (404/5xx/transient/truncated/non-TIFF)
-                        # marks the day missing. Any other exception is
+                        # marks the day missing. An HTTPError (a non-404 4xx on
+                        # the prelim last-resort URL, e.g. a 403 throttle) means
+                        # the server is refusing requests site-wide, so the run
+                        # aborts with a clean message. Any other exception is
                         # unexpected and is re-raised by future.result(), so the
                         # run fails loudly rather than silently dropping a day or
                         # hanging the pool.
@@ -628,6 +631,25 @@ def main() -> None:
                         )
                         missing_days.append(day)
                         continue
+                    except requests.HTTPError as e:
+                        # Cancel not-yet-started downloads so the pool's exit
+                        # join only waits for requests already in flight,
+                        # instead of working through every remaining day.
+                        pool.shutdown(wait=False, cancel_futures=True)
+                        resp = e.response
+                        detail = (
+                            f"HTTP {resp.status_code} {resp.reason} for {resp.url}"
+                            if resp is not None
+                            else str(e)
+                        )
+                        print(
+                            f"Error: the CHIRPS data server refused the request ({detail}). "
+                            "This usually means rate limiting / a temporary IP block from "
+                            "too many requests — wait and retry later, and consider "
+                            f"lowering --workers (current: {args.workers}).",
+                            file=sys.stderr,
+                        )
+                        sys.exit(2)
                     print(f"  {result_day.isoformat()}", file=sys.stderr)
                     downloaded.append((result_day, tif))
         finally:
