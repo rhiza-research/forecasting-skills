@@ -182,6 +182,15 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(2)
+    # Guard NaT step values before the step arithmetic (N8). A NaT element
+    # casts to a None Python value (td.item() is None on the cftime path), so
+    # init + step would raise an uncaught TypeError instead of exiting cleanly.
+    if np.isnat(step.values).any():
+        print(
+            "Error: step contains NaT (not-a-time) values; cannot realize valid times.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     if "time" not in ds.coords or ds["time"].ndim != 0:
         print(
             "Error: input has no scalar 'time' coord holding the forecast init date; "
