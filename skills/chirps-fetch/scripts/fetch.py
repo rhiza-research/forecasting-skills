@@ -690,9 +690,13 @@ def main() -> None:
                         pool.shutdown(wait=False, cancel_futures=True)
                         print(_http_refusal_message(e, args.workers), file=sys.stderr)
                         sys.stderr.flush()
-                        # os._exit: SystemExit would block on the pool join
-                        # waiting for in-flight requests; temp files are in /tmp
-                        # and the OS reclaims them.
+                        # os._exit avoids the ThreadPoolExecutor __exit__ /
+                        # shutdown(wait=True) that a SystemExit would trigger,
+                        # which would block on in-flight requests. The trade-off
+                        # is that it also skips the TemporaryDirectory context
+                        # manager's cleanup, so the temp dir is left on disk for
+                        # the OS's normal temp-cleanup (tmp reaper / reboot) to
+                        # reclaim later, not reclaimed at exit.
                         os._exit(2)
                     print(f"  {result_day.isoformat()}", file=sys.stderr)
                     downloaded.append((result_day, tif))
