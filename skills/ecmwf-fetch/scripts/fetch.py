@@ -522,14 +522,14 @@ def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
         # reached an accessible init, which points at the account's S2S access
         # rather than at publication lag.
         print(
-            f"Error: every probed init in the last {_LATEST_LOOKBACK_DAYS} days was "
+            f"Error: every probed init in the last {_LATEST_LOOKBACK_DAYS + 1} days was "
             "access-restricted (S2S real-time embargo); cannot resolve 'latest'. "
             f"Check your S2S access and licence terms ({S2S_LICENCE_URL}).",
             file=sys.stderr,
         )
         sys.exit(2)
     print(
-        f"Error: no ECMWF S2S init available in the last {_LATEST_LOOKBACK_DAYS} days "
+        f"Error: no ECMWF S2S init available in the last {_LATEST_LOOKBACK_DAYS + 1} days "
         f"(probed back to {(today - dt.timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()}); "
         "cannot resolve 'latest'.",
         file=sys.stderr,
