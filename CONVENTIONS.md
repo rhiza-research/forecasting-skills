@@ -50,8 +50,9 @@ fetcher. A value is one of:
 - `now` or `today` — the current UTC date;
 - `latest` — the newest date with available data, discovered per source
   (imerg: max available granule date; chirps: backward HTTPS day-probe; tahmo:
-  max returned observation date over a bounded lookback; ecmwf: newest available
-  forecast init);
+  max returned observation date over a bounded lookback; ecmwf: newest
+  accessible forecast init — embargoed (access-restricted) recent inits are
+  skipped);
 - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
   days, so `3w` = 21 days). The offset count is capped (36525 days). Future `+`
   offsets, month/year units, and anything else are rejected with a non-zero exit
