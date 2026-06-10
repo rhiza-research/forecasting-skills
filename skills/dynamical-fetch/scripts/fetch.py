@@ -293,6 +293,21 @@ def _bbox_subset(ds, bbox: str):
     return ds
 
 
+def _attach_bbox_value(argv):
+    # argparse rejects a space-separated --bbox value that starts with '-'
+    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
+    # `--bbox=VAL` so both the space and equals forms parse.
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--bbox" and i + 1 < len(argv):
+            out.append(f"--bbox={argv[i + 1]}")
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -327,7 +342,7 @@ def main() -> None:
         help="Restrict to this data variable. Repeat once per variable; omit for all.",
     )
     p.add_argument("--output", "-o", required=True)
-    args = p.parse_args()
+    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
     import dynamical_catalog
 

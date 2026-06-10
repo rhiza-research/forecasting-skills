@@ -603,6 +603,21 @@ def _verify_cf_dsg(ds) -> None:
         sys.exit(1)
 
 
+def _attach_bbox_value(argv):
+    # argparse rejects a space-separated --bbox value that starts with '-'
+    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
+    # `--bbox=VAL` so both the space and equals forms parse.
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--bbox" and i + 1 < len(argv):
+            out.append(f"--bbox={argv[i + 1]}")
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
@@ -642,7 +657,7 @@ def main() -> None:
             "Lower this if OpenAQ returns 429/throttling errors."
         ),
     )
-    args = p.parse_args()
+    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
     if args.workers < 1:
         print("Error: --workers must be >= 1.", file=sys.stderr)
