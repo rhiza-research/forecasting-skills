@@ -497,7 +497,7 @@ def _discover_latest() -> date:
 def _open_day(tif: Path, day: date) -> xr.DataArray:
     da = rioxarray.open_rasterio(tif, masked=False).squeeze("band", drop=True)
     da = da.where(da != CHIRPS_NODATA)
-    da = da.rename({"y": "lat", "x": "lon"})
+    da = da.rename({"y": "latitude", "x": "longitude"})
     if "spatial_ref" in da.coords:
         da = da.drop_vars("spatial_ref")
     da.attrs = {}
@@ -506,14 +506,14 @@ def _open_day(tif: Path, day: date) -> xr.DataArray:
 
 
 def _stamp_cf_attrs(ds: xr.Dataset) -> xr.Dataset:
-    if "lat" in ds.coords:
-        ds["lat"].attrs.setdefault("standard_name", "latitude")
-        ds["lat"].attrs.setdefault("units", "degrees_north")
-        ds["lat"].attrs.setdefault("axis", "Y")
-    if "lon" in ds.coords:
-        ds["lon"].attrs.setdefault("standard_name", "longitude")
-        ds["lon"].attrs.setdefault("units", "degrees_east")
-        ds["lon"].attrs.setdefault("axis", "X")
+    if "latitude" in ds.coords:
+        ds["latitude"].attrs.setdefault("standard_name", "latitude")
+        ds["latitude"].attrs.setdefault("units", "degrees_north")
+        ds["latitude"].attrs.setdefault("axis", "Y")
+    if "longitude" in ds.coords:
+        ds["longitude"].attrs.setdefault("standard_name", "longitude")
+        ds["longitude"].attrs.setdefault("units", "degrees_east")
+        ds["longitude"].attrs.setdefault("axis", "X")
     if "time" in ds.coords:
         ds["time"].attrs.setdefault("standard_name", "time")
         ds["time"].attrs.setdefault("axis", "T")
@@ -699,10 +699,10 @@ def main() -> None:
         # bounded to ~one day regardless of window length, instead of holding
         # the whole concatenated window in RAM. `succeeded` is already
         # day-sorted (built sorted above), so the appended time axis stays
-        # ascending. Per-day lat-sort is equivalent to a single global sort
-        # because every CHIRPS day shares the identical lat grid.
+        # ascending. Per-day latitude-sort is equivalent to a single global
+        # sort because every CHIRPS day shares the identical latitude grid.
         for i, (_, da) in enumerate(succeeded):
-            da = da.sortby("lat", ascending=True)
+            da = da.sortby("latitude", ascending=True)
             da.name = "precip"
             da.attrs["units"] = "mm day-1"
             da.attrs["standard_name"] = "lwe_precipitation_rate"

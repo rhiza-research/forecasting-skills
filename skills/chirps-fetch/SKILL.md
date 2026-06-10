@@ -54,7 +54,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD 
 
 ### Output
 
-Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the global CHIRPS grid. Stamped with `rhiza_source=chirps`.
+Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)` on the global CHIRPS grid. Stamped with `rhiza_source=chirps`.
 
 ### Memory and performance
 

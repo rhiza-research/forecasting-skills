@@ -88,7 +88,7 @@ non-zero.
 
 ### Output
 
-Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the global IMERG 0.1° grid. Stamped with `rhiza_source=imerg`.
+Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)` on the global IMERG 0.1° grid. Stamped with `rhiza_source=imerg`.
 
 ### Memory and performance
 
