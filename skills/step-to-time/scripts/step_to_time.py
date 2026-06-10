@@ -69,10 +69,12 @@ def _load_history(zarr_path: Path) -> list:
 
 
 def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
-    """Cache check that compares everything except input.hash.
+    """Cache check that compares the full recorded entry, including input.hash.
 
-    The hash over the upstream zarr is expensive; the basename + upstream
-    history chain is sufficient to identify whether a recompute is needed.
+    This skill takes no args beyond the I/O paths, so the cache key is
+    skill/version/args/basename/hash plus the upstream history chain. Comparing
+    the recorded ``input.hash`` against the current hash of the input means a
+    modified same-named input correctly cache-misses.
     """
     if not out.exists():
         return False
@@ -89,6 +91,7 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
         and last.get("version") == entry["version"]
         and last.get("args") == entry["args"]
         and last_input.get("basename") == entry_input.get("basename")
+        and last_input.get("hash") == entry_input.get("hash")
     )
 
 
@@ -101,33 +104,57 @@ def main() -> None:
     p.add_argument("--output", "-o", required=True)
     args = p.parse_args()
 
-    # Cheap cache-hit pre-check: skill + args + input.basename + upstream
-    # history chain. Avoid opening the xarray dataset and hashing the upstream
-    # zarr if the output already matches.
     src = Path(args.input)
-    partial_entry = {
+    out = Path(args.output)
+
+    # Validate input existence before any hashing or opening (N4): a missing
+    # input is a clean "not found" error, not a backend traceback.
+    if not src.exists():
+        print(f"Error: {src} not found.", file=sys.stderr)
+        sys.exit(2)
+
+    import numpy as np
+    import xarray as xr
+
+    # Open the input up front, guarding a path that exists but isn't a readable
+    # Zarr store (N4): emit a clear message rather than letting a backend
+    # traceback escape.
+    try:
+        ds = xr.open_zarr(src, consolidated=False)
+    except Exception as e:
+        print(
+            f"Error: {src} is not a readable Zarr store ({type(e).__name__}: {e}).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    # Cache-hit check: skill + args + input.basename + input.hash + upstream
+    # history chain. The input is already validated as a readable Zarr above, so
+    # hashing it here is safe; comparing the recorded hash means a modified
+    # same-named input cache-misses (N1).
+    src_hash = _hash_zarr(src)
+    upstream = _load_history(src)
+    entry = {
         "skill": "step-to-time",
         "version": _RHIZA_SKILL_VERSION,
         "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
-        "input": {"basename": src.name},
+        "input": {"basename": src.name, "hash": src_hash},
     }
-    upstream = _load_history(src)
-    out = Path(args.output)
-    if _cache_hit(out, upstream, partial_entry):
+    if _cache_hit(out, upstream, entry):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping step-to-time.",
             file=sys.stderr,
         )
         return
 
-    import numpy as np
-    import xarray as xr
-
-    if not src.exists():
-        print(f"Error: {src} not found.", file=sys.stderr)
+    if "time" in ds.dims and "step" in ds.dims:
+        print(
+            "Error: input has both a 'time' dimension and a 'step' dimension "
+            "(a multi-init/hindcast cube); per-init step realization is not "
+            "supported. Select a single init first.",
+            file=sys.stderr,
+        )
         sys.exit(2)
-    ds = xr.open_zarr(src, consolidated=False)
-
     if "time" in ds.dims:
         print(
             "Error: input already has a wall-clock time axis "
@@ -138,6 +165,12 @@ def main() -> None:
     if "step" not in ds.dims:
         print(
             f"Error: input has no 'step' dim; got dims {list(ds.dims)}.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if ds.sizes["step"] == 0:
+        print(
+            "Error: 'step' dim has length 0; nothing to realize.",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -157,33 +190,79 @@ def main() -> None:
         )
         sys.exit(2)
     init_coord = ds["time"]
-    if not np.issubdtype(init_coord.dtype, np.datetime64):
+    init = init_coord.values
+
+    # The init may be a standard datetime64 scalar or, for a non-standard model
+    # calendar (noleap, 360_day), an object-dtype cftime datetime. Accept both;
+    # reject genuinely wrong types (ints, strings).
+    import cftime
+
+    is_datetime64 = np.issubdtype(init_coord.dtype, np.datetime64)
+    init_scalar = init.item() if hasattr(init, "item") else init
+    is_cftime = isinstance(init_scalar, cftime.datetime)
+    if not (is_datetime64 or is_cftime):
         print(
-            f"Error: scalar 'time' coord is not a datetime64 init date (dtype {init_coord.dtype}).",
+            f"Error: scalar 'time' coord is not a datetime64 or cftime init date "
+            f"(dtype {init_coord.dtype}, value type {type(init_scalar).__name__}).",
             file=sys.stderr,
         )
         sys.exit(2)
 
-    init = init_coord.values
-    valid_times = init + step.values
-    init_iso = str(np.datetime_as_string(init.astype("datetime64[s]")))
+    # Guard a missing/null init before computing (N8). datetime64 NaT compares
+    # unequal to itself; a cftime that is somehow null is caught the same way.
+    if is_datetime64:
+        if np.isnat(init):
+            print("Error: init date is missing/NaT.", file=sys.stderr)
+            sys.exit(2)
+    else:
+        if init_scalar is None or init_scalar != init_scalar:
+            print("Error: init date is missing/NaT.", file=sys.stderr)
+            sys.exit(2)
+
+    if is_datetime64:
+        # datetime64 path: compute valid_time = init + step, then cast to a
+        # canonical datetime64[ns] axis so the output resolution is consistent
+        # regardless of the init/step source resolution (N2/N11). A date-only
+        # (datetime64[D]) init inherits midnight for its time-of-day.
+        valid_times = (init + step.values).astype("datetime64[ns]")
+        init_iso = str(np.datetime_as_string(init.astype("datetime64[s]")))
+    else:
+        # cftime path: cftime objects support timedelta addition. Build the
+        # realized axis as an object array of cftime datetimes (their canonical
+        # form). step.values is timedelta64; convert each to a Python timedelta.
+        steps_td = step.values.astype("timedelta64[us]")
+        valid_times = np.array(
+            [init_scalar + td.item() for td in steps_td],
+            dtype=object,
+        )
+        init_iso = init_scalar.isoformat()
+
+    # Reject a non-strictly-increasing valid-time axis (N6): duplicate or
+    # out-of-order valid times (e.g. two steps mapping to the same wall-clock).
+    # Works for both datetime64 and object/cftime arrays.
+    if len(valid_times) > 1 and not all(
+        valid_times[i] < valid_times[i + 1] for i in range(len(valid_times) - 1)
+    ):
+        print(
+            "Error: realized valid times are not strictly increasing "
+            "(duplicate or out-of-order); cannot build a monotonic time axis.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     # Drop the scalar init coord, rename the step dim to time, and replace the
     # lead-time labels with the realized valid times. assign_coords creates a
-    # fresh coord variable, so the old step attrs do not carry over.
-    out_ds = ds.drop_vars("time").rename({"step": "time"})
+    # fresh coord variable, so the old step attrs do not carry over. A
+    # pre-existing 'valid_time' coord would otherwise pass through stale
+    # alongside the new realized axis, so drop it too (N10).
+    drop = ["time"]
+    if "valid_time" in ds.variables:
+        drop.append("valid_time")
+    out_ds = ds.drop_vars(drop).rename({"step": "time"})
     out_ds = out_ds.assign_coords(time=("time", valid_times))
     out_ds["time"].attrs.setdefault("standard_name", "time")
     out_ds["time"].attrs.setdefault("axis", "T")
 
-    # Cache miss: now compute the upstream hash and build the final entry.
-    entry = {
-        **partial_entry,
-        "input": {
-            "basename": src.name,
-            "hash": _hash_zarr(src),
-        },
-    }
     if not upstream:
         print(
             "Warning: no upstream rhiza_history on input; treating input as opaque.",
