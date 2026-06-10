@@ -65,6 +65,17 @@ either way — use `unit-convert` to restamp units when needed. (For temporal
 totals specifically, `aggregate-temporal --method sum` handles the units
 relabel.)
 
+NaNs are skipped (xarray's default `skipna`). Two method-specific
+conventions follow from that:
+
+- `sum` uses `min_count=1`: a slice that is entirely missing yields `NaN`,
+  not `0`, so "no data" is not silently reported as a real zero total.
+- `std` uses `ddof=1` (the sample standard deviation), matching the
+  ensemble-spread convention that spread across members is a sample estimate
+  rather than a population sigma. A `std` over a size-1 dim is therefore zero
+  by construction (a single sample has no spread); the skill warns on stderr
+  in that case.
+
 ### Output
 
 The selected data variables with the requested dims collapsed. A reduced dim
@@ -78,15 +89,20 @@ The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
 of per-step entries `{skill, version, args, input}`. This skill reads the
 upstream input's `rhiza_history` (default `[]` and stderr warning if absent)
 and appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
-`basename` is the upstream zarr's filename and `hash` is a sha256 of its
-stored bytes, so a renamed-but-unchanged input still cache-hits and a
-same-named-but-modified input correctly cache-misses; `version` is the
-`_RHIZA_SKILL_VERSION` constant in `scripts/reduce.py`, kept in lockstep
-with `metadata.version` in this SKILL.md by the CI version-bump workflow.
-Cache-hit comparison reads the existing output's `rhiza_history`: a hit
-requires the upstream entries to match and the last entry's `skill`, `args`,
-and `input` to match the proposed new entry.
+`--input`/`--output` path strings (with `--dim` deduped and sorted, and
+`--variable` deduped and sorted, so reordered or repeated flags stamp
+identically); `input` is a `{basename, hash}` dict — `basename` is the
+upstream zarr's filename and `hash` is a sha256 of its stored bytes;
+`version` is the skill's version, as printed by `--help`.
+
+A cache hit requires the same skill `version`, the same flags, the same input
+name (`basename`), the same input content (`hash`), and the same upstream
+history; any modification to the input forces a recompute. Concretely, a
+renamed-but-unchanged input misses (the basename differs) and a modified
+same-named input misses (the content hash differs). Cache-hit comparison
+reads the existing output's `rhiza_history`: a hit requires the upstream
+entries to match and the last entry's `skill`, `version`, `args`, and `input`
+(both `basename` and `hash`) to match the proposed new entry.
 
 The `args` dict stores argparse dest names (underscored), not the hyphenated
 CLI flag names. A consumer reconstructing a

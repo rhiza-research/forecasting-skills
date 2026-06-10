@@ -66,10 +66,14 @@ def _load_history(zarr_path: Path) -> list:
 
 
 def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
-    """Cache check that compares everything except input.hash.
+    """Cache check that compares skill version, flags, input name, input
+    content hash, and upstream history.
 
-    The hash over the upstream zarr is expensive; the basename + upstream
-    history chain is sufficient to identify whether a recompute is needed.
+    The recorded input `hash` (a sha256 over the upstream zarr's stored bytes)
+    is compared too, so any modification to the input forces a recompute even
+    when the basename is unchanged, and a renamed-but-unchanged input misses
+    on the differing basename. The caller passes a fully-populated `entry`
+    (including `input.hash`) so this comparison is exact.
     """
     if not out.exists():
         return False
@@ -86,6 +90,7 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
         and last.get("version") == entry["version"]
         and last.get("args") == entry["args"]
         and last_input.get("basename") == entry_input.get("basename")
+        and last_input.get("hash") == entry_input.get("hash")
     )
 
 
@@ -123,48 +128,71 @@ def main() -> None:
 
     src = Path(args.input)
     out = Path(args.output)
+    # Validate input existence before any hashing or cache check: a missing
+    # input is a clean user error, not something to discover partway through.
+    if not src.exists():
+        print(f"Error: {src} not found.", file=sys.stderr)
+        sys.exit(2)
+
     # Reject an in-place run: the write path below deletes the output store
     # before the dataset's values (still lazily backed by the source) are
-    # read, so reducing onto the input would destroy it.
-    if src.resolve() == out.resolve():
+    # read, so reducing onto the input would destroy it. The guard also
+    # rejects an output nested inside the input store (or the input nested
+    # inside the output): rmtree of either would corrupt the other before the
+    # lazily-backed values are read.
+    src_r = src.resolve()
+    out_r = out.resolve()
+    if src_r == out_r or out_r.is_relative_to(src_r) or src_r.is_relative_to(out_r):
         print(
-            f"Error: --input and --output resolve to the same store ({args.output}); "
+            f"Error: --input ({args.input}) and --output ({args.output}) overlap "
+            "as the same store or one nested inside the other; "
             "reduce writes to a distinct output path.",
             file=sys.stderr,
         )
         sys.exit(2)
 
-    # Build the cheap fields first; defer _hash_zarr until after the
-    # cache-hit check so we don't hash hundreds of MB of zarr on hits.
-    partial_entry = {
+    # Normalize provenance args before stamping so reordered or duplicated
+    # flags don't cause spurious cache misses: dedupe + sort --dim, dedupe
+    # --variable (order-insensitive selection, but keep them as a sorted list
+    # so the recorded args are canonical).
+    norm_args = {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
+    norm_args["dim"] = sorted(set(args.dim))
+    if args.variable is not None:
+        norm_args["variable"] = sorted(set(args.variable))
+
+    # The recorded input hash (sha256 over the source's stored bytes) is part
+    # of the cache key, so build the full entry up front: a renamed-but-
+    # unchanged input misses on basename and a modified same-named input
+    # misses on hash.
+    upstream = _load_history(src)
+    entry = {
         "skill": "reduce",
         "version": _RHIZA_SKILL_VERSION,
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
-        "input": {"basename": src.name},
+        "args": norm_args,
+        "input": {
+            "basename": src.name,
+            "hash": _hash_zarr(src),
+        },
     }
-    upstream = _load_history(src)
-    if _cache_hit(out, upstream, partial_entry):
+    if _cache_hit(out, upstream, entry):
         print(
             f"Cache hit: {args.output} already matches requested params; skipping reduce.",
             file=sys.stderr,
         )
         return
 
-    # Cache miss: now compute the upstream hash and build the final entry.
-    entry = {
-        **partial_entry,
-        "input": {
-            "basename": src.name,
-            "hash": _hash_zarr(src),
-        },
-    }
-
     import xarray as xr
 
-    if not src.exists():
-        print(f"Error: {src} not found.", file=sys.stderr)
+    # Wrap the input open so an existing-but-not-a-Zarr path exits cleanly
+    # instead of surfacing a backend traceback.
+    try:
+        ds = xr.open_zarr(src, consolidated=False)
+    except Exception as exc:  # noqa: BLE001 - normalize any backend error
+        print(
+            f"Error: {src} is not a readable Zarr store ({type(exc).__name__}: {exc}).",
+            file=sys.stderr,
+        )
         sys.exit(2)
-    ds = xr.open_zarr(src, consolidated=False)
 
     # De-duplicate the requested dims preserving first-seen order so a
     # repeated name doesn't reduce twice; each must be an actual dim.
@@ -235,15 +263,43 @@ def main() -> None:
     for var in selected:
         da = ds[var]
         rdims = [d for d in dims if d in da.dims]
-        fn = {
-            "mean": da.mean,
-            "std": da.std,
-            "min": da.min,
-            "max": da.max,
-            "sum": da.sum,
-            "median": da.median,
-        }[args.method]
-        out_ds[var] = fn(dim=rdims, keep_attrs=True)
+
+        # `std` over a size-1 dim is zero by construction (a single sample has
+        # no spread); warn so a degenerate spread field isn't read as real.
+        if args.method == "std":
+            singleton = [d for d in rdims if da.sizes[d] == 1]
+            if singleton:
+                print(
+                    f"Warning: std of variable '{var}' over size-1 dim(s) "
+                    f"{singleton} is zero by construction (a single sample has "
+                    "no spread).",
+                    file=sys.stderr,
+                )
+
+        # `median` over ALL of a dask-backed variable's dims raises
+        # NotImplementedError in dask (no flattened-median across chunks), so
+        # materialize the variable first. Only the all-dims case is affected;
+        # a partial-dims median streams fine.
+        if args.method == "median" and da.chunks is not None and set(rdims) == set(da.dims):
+            da = da.load()
+
+        if args.method == "sum":
+            # min_count=1 keeps an all-missing slice NaN instead of summing to
+            # 0 (which would read as a real zero total rather than "no data").
+            out_ds[var] = da.sum(dim=rdims, keep_attrs=True, min_count=1)
+        elif args.method == "std":
+            # ddof=1 is the sample standard deviation (ensemble-spread
+            # convention: spread across members is a sample estimate, not the
+            # population sigma).
+            out_ds[var] = da.std(dim=rdims, keep_attrs=True, ddof=1)
+        else:
+            fn = {
+                "mean": da.mean,
+                "min": da.min,
+                "max": da.max,
+                "median": da.median,
+            }[args.method]
+            out_ds[var] = fn(dim=rdims, keep_attrs=True)
 
     # A reduced dim disappears from the reduced variables, but its index
     # coordinate (and any auxiliary coordinate on the dim) would otherwise
