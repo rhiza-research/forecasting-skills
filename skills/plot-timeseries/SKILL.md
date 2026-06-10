@@ -58,8 +58,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
     such as a forecast `step` timedelta; drop the flag or select a date dim
     with `--time-dim`.
   - Intended for within-year seasons. A season that crosses the calendar-year
-    boundary (e.g. Dec–Feb) wraps day-of-year 365→1 and will not align as one
-    contiguous block.
+    boundary (e.g. Dec–Feb) wraps at the year boundary (day 366 → 1 in leap
+    years, 365 → 1 otherwise) and will not align as one contiguous block; the
+    skill prints a stderr warning and still renders.
+  - The 1–366 range assumes a standard calendar; model calendars yield their
+    own range (e.g. a `360_day` calendar yields 1–360), so overlaying inputs
+    on different calendars can misalign by several days without error.
   - Leap vs non-leap years offset day-of-year by ~1 after Feb 29, so dates
     after February in a leap year land one day-of-year higher than the same
     date in a non-leap year.
