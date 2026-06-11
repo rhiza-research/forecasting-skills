@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.10+ and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 metadata:
   version: "0.1.5"
+  catalog-group: agent-tooling
 ---
 
 # provenance

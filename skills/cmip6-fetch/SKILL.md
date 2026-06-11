@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads the public Pangeo CMIP6 collection from Google Cloud (gs://cmip6) over anonymous access; no credentials required.
 metadata:
   version: "0.1.2"
+  catalog-group: fetchers
 ---
 
 # cmip6-fetch

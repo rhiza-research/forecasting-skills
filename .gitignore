@@ -3,3 +3,4 @@ demo_output
 .DS_Store
 .claude
 uv.lock
+_site

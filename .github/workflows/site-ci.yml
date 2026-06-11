@@ -1,0 +1,30 @@
+name: Site CI
+
+on:
+  pull_request:
+    paths:
+      - "site/**"
+      - "skills/**/SKILL.md"
+      - "tools/build_site.py"
+      - "tools/check_site_output.py"
+      - ".github/workflows/pages.yml"
+      - ".github/workflows/site-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+      - name: Build site
+        run: uv run --script tools/build_site.py --output _site
+      - name: Validate site output
+        run: uv run --script tools/check_site_output.py _site

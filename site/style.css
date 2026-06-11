@@ -1,0 +1,438 @@
+/* weather-skills.org — technical data-sheet aesthetic.
+   Plain CSS, system fonts only, zero third-party requests. */
+
+:root {
+  --paper: #f7f4ec;
+  --paper-deep: #efeadd;
+  --ink: #1d211f;
+  --ink-soft: #4c544f;
+  --rule: #c9c2b0;
+  --rule-faint: #ddd7c7;
+  --accent: #11606a;
+  --accent-deep: #0b454d;
+  --warn-bg: #f4e9d3;
+  --warn-edge: #b07d2e;
+  --code-bg: #20262a;
+  --code-ink: #d8e0d9;
+  --serif: "Charter", "Iowan Old Style", "Palatino", "Georgia", serif;
+  --mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+* { box-sizing: border-box; }
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+body {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--ink);
+  background-color: var(--paper);
+  /* faint graph-paper grid */
+  background-image:
+    linear-gradient(var(--rule-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule-faint) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: var(--accent-deep); }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule-faint);
+  border-radius: 2px;
+  padding: 0.05em 0.3em;
+  overflow-wrap: anywhere;
+}
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border-radius: 3px;
+  border-left: 3px solid var(--accent);
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  white-space: pre;
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.masthead-inner {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 0.6rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.masthead-meta { color: var(--ink-soft); }
+.masthead-meta a { color: var(--ink-soft); }
+
+.site-id { font-weight: 700; color: var(--ink); }
+
+.meta-sep { margin: 0 0.4em; color: var(--rule); }
+
+.masthead-nav a {
+  color: var(--ink);
+  text-decoration: none;
+  margin-left: 1.1rem;
+  border-bottom: 1px solid transparent;
+}
+.masthead-nav a:first-child { margin-left: 0; }
+.masthead-nav a:hover { border-bottom-color: var(--accent); color: var(--accent-deep); }
+
+/* ---------- hero ---------- */
+
+.hero {
+  border-bottom: 1px solid var(--rule);
+  background:
+    linear-gradient(180deg, rgba(17, 96, 106, 0.06), rgba(17, 96, 106, 0) 55%),
+    var(--paper);
+}
+
+.hero-inner {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.25rem 2.75rem;
+}
+
+.kicker {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  margin: 0 0 1rem;
+}
+
+.hero h1 {
+  font-size: clamp(1.9rem, 4.5vw, 3.1rem);
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  margin: 0 0 1.1rem;
+  max-width: 24ch;
+}
+
+.lede {
+  font-size: 1.15rem;
+  max-width: 56ch;
+  color: var(--ink-soft);
+  margin: 0 0 1.75rem;
+}
+
+.hero-cmd { max-width: 46rem; }
+
+.cmd-label {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  margin: 0 0 0.35rem;
+}
+
+.notice {
+  margin-top: 1.75rem;
+  max-width: 46rem;
+  background: var(--warn-bg);
+  border-left: 3px solid var(--warn-edge);
+  padding: 0.65rem 1rem;
+  font-size: 0.9rem;
+}
+
+/* ---------- sections ---------- */
+
+.section {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 2.75rem 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.section > p { max-width: 62ch; }
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 0.4rem;
+  margin-bottom: 1.4rem;
+}
+
+.section-no {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.section-head h2 {
+  font-size: 1.55rem;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- pipeline flow ---------- */
+
+.flow {
+  list-style: none;
+  display: flex;
+  align-items: stretch;
+  gap: 2rem;
+  margin: 1.75rem 0;
+  padding: 0;
+  flex-wrap: wrap;
+}
+
+.flow-stage {
+  position: relative;
+  flex: 1 1 12rem;
+  border: 1px solid var(--rule);
+  background: var(--paper-deep);
+  padding: 0.9rem 1rem;
+  border-radius: 3px;
+}
+
+.flow-stage:not(:last-child)::after {
+  content: "\2192";
+  content: "\2192" / "";
+  position: absolute;
+  right: -1.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.4rem;
+  color: var(--accent);
+}
+
+.flow-stage h3 {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent-deep);
+  margin: 0 0 0.2rem;
+}
+
+.flow-stage p {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  margin: 0 0 0.6rem;
+}
+
+.flow-stage ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.flow-stage li { padding: 0.12rem 0; border-top: 1px dotted var(--rule); }
+
+.example-label {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  margin: 1.5rem 0 0.35rem;
+}
+
+/* ---------- envelope schemas ---------- */
+
+.schema-pair {
+  display: flex;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  flex-wrap: wrap;
+}
+
+.schema {
+  flex: 1 1 16rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper-deep);
+  padding: 0.9rem 1rem;
+}
+
+.schema h3 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
+.schema pre {
+  border-left-width: 2px;
+  font-size: 0.78rem;
+  margin: 0 0 0.5rem;
+}
+
+.schema p {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* ---------- skill catalog ---------- */
+
+.group-head {
+  font-size: 1.1rem;
+  margin: 2rem 0 0.6rem;
+  letter-spacing: -0.005em;
+}
+
+.group-note {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  margin-left: 0.6rem;
+}
+
+.catalog {
+  margin: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.skill {
+  display: grid;
+  grid-template-columns: 11.5rem 1fr;
+  gap: 1.25rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.skill dt {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent-deep);
+  padding-top: 0.15rem;
+  overflow-wrap: anywhere;
+}
+
+.skill dd {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+
+.skill dd strong { color: var(--ink); }
+
+/* ---------- install ---------- */
+
+.install-path {
+  border-left: 2px solid var(--rule);
+  padding-left: 1.25rem;
+  margin: 1.75rem 0;
+}
+
+.install-path h3 { margin: 0 0 0.4rem; font-size: 1.1rem; }
+.install-path p { max-width: 62ch; margin: 0.4rem 0; }
+.install-path pre { max-width: 46rem; }
+
+/* ---------- governance ---------- */
+
+.teaser {
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.cta {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--paper);
+  background: var(--accent);
+  border-radius: 2px;
+  padding: 0.55rem 1rem;
+}
+
+.cta:hover { background: var(--accent-deep); color: var(--paper); }
+
+/* ---------- footer ---------- */
+
+.footer {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.footer a { color: var(--ink-soft); }
+
+.footer-inner {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* ---------- narrow screens ---------- */
+
+/* The three flow stages (flex-basis 12rem each, two 2rem gaps) need a 40rem
+   (640px) row; with the section's 1.25rem side padding that row no longer
+   fits below a 680px viewport. Switch the flow to its column layout at that
+   point so the stages never wrap while horizontal arrows are drawn. */
+@media (max-width: 680px) {
+  .flow { flex-direction: column; gap: 2.2rem; }
+  .flow-stage:not(:last-child)::after {
+    content: "\2193";
+    content: "\2193" / "";
+    right: auto;
+    left: 50%;
+    top: auto;
+    bottom: -1.9rem;
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 640px) {
+  body { font-size: 1rem; }
+
+  .masthead-inner { flex-direction: column; gap: 0.35rem; }
+  .masthead-nav a { margin-left: 0; margin-right: 1rem; }
+
+  .hero-inner { padding-top: 2.25rem; }
+
+  .skill {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .install-path { padding-left: 0.9rem; }
+}
