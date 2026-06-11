@@ -10,9 +10,10 @@
 > scientifically validated. Expect breakage.
 
 A set of composable [Agent Skills](https://agentskills.io) for building
-weather/climate data pipelines from an LLM-driven agent. Skills are either
-source-specific I/O (fetchers, email egress) or generic operators that work on
-a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
+weather/climate data pipelines from an LLM-driven agent. Skills are
+source-specific fetchers (ingress), generic operators that work on a shared
+Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)), or capabilities the
+agent uses alongside pipelines.
 
 ## Skills
 
@@ -43,16 +44,13 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
 
-### Egress
+### Agent capabilities
+Capabilities the agent uses alongside pipelines; none of them produces an
+envelope output.
+
 | Skill | What it does |
 |---|---|
 | `email-report` | Compose an RFC 5322 `.eml` with attachments. **Mocks SMTP — writes to disk, does not send.** |
-
-### Agent tooling (not a pipeline skill)
-These help an agent operate the skill set; they do not fetch, transform, or plot data.
-
-| Skill | What it does |
-|---|---|
 | `submit-feedback` | Build a length-checked prefilled GitHub new-issue URL the user clicks to file feedback under their own account. Holds no token, makes no network call, creates no issue itself. |
 
 ## Install

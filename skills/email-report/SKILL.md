@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.10+ and uv. Stdlib only.
 metadata:
   version: "0.1.3"
-  catalog-group: egress
+  catalog-group: agent-tooling
 ---
 
 # email-report
@@ -14,7 +14,7 @@ Produces an RFC 5322 message (`.eml`) from the provided metadata and attachments
 
 ## When to use
 
-- End-of-pipeline egress during testing / replay of the daily workflow, where the intent is to produce the email artifact but not actually send it.
+- Producing the email artifact without sending it — e.g. when testing or replaying the daily workflow.
 - Anywhere the workflow would have called an SMTP action.
 
 ## Usage

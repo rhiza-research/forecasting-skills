@@ -25,7 +25,7 @@ Marker comments in the template (each must appear exactly once):
     <!-- gen:catalog -->         the grouped catalog sections
     <!-- gen:flow-fetch -->      example <li> items for the fetch stage
     <!-- gen:flow-transform -->  example <li> items for the transform stage
-    <!-- gen:flow-output -->     example <li> items for the plot/egress stage
+    <!-- gen:flow-output -->     example <li> items for the visualization stage
 
 Usage:
     uv run --script tools/build_site.py                  # writes _site/
@@ -48,11 +48,10 @@ GROUPS: list[tuple[str, str, str | None]] = [
     ("fetchers", "Fetchers", "ingress — source → envelope"),
     ("transforms", "Transforms", "envelope → envelope"),
     ("visualization", "Visualization", "envelope → PNG"),
-    ("egress", "Egress", None),
     (
         "agent-tooling",
-        "Agent tooling",
-        "no envelope output — help an agent operate the set",
+        "Agent capabilities",
+        "no envelope output — capabilities the agent uses alongside pipelines",
     ),
 ]
 
@@ -230,10 +229,8 @@ def main() -> int:
         count = sum(len(members) for members in grouped.values())
         fetch_names = [name for name, _ in grouped["fetchers"][:3]]
         transform_names = [name for name, _ in grouped["transforms"][:3]]
-        output_names = [name for name, _ in grouped["visualization"][:2]] + [
-            name for name, _ in grouped["egress"][:1]
-        ]
-        output_total = len(grouped["visualization"]) + len(grouped["egress"])
+        output_names = [name for name, _ in grouped["visualization"][:3]]
+        output_total = len(grouped["visualization"])
         template = (site_dir / "index.html").read_text(encoding="utf-8")
         _check_example_names(
             template,

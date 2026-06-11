@@ -39,8 +39,8 @@
     <p class="lede">
       A set of composable <a href="https://agentskills.io">Agent Skills</a> for building
       weather/climate data pipelines from an LLM-driven agent: source-specific fetchers,
-      generic operators over a shared Zarr-based container, plot and egress outputs, and
-      tooling that helps the agent operate the set.
+      generic operators over a shared Zarr-based container, plot outputs, and
+      capabilities the agent uses alongside pipelines.
     </p>
     <div class="hero-cmd">
       <p class="cmd-label">One-shot, no install — list available skills</p>
@@ -60,9 +60,10 @@
   </header>
   <p>
     Pipelines chain three kinds of skill: fetchers pull data from a source and write a
-    standard envelope, generic middle skills transform any envelope, and plot or egress
-    skills materialize the result. A user states the goal in natural language and the
-    agent picks and composes skills from the set.
+    standard envelope, generic middle skills transform any envelope, and visualization
+    skills render the result. Alongside pipelines, the agent draws on capabilities such
+    as resolving a region or composing an email report. A user states the goal in
+    natural language and the agent picks and composes skills from the set.
   </p>
   <ol class="flow" role="list" aria-label="Pipeline stages">
     <li class="flow-stage">
@@ -80,7 +81,7 @@
       </ul>
     </li>
     <li class="flow-stage">
-      <h3>plot / egress</h3>
+      <h3>visualize</h3>
       <p>envelope &#8594; artifact</p>
       <ul>
         <!-- gen:flow-output -->
