@@ -196,12 +196,13 @@ def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
 
 # Default size of the per-day download thread pool. The work is
 # network-I/O-bound (one independent HTTPS GET per day), so threads overlap
-# request latency without contending on the GIL. The bound is deliberately
-# conservative: CHC's data server is a public research host, so excessive
-# concurrency is impolite and risks throttling. 8 is enough to hide request
-# latency while staying well below levels that typically provoke rate limiting;
-# operators can lower it with --workers if they observe throttling.
-DEFAULT_WORKERS = 8
+# request latency without contending on the GIL. CHC's data server publishes
+# no concurrency or rate-limit policy, but it can throttle and temporarily
+# block IPs under higher concurrency: pools of 8 concurrent downloads have
+# repeatedly triggered throttling and temporary IP blocks at this host.
+# 2 keeps the request pattern gentle while still overlapping request latency;
+# --workers 1 is the fully serial fallback.
+DEFAULT_WORKERS = 2
 
 
 class DayUnavailable(Exception):
@@ -221,7 +222,7 @@ class DayUnavailable(Exception):
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.12"
+_RHIZA_SKILL_VERSION = "0.1.13"
 
 
 def _load_history(zarr_path: Path) -> list:
@@ -595,7 +596,8 @@ def main() -> None:
         default=DEFAULT_WORKERS,
         help=(
             f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
-            "Lower this if the CHIRPS server returns throttling errors."
+            "Deliberately conservative: CHC's data server can throttle and "
+            "temporarily block IPs under higher concurrency."
         ),
     )
     args = p.parse_args()
