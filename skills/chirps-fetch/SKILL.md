@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
 metadata:
   version: "0.1.11"
+  catalog-group: fetchers
 ---
 
 # chirps-fetch

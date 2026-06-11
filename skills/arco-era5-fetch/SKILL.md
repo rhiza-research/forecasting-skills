@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads the public ARCO-ERA5 analysis-ready Zarr from Google Cloud (gs://gcp-public-data-arco-era5) over anonymous access; no credentials required.
 metadata:
   version: "0.1.3"
+  catalog-group: fetchers
 ---
 
 # arco-era5-fetch

@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.10+ and uv. Builds a URL string only; reads no credentials, makes no network request, and writes no file.
 metadata:
   version: "0.1.3"
+  catalog-group: agent-tooling
 ---
 
 # submit-feedback

@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads NOAA GHCN-Daily from the public S3 website endpoint (noaa-ghcn-pds.s3.amazonaws.com) over HTTPS; no credentials required.
 metadata:
   version: "0.1.2"
+  catalog-group: fetchers
 ---
 
 # ghcn-daily-fetch

@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.10+ and uv. Stdlib only.
 metadata:
   version: "0.1.2"
+  catalog-group: egress
 ---
 
 # email-report

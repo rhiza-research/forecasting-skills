@@ -19,7 +19,7 @@ a shared Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)).
 ### Fetchers (ingress — source-specific)
 | Skill | What it does |
 |---|---|
-| `ecmwf-fetch` | ECMWF S2S ensemble precipitation forecast (cf + pf) over a `--bbox` (use `resolve-region` for a country's bbox) via MARS → Zarr |
+| `ecmwf-fetch` | ECMWF S2S ensemble precipitation forecast (cf + pf) over a `--bbox` (use `resolve-region` for a country's bbox) via ECDS → Zarr |
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
 | `imerg-fetch` | IMERG satellite precipitation (late release) → Zarr |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
@@ -126,41 +126,58 @@ See `npx skillkit install --help` for more flags.
 ## Composition pattern
 
 Middle-pipeline skills are designed to chain. Example — daily forecast plus
-satellite validation for one country:
+satellite validation for one country, using the `forecasting-skills` CLI from
+the Install section above:
 
 ```bash
 # Resolve the country bbox once, reuse it across the fetch and the clip.
-KENYA_BBOX=$(uv run resolve-region/scripts/resolve.py KEN)
+KENYA_BBOX=$(forecasting-skills resolve-region KEN)
 
-uv run ecmwf-fetch/scripts/fetch.py \
-    --date 2026-02-13 --bbox "$KENYA_BBOX" --output /tmp/ecmwf.zarr
-uv run aggregate-temporal/scripts/aggregate.py \
-    --input /tmp/ecmwf.zarr --period weekly --method sum \
+forecasting-skills ecmwf-fetch \
+    --date 2026-02-13 \
+    --bbox "$KENYA_BBOX" \
+    --output /tmp/ecmwf.zarr
+forecasting-skills aggregate-temporal \
+    --input /tmp/ecmwf.zarr \
+    --period weekly \
+    --method sum \
     --output /tmp/ecmwf_weekly.zarr
-uv run plot/scripts/plot.py \
-    --input /tmp/ecmwf_weekly.zarr --variable tp \
+forecasting-skills plot \
+    --input /tmp/ecmwf_weekly.zarr \
+    --variable tp \
     --output /tmp/weekly.png
 
-uv run imerg-fetch/scripts/fetch.py \
-    --start 2025-12-24 --end 2026-02-13 --output /tmp/imerg.zarr
-uv run clip-region/scripts/clip.py \
-    --input /tmp/imerg.zarr --bbox "$KENYA_BBOX" --output /tmp/imerg_kenya.zarr
-uv run aggregate-temporal/scripts/aggregate.py \
-    --input /tmp/imerg_kenya.zarr --period dekadal --method sum \
+forecasting-skills imerg-fetch \
+    --start 2025-12-24 \
+    --end 2026-02-13 \
+    --output /tmp/imerg.zarr
+forecasting-skills clip-region \
+    --input /tmp/imerg.zarr \
+    --bbox "$KENYA_BBOX" \
+    --output /tmp/imerg_kenya.zarr
+forecasting-skills aggregate-temporal \
+    --input /tmp/imerg_kenya.zarr \
+    --period dekadal \
+    --method sum \
     --output /tmp/imerg_dekadal.zarr
 
-uv run tahmo-fetch/scripts/fetch.py \
-    --country Kenya --start 2025-12-24 --end 2026-02-13 \
+forecasting-skills tahmo-fetch \
+    --country Kenya \
+    --start 2025-12-24 \
+    --end 2026-02-13 \
     --output /tmp/tahmo.zarr
 
-uv run plot-compare/scripts/plot_compare.py \
-    -i /tmp/tahmo.zarr -i /tmp/imerg_dekadal.zarr --variable precip \
+forecasting-skills plot-compare \
+    -i /tmp/tahmo.zarr \
+    -i /tmp/imerg_dekadal.zarr \
+    --variable precip \
     --output /tmp/sat_vs_stations.png
 
-uv run email-report/scripts/email.py \
+forecasting-skills email-report \
     --from "Sender <sender@example.com>" \
     --to "recipient@example.com" \
-    --subject "Daily Outlook" --body-file body.txt \
+    --subject "Daily Outlook" \
+    --body-file body.txt \
     --attach /tmp/weekly.png /tmp/sat_vs_stations.png \
     --output /tmp/kenya.eml
 ```

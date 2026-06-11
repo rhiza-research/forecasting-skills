@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
   version: "0.1.5"
+  catalog-group: transforms
 ---
 
 # coarsen

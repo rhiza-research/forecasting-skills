@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.11+ and uv. Uses the OpenAQ v3 REST API over HTTPS; requires a free OPENAQ_API_KEY in the environment (register at https://explore.openaq.org/register).
 metadata:
   version: "0.1.2"
+  catalog-group: fetchers
   openclaw:
     requires:
       env:
