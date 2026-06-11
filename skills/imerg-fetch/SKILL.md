@@ -4,7 +4,7 @@ description: Fetch live IMERG satellite precipitation for a date range and write
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
   openclaw:
     requires:
       env:
@@ -70,8 +70,7 @@ IMERG late runs ~4 days behind realtime, so a window whose end is at or near
 today (e.g. `--end now`) can resolve to a span whose trailing days are not yet
 published. After the fetch, the present days are read from the written dataset's
 own time axis (not from CMR metadata), and a span with fewer present days than
-the requested span is classified the same way chirps-fetch classifies missing
-days:
+the requested span is classified as follows:
 
 - A contiguous **trailing** gap (the missing days are exactly the tail past the
   last present day) prints a stderr `WARNING` and stamps the cache key with the
@@ -88,7 +87,7 @@ non-zero.
 
 ### Output
 
-Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the global IMERG 0.1° grid. Stamped with `rhiza_source=imerg`.
+Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)` on the global IMERG 0.1° grid. Stamped with `rhiza_source=imerg`.
 
 ### Memory and performance
 
@@ -104,10 +103,8 @@ The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For a fetcher this is a
 length-1 array; downstream zarr-writing skills append their own entry. `args`
 records the resolved concrete window as `{start, end, version}` — the resolved
-absolute dates, not the relative token — so the cache key is a function of the
-data produced, not how the window was requested. `version` is
-the `_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept in lockstep with
-`metadata.version` in this SKILL.md by the CI version-bump workflow.
+absolute dates, not the relative token. `version` is the value printed by
+`--help`. Inspect a written output's provenance with the `provenance` skill.
 
 ## Example
 

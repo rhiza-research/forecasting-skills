@@ -4,7 +4,7 @@ description: Fetch CHIRPS precipitation observations for a date range — the va
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
 metadata:
-  version: "0.1.10"
+  version: "0.1.11"
 ---
 
 # chirps-fetch
@@ -50,11 +50,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD 
   when a token references `latest`. The cache key records the resolved absolute
   dates, never the relative token.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
-- `--workers` — max concurrent per-day download threads (default 8). Bounds the thread pool that fetches each day's TIF over HTTPS. A concurrency knob only: it does not change the output and is excluded from the cache key. Lower it if the CHIRPS server returns throttling errors.
+- `--workers` — max concurrent per-day download threads (default 8). Bounds the thread pool that fetches each day's TIF over HTTPS. A concurrency knob only, not data: it is excluded from the cache key. Lower it if the CHIRPS server returns throttling errors.
 
 ### Output
 
-Zarr with data variable `precip` (mm/day) and dims `(time, lat, lon)` on the global CHIRPS grid. Stamped with `rhiza_source=chirps`.
+Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)` on the global CHIRPS grid. Stamped with `rhiza_source=chirps`.
 
 ### Memory and performance
 
@@ -73,16 +73,10 @@ Historical days come from the validated final product and carry no publication l
 The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="chirps-fetch"` and `input=null`; downstream
-zarr-writing skills append their own entry. `args` is the argparse namespace
-minus the `--input`/`--output` path strings; `version` is the
-`_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept in lockstep with
-`metadata.version` in this SKILL.md by the CI version-bump workflow.
-
-The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
-(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
-translate underscore → hyphen.
+zarr-writing skills append their own entry. `args` records the run's flag
+values under underscored names (e.g. a flag `--time-dim` is recorded as
+`time_dim`); `version` is the value printed by `--help`. Inspect a written
+output's provenance with the `provenance` skill.
 
 ## Example
 

@@ -26,7 +26,7 @@ import numpy as np
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 # --- Source -> output transforms ---
 #
@@ -519,6 +519,21 @@ def _remove_store(out: Path) -> None:
         out.unlink()
 
 
+def _attach_bbox_value(argv):
+    # argparse rejects a space-separated --bbox value that starts with '-'
+    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
+    # `--bbox=VAL` so both the space and equals forms parse.
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--bbox" and i + 1 < len(argv):
+            out.append(f"--bbox={argv[i + 1]}")
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -537,7 +552,7 @@ def main() -> None:
     )
     p.add_argument("--bbox", help="Spatial subset N/W/S/E decimal degrees. Omit for the full grid.")
     p.add_argument("--output", "-o", required=True)
-    args = p.parse_args()
+    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
     def _latest() -> date:
         # Newest available day lives in the current-year file; fall back to the

@@ -26,7 +26,7 @@ import earthaccess
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.6"
+_RHIZA_SKILL_VERSION = "0.1.7"
 
 SHORTNAMES = {
     "late": "GPM_3IMERGDL",
@@ -418,6 +418,16 @@ def main() -> None:
             combine="by_coords",
         )
         ds = ds[["precipitation"]].rename({"precipitation": "precip"})
+        # The IMERG source names its spatial dims `lat`/`lon`; normalize to the
+        # canonical `latitude`/`longitude` used across the other fetchers and
+        # ENVELOPE.md. Conditional so the rename only touches dims present.
+        spatial_rename = {
+            src: dst
+            for src, dst in {"lat": "latitude", "lon": "longitude"}.items()
+            if src in ds.dims
+        }
+        if spatial_rename:
+            ds = ds.rename(spatial_rename)
         # CMR's temporal filter is overlap-based and can return granules just
         # outside [start, end]; trim to exact requested bounds to match the
         # prior sheerwater @timeseries() post-process.

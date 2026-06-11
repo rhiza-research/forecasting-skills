@@ -18,10 +18,12 @@ Uses the OpenAQ v3 REST API. The API key comes from the environment: OPENAQ_API_
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
@@ -38,12 +40,58 @@ import requests
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 _API_BASE = "https://api.openaq.org/v3"
 HTTP_TIMEOUT = 60
 DEFAULT_WORKERS = 8
 _PAGE_LIMIT = 1000
+
+# --- Client-side rate limiting ---
+#
+# OpenAQ publishes hard API rate limits: 60 requests/minute and 2,000
+# requests/hour (https://docs.openaq.org/using-the-api/rate-limits). Exceeding
+# them returns 429s, and sustained overuse can get an API key suspended, so
+# compliance is built in rather than optional: EVERY request to the API (the
+# locations listing and each per-sensor page) passes through the global
+# limiter below, and no flag — including --workers — can raise the request
+# rate. Worker threads still overlap on response waits; only request STARTS
+# are spaced.
+#
+# 1.85 s between request starts is a sustained ~32.4 requests/minute and
+# ~1,946 requests/hour (3600 / 1.85) — strictly under BOTH published limits
+# (60/minute and 2,000/hour) with real margin, staying just under the hourly cap
+# rather than sitting exactly on it. The hourly figure is the binding one:
+# 3600/1.85 < 2000.
+_REQUEST_SPACING_S = 1.85
+# Generous fallback backoff before retrying a 429 that carries no usable
+# Retry-After header (the limiter should make 429s rare to begin with). Also
+# serves as the lower floor on the honored 429 wait (see _retry_backoff).
+_BACKOFF_429_S = 60.0
+# Upper cap on a honored Retry-After. A server asking us to wait longer than
+# this is treated as "wait the cap, then give up on the single retry" rather
+# than blocking the run for an unbounded interval.
+_RETRY_AFTER_MAX_S = 300.0  # 5 minutes
+_rate_lock = threading.Lock()
+_next_request_start = 0.0  # monotonic time of the next free request slot
+
+
+def _rate_limit_wait() -> None:
+    """Block until this thread may start the next API request.
+
+    Reserves the next free 1.85 s-spaced start slot under the lock, then sleeps
+    outside it, so concurrent threads queue up on the spacing grid without
+    serializing their response waits.
+    """
+    global _next_request_start
+    with _rate_lock:
+        now = time.monotonic()
+        slot = max(now, _next_request_start)
+        _next_request_start = slot + _REQUEST_SPACING_S
+    delay = slot - now
+    if delay > 0:
+        time.sleep(delay)
+
 
 # CF time-coordinate encoding. udunits-valid reference-time units plus a
 # calendar, carried in the write encoding so the on-disk time axis is fully CF.
@@ -337,6 +385,49 @@ def _is_transient(exc: Exception) -> bool:
     return any(m in text for m in markers)
 
 
+def _retry_backoff(exc: Exception) -> float:
+    """Return how long to sleep before the single retry of a transient error.
+
+    A 429 means OpenAQ is throttling, so the retry must never be tight. The 429
+    wait is clamped into a sane band:
+
+        delay = min(max(parsed_or_fallback, _BACKOFF_429_S), _RETRY_AFTER_MAX_S)
+
+    where `parsed_or_fallback` is a finite non-negative numeric Retry-After
+    header if present, else `_BACKOFF_429_S`. The floor (`_BACKOFF_429_S`, 60 s)
+    keeps a `Retry-After: 0` — or any value below the floor — from producing a
+    near-zero, hammering retry; a larger numeric value is honored upward up to
+    the cap (`_RETRY_AFTER_MAX_S`, 300 s), beyond which we wait the cap and then
+    give up on the single retry. The resulting 429 policy:
+
+        Retry-After: 0      -> 60 s  (floored)
+        Retry-After: 5      -> 60 s  (floored)
+        Retry-After: 120    -> 120 s (honored)
+        Retry-After: 99999  -> 300 s (capped)
+        missing / garbage   -> 60 s  (fallback, then floored)
+        HTTP-date form      -> 60 s  (not a number -> fallback)
+        inf / nan           -> 60 s  (non-finite rejected to fallback)
+
+    A non-finite header (inf/nan) is rejected to the fallback via math.isfinite.
+    Non-429 transients keep the short 2 s backoff. The retried request itself
+    still passes through the global rate limiter.
+    """
+    resp = getattr(exc, "response", None)
+    if resp is None or getattr(resp, "status_code", None) != 429:
+        return 2.0
+    raw = (getattr(resp, "headers", None) or {}).get("Retry-After")
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        parsed = _BACKOFF_429_S
+    else:
+        # Reject non-finite (inf/nan) and negative values to the fallback;
+        # an HTTP-date Retry-After is non-numeric and already fell into except.
+        if not math.isfinite(parsed) or parsed < 0:
+            parsed = _BACKOFF_429_S
+    return min(max(parsed, _BACKOFF_429_S), _RETRY_AFTER_MAX_S)
+
+
 def _classify_api_error(exc: Exception, context: str) -> str:
     """Map an API exception to a one-line actionable message that never echoes
     the key.
@@ -377,20 +468,23 @@ def _auth_status(exc: Exception):
 def _get_pages(session, url: str, params: dict):
     """Yield each result across all pages of an OpenAQ v3 listing endpoint.
 
-    Pages with `limit`/`page` until a short page is returned. A single transient
-    error per page is retried once after a short backoff.
+    Pages with `limit`/`page` until a short page is returned. Every request
+    start passes through the global rate limiter. A single transient error per
+    page is retried once after a backoff (2 s for a non-429 transient, or a
+    60–300 s clamped wait for a 429 — see `_retry_backoff`).
     """
     page = 1
     while True:
         page_params = dict(params, limit=_PAGE_LIMIT, page=page)
         for attempt in range(2):
             try:
+                _rate_limit_wait()
                 resp = session.get(url, params=page_params, timeout=HTTP_TIMEOUT)
                 resp.raise_for_status()
                 break
             except requests.RequestException as exc:
                 if attempt == 0 and _is_transient(exc):
-                    time.sleep(2.0)
+                    time.sleep(_retry_backoff(exc))
                     continue
                 raise
         results = resp.json().get("results", [])
@@ -603,6 +697,21 @@ def _verify_cf_dsg(ds) -> None:
         sys.exit(1)
 
 
+def _attach_bbox_value(argv):
+    # argparse rejects a space-separated --bbox value that starts with '-'
+    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
+    # `--bbox=VAL` so both the space and equals forms parse.
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == "--bbox" and i + 1 < len(argv):
+            out.append(f"--bbox={argv[i + 1]}")
+            i += 2
+        else:
+            out.append(argv[i])
+            i += 1
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
@@ -639,10 +748,12 @@ def main() -> None:
         default=DEFAULT_WORKERS,
         help=(
             f"Max concurrent per-sensor fetch threads (default {DEFAULT_WORKERS}). "
-            "Lower this if OpenAQ returns 429/throttling errors."
+            "Threads overlap response waits only; request starts are rate-limited "
+            "globally under OpenAQ's published limits (60/minute, 2,000/hour), so "
+            "raising this does not raise the request rate."
         ),
     )
-    args = p.parse_args()
+    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
 
     if args.workers < 1:
         print("Error: --workers must be >= 1.", file=sys.stderr)

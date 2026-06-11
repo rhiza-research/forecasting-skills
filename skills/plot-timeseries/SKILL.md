@@ -4,24 +4,24 @@ description: Render a single PNG with one 1D trace per input Zarr overlaid on a 
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
 ---
 
 # plot-timeseries
 
 Source-agnostic multi-input timeseries plotting. Takes one or more Rhiza
 Envelope Zarrs and draws each as a 1D line on a single set of axes against
-its time/step coord. Each trace is labelled in the legend by the input
+its time/step coord. Each trace is labeled in the legend by the input
 filename stem.
 
-This is a first-pass timeseries skill: it plots data that is already 1D
-(only a time-like dim left after picking `--variable`) or data the caller
-has explicitly told it how to reduce to 1D via repeated `--reduce DIM`
-flags. There is no silent averaging of unspecified dims, and no reference /
-climatology overlay support.
+It plots data that is already 1D (only a time-like dim left after picking
+`--variable`) or data the caller has explicitly told it how to reduce to 1D
+via repeated `--reduce DIM` flags. There is no silent averaging of
+unspecified dims, and no reference / climatology overlay support.
 
-For a single-input quick-look that averages across all non-time dims
-without ceremony, use the `plot` skill with `--style timeseries`.
+For a single-input quick-look, use the `plot` skill with
+`--style timeseries`, which averages across all non-time dims by default
+(no `--reduce` flags needed).
 
 ## When to use
 
@@ -34,7 +34,7 @@ without ceremony, use the `plot` skill with `--style timeseries`.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
-    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT]
+    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] [--align-day-of-year]
 ```
 
 ### Arguments
@@ -50,6 +50,23 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   has any non-time dims after variable selection; the skill exits with an
   error rather than silently averaging.
 - `--title` — optional figure title.
+- `--align-day-of-year` — opt-in (default off). Plot each trace against its
+  day-of-year (1–366) instead of its absolute date, so inputs from different
+  years overlay on a shared x-axis; the x-axis label becomes `day of year`.
+  Caveats:
+  - Requires a calendar-date time axis. It errors (exit 2) on a non-date axis,
+    such as a forecast `step` timedelta; drop the flag or select a date dim
+    with `--time-dim`.
+  - Intended for within-year seasons. A season that crosses the calendar-year
+    boundary (e.g. Dec–Feb) wraps at the year boundary (day 366 → 1 in leap
+    years, 365 → 1 otherwise) and will not align as one contiguous block; the
+    skill prints a stderr warning and still renders.
+  - The 1–366 range assumes a standard calendar; model calendars yield their
+    own range (e.g. a `360_day` calendar yields 1–360), so overlaying inputs
+    on different calendars can misalign by several days without error.
+  - Leap vs non-leap years offset day-of-year by ~1 after Feb 29, so dates
+    after February in a leap year land one day-of-year higher than the same
+    date in a non-leap year.
 
 ### Output
 
@@ -68,8 +85,7 @@ Only inputs that carry a `units` attr participate in the comparison.
 
 ### Provenance
 
-Every PNG carries a per-input `tEXt` chunk plus a producer key, written via
-matplotlib's `savefig(metadata=...)`:
+Every PNG carries a per-input `tEXt` chunk plus a producer key:
 
 - `rhiza_history_a`, `rhiza_history_b`, `rhiza_history_c`, ... — one key per
   `-i` input, lettered by CLI position (first input → `_a`, second → `_b`,
@@ -80,16 +96,10 @@ matplotlib's `savefig(metadata=...)`:
   `{basename, hash}`. Preceding entries are the upstream chain inherited
   from that input's `rhiza_history` (empty if the input had none — a stderr
   warning is emitted and the array contains only the rendering entry).
-  Inputs beyond 26 are rejected at argparse-validation time because the
-  letter scheme stops at `z`.
+  Inputs beyond 26 are rejected at argument-validation time, before any
+  rendering.
 - `Software` — set to `forecasting-skills` so generic image tools like
   `exiftool` surface the producer prominently.
-
-One key per input (not one tree-shaped key) because `plot-timeseries`
-inputs typically have no common ancestor (e.g. two independent fetcher
-branches). Per-branch linear chains keep the on-disk schema identical to
-the other plotters: a consumer reading any single `rhiza_history_<letter>`
-uses one parse path and gets the full lineage of that branch.
 
 Read-back:
 

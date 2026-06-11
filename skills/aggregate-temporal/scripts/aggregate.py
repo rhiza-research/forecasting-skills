@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.7"
+_RHIZA_SKILL_VERSION = "0.1.8"
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
@@ -538,17 +538,60 @@ def main() -> None:
             sys.exit(2)
     else:
         # CF "T" axis first (finds wall-clock time even when named unusually),
-        # then `step` (forecast lead time — timedelta64, not CF T).
+        # then `step` (forecast lead time — timedelta64, not CF T). Only accept
+        # the cf-resolved name if it is an actual dimension: on a forecast
+        # envelope `time` is a scalar init-date coordinate, not a dim, so cf
+        # returns "time" but the real aggregation axis is `step`.
         try:
-            dim = ds.cf["time"].name
+            cf_time = ds.cf["time"].name
         except KeyError:
-            dim = "step" if "step" in ds.dims else None
-        if dim is None or dim not in ds.dims:
-            print(
-                f"Error: no time/step dim identified in {list(ds.dims)}. "
-                f"Pass --time-dim to override.",
-                file=sys.stderr,
-            )
+            # cf resolution failed (no T axis, or multiple candidates make it
+            # ambiguous). Prefer a literal `time` dim before falling back to
+            # `step` below.
+            cf_time = "time" if "time" in ds.dims else None
+        if cf_time is not None and cf_time in ds.dims:
+            if ds.sizes[cf_time] == 1 and "step" in ds.dims:
+                # Forecast-shaped: a size-1 init-time dim alongside a lead
+                # axis. Aggregating the size-1 dim would yield one degenerate
+                # bin, so aggregate the lead axis instead.
+                print(
+                    f"Note: time dim '{cf_time}' has size 1 alongside a "
+                    f"'step' dim; aggregating over step instead. Pass "
+                    f"--time-dim {cf_time} to override.",
+                    file=sys.stderr,
+                )
+                dim = "step"
+            else:
+                if "step" in ds.dims:
+                    print(
+                        f"Note: both '{cf_time}' and 'step' dims are present; "
+                        f"aggregating over {cf_time}. Pass --time-dim step to "
+                        f"aggregate the forecast lead axis instead.",
+                        file=sys.stderr,
+                    )
+                dim = cf_time
+        elif "step" in ds.dims:
+            dim = "step"
+        else:
+            dim = None
+        if dim is None:
+            non_dim_time = cf_time
+            if non_dim_time is None and "time" in ds.coords:
+                non_dim_time = "time"
+            if non_dim_time is not None:
+                print(
+                    f"Error: found a '{non_dim_time}' coordinate, but it is "
+                    f"not a dimension of the data (a scalar coordinate has no "
+                    f"axis to aggregate over) and no 'step' dim is present. "
+                    f"Dims: {list(ds.dims)}. Pass --time-dim to override.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"Error: no time/step dim identified in {list(ds.dims)}. "
+                    f"Pass --time-dim to override.",
+                    file=sys.stderr,
+                )
             sys.exit(2)
 
     print(

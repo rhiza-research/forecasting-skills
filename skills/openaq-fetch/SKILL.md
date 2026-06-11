@@ -4,7 +4,7 @@ description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Uses the OpenAQ v3 REST API over HTTPS; requires a free OPENAQ_API_KEY in the environment (register at https://explore.openaq.org/register).
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   openclaw:
     requires:
       env:
@@ -57,8 +57,10 @@ https://explore.openaq.org/register).
   Choices: `pm25`, `pm10`, `no2`, `o3`, `so2`, `co`. Omit for all six.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--workers` — max concurrent per-sensor fetch threads (default 8). A
-  concurrency knob only; it does not change the output and is excluded from the
-  cache key. Lower it if OpenAQ returns 429/throttling errors.
+  concurrency knob only, not data: it is excluded from the cache key. Threads
+  overlap response waits only: all requests are client-side rate-limited
+  under OpenAQ's published limits (60/minute, 2,000/hour), with a small margin
+  on the hourly cap, so raising `--workers` does not raise the request rate.
 
 ### Output
 
@@ -117,9 +119,12 @@ stderr warning; the run still succeeds with the variables that do have data.
 - No sensors or no observations for the bbox/window: a non-zero exit with a
   clear message.
 
-There is no proactive size or request-count guard: `--bbox` is required (a global
-query would be unbounded), but within it the caller decides the window, and
-provider rate/size failures are handled reactively (retry-once, then drop).
+There is no proactive size guard: `--bbox` is required (a global query would be
+unbounded), but within it the caller decides the window. Request rate, however,
+is guarded proactively (the client-side rate limiter above); a 429 that still
+arrives is retried once after honoring its `Retry-After` header (or a 60 s
+backoff without one), and other transient failures are handled reactively
+(retry-once, then drop).
 
 ### Memory and performance
 
@@ -135,9 +140,9 @@ The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="openaq-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, the sorted
-`variable` list, and the resolved concrete `start`/`end` — `--workers` is
-excluded (concurrency, not data). `version` is this skill's version, also printed
-by `--help`. Inspect a written output's provenance with the `provenance` skill.
+`variable` list, and the resolved concrete `start`/`end` — `--workers` is not
+recorded. `version` is the value printed by `--help`. Inspect a written
+output's provenance with the `provenance` skill.
 
 ## Examples
 

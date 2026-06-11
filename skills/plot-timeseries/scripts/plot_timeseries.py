@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.7"
+_RHIZA_SKILL_VERSION = "0.1.8"
 
 
 def _cf_dim(obj, cf_name):
@@ -136,6 +136,16 @@ def main() -> None:
         help="Name of a non-time dim to mean-reduce before plotting. Repeatable.",
     )
     p.add_argument("--title")
+    p.add_argument(
+        "--align-day-of-year",
+        action="store_true",
+        help=(
+            "Plot each trace against day-of-year (1-366) instead of its absolute "
+            "date, so inputs from different years overlay on a shared x-axis. "
+            "Requires a calendar-date time axis (errors on a non-date axis such "
+            "as a forecast 'step' timedelta)."
+        ),
+    )
     args = p.parse_args()
 
     # PNG metadata keys are lettered by CLI position (rhiza_history_a,
@@ -154,6 +164,7 @@ def main() -> None:
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
+    import numpy as np
     import xarray as xr
 
     for pth in args.input:
@@ -230,14 +241,44 @@ def main() -> None:
             sys.exit(2)
 
         label = Path(pth).stem
-        ax.plot(da[tdim].values, da.values, label=label)
+        if args.align_day_of_year:
+            # `.dt.dayofyear` works for datetime64 and object-dtype cftime time
+            # coords; it raises TypeError/AttributeError on a non-calendar axis
+            # (e.g. a forecast `step` timedelta), which we surface clearly.
+            try:
+                xvals = da[tdim].dt.dayofyear.values
+            except (TypeError, AttributeError):
+                print(
+                    f"Error ({pth}): --align-day-of-year needs a calendar-date "
+                    f"time axis, but '{tdim}' is not a date axis (e.g. a forecast "
+                    f"'step' timedelta). Drop the flag or pick a date dim with "
+                    f"--time-dim.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            # A non-monotonic day-of-year sequence draws over itself on the
+            # shared axis. This happens when a trace crosses a year boundary,
+            # spans multiple years, or has an out-of-order time axis. Rendering
+            # caveat only — warn and proceed.
+            if len(xvals) > 1 and np.any(np.diff(xvals) < 0):
+                print(
+                    f"Warning ({pth}): day-of-year values are non-monotonic "
+                    f"(decrease at some point — a trace crossing a year boundary, "
+                    f"spanning multiple years, or an out-of-order time axis); "
+                    f"rendering anyway, but it may overplot itself on the shared "
+                    f"day-of-year axis.",
+                    file=sys.stderr,
+                )
+        else:
+            xvals = da[tdim].values
+        ax.plot(xvals, da.values, label=label)
 
         if units is None:
             units = da.attrs.get("units")
         if first_tdim is None:
             first_tdim = tdim
 
-    ax.set_xlabel(first_tdim or "time")
+    ax.set_xlabel("day of year" if args.align_day_of_year else (first_tdim or "time"))
     ylabel = variable if not units else f"{variable} [{units}]"
     ax.set_ylabel(ylabel)
     if args.title:
