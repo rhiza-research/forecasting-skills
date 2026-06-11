@@ -4,7 +4,7 @@ The common Zarr-based container that the skills in this repo consume and produce
 
 ## Shape
 
-A Zarr v2 store containing one or more data variables.
+A Zarr v3 store containing one or more data variables. Consumers also read Zarr v2 stores (xarray detects the format on open).
 
 ### Gridded envelope
 - Spatial dims: `latitude`, `longitude` (aliases `lat`/`lon`, `y`/`x` also accepted on input).
@@ -45,6 +45,6 @@ PNG outputs from plot-writers embed the same schema in PNG `tEXt` chunks via mat
 
 The envelope is a **CF-compliant** Zarr store: it conforms to the [CF Conventions](https://cfconventions.org/). Producers (fetchers) MUST emit valid CF; every consumer MUST read any valid CF input — including stores whose time axis uses a non-standard model calendar (`noleap`, `360_day`). The CF spec, not a Rhiza subset of it, is the contract: this repo does not maintain its own list of required CF attributes. Canonical dimension names are listed under Shape above; generic middle skills use [cf-xarray](https://cf-xarray.readthedocs.io/) to identify coords from their CF attrs, falling back to name heuristics (`lat`/`lon`/`y`/`x`) when attrs are missing.
 
-- Output stores are written with `consolidated=True`.
+- Output stores are written with `consolidated=True`. Consolidated metadata is a zarr-python convenience, not part of the Zarr v3 specification: it is embedded as an extra key in the root `zarr.json`, implementations that do not support it ignore the key and read the per-node metadata, and zarr-python prints a `ZarrUserWarning` about the spec gap on every consolidated write.
 - Missing data is encoded as NaN, not a sentinel value.
 - **Per-variable `encoding` (codecs, chunks, dtype, fill_value) is NOT part of the envelope contract.** Each skill writes with its own `zarr`/`numcodecs` versions and the codec objects are not guaranteed to be round-trippable across skill boundaries. Skills that read a Zarr and re-write must clear `.encoding = {}` on every variable before calling `to_zarr()`; fetchers should do the same on the way out. Consumers rely only on dims, coords, data-variable names, values, and `rhiza_*` attrs.
