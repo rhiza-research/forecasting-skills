@@ -4,7 +4,7 @@ description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Uses the OpenAQ v3 REST API over HTTPS; requires a free OPENAQ_API_KEY in the environment (register at https://explore.openaq.org/register).
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   openclaw:
     requires:
       env:

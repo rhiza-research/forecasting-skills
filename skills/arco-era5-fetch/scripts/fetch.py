@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.2"
+_RHIZA_SKILL_VERSION = "0.1.3"
 
 # Public, credential-free ARCO-ERA5 analysis-ready store: 0.25 deg equiangular
 # lat/lon, hourly, dims (time, latitude, longitude, level). Opened anonymously.

@@ -40,7 +40,7 @@ import requests
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 _API_BASE = "https://api.openaq.org/v3"
 HTTP_TIMEOUT = 60

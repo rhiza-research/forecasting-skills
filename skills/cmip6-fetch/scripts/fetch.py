@@ -31,7 +31,7 @@ import pandas as pd
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.1"
+_RHIZA_SKILL_VERSION = "0.1.2"
 
 # Public, credential-free Pangeo CMIP6 collection on Google Cloud. The catalog
 # CSV maps facet combinations to a Zarr store path (`zstore`); data is read
