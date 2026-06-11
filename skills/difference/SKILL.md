@@ -4,7 +4,8 @@ description: Subtract one Rhiza Envelope Zarr from another (A − B) with xarray
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
+  catalog-group: transforms
 ---
 
 # difference

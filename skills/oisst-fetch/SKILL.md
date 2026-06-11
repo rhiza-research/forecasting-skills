@@ -4,7 +4,8 @@ description: Fetch NOAA OISST v2.1 daily sea-surface temperature for a date rang
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads NOAA OISST v2.1 from NOAA PSL's OPeNDAP server (psl.noaa.gov) over HTTPS; no credentials required.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
+  catalog-group: fetchers
 ---
 
 # oisst-fetch

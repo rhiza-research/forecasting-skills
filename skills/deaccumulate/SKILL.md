@@ -4,7 +4,8 @@ description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
+  catalog-group: transforms
 ---
 
 # deaccumulate

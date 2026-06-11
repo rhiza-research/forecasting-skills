@@ -4,7 +4,8 @@ description: Convert a Rhiza Envelope Zarr's time axis to a target CF calendar b
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
+  catalog-group: transforms
 ---
 
 # convert-calendar

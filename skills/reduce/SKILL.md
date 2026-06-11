@@ -4,7 +4,8 @@ description: Collapse one or more named dimensions of a Rhiza Envelope Zarr with
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
+  catalog-group: transforms
 ---
 
 # reduce

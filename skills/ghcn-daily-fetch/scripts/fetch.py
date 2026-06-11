@@ -35,7 +35,7 @@ import requests
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.2"
+_RHIZA_SKILL_VERSION = "0.1.3"
 
 # Public, credential-free GHCN-Daily on the S3 website endpoint.
 _BASE_URL = "https://noaa-ghcn-pds.s3.amazonaws.com"

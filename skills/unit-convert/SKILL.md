@@ -4,7 +4,8 @@ description: Convert one data variable in a Rhiza envelope Zarr to a target unit
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
+  catalog-group: transforms
 ---
 
 # unit-convert
