@@ -4,7 +4,7 @@ description: Fetch CHIRPS precipitation observations for a date range — the va
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
 metadata:
-  version: "0.1.12"
+  version: "0.1.13"
   catalog-group: fetchers
 ---
 
