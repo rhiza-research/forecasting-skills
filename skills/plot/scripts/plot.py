@@ -22,6 +22,7 @@ horizontal colorbar at the bottom spanning all panels.
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -105,14 +106,54 @@ def _cf_dim(obj, cf_name):
         return None
 
 
+# Strict decimal integer: optional single sign, then ASCII digits only.
+_INDEX_INT_RE = re.compile(r"[+-]?[0-9]+")
+
+
 def _parse_index(spec):
-    if not spec:
+    """Parse an ``--index`` spec into ``{dim: int | list[int]}``.
+
+    Comma-separated tokens are walked left to right. A token containing
+    ``=`` starts a new dimension; bare integer tokens append to the current
+    dimension's values, so ``step=0,1,2`` selects three positions along
+    ``step``. One value yields a scalar ``int``; several yield a
+    ``list[int]``. Whitespace around dimension names and values is ignored;
+    a blank or missing spec yields ``{}``.
+
+    Raises ``ValueError`` for a bare token before any ``dim=`` key, an empty
+    dimension name or value, an empty token (a leading, doubled, or trailing
+    comma), a non-integer value, a repeated dimension, or a repeated position
+    within one dimension's list.
+    """
+    if not spec or not spec.strip():
         return {}
-    out = {}
-    for part in spec.split(","):
-        k, _, v = part.partition("=")
-        out[k.strip()] = int(v.strip())
-    return out
+    values = {}
+    current = None
+    for token in spec.split(","):
+        if "=" in token:
+            key, _, raw = token.partition("=")
+            current = key.strip()
+            if not current:
+                raise ValueError(f"--index token {token.strip()!r} has an empty dimension name")
+            if current in values:
+                raise ValueError(f"--index dimension {current!r} is given more than once")
+            values[current] = []
+            raw = raw.strip()
+            if not raw:
+                raise ValueError(f"--index value for {current!r} is empty")
+        else:
+            raw = token.strip()
+            if not raw:
+                raise ValueError("--index spec has an empty token (stray comma)")
+            if current is None:
+                raise ValueError(f"--index token {raw!r} appears before any 'dim=' assignment")
+        if not _INDEX_INT_RE.fullmatch(raw):
+            raise ValueError(f"--index value {raw!r} for {current!r} is not an integer")
+        pos = int(raw)
+        if pos in values[current]:
+            raise ValueError(f"--index position {pos} is repeated for dimension {current!r}")
+        values[current].append(pos)
+    return {k: v[0] if len(v) == 1 else v for k, v in values.items()}
 
 
 def _parse_extent(spec):
@@ -225,6 +266,10 @@ def _format_step(value):
 def _panel_title(da, sdim, step_value, all_steps):
     """Match panel_plot_variable: '<start> until <end>' from time + step.
 
+    ``all_steps`` is the variable's native step axis; the per-panel window
+    width comes from its spacing, so a panel for any step value shows the
+    axis's own window ending at that step's valid time.
+
     Falls back to '<sdim>=<step>' when the dataset lacks the coords needed
     to construct a date range (no `time` coord, or `step` not a timedelta).
     """
@@ -251,7 +296,19 @@ def _panel_title(da, sdim, step_value, all_steps):
         return fallback
 
 
-def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize, wrap_lon=True):
+def _heatmap(
+    da,
+    lat_dim,
+    lon_dim,
+    cmap,
+    extent,
+    cities,
+    title,
+    fontsize,
+    wrap_lon=True,
+    native_step_dim=None,
+    native_steps=None,
+):
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     import matplotlib.pyplot as plt
@@ -277,6 +334,14 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize, wrap_l
         sdim = None
     else:
         steps = list(da[sdim].values)
+
+    # Panel-title windows come from the native step axis (captured by the
+    # caller before any --index selection) so a non-contiguous selection
+    # still titles each panel with the axis's own window width.
+    if native_steps is not None and native_step_dim == sdim:
+        title_steps = native_steps
+    else:
+        title_steps = steps
 
     num_steps = len(steps)
     ncols = min(4, num_steps)
@@ -317,7 +382,11 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize, wrap_l
     contour = None
     for i, s in enumerate(steps):
         ax = axes[i]
-        slab = da if s is None else da.sel({sdim: s})
+        # Select the panel slab by position, not by coordinate value: a
+        # duplicate coordinate value on the panel axis would match multiple
+        # positions under label selection, keeping the panel dim on the slab.
+        # The coordinate value `s` is still used for the panel title.
+        slab = da if sdim is None else da.isel({sdim: i})
         # Order the 2D field as (lat, lon) so its shape matches the C array
         # pcolormesh expects given the (lon, lat) X/Y coordinate vectors.
         # Sources like IMERG store the variable as (..., lon, lat), which
@@ -368,7 +437,7 @@ def _heatmap(da, lat_dim, lon_dim, cmap, extent, cities, title, fontsize, wrap_l
             )
         if s is not None:
             ax.set_title(
-                _panel_title(da, sdim, s, steps),
+                _panel_title(da, sdim, s, title_steps),
                 fontsize=int(fontsize * 0.8),
             )
 
@@ -415,7 +484,14 @@ def main() -> None:
     p.add_argument("--style", choices=["heatmap", "timeseries"], default="heatmap")
     p.add_argument("--colormap", default="viridis")
     p.add_argument("--title")
-    p.add_argument("--index", help="Slice spec like 'step=3,number=0'")
+    p.add_argument(
+        "--index",
+        help="Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
+        "several comma-separated positions ('step=0,1,2'), which keeps the dim "
+        "and, for --style heatmap, yields one panel per selected position. "
+        "Negative positions count from the end (Python-style). "
+        "Syntax-checked, then ignored with a warning for --style timeseries.",
+    )
     p.add_argument(
         "--extent",
         help="Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
@@ -461,7 +537,11 @@ def main() -> None:
         )
         sys.exit(2)
     da = ds[variable]
-    overrides = _parse_index(args.index)
+    try:
+        overrides = _parse_index(args.index)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     bbox = None
     if args.bbox:
@@ -486,6 +566,27 @@ def main() -> None:
             file=sys.stderr,
         )
 
+    if args.extent and args.style != "heatmap":
+        print(
+            f"Warning: --extent {args.extent!r} is a heatmap-only option; "
+            f"ignored for --style {args.style}.",
+            file=sys.stderr,
+        )
+
+    if args.cities and args.style != "heatmap":
+        print(
+            f"Warning: --cities is a heatmap-only option; ignored for --style {args.style}.",
+            file=sys.stderr,
+        )
+
+    index_ignored = bool(overrides) and args.style != "heatmap"
+    if index_ignored:
+        print(
+            f"Warning: --index {args.index!r} is a heatmap-only option; "
+            f"ignored for --style {args.style}.",
+            file=sys.stderr,
+        )
+
     if args.style == "heatmap":
         lat_dim = _cf_dim(da, "latitude")
         lon_dim = _cf_dim(da, "longitude")
@@ -495,9 +596,96 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(2)
+        # Station-schema data carries lat/lon as per-point coordinates on a
+        # station dimension rather than as dimensions of their own, so there
+        # is no 2D grid for pcolormesh to draw.
+        if lat_dim not in da.dims or lon_dim not in da.dims:
+            print(
+                f"Error: heatmap needs lat/lon as dimensions, but {lat_dim!r}/"
+                f"{lon_dim!r} are non-dimension coordinates here (dims: "
+                f"{list(da.dims)}); station data has no 2D grid to plot.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        # Capture the native step-axis values before any --index selection so
+        # panel titles can use the axis's own spacing.
+        native_step_dim = _step_dim(da)
+        native_steps = list(da[native_step_dim].values) if native_step_dim else None
+        # Structural checks come first, so an unknown dim name or a list on a
+        # non-panel dim is reported before any positional (out-of-range/alias)
+        # validation of the same spec.
         for dim, idx in overrides.items():
-            if dim in da.dims:
-                da = da.isel({dim: idx}, drop=True)
+            if dim not in da.dims:
+                print(
+                    f"Error: --index dimension {dim!r} is not in the data (dims: {list(da.dims)})",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            if isinstance(idx, list) and dim != native_step_dim:
+                panel_desc = repr(native_step_dim) if native_step_dim else "step/time"
+                print(
+                    f"Error: --index list selection on {dim!r} is only supported "
+                    f"on the panel dimension ({panel_desc}); give a single position",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        for dim, idx in overrides.items():
+            size = da.sizes[dim]
+            positions = idx if isinstance(idx, list) else [idx]
+            # Normalize negative positions against the dim size so the
+            # uniqueness check sees the element each position addresses
+            # (0 and -size alias the same element).
+            seen = {}
+            for pos in positions:
+                if not -size <= pos < size:
+                    print(
+                        f"Error: --index position {pos} is out of range for "
+                        f"dimension {dim!r} (size {size})",
+                        file=sys.stderr,
+                    )
+                    sys.exit(2)
+                norm = pos % size
+                if norm in seen:
+                    print(
+                        f"Error: --index positions {seen[norm]} and {pos} address "
+                        f"the same element of dimension {dim!r} (size {size})",
+                        file=sys.stderr,
+                    )
+                    sys.exit(2)
+                seen[norm] = pos
+            da = da.isel({dim: idx}, drop=True)
+        # After the overrides the array must be (panel?, lat, lon) — plus an
+        # ensemble 'number' dim, which _heatmap averages. Catch selections
+        # that break that contract here, before the bbox/mask block operates
+        # on the spatial dims by name.
+        for spatial in (lat_dim, lon_dim):
+            if spatial in overrides and spatial not in da.dims:
+                print(
+                    f"Error: --index removed the {spatial!r} dimension; "
+                    "heatmap needs a 2D lat/lon grid",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        panel_dim = _step_dim(da)
+        # Any dim still present beyond the panel dim, the ensemble 'number'
+        # dim, and lat/lon would reach the per-panel transpose with too many
+        # axes; require the user to select a position from it.
+        for dim in da.dims:
+            if dim not in (panel_dim, "number", lat_dim, lon_dim):
+                panel_desc = repr(panel_dim) if panel_dim else "step/time"
+                print(
+                    f"Error: dimension {dim!r} remains after selection; heatmap "
+                    f"panels only the {panel_desc} dimension — select a position "
+                    f"from {dim!r} with --index",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        if panel_dim is not None and da.sizes[panel_dim] == 0:
+            print(
+                f"Error: dimension {panel_dim!r} has size 0; nothing to plot.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
         extent = _parse_extent(args.extent)
         cities = _parse_cities(args.cities)
         cmap = _parse_colormap(args.colormap)
@@ -563,6 +751,16 @@ def main() -> None:
                         extent = [float(r_w), float(r_e) + 360.0, float(r_s), float(r_n)]
                     else:
                         extent = [float(r_w), float(r_e), float(r_s), float(r_n)]
+        # Guard at the first point where a zero-size grid is knowable (after
+        # --index/--bbox selection, before any min/max reduction): disjoint
+        # selections would otherwise hit reductions of an empty array.
+        if da.sizes[lat_dim] == 0 or da.sizes[lon_dim] == 0:
+            print(
+                "Error: selection produced an empty grid (no cells remain after "
+                "--index/--bbox selection); nothing to plot.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
         fig = _heatmap(
             da,
             lat_dim,
@@ -573,6 +771,8 @@ def main() -> None:
             args.title,
             args.fontsize,
             wrap_lon=not wrapped_bbox,
+            native_step_dim=native_step_dim,
+            native_steps=native_steps,
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -593,10 +793,22 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     upstream = _load_history(src)
+    prov_skip = {"input", "output"}
+    entry_args = {k: v for k, v in vars(args).items() if k not in prov_skip}
+    # The timeseries style ignores --index, --extent, and --cities; those
+    # three record as None, keeping the args schema stable across styles
+    # while showing they had no effect (--bbox and --mask-geojson record
+    # verbatim). A whitespace-only --index parses to no selection and
+    # records None too.
+    if index_ignored or not overrides:
+        entry_args["index"] = None
+    if args.style != "heatmap":
+        entry_args["extent"] = None
+        entry_args["cities"] = None
     plot_entry = {
         "skill": "plot",
         "version": _RHIZA_SKILL_VERSION,
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
+        "args": entry_args,
         "input": {"basename": src.name, "hash": _hash_zarr(src)},
     }
     if not upstream:
