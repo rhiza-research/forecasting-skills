@@ -4,7 +4,7 @@ description: Concatenate two or more Rhiza Envelope Zarr stores along a named di
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   catalog-group: transforms
 ---
 

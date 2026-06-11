@@ -4,7 +4,7 @@ description: Spatially subset a gridded Rhiza Envelope Zarr to an explicit lat/l
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
   catalog-group: transforms
 ---
 

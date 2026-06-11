@@ -4,7 +4,7 @@ description: Downscale a Rhiza Envelope Zarr onto a FINER-OR-EQUAL grid, adding 
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   catalog-group: transforms
 ---
 

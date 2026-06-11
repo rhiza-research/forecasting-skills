@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.8"
+_RHIZA_SKILL_VERSION = "0.1.9"
 
 
 def _cf_dim(obj, cf_name):

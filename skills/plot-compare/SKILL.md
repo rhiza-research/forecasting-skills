@@ -4,7 +4,7 @@ description: Render a side-by-side multi-panel comparison PNG of two Rhiza Envel
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.9"
+  version: "0.1.10"
   catalog-group: visualization
 ---
 
