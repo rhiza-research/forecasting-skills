@@ -47,9 +47,18 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   `white,wheat,green`). Named matplotlib colormaps cannot contain commas, so
   the presence of a comma unambiguously selects the custom-list form.
 - `--title` — optional plot title.
-- `--index` — dim selections like `step=3,number=0`. For `heatmap`, applied
+- `--index` — dim selections like `step=3,number=0`. A dim may take several
+  comma-separated positions, e.g. `step=0,1,2`, which keeps the dim with just
+  those positions. Negative positions are accepted and count from the end,
+  Python-style (`step=-1` is the last step). Repeating a dim is an error, as
+  are positions that address the same element — including negative aliases
+  (`step=0,-3` on a 3-step axis). List selections are only supported on the
+  panel (step/time) dimension; other dims take a single position. Applied
   before panel layout: e.g. `--index step=2` reduces to a single-panel map at
-  step 2; otherwise all steps are panelled.
+  step 2, while `--index step=0,1,2` panels exactly those three steps;
+  otherwise all steps are paneled. Panels follow the order given in the spec
+  (`step=2,0` renders position 2 first). Heatmap-only — with `--style
+  timeseries` the spec is syntax-checked, then ignored with a stderr warning.
 - `--extent` — heatmap map extent as `lon_min,lon_max,lat_min,lat_max`.
   Defaults to the data's cell-center min/max expanded by half the mean
   grid spacing on each side, so the view matches what `pcolormesh`
