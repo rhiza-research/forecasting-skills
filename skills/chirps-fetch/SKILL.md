@@ -51,7 +51,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD 
   when a token references `latest`. The cache key records the resolved absolute
   dates, never the relative token.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
-- `--workers` — max concurrent per-day download threads (default 8). Bounds the thread pool that fetches each day's TIF over HTTPS. A concurrency knob only, not data: it is excluded from the cache key. Lower it if the CHIRPS server returns throttling errors.
+- `--workers` — max concurrent per-day download threads (default 2). Bounds the thread pool that fetches each day's TIF over HTTPS. A concurrency knob only, not data: it is excluded from the cache key. The default is deliberately conservative: CHC's data server can throttle and temporarily block IPs under higher concurrency. If throttling errors appear, lower it to 1. If requests are refused outright, the IP may be temporarily blocked — wait before retrying; lowering `--workers` helps only before a block.
 
 ### Output
 
@@ -61,7 +61,7 @@ Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)`
 
 There is no `--bbox` flag: the full 0.05° global grid (~7200×3600 cells, ~104 MB/day as float32) is always fetched. The output is streamed to Zarr one day at a time, so peak resident memory is bounded to ~one day regardless of how long the window is.
 
-`--workers` is the network-concurrency speed lever and is memory-neutral: each worker transiently holds only the compressed TIF body (a few MB), not a decompressed global array — decompression happens sequentially after the download pool drains. Raising `--workers` speeds the fetch without raising peak memory.
+`--workers` is the network-concurrency speed lever and is memory-neutral: each worker transiently holds only the compressed TIF body (a few MB), not a decompressed global array — decompression happens sequentially after the download pool drains. The default is held low because CHC's data server can throttle and temporarily block IPs; raising `--workers` is an operator choice for infrastructure where that risk is acceptable (see the `--workers` argument above).
 
 All per-day TIFs are staged to a temp directory before writing, so a very long window is bounded by temp disk, not RAM. For tight-memory hosts, keep the window short and run the `clip-region` skill immediately after to shrink to your area of interest.
 
