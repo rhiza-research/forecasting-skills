@@ -17,9 +17,9 @@ markdown body byte-for-byte. It is intentionally a manual line-level parser
 (not a full YAML round-trip) so that comments, quoting style, and key order
 are not perturbed.
 
-The `_RHIZA_SKILL_VERSION` constant rewritten in `scripts/**/*.py` must sit at
-top-level module scope (a bare `_RHIZA_SKILL_VERSION = "..."` line, optionally
-with a PEP 526 type annotation like `_RHIZA_SKILL_VERSION: str = "..."`). The
+The `_SKILL_VERSION` constant rewritten in `scripts/**/*.py` must sit at
+top-level module scope (a bare `_SKILL_VERSION = "..."` line, optionally
+with a PEP 526 type annotation like `_SKILL_VERSION: str = "..."`). The
 shared regex in `tools/rhiza_version_re.py` deliberately won't match the
 constant inside a docstring, triple-quoted string, or any indented context,
 to avoid rewriting incidental occurrences. Either single or double quotes
@@ -166,7 +166,7 @@ def _bump_skill_md(text: str, kind: str) -> tuple[str, str, str]:
 
 
 def _bump_script_constants(scripts_dir: Path, new_version: str) -> tuple[list[Path], list[Path]]:
-    """Rewrite `_RHIZA_SKILL_VERSION = "..."` in every `.py` file under `scripts_dir`
+    """Rewrite `_SKILL_VERSION = "..."` in every `.py` file under `scripts_dir`
     (recursively) that already carries the constant.
 
     Returns (updated, missing) where:
@@ -176,7 +176,7 @@ def _bump_script_constants(scripts_dir: Path, new_version: str) -> tuple[list[Pa
         skill: some scripts track the version, some don't. The caller warns on
         these. If NO file in the skill carries the constant, this function
         returns ([], []) — the skill simply doesn't use the constant (typical
-        of skills that don't emit `rhiza_history`) and there's nothing to do.
+        of skills that don't emit `weather_skills_history`) and there's nothing to do.
 
     Use `_skill_uses_constant` first to decide whether to call this function;
     that keeps the silent-skip-vs-warn-on-drift policy in one place.
@@ -208,11 +208,11 @@ def _bump_script_constants(scripts_dir: Path, new_version: str) -> tuple[list[Pa
 
 
 def _skill_uses_constant(scripts_dir: Path) -> bool:
-    """Return True if any `.py` under `scripts_dir` carries `_RHIZA_SKILL_VERSION`.
+    """Return True if any `.py` under `scripts_dir` carries `_SKILL_VERSION`.
 
-    Skills that don't emit `rhiza_history` legitimately don't carry the constant
+    Skills that don't emit `weather_skills_history` legitimately don't carry the constant
     in any of their scripts; the bump workflow must silently skip them, not warn.
-    Skills that emit `rhiza_history` carry it in every script that writes a
+    Skills that emit `weather_skills_history` carry it in every script that writes a
     dataset; partial coverage is a drift case and gets warned about by
     `_bump_script_constants`'s `missing` return.
     """
@@ -267,15 +267,15 @@ def main() -> int:
 
     scripts_dir = repo_root / "skills" / args.skill / "scripts"
     if not _skill_uses_constant(scripts_dir):
-        # This skill doesn't use `_RHIZA_SKILL_VERSION` in any of its scripts.
-        # That's the standard case for skills that don't emit `rhiza_history`
-        # (concat, downscale, email-report, plotters, etc.). Silently skip the
-        # script-rewriting step — SKILL.md is the only artifact to bump.
+        # No script in this skill carries `_SKILL_VERSION`, so the constant-
+        # rewrite step is a no-op: SKILL.md is the only artifact to bump.
+        # This happens only for a skill whose scripts never stamp a version
+        # into their output (i.e. none of them emit `weather_skills_history`).
         return 0
 
     updated, missing = _bump_script_constants(scripts_dir, new_version)
     for path in updated:
-        print(f"  updated {path.relative_to(repo_root)}: _RHIZA_SKILL_VERSION = {new_version!r}")
+        print(f"  updated {path.relative_to(repo_root)}: _SKILL_VERSION = {new_version!r}")
     for path in missing:
         # Warn only on drift WITHIN a skill: some scripts carry the constant,
         # this one doesn't. Either the contributor forgot to add it to a new
@@ -283,7 +283,7 @@ def main() -> int:
         # a dataset and should be excluded — either way the maintainer needs
         # to look. (Skills with zero usage are silently skipped above.)
         print(
-            f"warning: {path.relative_to(repo_root)} has no _RHIZA_SKILL_VERSION constant "
+            f"warning: {path.relative_to(repo_root)} has no _SKILL_VERSION constant "
             "but a sibling script in the same skill does; "
             "add the constant if this script should track skill version, "
             "or move it out of scripts/ if it shouldn't.",

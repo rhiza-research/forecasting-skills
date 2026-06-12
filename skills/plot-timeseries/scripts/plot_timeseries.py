@@ -10,7 +10,7 @@
 #   "zarr",
 # ]
 # ///
-"""Render a multi-input timeseries PNG from one or more Rhiza Envelope Zarrs.
+"""Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
 
 Each input contributes one 1D line trace on a shared set of axes, plotted
 against its time-like coord. Inputs whose selected variable is not already
@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.9"
+_SKILL_VERSION = "0.1.9"
 
 
 def _cf_dim(obj, cf_name):
@@ -75,7 +75,8 @@ def _load_history(zarr_path: Path) -> list:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -86,10 +87,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -117,7 +118,7 @@ def _pick_time_dim(da, override):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--input",
@@ -148,7 +149,7 @@ def main() -> None:
     )
     args = p.parse_args()
 
-    # PNG metadata keys are lettered by CLI position (rhiza_history_a,
+    # PNG metadata keys are lettered by CLI position (weather_skills_history_a,
     # _b, ..., _z). The scheme stops at z; reject more inputs early so
     # users see a clear error rather than a KeyError later.
     if len(args.input) > 26:
@@ -298,18 +299,20 @@ def main() -> None:
         upstream = _load_history(src)
         entry = {
             "skill": "plot-timeseries",
-            "version": _RHIZA_SKILL_VERSION,
+            "version": _SKILL_VERSION,
             "args": args_dict,
             "input": {"basename": src.name, "hash": _hash_zarr(src)},
         }
         if not upstream:
             print(
-                f"Warning: no upstream rhiza_history on {src.name}; "
+                f"Warning: no upstream weather_skills_history on {src.name}; "
                 "embedding plot-timeseries step alone.",
                 file=sys.stderr,
             )
         letter = chr(ord("a") + idx)
-        png_metadata[f"rhiza_history_{letter}"] = json.dumps(upstream + [entry], sort_keys=True)
+        png_metadata[f"weather_skills_history_{letter}"] = json.dumps(
+            upstream + [entry], sort_keys=True
+        )
 
     fig.savefig(out, dpi=150, metadata=png_metadata)
     plt.close(fig)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the Rhiza forecasting agent and skills as a Claude Code plugin.
+# Install the forecaster agent and skills as a Claude Code plugin.
 # This runs the canonical `claude plugin` CLI only. It copies no files, and it
 # never reads or outputs the contents of .env or any credential file.
 set -e

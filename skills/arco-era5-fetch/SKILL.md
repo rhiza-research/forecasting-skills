@@ -1,6 +1,6 @@
 ---
 name: arco-era5-fetch
-description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, pressure, and more) for a date range and region from the public, credential-free Google Cloud Zarr store, and write a Rhiza Envelope Zarr. Use when a task needs multi-variable gridded reanalysis ground truth for comparison, verification, or downstream clipping/aggregation/plotting.
+description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, pressure, and more) for a date range and region from the public, credential-free Google Cloud Zarr store, and write a weather-skills envelope Zarr. Use when a task needs multi-variable gridded reanalysis ground truth for comparison, verification, or downstream clipping/aggregation/plotting.
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads the public ARCO-ERA5 analysis-ready Zarr from Google Cloud (gs://gcp-public-data-arco-era5) over anonymous access; no credentials required.
 metadata:
@@ -12,8 +12,8 @@ metadata:
 
 Opens the [ARCO-ERA5](https://github.com/google-research/arco-era5) analysis-ready
 Zarr store (`gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3`),
-subsets it by bounding box, time range, and variables, maps it onto the Rhiza
-Envelope analysis shape, and writes a consolidated Zarr store. The store is a
+subsets it by bounding box, time range, and variables, maps it onto the weather-skills
+envelope analysis shape, and writes a consolidated Zarr store. The store is a
 uniform 0.25° equiangular lat/lon grid, hourly, opened with anonymous Google
 Cloud access — no credentials and no API queue.
 
@@ -21,8 +21,8 @@ Cloud access — no credentials and no API queue.
 
 - A task needs multi-variable reanalysis (2m temperature, winds, precipitation,
   geopotential, pressure-level fields) as gridded observations/ground truth.
-- A downstream skill will clip, aggregate, compare, or plot the result as a Rhiza
-  Envelope Zarr.
+- A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
+  envelope Zarr.
 
 Not a forecast — ERA5 is reanalysis. For forecast grids use `ecmwf-fetch` or
 `dynamical-fetch`.
@@ -72,10 +72,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox 
 
 ### Output
 
-A consolidated, fully CF-1.13 compliant Rhiza Envelope analysis Zarr with a
+A consolidated, fully CF-1.13 compliant weather-skills envelope analysis Zarr with a
 `time` dimension and dims `(time, latitude, longitude)` — plus `level` when a
-pressure-level variable is selected. The Rhiza Envelope is a CF superset: the
-output passes CF first, then carries the `rhiza_history` provenance key.
+pressure-level variable is selected. The weather-skills envelope is a CF superset: the
+output passes CF first, then carries the `weather_skills_history` provenance key.
 
 CF stamping on the output:
 
@@ -100,7 +100,7 @@ CF stamping on the output:
   `standard_name` is set when the store supplies one or a curated value applies,
   and omitted otherwise (CF permits this).
 
-Stamped with `rhiza_source=arco-era5`.
+Stamped with `weather_skills_source=arco-era5`.
 
 ### Memory, performance, and error handling
 
@@ -126,7 +126,7 @@ only "Killed").
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="arco-era5-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records every option except

@@ -1,6 +1,6 @@
 ---
 name: convert-calendar
-description: Convert a Rhiza Envelope Zarr's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields cftime. Dates not representable in the target calendar are dropped.
+description: Convert a weather-skills envelope Zarr's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields cftime. Dates not representable in the target calendar are dropped.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
@@ -10,7 +10,7 @@ metadata:
 
 # convert-calendar
 
-Convert the time axis of a Rhiza Envelope Zarr to a target CF calendar. CF
+Convert the time axis of a weather-skills envelope Zarr to a target CF calendar. CF
 datasets may use different calendars — the standard (proleptic Gregorian)
 calendar of observations, or a model calendar such as `noleap` (no Feb 29) or
 `360_day` (twelve 30-day months). The same wall-clock date maps to a different
@@ -72,16 +72,16 @@ preserved.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. This skill reads the upstream
-input's `rhiza_history` (default `[]` and a stderr warning if absent) and
+input's `weather_skills_history` (default `[]` and a stderr warning if absent) and
 appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings (so `calendar`, `time_dim`, `align_on`);
 `input` is a `{basename, hash}` dict — `basename` is the upstream zarr's
 filename and `hash` is a sha256 of its stored bytes; `version` is the
-`_RHIZA_SKILL_VERSION` constant in `scripts/convert_calendar.py`, kept in
+`_SKILL_VERSION` constant in `scripts/convert_calendar.py`, kept in
 lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow. Cache-hit comparison reads the existing output's `rhiza_history`: a
+workflow. Cache-hit comparison reads the existing output's `weather_skills_history`: a
 hit requires the upstream chain to match and the last entry's `skill`,
 `version`, `args`, and `input.basename` to match the proposed new entry; on a
 hit the script returns without recomputing. The `input.hash` is not part of the

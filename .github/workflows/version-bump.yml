@@ -299,11 +299,11 @@ jobs:
             fi
             old_version=$(read_version "$skill")
             # The bump script updates SKILL.md AND every script's
-            # _RHIZA_SKILL_VERSION constant for this skill in one shot.
+            # _SKILL_VERSION constant for this skill in one shot.
             python3 .github/scripts/bump-skill-version.py --skill "$skill" --kind "$KIND"
             new_version=$(read_version "$skill")
             # Stage the whole skill directory so the bump-script's edits
-            # to scripts/*.py (the _RHIZA_SKILL_VERSION constant) are
+            # to scripts/*.py (the _SKILL_VERSION constant) are
             # committed alongside SKILL.md. Staging only SKILL.md would
             # silently drop the constant rewrite.
             git add "skills/${skill}/"

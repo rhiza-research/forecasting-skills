@@ -1,6 +1,6 @@
 ---
 name: tahmo-fetch
-description: Fetch TAHMO station observations for one or more African countries and write a Rhiza Envelope Zarr (station-dim schema). Use when a task needs in-situ station rainfall/temperature/humidity/pressure, e.g. to compare against gridded satellite or forecast data.
+description: Fetch TAHMO station observations for one or more African countries and write a weather-skills envelope Zarr (station-dim schema). Use when a task needs in-situ station rainfall/temperature/humidity/pressure, e.g. to compare against gridded satellite or forecast data.
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Installs the TAHMO Python SDK directly from GitHub (git+https://github.com/rhiza-research/tahmo-api) via uv script metadata. Requires TAHMO_API_USERNAME and TAHMO_API_PASSWORD in the environment.
 metadata:
@@ -67,15 +67,15 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya [--country Ghana ...
 
 ### Output
 
-Zarr with dims `(time, station_id)`, coords `latitude(station_id)`, `longitude(station_id)`, `country(station_id)`, and data variables `precip` (mm/day), `temperature` (°C), `humidity` (%), `pressure` (kPa) — whichever variables the stations report. Stamped with `rhiza_source=tahmo` and `featureType=timeSeries`.
+Zarr with dims `(time, station_id)`, coords `latitude(station_id)`, `longitude(station_id)`, `country(station_id)`, and data variables `precip` (mm/day), `temperature` (°C), `humidity` (%), `pressure` (kPa) — whichever variables the stations report. Stamped with `weather_skills_source=tahmo` and `featureType=timeSeries`.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For a fetcher this is a
 length-1 array; downstream zarr-writing skills append their own entry. `args`
 is the argparse namespace minus the `--input`/`--output` path strings;
-`version` is the `_RHIZA_SKILL_VERSION` constant in `scripts/fetch.py`, kept
+`version` is the `_SKILL_VERSION` constant in `scripts/fetch.py`, kept
 in lockstep with `metadata.version` in this SKILL.md by the CI version-bump
 workflow.
 

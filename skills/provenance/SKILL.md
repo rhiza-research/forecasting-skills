@@ -1,6 +1,6 @@
 ---
 name: provenance
-description: Inspect the rhiza_history provenance chain stamped on a Rhiza artifact (an Envelope Zarr or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
+description: Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact (an envelope Zarr or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 metadata:
@@ -10,7 +10,7 @@ metadata:
 
 # provenance
 
-Read-only inspector for the `rhiza_history` provenance chain that every
+Read-only inspector for the `weather_skills_history` provenance chain that every
 zarr-writing skill stamps on its output (and that plot-writers embed in PNG
 `tEXt` chunks). It does not produce an artifact — every view prints to
 stdout, and the user redirects when they want a file.
@@ -34,19 +34,19 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py --input <artifact> [--format hu
 ```
 
 ### Arguments
-- `--input`, `-i` — the artifact to inspect: a Rhiza Envelope Zarr (a
+- `--input`, `-i` — the artifact to inspect: a weather-skills envelope Zarr (a
   directory) or a plot PNG (a file ending `.png`). Required.
 - `--format` — output view, one of `human` (default), `json`, or `script`.
-- `--check` — validate the `rhiza_history` schema instead of rendering it.
+- `--check` — validate the `weather_skills_history` schema instead of rendering it.
   Takes precedence over `--format`.
 
 A path that is neither a zarr directory nor a `.png` file, or a missing
 path, is an error: a message goes to stderr and the skill exits 2. An
-artifact with no `rhiza_history` reports `no provenance recorded` and
+artifact with no `weather_skills_history` reports `no provenance recorded` and
 exits 0.
 
 In the render formats (`human`/`json`/`script`), an artifact whose
-`rhiza_history` is present but not a JSON array is treated as no history: the
+`weather_skills_history` is present but not a JSON array is treated as no history: the
 skill prints a one-line malformed-history warning to stderr, reports
 `no provenance recorded`, and exits 0.
 
@@ -59,7 +59,7 @@ basename, and args. For a two-input PNG (`plot-compare` or
 `plot-mediogram`), each input branch is printed under its own label. For a
 `concat` zarr, the concat step lists each input branch's full recorded lineage
 beneath it (labeled `a`, `b`, … by input order). If the zarr carries a
-`rhiza_source` attr it is printed first.
+`weather_skills_source` attr it is printed first.
 
 ### `json`
 
@@ -90,14 +90,14 @@ nothing needs to be installed first — `uvx` fetches the CLI on demand.
 
 ## `--check` (schema validation)
 
-`--check` validates the `rhiza_history` on an artifact against the array
+`--check` validates the `weather_skills_history` on an artifact against the array
 contract in `ENVELOPE.md` and reports every violation it finds. It validates
 **schema shape**, not skill-name membership: a `skill` value may be any
-non-empty string, because external tools that emit `rhiza_history` have their
+non-empty string, because external tools that emit `weather_skills_history` have their
 own skill names.
 
-For a zarr it reads the single `rhiza_history` attribute; for a PNG it reads
-the `rhiza_history` key and every `rhiza_history_<label>` tEXt key, validating
+For a zarr it reads the single `weather_skills_history` attribute; for a PNG it reads
+the `weather_skills_history` key and every `weather_skills_history_<label>` tEXt key, validating
 each. Each value must be a JSON array, and each entry an object with:
 
 - `skill` — a non-empty string.
@@ -113,9 +113,9 @@ reported with its location (which key, which entry index, which rule).
 
 Exit codes:
 
-- `0` — valid `rhiza_history` is present.
-- `1` — no `rhiza_history` is present on the artifact.
-- `2` — `rhiza_history` is present but invalid; the violations are listed.
+- `0` — valid `weather_skills_history` is present.
+- `1` — no `weather_skills_history` is present on the artifact.
+- `2` — `weather_skills_history` is present but invalid; the violations are listed.
 
 ```bash
 # Validate that a freshly produced artifact conforms to the schema.

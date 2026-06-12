@@ -72,7 +72,7 @@ There is no shared parser: each script carries its own copy of the value
 grammar and the per-source `latest` resolver (the standalone-single-file rule
 below). `latest` discovery runs at most once per invocation and only when a
 token references `latest`; an all-absolute or `now`-only window performs no
-discovery call. The cache key / `rhiza_history` args record the **resolved
+discovery call. The cache key / `weather_skills_history` args record the **resolved
 absolute dates**, never the relative token. For any invocation containing a
 relative token, the script prints a stderr line before fetching with the
 resolved concrete dates, the day count, and the boundary mode and its reason.
@@ -140,7 +140,7 @@ selects that variable facet (and is the output variable).
 
 | Concept | Flag | Value shape | Notes |
 | --- | --- | --- | --- |
-| Fetch concurrency | `--workers` | int (per-skill default) | Max size of a bounded thread pool for skills that fetch many independent items (e.g. per-station or per-day requests). For network-I/O-bound work only. Keep the default conservative to respect upstream API rate limits, and let callers lower it on throttling. A concurrency knob, not a data parameter: it must be excluded from the cache key / `rhiza_history` args, since it changes speed, not output. |
+| Fetch concurrency | `--workers` | int (per-skill default) | Max size of a bounded thread pool for skills that fetch many independent items (e.g. per-station or per-day requests). For network-I/O-bound work only. Keep the default conservative to respect upstream API rate limits, and let callers lower it on throttling. A concurrency knob, not a data parameter: it must be excluded from the cache key / `weather_skills_history` args, since it changes speed, not output. |
 
 ## Rules
 
