@@ -4,7 +4,7 @@ description: Realize a forecast envelope's `step` lead-time axis as wall-clock v
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   catalog-group: transforms
 ---
 
@@ -59,7 +59,7 @@ axis stays as `cftime` objects. The valid times carry the init's time-of-day
 (midnight if the init is date-only, e.g. `datetime64[D]`). The scalar `time`
 init coord and the `step` coord are dropped, as is any pre-existing
 `valid_time` coord (it would otherwise pass through stale alongside the new
-axis); the init date is written to the dataset attr `rhiza_forecast_init`
+axis); the init date is written to the dataset attr `weather_skills_forecast_init`
 (ISO 8601, the `cftime` ISO string for a non-standard-calendar init).
 
 If the input lacks a `step` dim, the `step` dim is empty, the `step` values are
@@ -72,7 +72,7 @@ message.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: the input's chain plus
+The output stamps a JSON-encoded `weather_skills_history` attr: the input's chain plus
 an entry for this run, each entry `{skill, version, args, input}` (the
 `version` recorded in this skill's own entry is the value printed by its
 `--help`; inherited upstream entries carry their own versions). Flag values in

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.4"
+_SKILL_VERSION = "0.1.5"
 
 
 def _iter_coords(coords):
@@ -108,7 +108,7 @@ def _bbox_from_geometry(geometry):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument("code", help="ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN")
     p.add_argument(

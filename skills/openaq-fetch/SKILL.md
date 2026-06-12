@@ -1,10 +1,10 @@
 ---
 name: openaq-fetch
-description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3, SO2, CO) for a date range and region, and write a station-schema Rhiza Envelope Zarr. Use when a task needs in-situ air-quality / atmospheric-composition data, e.g. to compare against gridded model output.
+description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3, SO2, CO) for a date range and region, and write a station-schema weather-skills envelope Zarr. Use when a task needs in-situ air-quality / atmospheric-composition data, e.g. to compare against gridded model output.
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Uses the OpenAQ v3 REST API over HTTPS; requires a free OPENAQ_API_KEY in the environment (register at https://explore.openaq.org/register).
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: fetchers
   openclaw:
     requires:
@@ -92,7 +92,7 @@ name, a mole-fraction reading (ppm, ppb) a `mole_fraction_of_*_in_air` name.
 Where no verified CF name applies the `standard_name` is omitted (units +
 `long_name` alone is CF-valid); particulate matter has no mole-fraction CF name,
 so `pm25`/`pm10` carry a `standard_name` only when reported as a mass
-concentration. The store is stamped with `rhiza_source=openaq`.
+concentration. The store is stamped with `weather_skills_source=openaq`.
 
 ### Dropped sensors
 
@@ -137,7 +137,7 @@ On tight-memory hosts, narrow the `--bbox` or shorten the window.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="openaq-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, the sorted

@@ -14,7 +14,7 @@
 #   "zarr",
 # ]
 # ///
-"""Side-by-side multi-panel PNG comparing two Rhiza Envelope Zarrs.
+"""Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
 
 Top row is dataset A, bottom row is dataset B. When exactly one of A/B
 is a station-schema Zarr, it is placed on the top row to match the
@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.1.11"
 
 # Shared categorical colormap and BoundaryNorm for precipitation (mm).
 PRECIP_COLORS = [
@@ -100,7 +100,8 @@ def _load_history(zarr_path: Path) -> list:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -111,10 +112,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -380,7 +381,7 @@ def _attach_bbox_value(argv):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--input",
@@ -1083,7 +1084,7 @@ def main() -> None:
     upstream_a = _load_history(src_a)
     upstream_b = _load_history(src_b)
     shared_args = {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
-    version = _RHIZA_SKILL_VERSION
+    version = _SKILL_VERSION
     plot_compare_entry_a = {
         "skill": "plot-compare",
         "version": version,
@@ -1098,12 +1099,12 @@ def main() -> None:
     }
     if not upstream_a:
         print(
-            f"Warning: no upstream rhiza_history on {src_a.name}; embedding plot-compare step alone.",
+            f"Warning: no upstream weather_skills_history on {src_a.name}; embedding plot-compare step alone.",
             file=sys.stderr,
         )
     if not upstream_b:
         print(
-            f"Warning: no upstream rhiza_history on {src_b.name}; embedding plot-compare step alone.",
+            f"Warning: no upstream weather_skills_history on {src_b.name}; embedding plot-compare step alone.",
             file=sys.stderr,
         )
     fig.savefig(
@@ -1111,8 +1112,12 @@ def main() -> None:
         dpi=150,
         bbox_inches="tight",
         metadata={
-            "rhiza_history_a": json.dumps(upstream_a + [plot_compare_entry_a], sort_keys=True),
-            "rhiza_history_b": json.dumps(upstream_b + [plot_compare_entry_b], sort_keys=True),
+            "weather_skills_history_a": json.dumps(
+                upstream_a + [plot_compare_entry_a], sort_keys=True
+            ),
+            "weather_skills_history_b": json.dumps(
+                upstream_b + [plot_compare_entry_b], sort_keys=True
+            ),
             "Software": "forecasting-skills",
         },
     )

@@ -1,10 +1,10 @@
 ---
 name: ghcn-daily-fetch
-description: Fetch NOAA GHCN-Daily global in-situ station observations (precipitation, max/min/avg temperature) for a date range and region, and write a station-schema Rhiza Envelope Zarr. Use when a task needs credential-free worldwide daily station data, e.g. to compare against gridded satellite, reanalysis, or forecast data.
+description: Fetch NOAA GHCN-Daily global in-situ station observations (precipitation, max/min/avg temperature) for a date range and region, and write a station-schema weather-skills envelope Zarr. Use when a task needs credential-free worldwide daily station data, e.g. to compare against gridded satellite, reanalysis, or forecast data.
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads NOAA GHCN-Daily from the public S3 website endpoint (noaa-ghcn-pds.s3.amazonaws.com) over HTTPS; no credentials required.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: fetchers
 ---
 
@@ -18,7 +18,7 @@ the requested elements and date range, scales them to canonical units, and write
 a station-schema Zarr store.
 
 The output is a fully CF-1.13 timeSeries Discrete Sampling Geometries (DSG) Zarr
-plus the `rhiza_history` provenance key — a superset of CF, not a separate format.
+plus the `weather_skills_history` provenance key — a superset of CF, not a separate format.
 
 GHCN-Daily has ~130k stations and each is a separate whole-history download, so a
 `--bbox` bounds the work to the stations you need.
@@ -85,7 +85,7 @@ temperature) and are scaled to these canonical units on the way out. Only rows
 whose quality flag is empty (passed all QC checks) are kept.
 
 The store is fully **CF-1.13 timeSeries DSG** compliant — verified with
-`cf-xarray` before writing — plus the Rhiza `rhiza_history` provenance key:
+`cf-xarray` before writing — plus the `weather_skills_history` provenance key:
 
 - Global attrs: `Conventions="CF-1.13"`, `featureType="timeSeries"`, plus
   `title`, `source`, `institution`, `references`, and `history`.
@@ -98,7 +98,7 @@ The store is fully **CF-1.13 timeSeries DSG** compliant — verified with
 - `latitude`/`longitude` carry `standard_name`/`units`
   (`degrees_north`/`degrees_east`); `time` carries `standard_name=time` with
   udunits `units` + `calendar` in the write encoding.
-- `rhiza_source=ghcn-daily`.
+- `weather_skills_source=ghcn-daily`.
 
 Missing station-time cells are NaN (with a matching `_FillValue` carried in the
 write encoding). Units are
@@ -116,7 +116,7 @@ cost. On tight-memory hosts, narrow the `--bbox` or shorten the window.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="ghcn-daily-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, the sorted

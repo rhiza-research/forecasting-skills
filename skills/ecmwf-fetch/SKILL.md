@@ -1,10 +1,10 @@
 ---
 name: ecmwf-fetch
-description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and bbox from the ECMWF Data Stores (ECDS), writing a Rhiza Envelope Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting. To fetch over a country, get its bbox from the resolve-region skill first.
+description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills envelope Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting. To fetch over a country, get its bbox from the resolve-region skill first.
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 metadata:
-  version: "0.1.8"
+  version: "0.1.9"
   catalog-group: fetchers
   openclaw:
     requires:
@@ -21,7 +21,7 @@ Retrieves S2S total precipitation from the ECMWF Data Store (ECDS) `s2s-forecast
 ## When to use
 
 - A task asks for a fresh ECMWF S2S forecast for a specific init date.
-- A downstream skill needs the forecast as a Rhiza Envelope Zarr (not raw GRIB).
+- A downstream skill needs the forecast as a weather-skills envelope Zarr (not raw GRIB).
 
 Not for reanalysis, climatology, or deterministic HRES — this skill is S2S only.
 
@@ -82,11 +82,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
 
 ### Output
 
-A Zarr store with data variable `tp` (total precipitation, `kg m⁻²` — numerically equivalent to mm depth over the accumulation period) and dims `(number, step, latitude, longitude)`. `number=0` is the control; `number=1..100` are perturbed members. Stamped with `rhiza_source=ecmwf-s2s`.
+A Zarr store with data variable `tp` (total precipitation, `kg m⁻²` — numerically equivalent to mm depth over the accumulation period) and dims `(number, step, latitude, longitude)`. `number=0` is the control; `number=1..100` are perturbed members. Stamped with `weather_skills_source=ecmwf-s2s`.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For a fetcher this is a
 length-1 array; downstream zarr-writing skills append their own entry. `args`
 records the run's flag values under underscored names (e.g. a flag

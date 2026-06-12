@@ -11,7 +11,7 @@
 #   "cf_units",
 # ]
 # ///
-"""Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a Rhiza Envelope Zarr."""
+"""Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
 
 import argparse
 import calendar
@@ -31,7 +31,7 @@ import pandas as pd
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_SKILL_VERSION = "0.1.4"
 
 # Public, credential-free Pangeo CMIP6 collection on Google Cloud. The catalog
 # CSV maps facet combinations to a Zarr store path (`zstore`); data is read
@@ -67,12 +67,12 @@ _CF_CONVENTIONS = "CF-1.13"
 #     - `Conventions` is OVERWRITTEN to the CF release above (_CF_CONVENTIONS).
 #     - All other source CMIP6 global attrs are PRESERVED.
 #     - `history` has one line APPENDED describing this subset.
-#     - `rhiza_source` and `rhiza_history` keys are ADDED.
+#     - `weather_skills_source` and `weather_skills_history` keys are ADDED.
 #
 #   BOUNDS (structural):
 #     - Every `*_bnds` / `*_bounds` cell-bounds variable is DROPPED, the orphaned
 #       bounds index dim is removed, and each variable's now-dangling `bounds`
-#       attr is STRIPPED (the Rhiza Envelope carries no cell bounds).
+#       attr is STRIPPED (the weather-skills envelope carries no cell bounds).
 #
 #   standard_name / long_name:
 #     - PRESERVED from source; this skill does not assign them. Coord CF attrs
@@ -224,7 +224,8 @@ def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
 def _load_history(zarr_path: Path) -> list:
     try:
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except (FileNotFoundError, KeyError, ValueError):
         # A not-yet-existing or unreadable output during a cache check is a miss.
         return []
@@ -235,10 +236,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -250,7 +251,7 @@ def _store_is_complete(out: Path, variable: str) -> bool:
     """Cheaply verify a candidate cache store is a fully written, readable Zarr.
 
     A previous run interrupted mid-write can leave a directory whose
-    `rhiza_history` is present (it is a top-level attr written early) but whose
+    `weather_skills_history` is present (it is a top-level attr written early) but whose
     array data is absent or truncated. Honoring such a store as a cache hit would
     skip the fetch and leave the caller with a broken output. Re-open the store
     consolidated, confirm the requested variable's dims have non-zero extent, then
@@ -322,7 +323,7 @@ def _ensure_coord_cf_attrs(ds):
 def _drop_bounds(ds):
     """Drop every `*_bnds` bounds variable and the dangling `bounds` attr it leaves.
 
-    The Rhiza Envelope does not carry cell bounds. Removing the bounds variables
+    The weather-skills envelope does not carry cell bounds. Removing the bounds variables
     without also clearing the coords' `bounds` attrs would leave each coord
     pointing at an absent variable, which is a CF section 7.1 violation
     (cf-xarray's bounds resolution and any CF checker would flag it). This drops
@@ -582,7 +583,7 @@ def _attach_bbox_value(argv):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument("--model", required=True, help="CMIP6 source_id (e.g. GFDL-CM4).")
     p.add_argument(
@@ -648,7 +649,7 @@ def main() -> None:
 
     # This fetcher handles regular 1-D lat/lon grids only. Ocean/curvilinear
     # CMIP6 grids carry 2-D latitude/longitude over (i, j) index dims, which the
-    # 1-D-lat/lon Rhiza Envelope does not model; reprojecting them is a grid
+    # 1-D-lat/lon weather-skills envelope does not model; reprojecting them is a grid
     # transform for a dedicated skill, not this fetcher.
     if "lat" not in ds.dims or "lon" not in ds.dims:
         print(
@@ -679,7 +680,7 @@ def main() -> None:
 
     entry = {
         "skill": "cmip6-fetch",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": {
             "model": args.model,
             "experiment": args.experiment,
@@ -741,12 +742,12 @@ def main() -> None:
     )
 
     # Global attrs: preserve the source CMIP6 globals, overwrite Conventions to
-    # the current CF release, append a history line, and add the rhiza_* keys.
+    # the current CF release, append a history line, and add the weather_skills_* keys.
     history_line = (
         f"{datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')} cmip6-fetch: "
         f"subset {args.variable} to {start_iso}..{end_iso}"
         + (f" bbox {args.bbox}" if args.bbox else "")
-        + f"; mapped onto the Rhiza Envelope and re-stamped {_CF_CONVENTIONS}."
+        + f"; mapped onto the weather-skills envelope and re-stamped {_CF_CONVENTIONS}."
     )
     prior_history = source_globals.get("history", "")
     new_globals = dict(source_globals)
@@ -754,11 +755,11 @@ def main() -> None:
     new_globals["history"] = (
         (prior_history + "\n" + history_line) if prior_history else history_line
     )
-    new_globals["rhiza_source"] = (
+    new_globals["weather_skills_source"] = (
         f"cmip6:{args.model}/{args.experiment}/{args.member}/"
         f"{args.table}/{args.variable}/{grid_label}"
     )
-    new_globals["rhiza_history"] = json.dumps([entry], sort_keys=True)
+    new_globals["weather_skills_history"] = json.dumps([entry], sort_keys=True)
     ds.attrs = new_globals
 
     _ensure_coord_cf_attrs(ds)

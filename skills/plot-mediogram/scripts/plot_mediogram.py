@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.5"
+_SKILL_VERSION = "0.1.6"
 
 
 def _cf_dim(obj, cf_name):
@@ -45,7 +45,8 @@ def _load_history(zarr_path: Path) -> list:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -56,10 +57,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -104,7 +105,7 @@ def _inner_stats(values):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument("--forecast", required=True, help="Forecast Zarr (number × step × spatial)")
     p.add_argument("--mclimate", required=True, help="M-climate Zarr (same schema)")
@@ -258,7 +259,7 @@ def main() -> None:
     shared_args = {
         k: v for k, v in vars(args).items() if k not in {"forecast", "mclimate", "output"}
     }
-    version = _RHIZA_SKILL_VERSION
+    version = _SKILL_VERSION
     mediogram_entry_forecast = {
         "skill": "plot-mediogram",
         "version": version,
@@ -273,13 +274,13 @@ def main() -> None:
     }
     if not upstream_forecast:
         print(
-            f"Warning: no upstream rhiza_history on {src_forecast.name}; "
+            f"Warning: no upstream weather_skills_history on {src_forecast.name}; "
             "embedding plot-mediogram step alone.",
             file=sys.stderr,
         )
     if not upstream_mclimate:
         print(
-            f"Warning: no upstream rhiza_history on {src_mclimate.name}; "
+            f"Warning: no upstream weather_skills_history on {src_mclimate.name}; "
             "embedding plot-mediogram step alone.",
             file=sys.stderr,
         )
@@ -287,10 +288,10 @@ def main() -> None:
         out,
         dpi=150,
         metadata={
-            "rhiza_history_forecast": json.dumps(
+            "weather_skills_history_forecast": json.dumps(
                 upstream_forecast + [mediogram_entry_forecast], sort_keys=True
             ),
-            "rhiza_history_mclimate": json.dumps(
+            "weather_skills_history_mclimate": json.dumps(
                 upstream_mclimate + [mediogram_entry_mclimate], sort_keys=True
             ),
             "Software": "forecasting-skills",

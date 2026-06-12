@@ -10,7 +10,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a Rhiza Envelope Zarr."""
+"""Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
 
 import argparse
 import json
@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.4"
+_SKILL_VERSION = "0.1.5"
 
 # Public, credential-free ARCO-ERA5 analysis-ready store: 0.25 deg equiangular
 # lat/lon, hourly, dims (time, latitude, longitude, level). Opened anonymously.
@@ -255,7 +255,8 @@ def _load_history(zarr_path: Path) -> list:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except (FileNotFoundError, KeyError, ValueError):
         # A not-yet-existing or unreadable output during a cache check is a miss.
         return []
@@ -266,10 +267,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -281,7 +282,7 @@ def _store_is_complete(zarr_path: Path, expected_vars) -> bool:
     """Return True if the Zarr at `zarr_path` is a complete, readable store.
 
     A `to_zarr` that crashed after the group metadata + attrs were flushed but
-    before all chunks landed leaves a store whose `rhiza_history` already matches
+    before all chunks landed leaves a store whose `weather_skills_history` already matches
     the request — a stale-but-matching attr would otherwise be trusted as a cache
     hit even though the arrays are truncated or absent. This check guards against
     that: it opens the store consolidated and confirms each expected data
@@ -317,7 +318,7 @@ def _cache_hit(out: Path, entry: dict, expected_vars) -> bool:
     complete, readable store.
 
     The history-attr match alone is not sufficient: a partial prior write can
-    leave a matching `rhiza_history` over truncated arrays. `_store_is_complete`
+    leave a matching `weather_skills_history` over truncated arrays. `_store_is_complete`
     confirms the arrays are actually present and readable before the prior output
     is trusted; an incomplete store is treated as a miss and overwritten.
     """
@@ -453,7 +454,7 @@ def _global_attrs(start_iso: str, end_iso: str) -> dict:
         "institution": _ARCO_INSTITUTION,
         "source": _ARCO_STORE,
         "references": _ARCO_REFERENCE,
-        "history": f"{stamped}: fetched by arco-era5-fetch {_RHIZA_SKILL_VERSION}",
+        "history": f"{stamped}: fetched by arco-era5-fetch {_SKILL_VERSION}",
     }
 
 
@@ -550,7 +551,7 @@ def _attach_bbox_value(argv):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--start",
@@ -628,7 +629,7 @@ def main() -> None:
     args_dict["end"] = end_iso
     entry = {
         "skill": "arco-era5-fetch",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": args_dict,
         "input": None,
     }
@@ -674,8 +675,8 @@ def main() -> None:
 
     ds.attrs.clear()
     ds.attrs.update(_global_attrs(start_iso, end_iso))
-    ds.attrs["rhiza_source"] = "arco-era5"
-    ds.attrs["rhiza_history"] = json.dumps([entry], sort_keys=True)
+    ds.attrs["weather_skills_source"] = "arco-era5"
+    ds.attrs["weather_skills_history"] = json.dumps([entry], sort_keys=True)
     _stamp_coord_attrs(ds)
     # Validate and stamp every data variable's CF attrs. A variable whose final
     # `units` cannot be made udunits-valid (missing, or non-parseable and not in

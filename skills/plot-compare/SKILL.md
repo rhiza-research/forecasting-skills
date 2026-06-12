@@ -1,10 +1,10 @@
 ---
 name: plot-compare
-description: Render a side-by-side multi-panel comparison PNG of two Rhiza Envelope Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC.
+description: Render a side-by-side multi-panel comparison PNG of two weather-skills envelope Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.10"
+  version: "0.1.11"
   catalog-group: visualization
 ---
 
@@ -174,15 +174,15 @@ leftmost panel of each row.
 Every PNG carries three `tEXt` chunk keys written via matplotlib's
 `savefig(metadata=...)`:
 
-- `rhiza_history_a` — a JSON-encoded array of `{skill, version, args,
-  input}` entries with the same schema used for the zarr `rhiza_history`
+- `weather_skills_history_a` — a JSON-encoded array of `{skill, version, args,
+  input}` entries with the same schema used for the zarr `weather_skills_history`
   attribute. The chain belongs to the first `-i` input. The last entry
   records this `plot-compare` invocation, with its `input` field set to
   the A-side `{basename, hash}`. Preceding entries are the upstream
-  chain inherited from input A's `rhiza_history` (empty if input A had
+  chain inherited from input A's `weather_skills_history` (empty if input A had
   none — a stderr warning is emitted and the array contains only the
   rendering entry).
-- `rhiza_history_b` — the same shape for the second `-i` input. The
+- `weather_skills_history_b` — the same shape for the second `-i` input. The
   last entry's `input` is the B-side `{basename, hash}`; preceding
   entries come from input B's upstream chain.
 - `Software` — set to `forecasting-skills` so generic image tools like
@@ -192,13 +192,13 @@ Two keys (not one tree-shaped key) because `plot-compare`'s two inputs
 typically have no common ancestor (e.g. tahmo-fetch vs. imerg-fetch are
 independent fetcher branches). Two linear chains keep the on-disk
 schema identical to the single-input plotters: a consumer reading
-either `rhiza_history_a` or `rhiza_history_b` uses one parse path and
+either `weather_skills_history_a` or `weather_skills_history_b` uses one parse path and
 gets the full lineage of that branch.
 
 Read-back:
 
 ```bash
-python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['rhiza_history_a'])); print(json.loads(img.info['rhiza_history_b']))"
+python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['weather_skills_history_a'])); print(json.loads(img.info['weather_skills_history_b']))"
 ```
 
 Or:

@@ -1,10 +1,10 @@
 ---
 name: oisst-fetch
-description: Fetch NOAA OISST v2.1 daily sea-surface temperature for a date range and region from NOAA PSL's public OPeNDAP server, and write a Rhiza Envelope Zarr. Use when a task needs credential-free gridded SST observations, e.g. for ocean analysis or comparison against forecasts/reanalysis.
+description: Fetch NOAA OISST v2.1 daily sea-surface temperature for a date range and region from NOAA PSL's public OPeNDAP server, and write a weather-skills envelope Zarr. Use when a task needs credential-free gridded SST observations, e.g. for ocean analysis or comparison against forecasts/reanalysis.
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads NOAA OISST v2.1 from NOAA PSL's OPeNDAP server (psl.noaa.gov) over HTTPS; no credentials required.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: fetchers
 ---
 
@@ -12,7 +12,7 @@ metadata:
 
 Reads NOAA's Optimum Interpolation Sea Surface Temperature (OISST) v2.1 daily
 0.25° global analysis from NOAA PSL's public OPeNDAP server, subsets it by
-bounding box and time range, maps it onto the Rhiza Envelope analysis shape, and
+bounding box and time range, maps it onto the weather-skills envelope analysis shape, and
 writes a consolidated Zarr store. OPeNDAP lets the skill pull only the requested
 window rather than whole yearly files, with no credentials.
 
@@ -20,8 +20,8 @@ window rather than whole yearly files, with no credentials.
 
 - A task needs gridded sea-surface temperature observations (daily, 0.25°,
   global, 1981-09 to present), without credentials.
-- A downstream skill will clip, aggregate, compare, or plot the result as a Rhiza
-  Envelope Zarr.
+- A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
+  envelope Zarr.
 
 ## Usage
 
@@ -53,12 +53,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox 
 
 ### Output
 
-A consolidated Rhiza Envelope analysis Zarr with a `time` dimension and dims
+A consolidated weather-skills envelope analysis Zarr with a `time` dimension and dims
 `(time, latitude, longitude)`, carrying `sst` (sea-surface temperature, °C).
-Land cells are NaN. Stamped with `rhiza_source=oisst`.
+Land cells are NaN. Stamped with `weather_skills_source=oisst`.
 
-The store is fully **CF-1.13** compliant (the Rhiza Envelope is a CF superset —
-CF plus the `rhiza_history` provenance key):
+The store is fully **CF-1.13** compliant (the weather-skills envelope is a CF superset —
+CF plus the `weather_skills_history` provenance key):
 
 - Global attrs: `Conventions="CF-1.13"`, `title`, `source` (NOAA OISST v2.1, read
   over NOAA PSL OPeNDAP), `institution`, `references`, `history`.
@@ -119,7 +119,7 @@ before honoring a hit.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="oisst-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records the `bbox` and the

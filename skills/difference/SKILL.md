@@ -1,10 +1,10 @@
 ---
 name: difference
-description: Subtract one Rhiza Envelope Zarr from another (A − B) with xarray inner-join alignment and broadcasting — e.g. anomalies as a field minus its baseline mean, or a scenario-minus-historical change map. Use whenever two envelopes must be compared cell-by-cell as a difference field.
+description: Subtract one weather-skills envelope Zarr from another (A − B) with xarray inner-join alignment and broadcasting — e.g. anomalies as a field minus its baseline mean, or a scenario-minus-historical change map. Use whenever two envelopes must be compared cell-by-cell as a difference field.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   catalog-group: transforms
 ---
 
@@ -91,7 +91,7 @@ One data variable per differenced variable, holding A − B on the aligned
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array
 of per-step entries `{skill, version, args, input}` (the `version` recorded in
 this skill's own entry is the value printed by its `--help`; inherited upstream
 entries carry their own versions). Because difference takes two inputs, its entry's `input`

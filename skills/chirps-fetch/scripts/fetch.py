@@ -9,7 +9,7 @@
 #   "rioxarray",
 # ]
 # ///
-"""Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a Rhiza Envelope Zarr."""
+"""Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
 
 import argparse
 import json
@@ -222,13 +222,14 @@ class DayUnavailable(Exception):
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.1.14"
 
 
 def _load_history(zarr_path: Path) -> list:
     try:
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -239,10 +240,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -571,7 +572,7 @@ def _stamp_cf_attrs(ds: xr.Dataset) -> xr.Dataset:
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--start",
@@ -624,7 +625,7 @@ def main() -> None:
     # the relative token.
     requested_entry = {
         "skill": "chirps-fetch",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": {"start": start, "end": end},
         "input": None,
     }
@@ -800,11 +801,11 @@ def main() -> None:
             # Stamp the root provenance/source + CF attrs on EVERY write. A
             # to_zarr(mode="a", append_dim="time") call rewrites the root group
             # attrs from the dataset being appended, so stamping only the first
-            # write would clobber rhiza_source/rhiza_history to empty on the
+            # write would clobber weather_skills_source/weather_skills_history to empty on the
             # first append. The effective entry is identical for every day, so
             # the final stamp is stable regardless of how many days are written.
-            ds.attrs["rhiza_source"] = "chirps"
-            ds.attrs["rhiza_history"] = json.dumps([effective_entry], sort_keys=True)
+            ds.attrs["weather_skills_source"] = "chirps"
+            ds.attrs["weather_skills_history"] = json.dumps([effective_entry], sort_keys=True)
             ds.attrs["Conventions"] = "CF-1.13"
             _stamp_cf_attrs(ds)
             for v in ds.variables:

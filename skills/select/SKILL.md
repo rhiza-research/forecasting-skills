@@ -1,10 +1,10 @@
 ---
 name: select
-description: Select entries along one named dimension of a Rhiza Envelope Zarr, by integer position or by coordinate value. A single selection collapses the dimension and drops the coordinates it leaves scalar, so outputs from different sources are ready to concat — e.g. pick the same forecast week from several model envelopes before merging them along a new model dim.
+description: Select entries along one named dimension of a weather-skills envelope Zarr, by integer position or by coordinate value. A single selection collapses the dimension and drops the coordinates it leaves scalar, so outputs from different sources are ready to concat — e.g. pick the same forecast week from several model envelopes before merging them along a new model dim.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   catalog-group: transforms
 ---
 
@@ -86,7 +86,7 @@ order; `--index 2 --index 0` reverses those two entries). Selecting by
 `--value` produces the same data as selecting the corresponding positions by
 `--index`.
 
-All other dims, coords, data variables, values, and `rhiza_*` attrs pass
+All other dims, coords, data variables, values, and `weather_skills_*` attrs pass
 through unchanged. On any argument, input, or selection validation error —
 missing or unreadable input, an output path that exists as a plain file,
 unknown dim, bad selector — the skill exits with code 2 and a clear `Error:`
@@ -94,7 +94,7 @@ message; no output is produced.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: the input's chain plus
+The output stamps a JSON-encoded `weather_skills_history` attr: the input's chain plus
 an entry for this run, each entry `{skill, version, args, input}` (the
 `version` recorded in this skill's own entry is the value printed by its
 `--help`; inherited upstream entries carry their own versions). Repeated

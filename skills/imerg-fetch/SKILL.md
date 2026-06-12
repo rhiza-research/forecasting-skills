@@ -1,10 +1,10 @@
 ---
 name: imerg-fetch
-description: Fetch live IMERG satellite precipitation for a date range and write a Rhiza Envelope Zarr. Use when a task needs recent half-hourly/daily IMERG rainfall, e.g. for station vs. satellite comparison or verification.
+description: Fetch live IMERG satellite precipitation for a date range and write a weather-skills envelope Zarr. Use when a task needs recent half-hourly/daily IMERG rainfall, e.g. for station vs. satellite comparison or verification.
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
 metadata:
-  version: "0.1.8"
+  version: "0.1.9"
   catalog-group: fetchers
   openclaw:
     requires:
@@ -88,7 +88,7 @@ non-zero.
 
 ### Output
 
-Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)` on the global IMERG 0.1° grid. Stamped with `rhiza_source=imerg`.
+Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)` on the global IMERG 0.1° grid. Stamped with `weather_skills_source=imerg`.
 
 ### Memory and performance
 
@@ -100,7 +100,7 @@ For tight-memory hosts, keep the window short and run the `clip-region` skill im
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For a fetcher this is a
 length-1 array; downstream zarr-writing skills append their own entry. `args`
 records the resolved concrete window as `{start, end, version}` — the resolved

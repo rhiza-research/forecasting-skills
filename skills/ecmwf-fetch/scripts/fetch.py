@@ -10,7 +10,7 @@
 #   "numpy",
 # ]
 # ///
-"""Fetch ECMWF S2S precipitation (cf + pf) and write a Rhiza Envelope Zarr."""
+"""Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
 
 import argparse
 import datetime as dt
@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.1.9"
 
 # How far back from today the `latest` init probe looks. ECMWF S2S real-time
 # data is access-restricted (embargoed) for a recent window whose width is
@@ -167,7 +167,8 @@ def _load_history(zarr_path: Path) -> list:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -178,10 +179,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -555,7 +556,7 @@ def _attach_bbox_value(argv):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--date",
@@ -626,7 +627,7 @@ def main() -> None:
     args_dict["date"] = date_iso
     entry = {
         "skill": "ecmwf-fetch",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": args_dict,
         "input": None,
     }
@@ -797,8 +798,8 @@ def main() -> None:
         pf = _concat_lon(pf_parts)
         ds = xr.concat([pf, cf], dim="number").sortby("number")
         ds.attrs.update(
-            rhiza_source="ecmwf-s2s",
-            rhiza_history=json.dumps([entry], sort_keys=True),
+            weather_skills_source="ecmwf-s2s",
+            weather_skills_history=json.dumps([entry], sort_keys=True),
             Conventions="CF-1.13",
         )
         _stamp_cf_attrs(ds)

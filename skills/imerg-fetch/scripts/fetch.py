@@ -11,7 +11,7 @@
 #   "numpy",
 # ]
 # ///
-"""Fetch IMERG live precipitation and write a Rhiza Envelope Zarr."""
+"""Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
 
 import argparse
 import json
@@ -26,7 +26,7 @@ import earthaccess
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.1.9"
 
 SHORTNAMES = {
     "late": "GPM_3IMERGDL",
@@ -191,7 +191,8 @@ def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
 def _load_history(zarr_path: Path) -> list:
     try:
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -202,10 +203,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -321,7 +322,7 @@ def _discover_latest(shortname: str) -> date:
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--start",
@@ -375,7 +376,7 @@ def main() -> None:
     # never false-hits across days. Mirrors chirps-fetch's explicit-args cache key.
     requested_entry = {
         "skill": "imerg-fetch",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": {"start": start, "end": end, "version": args.version},
         "input": None,
     }
@@ -501,8 +502,8 @@ def main() -> None:
 
         ds = ds.drop_attrs()
         ds.attrs.update(
-            rhiza_source="imerg",
-            rhiza_history=json.dumps([stamp_entry], sort_keys=True),
+            weather_skills_source="imerg",
+            weather_skills_history=json.dumps([stamp_entry], sort_keys=True),
             Conventions="CF-1.13",
         )
         ds["precip"].attrs.update(

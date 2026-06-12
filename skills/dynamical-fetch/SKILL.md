@@ -1,10 +1,10 @@
 ---
 name: dynamical-fetch
-description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, and their analyses) and write a Rhiza Envelope Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
+description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, and their analyses) and write a weather-skills envelope Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
   catalog-group: fetchers
 ---
 
@@ -12,7 +12,7 @@ metadata:
 
 Opens a dataset from the [dynamical.org](https://dynamical.org/catalog/) open
 catalog with `dynamical-catalog`, subsets it by bounding box, time, and
-variables, maps its dimensions onto the Rhiza Envelope, and writes a
+variables, maps its dimensions onto the weather-skills envelope, and writes a
 consolidated Zarr store. One skill covers the whole catalog — the dataset is
 selected with `--dataset` and validated at runtime against
 `dynamical_catalog.list()`.
@@ -23,7 +23,7 @@ selected with `--dataset` and validated at runtime against
   that the source-specific fetchers (ECMWF S2S, CHIRPS, IMERG, TAHMO) don't
   provide, with no credentials and no API queue.
 - A downstream skill will clip, aggregate, compare, or plot the result as a
-  Rhiza Envelope Zarr.
+  weather-skills envelope Zarr.
 
 ## Usage
 
@@ -101,21 +101,21 @@ records the resolved absolute date(s), never the relative token.
 
 ### Output
 
-A consolidated Rhiza Envelope Zarr. Forecast datasets carry a scalar `time`
+A consolidated weather-skills envelope Zarr. Forecast datasets carry a scalar `time`
 coord (the init date), `step` (forecast lead time, `timedelta64`), and — for
 ensembles — `number` (member 0 is the control). Analysis datasets carry a
 `time` dimension. Source variable units are forwarded verbatim; this fetcher
 does not convert them (e.g. GEFS `precipitation_surface` is a rate,
-`kg m-2 s-1`, not an accumulation). Stamped with `rhiza_source=dynamical:<id>`.
+`kg m-2 s-1`, not an accumulation). Stamped with `weather_skills_source=dynamical:<id>`.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="dynamical-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` is the argparse namespace
 minus the `--output` path string, with the resolved concrete date(s)
-substituted for any relative token. `version` is the `_RHIZA_SKILL_VERSION`
+substituted for any relative token. `version` is the `_SKILL_VERSION`
 constant in `scripts/fetch.py`, kept in lockstep with `metadata.version` in
 this SKILL.md by the CI version-bump workflow.
 
