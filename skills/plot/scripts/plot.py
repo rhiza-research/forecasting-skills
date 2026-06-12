@@ -4,7 +4,8 @@
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
-#   "matplotlib",
+#   # matplotlib<3.10: cartopy gridliner crash
+#   "matplotlib>=3.8,<3.10",
 #   "nc-time-axis",
 #   "numpy",
 #   "shapely>=2.1",
@@ -27,7 +28,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.11"
+_SKILL_VERSION = "0.1.12"
 
 
 def _lat_slice(lat_vals, north, south):

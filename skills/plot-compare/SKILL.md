@@ -4,7 +4,7 @@ description: Render a side-by-side multi-panel comparison PNG of two weather-ski
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.11"
+  version: "0.1.12"
   catalog-group: visualization
 ---
 
