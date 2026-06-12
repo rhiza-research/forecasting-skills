@@ -4,7 +4,7 @@ description: Spatially subset a gridded weather-skills envelope Zarr to an expli
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: transforms
 ---
 

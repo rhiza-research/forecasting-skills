@@ -4,7 +4,7 @@ description: Fetch NASA SMAP SPL3SMP_E daily 9 km volumetric soil moisture for a
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: fetchers
   openclaw:
     requires:

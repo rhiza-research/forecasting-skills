@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.1.9"
 
 # How far back from today the `latest` init probe looks. ECMWF S2S real-time
 # data is access-restricted (embargoed) for a recent window whose width is

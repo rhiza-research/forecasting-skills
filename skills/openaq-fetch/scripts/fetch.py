@@ -40,7 +40,7 @@ import requests
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.3"
+_SKILL_VERSION = "0.1.4"
 
 _API_BASE = "https://api.openaq.org/v3"
 HTTP_TIMEOUT = 60

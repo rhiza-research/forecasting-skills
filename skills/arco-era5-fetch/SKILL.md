@@ -4,7 +4,7 @@ description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, press
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads the public ARCO-ERA5 analysis-ready Zarr from Google Cloud (gs://gcp-public-data-arco-era5) over anonymous access; no credentials required.
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   catalog-group: fetchers
 ---
 

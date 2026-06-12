@@ -31,7 +31,7 @@ import pandas as pd
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.3"
+_SKILL_VERSION = "0.1.4"
 
 # Public, credential-free Pangeo CMIP6 collection on Google Cloud. The catalog
 # CSV maps facet combinations to a Zarr store path (`zstore`); data is read

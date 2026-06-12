@@ -222,7 +222,7 @@ class DayUnavailable(Exception):
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.1.14"
 
 
 def _load_history(zarr_path: Path) -> list:

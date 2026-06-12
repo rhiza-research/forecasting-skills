@@ -4,7 +4,7 @@ description: Roll up a weather-skills envelope Zarr along its time axis (or fore
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.9"
+  version: "0.1.10"
   catalog-group: transforms
 ---
 
