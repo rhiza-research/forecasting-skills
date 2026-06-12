@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>weather-skills.org — composable weather and climate data skills</title>
-<meta name="description" content="A curated library of composable weather and climate data skills for LLM-driven agents, with a shared Zarr-based envelope contract.">
+<title>weather-skills.org — curated weather and climate data skills for AI agents</title>
+<meta name="description" content="Curated, standards-compliant weather and climate data skills for AI agents: CF-compliant Zarr with an auditable provenance chain on every artifact.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -21,10 +21,10 @@
       <a href="https://github.com/rhiza-research/forecasting-skills">github</a>
     </div>
     <nav class="masthead-nav" aria-label="Sections">
-      <a href="#pipeline">pipeline</a>
-      <a href="#envelope">envelope</a>
-      <a href="#skills">skills</a>
-      <a href="#install">install</a>
+      <a href="#standards">standards and review</a>
+      <a href="#install">runs anywhere</a>
+      <a href="#mechanics">pipeline and envelope</a>
+      <a href="#skills">skill catalog</a>
       <a href="#governance">governance</a>
     </nav>
   </div>
@@ -34,17 +34,26 @@
 
 <section class="hero">
   <div class="hero-inner">
-    <p class="kicker">A skill library for weather and climate data</p>
-    <h1>Composable weather and climate data skills for AI&nbsp;agents.</h1>
-    <p class="lede">
-      A set of composable <a href="https://agentskills.io">Agent Skills</a> for building
-      weather/climate data pipelines from an LLM-driven agent: source-specific fetchers,
-      generic operators over a shared Zarr-based container, plot outputs, and
-      capabilities the agent uses alongside pipelines.
-    </p>
-    <div class="hero-cmd">
-      <p class="cmd-label">One-shot, no install — list available skills</p>
-      <pre><code>uvx --from git+https://github.com/rhiza-research/forecasting-skills forecasting-skills</code></pre>
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <p class="kicker">A curated skill library for weather and climate data</p>
+        <h1>Let your AI assistant fetch, transform, and visualize weather <span class="no-break">data —</span> <span class="h1-hook">with provenance <span class="no-break">you can audit.</span></span></h1>
+        <p class="lede">
+          Curated, standards-compliant <a href="https://agentskills.io">Agent Skills</a>
+          that run in any AI environment with a code-execution runtime and uv,
+          to be stewarded by a community working group. Initiated by Rhiza Research.
+        </p>
+      </div>
+      <figure class="artifact-card">
+        <figcaption class="card-label">artifact record</figcaption>
+        <dl class="card-fields">
+          <div><dt>artifact</dt><dd>weekly.png</dd></div>
+          <div><dt>produced by</dt><dd>ecmwf-fetch &#8594; aggregate-temporal &#8594; plot</dd></div>
+          <div><dt>provenance</dt><dd>weather_skills_history — append-only JSON chain</dd></div>
+          <div><dt>standards</dt><dd>CF conventions &#183; Zarr&nbsp;v3</dd></div>
+        </dl>
+        <p class="card-foot">Stamped on every envelope Zarr and plot PNG.</p>
+      </figure>
     </div>
     <aside class="notice" role="note">
       <strong>Early stage.</strong> Under active development — not production ready.
@@ -53,17 +62,106 @@
   </div>
 </section>
 
-<section id="pipeline" class="section">
+<section id="standards" class="section">
   <header class="section-head">
     <span class="section-no">01</span>
-    <h2>Pipeline</h2>
+    <h2>Standards and review</h2>
   </header>
   <p>
-    Pipelines chain three kinds of skill: fetchers pull data from a source and write a
-    standard envelope, generic middle skills transform any envelope, and visualization
-    skills render the result. Alongside pipelines, the agent draws on capabilities such
-    as resolving a region or composing an email report. A user states the goal in
-    natural language and the agent picks and composes skills from the set.
+    Three mechanisms back the catalog: reviewed contributions, open standards,
+    and auditable provenance.
+  </p>
+  <div class="trust-grid">
+    <div class="trust-card">
+      <h3>Reviewed contributions</h3>
+      <p>
+        Every skill enters the catalog through a pull request reviewed against
+        the contribution guidelines and CI checks. A working group of weather and climate data practitioners
+        will oversee a formal submission and review process.
+      </p>
+    </div>
+    <div class="trust-card">
+      <h3>Open standards</h3>
+      <p>
+        Skills read and write CF-compliant Zarr stores. The CF conventions
+        themselves are the contract — not a repo-specific subset — so producers
+        must emit valid CF and consumers must read any valid CF representation
+        of the envelope's canonical shapes, including non-standard model calendars.
+      </p>
+    </div>
+    <div class="trust-card">
+      <h3>Auditable provenance</h3>
+      <p>
+        Every zarr-writing skill appends to <code>weather_skills_history</code>,
+        an append-only JSON chain recording the skill, its version, its arguments,
+        and a hash of its input. Plot PNGs embed the same chain in their metadata,
+        and the <code>provenance</code> skill renders any chain as a human-readable
+        lineage, the raw JSON, or a runnable reproduction script.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="section">
+  <header class="section-head">
+    <span class="section-no">02</span>
+    <h2>Runs anywhere</h2>
+  </header>
+  <p>
+    Skills are plain Python scripts whose inline dependency blocks are resolved by
+    <code>uv run --script</code> on each invocation, so any AI environment with a
+    code-execution runtime can invoke them. The skills live at
+    <a href="https://github.com/rhiza-research/forecasting-skills">github.com/rhiza-research/forecasting-skills</a>;
+    pick the install path that matches your environment.
+  </p>
+
+  <div class="install-path">
+    <h3>As a CLI tool</h3>
+    <p>For ad-hoc command-line use (no agent involved), install the skills as a single <code>forecasting-skills</code> binary:</p>
+    <pre><code># One-shot, no install — list available skills
+uvx --from git+https://github.com/rhiza-research/forecasting-skills forecasting-skills
+
+# Run one
+uvx --from git+https://github.com/rhiza-research/forecasting-skills forecasting-skills &lt;skill&gt; [args]</code></pre>
+    <p>Or install once and invoke directly:</p>
+    <pre><code>uv tool install git+https://github.com/rhiza-research/forecasting-skills
+forecasting-skills                          # list
+forecasting-skills &lt;skill&gt; [args]           # run one</code></pre>
+  </div>
+
+  <div class="install-path">
+    <h3>As agent skills</h3>
+    <p>For use by an LLM agent, install the <code>SKILL.md</code> files into your project with <a href="https://github.com/rohitg00/skillkit">skillkit</a>:</p>
+    <pre><code># List what skillkit discovers in the repo
+npx skillkit install rhiza-research/forecasting-skills --list
+
+# Install all skills to the current project
+npx skillkit install rhiza-research/forecasting-skills --all --yes
+
+# Install just a subset
+npx skillkit install rhiza-research/forecasting-skills --skill=ecmwf-fetch</code></pre>
+  </div>
+
+  <div class="install-path">
+    <h3>As a plugin</h3>
+    <p>For Claude Code, install the plugin from the in-repo marketplace:</p>
+    <pre><code>claude plugin marketplace add rhiza-research/forecasting-skills
+claude plugin install rhiza-forecasting@rhiza</code></pre>
+  </div>
+</section>
+
+<section id="mechanics" class="section">
+  <header class="section-head">
+    <span class="section-no">03</span>
+    <h2>Pipeline and envelope</h2>
+  </header>
+  <p>
+    Pipelines chain three kinds of skill: fetchers pull data from a source and write
+    a standard envelope, transforms operate on any envelope, and visualization
+    skills render the result. A fourth group, agent capabilities, supports
+    pipelines without producing an envelope — resolving a region name to a
+    bounding box, or composing results into an email report. A user states the
+    goal in natural language and the agent picks and composes skills from the set.
   </p>
   <ol class="flow" role="list" aria-label="Pipeline stages">
     <li class="flow-stage">
@@ -114,25 +212,12 @@ forecasting-skills clip-region \
     --input /tmp/imerg.zarr \
     --bbox "$KENYA_BBOX" \
     --output /tmp/imerg_kenya.zarr</code></pre>
-</section>
-
-<section id="envelope" class="section">
-  <header class="section-head">
-    <span class="section-no">02</span>
-    <h2>The envelope contract</h2>
-  </header>
   <p>
-    Every skill reads and writes the <em>weather-skills envelope</em>: a CF-compliant Zarr v3
-    store with a small set of canonical shapes. Gridded data carries
-    <code>(number?, step|time, latitude, longitude)</code> dimensions; station data
-    carries <code>(time, station_id)</code> with per-station latitude and longitude
-    coordinates. Every zarr-writing skill appends to a <code>weather_skills_history</code>
-    attribute — a JSON-encoded, append-only provenance chain recording the skill, its
-    version, its arguments, and a hash of its input — so any artifact, including a plot
-    PNG, can be traced back to the commands that produced it. Consumers rely only on
-    dimensions, coordinates, data variables, and <code>weather_skills_*</code> attributes, never
-    on per-variable codec encoding, which keeps skills independent across library
-    versions. The full contract is documented in
+    The <em>weather-skills envelope</em> is a CF-compliant Zarr v3 store with two
+    canonical shapes. Consumers rely only on dimensions, coordinates, data
+    variables, and <code>weather_skills_*</code> attributes — never on per-variable
+    codec encoding — which keeps skills independent across library versions. The
+    full contract is documented in
     <a href="https://github.com/rhiza-research/forecasting-skills/blob/main/ENVELOPE.md">ENVELOPE.md</a>.
   </p>
   <div class="schema-pair">
@@ -154,57 +239,18 @@ longitude(station_id)</code></pre>
 
 <section id="skills" class="section">
   <header class="section-head">
-    <span class="section-no">03</span>
+    <span class="section-no">04</span>
     <h2>Skill catalog</h2>
   </header>
-
-  <!-- gen:catalog -->
-</section>
-
-<section id="install" class="section">
-  <header class="section-head">
-    <span class="section-no">04</span>
-    <h2>Install</h2>
-  </header>
   <p>
-    The skills live at
-    <a href="https://github.com/rhiza-research/forecasting-skills">github.com/rhiza-research/forecasting-skills</a>.
-    Three ways to use them.
+    Generated from each skill's <code>SKILL.md</code>. Entries marked
+    <span class="cred-tag">requires credentials</span> read API credentials from
+    environment variables; each skill's
+    <a href="https://github.com/rhiza-research/forecasting-skills/tree/main/skills">compatibility notes</a>
+    name the specific variables.
   </p>
 
-  <div class="install-path">
-    <h3>As a CLI tool</h3>
-    <p>For ad-hoc command-line use (no agent involved), install the skills as a single <code>forecasting-skills</code> binary:</p>
-    <pre><code># One-shot, no install — list available skills
-uvx --from git+https://github.com/rhiza-research/forecasting-skills forecasting-skills
-
-# Run one
-uvx --from git+https://github.com/rhiza-research/forecasting-skills forecasting-skills &lt;skill&gt; [args]</code></pre>
-    <p>Or install once and invoke directly:</p>
-    <pre><code>uv tool install git+https://github.com/rhiza-research/forecasting-skills
-forecasting-skills                          # list
-forecasting-skills &lt;skill&gt; [args]           # run one</code></pre>
-  </div>
-
-  <div class="install-path">
-    <h3>As agent skills</h3>
-    <p>For use by an LLM agent, install the <code>SKILL.md</code> files into your project with <a href="https://github.com/rohitg00/skillkit">skillkit</a>:</p>
-    <pre><code># List what skillkit discovers in the repo
-npx skillkit install rhiza-research/forecasting-skills --list
-
-# Install all skills to the current project
-npx skillkit install rhiza-research/forecasting-skills --all --yes
-
-# Install just a subset
-npx skillkit install rhiza-research/forecasting-skills --skill=ecmwf-fetch</code></pre>
-  </div>
-
-  <div class="install-path">
-    <h3>As a plugin</h3>
-    <p>For Claude Code, install the plugin from the in-repo marketplace:</p>
-    <pre><code>claude plugin marketplace add rhiza-research/forecasting-skills
-claude plugin install rhiza-forecasting@rhiza</code></pre>
-  </div>
+  <!-- gen:catalog -->
 </section>
 
 <section id="governance" class="section">

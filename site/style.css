@@ -131,30 +131,112 @@ pre code {
   margin: 0 0 1rem;
 }
 
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  gap: 3rem;
+  align-items: center;
+}
+
 .hero h1 {
-  font-size: clamp(1.9rem, 4.5vw, 3.1rem);
-  line-height: 1.12;
+  font-size: clamp(1.7rem, 3.8vw, 2.7rem);
+  line-height: 1.16;
   letter-spacing: -0.015em;
   margin: 0 0 1.1rem;
-  max-width: 24ch;
+  max-width: 26ch;
 }
+
+.h1-hook {
+  display: block;
+  margin-top: 0.2em;
+  color: var(--accent-deep);
+}
+
+.no-break { white-space: nowrap; }
 
 .lede {
   font-size: 1.15rem;
   max-width: 56ch;
   color: var(--ink-soft);
-  margin: 0 0 1.75rem;
+  margin: 0;
 }
 
-.hero-cmd { max-width: 46rem; }
+/* the hero's specimen card: a small archival record for one artifact */
 
-.cmd-label {
+.artifact-card {
+  margin: 0;
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper-deep);
+  box-shadow: 5px 5px 0 color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.card-label {
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.68rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
+  color: var(--accent-deep);
+}
+
+.card-fields {
+  margin: 0;
+  padding: 0.55rem 1rem;
+}
+
+.card-fields > div {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 0.7rem;
+  padding: 0.32rem 0;
+}
+
+.card-fields > div + div { border-top: 1px dotted var(--rule); }
+
+.card-fields dt {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--ink-soft);
-  margin: 0 0 0.35rem;
+  padding-top: 0.15em;
+}
+
+.card-fields dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.card-foot {
+  margin: 0;
+  padding: 0.5rem 1rem 0.65rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero .kicker,
+  .hero h1,
+  .hero .lede,
+  .hero .artifact-card,
+  .hero .notice {
+    animation: hero-rise 0.55s ease-out both;
+  }
+  .hero h1 { animation-delay: 0.07s; }
+  .hero .lede { animation-delay: 0.14s; }
+  .hero .artifact-card { animation-delay: 0.22s; }
+  .hero .notice { animation-delay: 0.3s; }
+}
+
+@keyframes hero-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
 }
 
 .notice {
@@ -197,6 +279,31 @@ pre code {
   font-size: 1.55rem;
   margin: 0;
   letter-spacing: -0.01em;
+}
+
+/* ---------- standards / trust cards ---------- */
+
+.trust-grid {
+  display: flex;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  flex-wrap: wrap;
+}
+
+.trust-card {
+  flex: 1 1 16rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper-deep);
+  padding: 0.9rem 1rem;
+}
+
+.trust-card h3 { font-size: 1rem; margin: 0 0 0.45rem; }
+
+.trust-card p {
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  margin: 0;
 }
 
 /* ---------- pipeline flow ---------- */
@@ -349,6 +456,23 @@ pre code {
 
 .skill dd strong { color: var(--ink); }
 
+.cred-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 0.05em 0.35em;
+  white-space: nowrap;
+  vertical-align: 0.1em;
+}
+
+.skill dt .cred-tag { margin-top: 0.25rem; }
+
 /* ---------- install ---------- */
 
 .install-path {
@@ -403,6 +527,13 @@ pre code {
 }
 
 /* ---------- narrow screens ---------- */
+
+/* The hero's two columns (copy + 20rem card, 3rem gap) stop fitting once the
+   copy column would drop under a comfortable measure; stack them. */
+@media (max-width: 880px) {
+  .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 1.9rem; }
+  .artifact-card { max-width: 26rem; }
+}
 
 /* The three flow stages (flex-basis 12rem each, two 2rem gaps) need a 40rem
    (640px) row; with the section's 1.25rem side padding that row no longer
