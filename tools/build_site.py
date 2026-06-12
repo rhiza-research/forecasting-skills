@@ -4,11 +4,14 @@
 # ///
 """Build the deployable weather-skills.org site from the template in site/.
 
-Reads every `skills/*/SKILL.md` frontmatter (`name`, `description`, and the
-nested `metadata.catalog-group` key), renders the grouped skill catalog, the
-skill count, and the pipeline-diagram example lists into `site/index.html`
-via marker comments, and writes the complete deployable site (index.html,
-404.html, style.css, CNAME) to the output directory. The catalog, count,
+Reads every `skills/*/SKILL.md` frontmatter (`name`, `description`, the
+nested `metadata.catalog-group` key, and `metadata.openclaw.requires.env`),
+renders the grouped skill catalog, the skill count, and the pipeline-diagram
+example lists into `site/index.html` via marker comments, and writes the
+complete deployable site (index.html, 404.html, style.css, CNAME) to the
+output directory. A catalog entry whose frontmatter declares a non-empty
+`metadata.openclaw.requires.env` list gets a small "requires credentials"
+tag; skills without the key get no marker. The catalog, count,
 and flow sample lists track the skills tree: adding, removing, or
 regrouping a skill changes the page on the next build with no template
 edit. The composition example block in the template is hand-written; the
@@ -97,15 +100,43 @@ def _render_description(description: str) -> str:
     return _INLINE_CODE_RE.sub(r"<code>\1</code>", escaped)
 
 
-def _collect_skills(skills_dir: Path) -> dict[str, list[tuple[str, str]]]:
-    """Read all SKILL.md files; return {group_key: [(name, description), ...]}.
+def _requires_credentials(skill_md: Path, metadata: dict) -> bool:
+    """True when frontmatter `metadata.openclaw.requires.env` is a non-empty list.
 
-    Entries are sorted by skill name within each group. Raises ValueError on
-    a skill directory without a SKILL.md, a missing/unknown group key, a name
-    that doesn't match its directory, or a missing description.
+    An absent `openclaw`, `requires`, or `env` key means no credentials. A key
+    that is present with the wrong shape (`openclaw`/`requires` not a mapping,
+    `env` not a list) raises ValueError naming the skill.
+    """
+    if "openclaw" not in metadata:
+        return False
+    openclaw = metadata["openclaw"]
+    if not isinstance(openclaw, dict):
+        raise ValueError(f"{skill_md}: `metadata.openclaw` is not a mapping: {openclaw!r}")
+    if "requires" not in openclaw:
+        return False
+    requires = openclaw["requires"]
+    if not isinstance(requires, dict):
+        raise ValueError(f"{skill_md}: `metadata.openclaw.requires` is not a mapping: {requires!r}")
+    if "env" not in requires:
+        return False
+    env = requires["env"]
+    if not isinstance(env, list):
+        raise ValueError(f"{skill_md}: `metadata.openclaw.requires.env` is not a list: {env!r}")
+    return len(env) > 0
+
+
+def _collect_skills(skills_dir: Path) -> dict[str, list[tuple[str, str, bool]]]:
+    """Read all SKILL.md files; return {group_key: [(name, description, creds), ...]}.
+
+    `creds` is True when the skill's frontmatter declares a non-empty
+    `metadata.openclaw.requires.env` list. Entries are sorted by skill name
+    within each group. Raises ValueError on a skill directory without a
+    SKILL.md, a missing/unknown group key, a name that doesn't match its
+    directory, a missing description, or a malformed
+    `metadata.openclaw.requires.env` shape.
     """
     known = {key for key, _, _ in GROUPS}
-    grouped: dict[str, list[tuple[str, str]]] = {key: [] for key, _, _ in GROUPS}
+    grouped: dict[str, list[tuple[str, str, bool]]] = {key: [] for key, _, _ in GROUPS}
     for entry in sorted(skills_dir.iterdir()):
         if entry.is_dir() and not (entry / "SKILL.md").is_file():
             raise ValueError(f"{entry}: skill directory has no SKILL.md")
@@ -133,23 +164,28 @@ def _collect_skills(skills_dir: Path) -> dict[str, list[tuple[str, str]]]:
                 f"{skill_md}: `metadata.catalog-group` is {group!r}; "
                 f"expected one of {sorted(known)}"
             )
-        grouped[group].append((name, description))
+        grouped[group].append((name, description, _requires_credentials(skill_md, metadata)))
     for key, _, _ in GROUPS:
         if not grouped[key]:
             raise ValueError(f"catalog group {key!r} has no member skills")
     return grouped
 
 
-def _render_catalog(grouped: dict[str, list[tuple[str, str]]]) -> str:
+def _render_catalog(grouped: dict[str, list[tuple[str, str, bool]]]) -> str:
     """Render the grouped catalog as group headings + <dl> entry lists."""
     parts: list[str] = []
     for key, label, note in GROUPS:
         note_html = f' <span class="group-note">{html.escape(note)}</span>' if note else ""
         parts.append(f'<h3 class="group-head">{html.escape(label)}{note_html}</h3>')
         parts.append('<dl class="catalog">')
-        for name, description in grouped[key]:
+        for name, description, requires_credentials in grouped[key]:
+            cred_html = (
+                ' <span class="cred-tag">requires credentials</span>'
+                if requires_credentials
+                else ""
+            )
             parts.append(
-                f'    <div class="skill"><dt>{html.escape(name)}</dt>'
+                f'    <div class="skill"><dt>{html.escape(name)}{cred_html}</dt>'
                 f"<dd>{_render_description(description)}</dd></div>"
             )
         parts.append("</dl>")
@@ -227,14 +263,14 @@ def main() -> int:
     try:
         grouped = _collect_skills(skills_dir)
         count = sum(len(members) for members in grouped.values())
-        fetch_names = [name for name, _ in grouped["fetchers"][:3]]
-        transform_names = [name for name, _ in grouped["transforms"][:3]]
-        output_names = [name for name, _ in grouped["visualization"][:3]]
+        fetch_names = [name for name, _, _ in grouped["fetchers"][:3]]
+        transform_names = [name for name, _, _ in grouped["transforms"][:3]]
+        output_names = [name for name, _, _ in grouped["visualization"][:3]]
         output_total = len(grouped["visualization"])
         template = (site_dir / "index.html").read_text(encoding="utf-8")
         _check_example_names(
             template,
-            {name for members in grouped.values() for name, _ in members},
+            {name for members in grouped.values() for name, _, _ in members},
         )
         page = _substitute(
             template,
