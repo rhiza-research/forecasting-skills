@@ -5,7 +5,8 @@
 #   "cftime",
 #   "xarray",
 #   "zarr",
-#   "matplotlib",
+#   # matplotlib<3.10: keep the plot skills on one tested matplotlib
+#   "matplotlib>=3.8,<3.10",
 #   "numpy",
 # ]
 # ///

@@ -5,7 +5,8 @@
 #   "cf-xarray",
 #   "cftime",
 #   "geopandas>=1",
-#   "matplotlib",
+#   # matplotlib<3.10: cartopy gridliner crash
+#   "matplotlib>=3.8,<3.10",
 #   "nc-time-axis",
 #   "numpy",
 #   "pandas",
