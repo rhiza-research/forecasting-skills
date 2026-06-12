@@ -4,7 +4,8 @@
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
-#   "matplotlib",
+#   # matplotlib<3.10: cartopy gridliner crash
+#   "matplotlib>=3.8,<3.10",
 #   "nc-time-axis",
 #   "numpy",
 #   "shapely>=2.1",

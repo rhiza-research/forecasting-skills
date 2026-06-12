@@ -3,7 +3,8 @@
 # dependencies = [
 #   "cf-xarray",
 #   "cftime",
-#   "matplotlib",
+#   # matplotlib<3.10: keep the plot skills on one tested matplotlib
+#   "matplotlib>=3.8,<3.10",
 #   "nc-time-axis",
 #   "numpy",
 #   "xarray",
