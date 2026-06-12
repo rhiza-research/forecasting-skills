@@ -1,10 +1,10 @@
 ---
 name: chirps-fetch
-description: Fetch CHIRPS precipitation observations for a date range — the validated final product back to 1998, with a preliminary fallback for very recent days — and write a weather-skills envelope Zarr. Use when a task needs CHIRPS rainfall, recent or historical, e.g. to compare against a forecast or stations or to build a reference period.
+description: Fetch CHIRPS precipitation observations for a date range — the validated final product back to 1998, with a preliminary fallback for very recent days — and write a weather-skills envelope Zarr. Use when a task needs CHIRPS rainfall, recent or historical, e.g. to compare against a forecast or station data, or to build a reference period.
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
 metadata:
-  version: "0.1.14"
+  version: "0.1.15"
   catalog-group: fetchers
 ---
 

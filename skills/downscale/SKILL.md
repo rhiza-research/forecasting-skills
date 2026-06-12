@@ -1,17 +1,17 @@
 ---
 name: downscale
-description: Downscale a weather-skills envelope Zarr onto a FINER-OR-EQUAL grid, adding information via a chosen --method (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
+description: Downscale a weather-skills envelope Zarr onto a finer-or-equal grid, adding information via a chosen --method (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: transforms
 ---
 
 # downscale
 
-Source-agnostic spatial downscaling: produces a FINER-OR-EQUAL grid than the
-input and adds information through a pluggable `--method`. The target grid is
+Source-agnostic spatial downscaling: produces a grid finer than or equal to
+the input's and adds information through a pluggable `--method`. The target grid is
 specified one of three ways — an integer `--factor` (new spacing = input
 spacing / factor), a `--target-resolution` in degrees, or a `--reference-grid`
 dataset whose lat/lon grid becomes the target. The requested target must be

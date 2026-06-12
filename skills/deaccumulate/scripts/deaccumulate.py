@@ -12,7 +12,7 @@
 
 Some forecast variables (e.g. ECMWF S2S ``tp``, surface radiation, evaporation,
 SWE) are stored as values accumulated from the forecast initialization time.
-This skill converts those to per-step diffs: ``out[i] = arr[i+1] - arr[i]``,
+This skill converts those to per-step differences: ``out[i] = arr[i+1] - arr[i]``,
 clipped at zero. The output ``step`` coord drops the first input step, so the
 resulting axis labels each value with the end of the period it covers.
 """
@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.8"
 
 # Time-unit tokens that, when they appear as a per-time denominator, mark a
 # rate. Deliberately excludes length/mass/etc. tokens (e.g. ``m``) so that a
