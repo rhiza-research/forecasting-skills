@@ -4,7 +4,7 @@ description: Downscale a weather-skills envelope Zarr onto a finer-or-equal grid
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: transforms
 ---
 

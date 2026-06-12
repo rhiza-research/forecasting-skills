@@ -4,7 +4,7 @@ description: Build a prefilled GitHub new-issue link the user clicks to file fee
 license: MIT
 compatibility: Requires Python 3.10+ and uv. Builds a URL string only; reads no credentials, makes no network request, and writes no file.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   catalog-group: agent-tooling
 ---
 
