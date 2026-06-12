@@ -12,7 +12,7 @@ variations that a contributor might use without changing semantics:
 
   - quote style around the value: single OR double quotes
   - optional PEP 526 type annotation between the name and `=`
-    (`_RHIZA_SKILL_VERSION: str = "0.1.0"`)
+    (`_SKILL_VERSION: str = "0.1.0"`)
   - optional trailing comment after the closing quote
 
 The `_VERSION_LINE_RE_REWRITE` flavor adds capture groups (prefix /
@@ -33,7 +33,7 @@ import re
 
 # Components reused between the rewrite and value-only flavors so a
 # change to one flavor can't drift from the other.
-_NAME = r"_RHIZA_SKILL_VERSION"
+_NAME = r"_SKILL_VERSION"
 # Optional type annotation: `: str`, `: Final`, `: Final[str]`, etc. We
 # don't lock the annotation form; any non-`=` characters between `:` and
 # `=` are allowed. The pattern stops at the assignment `=` so the rest

@@ -50,7 +50,7 @@ analysis.
   `expected_forecast_length`, `ingested_forecast_length` — and the CRS scalar
   `spatial_ref` are dropped on output (not part of the envelope).
 
-## dynamical → Rhiza Envelope mapping
+## dynamical → weather-skills envelope mapping
 
 | dynamical | Envelope | Notes |
 |---|---|---|

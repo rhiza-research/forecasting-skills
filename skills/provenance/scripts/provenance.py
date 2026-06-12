@@ -7,10 +7,10 @@
 #   "pillow",
 # ]
 # ///
-"""Inspect the rhiza_history provenance chain stamped on a Rhiza artifact.
+"""Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact.
 
-Read-only. Takes one artifact -- a Rhiza Envelope Zarr (a directory) or a
-plot PNG (a file ending .png) -- extracts its rhiza_history chain(s), and
+Read-only. Takes one artifact -- a weather-skills envelope Zarr (a directory) or a
+plot PNG (a file ending .png) -- extracts its weather_skills_history chain(s), and
 renders one of three views: a human-readable lineage, the raw JSON chain,
 or a runnable bash script that reproduces the artifact. All output goes to
 stdout; diagnostics and errors go to stderr. Never writes or modifies any file.
@@ -23,11 +23,11 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.1.6"
 
 
 def _parse_chain(raw: str) -> list:
-    """Parse a JSON rhiza_history value into a list of step dicts.
+    """Parse a JSON weather_skills_history value into a list of step dicts.
 
     Strict: raises ``ValueError`` when the value is not valid JSON or does not
     decode to an array. Used by ``--check``, which records the raised message as
@@ -43,11 +43,11 @@ def _parse_chain(raw: str) -> list:
 
 
 def _coerce_chain(raw: str, label: str) -> list | None:
-    """Lenient parse of a rhiza_history value for the non-check render paths.
+    """Lenient parse of a weather_skills_history value for the non-check render paths.
 
     A value that is absent has already been filtered out by the caller. A value
     that is present but not a JSON array (non-JSON, or a JSON object/scalar) is
-    malformed under the rhiza_history array contract; return ``None`` and emit a
+    malformed under the weather_skills_history array contract; return ``None`` and emit a
     one-line stderr warning pointing at ``--check``, so the caller omits the
     branch. A valid array (including an empty one) passes through unchanged,
     even when its entries are imperfect.
@@ -58,7 +58,8 @@ def _coerce_chain(raw: str, label: str) -> list | None:
         chain = None
     if not isinstance(chain, list):
         print(
-            f"ignoring malformed rhiza_history on {label}; run `provenance --check` for details",
+            f"ignoring malformed weather_skills_history on {label}; "
+            "run `provenance --check` for details",
             file=sys.stderr,
         )
         return None
@@ -66,7 +67,7 @@ def _coerce_chain(raw: str, label: str) -> list | None:
 
 
 def _load_zarr(path: Path) -> dict:
-    """Return {chains, source, name} for a zarr store's rhiza_history."""
+    """Return {chains, source, name} for a zarr store's weather_skills_history."""
     import xarray as xr
 
     try:
@@ -76,21 +77,26 @@ def _load_zarr(path: Path) -> dict:
         print(f"Error: could not open {path} as a zarr store: {exc}", file=sys.stderr)
         sys.exit(2)
     chains = {}
-    raw = attrs.get("rhiza_history")
-    if raw:
-        coerced = _coerce_chain(raw, path.name)
-        if coerced is not None:
-            chains[path.name] = coerced
-    return {"chains": chains, "source": attrs.get("rhiza_source"), "name": path.name}
+    raw = attrs.get("weather_skills_history")
+    coerced = _coerce_chain(raw, path.name) if raw else None
+    # compatibility read for the rhiza_ attr prefix; scheduled for removal
+    if coerced is None and attrs.get("rhiza_history"):
+        coerced = _coerce_chain(attrs["rhiza_history"], path.name)
+    if coerced is not None:
+        chains[path.name] = coerced
+    # compatibility read for the rhiza_ attr prefix; scheduled for removal
+    source = attrs.get("weather_skills_source") or attrs.get("rhiza_source")
+    return {"chains": chains, "source": source, "name": path.name}
 
 
 def _load_png(path: Path) -> dict:
     """Return {chains, source, name} for a PNG's tEXt provenance keys.
 
-    Single-input plotters write `rhiza_history`. Multi-input plotters write one
-    `rhiza_history_<label>` per input branch (`_a`..`_z` for plot-compare and
-    plot-timeseries; `_forecast`/`_mclimate` for plot-mediogram). Keys are
-    discovered dynamically, so no branch is silently dropped.
+    Single-input plotters write `weather_skills_history`. Multi-input plotters
+    write one `weather_skills_history_<label>` per input branch (`_a`..`_z` for
+    plot-compare and plot-timeseries; `_forecast`/`_mclimate` for
+    plot-mediogram). Keys are discovered dynamically, so no branch is silently
+    dropped.
     """
     from PIL import Image
 
@@ -101,17 +107,28 @@ def _load_png(path: Path) -> dict:
         print(f"Error: could not open {path} as a PNG: {exc}", file=sys.stderr)
         sys.exit(2)
     chains = {}
+
+    def _add(slot: str, key: str, display: str | None = None) -> None:
+        if info[key] and slot not in chains:
+            coerced = _coerce_chain(info[key], f"{path.name} ({display or key})")
+            if coerced is not None:
+                chains[slot] = coerced
+
+    for key in sorted(info):
+        if key == "weather_skills_history":
+            _add(path.name, key)
+        elif key.startswith("weather_skills_history_"):
+            _add(key[len("weather_skills_history_") :], key)
+    # compatibility read for the rhiza_ attr prefix; scheduled for removal
     for key in sorted(info):
         if key == "rhiza_history":
-            if info[key]:
-                coerced = _coerce_chain(info[key], f"{path.name} ({key})")
-                if coerced is not None:
-                    chains[path.name] = coerced
+            _add(path.name, key, display="weather_skills_history")
         elif key.startswith("rhiza_history_"):
-            if info[key]:
-                coerced = _coerce_chain(info[key], f"{path.name} ({key})")
-                if coerced is not None:
-                    chains[key[len("rhiza_history_") :]] = coerced
+            _add(
+                key[len("rhiza_history_") :],
+                key,
+                display="weather_skills_" + key[len("rhiza_") :],
+            )
     return {"chains": chains, "source": None, "name": path.name}
 
 
@@ -135,13 +152,14 @@ def _read_artifact(path: Path) -> dict:
 # check (schema validation)
 # --------------------------------------------------------------------------- #
 def _read_raw_histories(path: Path) -> dict:
-    """Return {location_key: raw_string} for every rhiza_history value present.
+    """Return {location_key: raw_string} for every weather_skills_history value present.
 
     Reads the raw, un-parsed values so ``--check`` can validate them itself.
-    A zarr contributes its single `rhiza_history` attr (keyed `rhiza_history`);
-    a PNG contributes its `rhiza_history` and any `rhiza_history_<label>` tEXt
-    keys (keyed by the tEXt key name). Exits 2 cleanly when the path is missing,
-    unopenable, or neither a zarr directory nor a .png file.
+    A zarr contributes its single `weather_skills_history` attr (keyed
+    `weather_skills_history`); a PNG contributes its `weather_skills_history`
+    and any `weather_skills_history_<label>` tEXt keys (keyed by the
+    corresponding `weather_skills_*` key name). Exits 2 cleanly when the path
+    is missing, unopenable, or neither a zarr directory nor a .png file.
     """
     if not path.exists():
         print(f"Error: {path} not found.", file=sys.stderr)
@@ -156,11 +174,15 @@ def _read_raw_histories(path: Path) -> dict:
             print(f"Error: could not open {path} as a zarr store: {exc}", file=sys.stderr)
             sys.exit(2)
         raw = {}
-        # Only register a truthy value: an empty-string rhiza_history is treated
-        # as absent (consistent with how consumers read it), so --check reports
-        # "no provenance found" (exit 1) rather than "invalid" (exit 2).
-        if attrs.get("rhiza_history"):
-            raw["rhiza_history"] = attrs["rhiza_history"]
+        # Only register a truthy value: an empty-string weather_skills_history
+        # is treated as absent (consistent with how consumers read it), so
+        # --check reports "no provenance found" (exit 1) rather than
+        # "invalid" (exit 2).
+        if attrs.get("weather_skills_history"):
+            raw["weather_skills_history"] = attrs["weather_skills_history"]
+        # compatibility read for the rhiza_ attr prefix; scheduled for removal
+        elif attrs.get("rhiza_history"):
+            raw["weather_skills_history"] = attrs["rhiza_history"]
         return raw
     if path.is_file() and path.suffix.lower() == ".png":
         from PIL import Image
@@ -176,8 +198,16 @@ def _read_raw_histories(path: Path) -> dict:
             # Only register a truthy value: an empty-string tEXt value is treated
             # as absent (consistent with how consumers read it), so --check reports
             # "no provenance found" (exit 1) rather than "invalid" (exit 2).
-            if (key == "rhiza_history" or key.startswith("rhiza_history_")) and info[key]:
+            is_new = key == "weather_skills_history" or key.startswith("weather_skills_history_")
+            if is_new and info[key]:
                 raw[key] = info[key]
+                continue
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            is_old = key == "rhiza_history" or key.startswith("rhiza_history_")
+            if is_old and info[key]:
+                mapped = "weather_skills_" + key[len("rhiza_") :]
+                if not info.get(mapped):
+                    raw[mapped] = info[key]
         return raw
     print(
         f"Error: {path} is neither a zarr directory nor a .png file; cannot inspect provenance.",
@@ -229,7 +259,7 @@ def _validate_input(value, loc: str, violations: list, notes: list) -> None:
 
 
 def _validate_chain(chain, loc: str, violations: list, notes: list) -> None:
-    """Validate one rhiza_history chain (an array of entries) against the schema.
+    """Validate one weather_skills_history chain (an array of entries) against the schema.
 
     Records every violation with its location into `violations`; records
     unknown/extra keys (which do not fail validation) into `notes`. Recurses
@@ -267,7 +297,7 @@ def _validate_chain(chain, loc: str, violations: list, notes: list) -> None:
 
 
 def _run_check(path: Path) -> int:
-    """Validate the rhiza_history schema on `path` and return the exit code.
+    """Validate the weather_skills_history schema on `path` and return the exit code.
 
     `0` = valid provenance present; `1` = no provenance found; `2` = present
     but invalid (every violation is printed with its location). Never raises a
@@ -289,7 +319,7 @@ def _run_check(path: Path) -> int:
         _validate_chain(chain, key, violations, notes)
 
     if violations:
-        print(f"invalid rhiza_history on {path}:")
+        print(f"invalid weather_skills_history on {path}:")
         for v in violations:
             print(f"  - {v}")
         if notes:
@@ -298,7 +328,7 @@ def _run_check(path: Path) -> int:
                 print(f"  - {n}")
         return 2
 
-    print(f"valid rhiza_history on {path}")
+    print(f"valid weather_skills_history on {path}")
     if notes:
         print("notes (not failures):")
         for n in notes:
@@ -360,7 +390,7 @@ def _render_human(data: dict) -> None:
     chains = data["chains"]
     source = data.get("source")
     if source:
-        print(f"rhiza_source: {source}")
+        print(f"weather_skills_source: {source}")
         print()
     multi = len(chains) > 1
     first = True
@@ -579,7 +609,7 @@ def _render_script(data: dict) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--input", "-i", required=True, help="Artifact to inspect: a zarr dir or a .png file."
@@ -594,7 +624,7 @@ def main() -> None:
         "--check",
         action="store_true",
         help=(
-            "Validate the rhiza_history schema instead of rendering it. "
+            "Validate the weather_skills_history schema instead of rendering it. "
             "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
         ),
     )

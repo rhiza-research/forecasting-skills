@@ -10,7 +10,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a Rhiza Envelope Zarr."""
+"""Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""
 
 import argparse
 import json
@@ -26,7 +26,7 @@ import numpy as np
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_SKILL_VERSION = "0.1.3"
 
 # --- Source -> output transforms ---
 #
@@ -263,7 +263,8 @@ def _np_to_date(value) -> date:
 def _load_history(zarr_path: Path) -> list:
     try:
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except (FileNotFoundError, KeyError, ValueError):
         # A not-yet-existing or unreadable output during a cache check is a miss.
         return []
@@ -274,10 +275,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -289,7 +290,7 @@ def _store_is_complete(out: Path) -> bool:
     """Cheaply verify a candidate cache-hit store is readable and structurally sound.
 
     A mid-run failure can leave a partial Zarr whose root attrs (and so its
-    rhiza_history) were written before a later year's data transfer failed. The
+    weather_skills_history) were written before a later year's data transfer failed. The
     write path removes such a store on failure, so this is the backstop for stores
     left partial by other means (a killed process, a full disk mid-append):
 
@@ -537,7 +538,7 @@ def _attach_bbox_value(argv):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--start",
@@ -598,7 +599,7 @@ def main() -> None:
 
     entry = {
         "skill": "oisst-fetch",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": {"bbox": args.bbox, "start": start_iso, "end": end_iso},
         "input": None,
     }
@@ -619,7 +620,7 @@ def main() -> None:
     # that slice into memory (eager per-year load avoids the dask-over-OPeNDAP path
     # that silently wrote zeros), then write/append it to Zarr before moving to the
     # next year. Peak resident memory is bounded to a single year's selection rather
-    # than the whole multi-year window. rhiza_source/history and CF attrs are
+    # than the whole multi-year window. weather_skills_source/history and CF attrs are
     # stamped on every write because a to_zarr append rewrites the root group attrs
     # from the appended dataset; the entry is identical each time, so the final
     # stamp is stable.
@@ -628,7 +629,7 @@ def main() -> None:
     # failure after the first write routes through the cleanup path so a partial
     # store is removed before exit and a later identical run cannot falsely accept
     # it as a cache hit.
-    rhiza_history = json.dumps([entry], sort_keys=True)
+    weather_skills_history = json.dumps([entry], sort_keys=True)
     store_created = False
     total_time = 0
     for year in years:
@@ -688,7 +689,9 @@ def main() -> None:
             sys.exit(2)
         if piece.sizes.get("time", 0) == 0:
             continue
-        piece.attrs.update(rhiza_source="oisst", rhiza_history=rhiza_history)
+        piece.attrs.update(
+            weather_skills_source="oisst", weather_skills_history=weather_skills_history
+        )
         _stamp_cf(piece)
         # Per-variable encoding is not part of the envelope contract; clear it so the
         # output is written with this skill's own codecs, then set the controlled

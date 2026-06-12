@@ -1,4 +1,4 @@
-# Rhiza Skills
+# Weather Skills
 
 > ⚠️ **Under active development — not production ready.**
 >
@@ -14,6 +14,8 @@ weather/climate data pipelines from an LLM-driven agent. Skills are
 source-specific fetchers (ingress), generic operators that work on a shared
 Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)), or capabilities the
 agent uses alongside pipelines.
+
+Initiated by Rhiza Research.
 
 ## Skills
 
@@ -189,7 +191,7 @@ The generic middle skills rely on a shared Zarr shape — gridded
 `(number?, step|time, latitude, longitude)` or station
 `(time, station_id)` — documented in [`ENVELOPE.md`](ENVELOPE.md). Fetchers
 produce an envelope; consumers only rely on dims, coords, data variables and
-`rhiza_*` attrs, never on per-variable codec encoding.
+`weather_skills_*` attrs, never on per-variable codec encoding.
 
 ## CLI flag conventions
 

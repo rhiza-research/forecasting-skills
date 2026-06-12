@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.4"
+_SKILL_VERSION = "0.1.4"
 
 # The target repository is fixed so feedback always lands in the right place and
 # the caller cannot direct it elsewhere by guessing a slug.
@@ -44,7 +44,7 @@ def build_url(title: str, body: str) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument("--title", required=True, help="Issue title; must not be empty.")
     grp = p.add_mutually_exclusive_group(required=True)

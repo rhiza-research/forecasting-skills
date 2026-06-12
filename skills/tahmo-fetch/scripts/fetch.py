@@ -12,7 +12,7 @@
 # [tool.uv.sources]
 # tahmo = { git = "https://github.com/rhiza-research/tahmo-api" }
 # ///
-"""Fetch TAHMO station observations and write a station-schema Rhiza Envelope Zarr.
+"""Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr.
 
 Uses the TAHMO Python SDK directly. Credentials come from the environment:
 TAHMO_API_USERNAME and TAHMO_API_PASSWORD.
@@ -30,7 +30,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.7"
 
 # How far back from today the `latest` resolver requests observations to find
 # the newest available TAHMO observation date. Station reporting can lag a few
@@ -338,7 +338,8 @@ def _load_history(zarr_path: Path) -> list:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -349,10 +350,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -379,7 +380,7 @@ def _cache_hit(out: Path, entry: dict) -> bool:
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--country",
@@ -553,7 +554,7 @@ def main() -> None:
 
     entry = {
         "skill": "tahmo-fetch",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         # Sort --country so that `--country Ghana --country Kenya` and
         # `--country Kenya --country Ghana` produce identical cache keys.
         # --workers is a concurrency knob, not a data parameter, so it is
@@ -676,8 +677,8 @@ def main() -> None:
         if attrs:
             ds[canonical].attrs.update(attrs)
     ds.attrs.update(
-        rhiza_source="tahmo",
-        rhiza_history=json.dumps([entry], sort_keys=True),
+        weather_skills_source="tahmo",
+        weather_skills_history=json.dumps([entry], sort_keys=True),
         featureType="timeSeries",
         Conventions="CF-1.13",
     )

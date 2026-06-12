@@ -52,15 +52,15 @@ A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on t
 Every PNG carries three `tEXt` chunk keys written via matplotlib's
 `savefig(metadata=...)`:
 
-- `rhiza_history_forecast` — a JSON-encoded array of `{skill, version,
+- `weather_skills_history_forecast` — a JSON-encoded array of `{skill, version,
   args, input}` entries with the same schema used for the zarr
-  `rhiza_history` attribute. The chain belongs to the `--forecast`
+  `weather_skills_history` attribute. The chain belongs to the `--forecast`
   input. The last entry records this `plot-mediogram` invocation, with
   its `input` field set to the forecast-side `{basename, hash}`.
   Preceding entries are the upstream chain inherited from the forecast
-  zarr's `rhiza_history` (empty if the input had none — a stderr
+  zarr's `weather_skills_history` (empty if the input had none — a stderr
   warning is emitted and the array contains only the rendering entry).
-- `rhiza_history_mclimate` — the same shape for the `--mclimate` input.
+- `weather_skills_history_mclimate` — the same shape for the `--mclimate` input.
   The last entry's `input` is the m-climate-side `{basename, hash}`;
   preceding entries come from the m-climate zarr's upstream chain.
 - `Software` — set to `forecasting-skills` so generic image tools like
@@ -74,13 +74,13 @@ forecast and m-climate inputs typically come from independent
 upstream branches (e.g. an ecmwf-fetch forecast vs. an m-climate
 sample drawn from the historical archive). Two linear chains keep the
 on-disk schema identical to the single-input plotters: a consumer
-reading either `rhiza_history_forecast` or `rhiza_history_mclimate`
+reading either `weather_skills_history_forecast` or `weather_skills_history_mclimate`
 uses one parse path and gets the full lineage of that branch.
 
 Read-back:
 
 ```bash
-python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['rhiza_history_forecast'])); print(json.loads(img.info['rhiza_history_mclimate']))"
+python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['weather_skills_history_forecast'])); print(json.loads(img.info['weather_skills_history_mclimate']))"
 ```
 
 Or:

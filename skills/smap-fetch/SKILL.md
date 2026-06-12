@@ -1,6 +1,6 @@
 ---
 name: smap-fetch
-description: Fetch NASA SMAP SPL3SMP_E daily 9 km volumetric soil moisture for a bounded region and short date range via Earthdata, and write a fully CF-1.13 Rhiza Envelope Zarr. Use when a task needs gridded land-surface soil-moisture observations, e.g. for drought or agriculture analysis or comparison against models.
+description: Fetch NASA SMAP SPL3SMP_E daily 9 km volumetric soil moisture for a bounded region and short date range via Earthdata, and write a fully CF-1.13 weather-skills envelope Zarr. Use when a task needs gridded land-surface soil-moisture observations, e.g. for drought or agriculture analysis or comparison against models.
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
 metadata:
@@ -20,15 +20,15 @@ Downloads NASA SMAP Enhanced L3 radiometer soil moisture (`SPL3SMP_E`, 9 km,
 daily) granules from NASA Earthdata via `earthaccess` and writes a gridded Zarr
 store. The product is HDF5 on the global EASE-Grid 2.0; its degenerate 2-D
 latitude/longitude reduce to 1-D coordinate vectors, so the output is a regular
-1-D lat/lon Rhiza Envelope. Each requested day is one ~690 MB granule, so this
+1-D lat/lon weather-skills envelope. Each requested day is one ~690 MB granule, so this
 skill is built for a bounded `--bbox` over a short window — pass `--bbox`.
 
 ## When to use
 
 - A task needs gridded surface soil-moisture observations (daily, 9 km, land)
   over a bounded region.
-- A downstream skill will clip, aggregate, compare, or plot the result as a Rhiza
-  Envelope Zarr.
+- A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
+  envelope Zarr.
 
 ## Usage
 
@@ -68,14 +68,14 @@ like `imerg-fetch`.
 
 ### Output
 
-A consolidated, fully **CF-1.13** Rhiza Envelope Zarr with dims
+A consolidated, fully **CF-1.13** weather-skills envelope Zarr with dims
 `(time, latitude, longitude)`. The store is CF-compliant first, with
-`rhiza_history` added on top — the Envelope is a CF superset, not a separate
+`weather_skills_history` added on top — the envelope is a CF superset, not a separate
 format.
 
 - Global attrs: `Conventions="CF-1.13"`, `title`, `source` (SMAP SPL3SMP_E),
-  `institution`, `references`, `history`, plus `rhiza_source="smap"` and
-  `rhiza_history`.
+  `institution`, `references`, `history`, plus `weather_skills_source="smap"` and
+  `weather_skills_history`.
 - `latitude`: `standard_name=latitude`, `units=degrees_north`, `axis=Y`;
   `longitude`: `standard_name=longitude`, `units=degrees_east`, `axis=X`;
   `time`: `standard_name=time`, `axis=T`, with udunits `units` + `calendar` in
@@ -121,7 +121,7 @@ does not assert a false "not yet published" cause for a genuine interior gap.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="smap-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, `overpass`,

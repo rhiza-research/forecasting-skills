@@ -1,14 +1,14 @@
 name: Version consistency
 
 # For every skill that carries BOTH a SKILL.md `version:` AND at least one
-# scripts/*.py with `_RHIZA_SKILL_VERSION`, verify the two values agree.
+# scripts/*.py with `_SKILL_VERSION`, verify the two values agree.
 # Guards against hand-edits that desync the runtime constant from the
 # authoritative SKILL.md value.
 
 on:
   pull_request:
     # Exclude draft PRs: contributors often push WIP commits whose
-    # version: / _RHIZA_SKILL_VERSION values are intentionally inconsistent
+    # version: / _SKILL_VERSION values are intentionally inconsistent
     # while they iterate. The check still runs as soon as the PR is marked
     # ready for review.
     types: [opened, synchronize, reopened, ready_for_review]
