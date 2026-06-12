@@ -1,6 +1,6 @@
 ---
 name: chirps-fetch
-description: Fetch CHIRPS precipitation observations for a date range — the validated final product back to 1998, with a preliminary fallback for very recent days — and write a Rhiza Envelope Zarr. Use when a task needs CHIRPS rainfall, recent or historical, e.g. to compare against a forecast or stations or to build a reference period.
+description: Fetch CHIRPS precipitation observations for a date range — the validated final product back to 1998, with a preliminary fallback for very recent days — and write a weather-skills envelope Zarr. Use when a task needs CHIRPS rainfall, recent or historical, e.g. to compare against a forecast or stations or to build a reference period.
 license: MIT
 compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
 metadata:
@@ -55,7 +55,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD 
 
 ### Output
 
-Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)` on the global CHIRPS grid. Stamped with `rhiza_source=chirps`.
+Zarr with data variable `precip` (mm/day) and dims `(time, latitude, longitude)` on the global CHIRPS grid. Stamped with `weather_skills_source=chirps`.
 
 ### Memory and performance
 
@@ -67,11 +67,11 @@ All per-day TIFs are staged to a temp directory before writing, so a very long w
 
 ### Production lag and partial-tail behavior
 
-Historical days come from the validated final product and carry no publication lag; the lag and partial-tail behavior described here apply only to the recent tail, which is served by the preliminary product. The CHIRPS v3.0 daily preliminary product is published on a pentad-based schedule: per-day files appear in batches **2 days after each pentad closes** (pentads end on the 5th, 10th, 15th, 20th, 25th, and last day of each month). Best-case lag is 2 days (the last day of a pentad, published 2 days later); worst case is ~7 days (the day right after a pentad ends, which waits for the next pentad to close before its batch is published). Average lag is 4-5 days. See https://www.chc.ucsb.edu/data/chirps3 for the official schedule. When the requested `--end` falls inside the lag window, the script writes a partial zarr covering only the days that were available on the server, logs the missing days and effective end date to stderr, and exits 0. If days are missing from the middle of the range (not the tail), the script exits 2 — that's a server-side data gap, not a lag issue. The `rhiza_history` entry's `args.end` reflects the EFFECTIVE end actually written (not the requested `--end`), so a re-run against the same `--end` cache-misses on the partial output and re-attempts the missing tail.
+Historical days come from the validated final product and carry no publication lag; the lag and partial-tail behavior described here apply only to the recent tail, which is served by the preliminary product. The CHIRPS v3.0 daily preliminary product is published on a pentad-based schedule: per-day files appear in batches **2 days after each pentad closes** (pentads end on the 5th, 10th, 15th, 20th, 25th, and last day of each month). Best-case lag is 2 days (the last day of a pentad, published 2 days later); worst case is ~7 days (the day right after a pentad ends, which waits for the next pentad to close before its batch is published). Average lag is 4-5 days. See https://www.chc.ucsb.edu/data/chirps3 for the official schedule. When the requested `--end` falls inside the lag window, the script writes a partial zarr covering only the days that were available on the server, logs the missing days and effective end date to stderr, and exits 0. If days are missing from the middle of the range (not the tail), the script exits 2 — that's a server-side data gap, not a lag issue. The `weather_skills_history` entry's `args.end` reflects the EFFECTIVE end actually written (not the requested `--end`), so a re-run against the same `--end` cache-misses on the partial output and re-attempts the missing tail.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="chirps-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records the run's flag

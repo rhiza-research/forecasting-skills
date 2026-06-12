@@ -67,15 +67,15 @@ If the input lacks a `step` dim, or has multiple data vars and no
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array
 of per-step entries `{skill, version, args, input}`. This skill reads the
-upstream input's `rhiza_history` (default `[]` and stderr warning if absent)
+upstream input's `weather_skills_history` (default `[]` and stderr warning if absent)
 and appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
 stored bytes, so a renamed-but-unchanged input still cache-hits and a
 same-named-but-modified input correctly cache-misses; `version` is the
-`_RHIZA_SKILL_VERSION` constant in `scripts/deaccumulate.py`, kept in
+`_SKILL_VERSION` constant in `scripts/deaccumulate.py`, kept in
 lockstep with `metadata.version` in this SKILL.md by the CI version-bump
 workflow.
 

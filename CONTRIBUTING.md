@@ -11,9 +11,9 @@ Each `skills/<name>/SKILL.md` carries a `metadata.version` field in its YAML
 frontmatter (nested under the top-level `metadata:` key per the Agent Skills
 specification). That field is the authoritative identity of a published
 skill and the value that downstream cache invalidation keys on. Scripts that
-emit `rhiza_history` carry a `_RHIZA_SKILL_VERSION` constant near the top of
+emit `weather_skills_history` carry a `_SKILL_VERSION` constant near the top of
 the file; the version-bump workflow rewrites both the SKILL.md
-`metadata.version` and the `_RHIZA_SKILL_VERSION` literal in lockstep, so
+`metadata.version` and the `_SKILL_VERSION` literal in lockstep, so
 contributors never edit either by hand.
 
 ## PR workflow
@@ -102,7 +102,7 @@ Settings → Branches → Branch protection rules.
 
 ### Reverting a bad release
 
-`git revert <bump-commit>` rolls SKILL.md (and `_RHIZA_SKILL_VERSION` literals
+`git revert <bump-commit>` rolls SKILL.md (and `_SKILL_VERSION` literals
 in scripts) back to their previous values, but consumers that already cached
 the bad version under its old identity won't see the revert — same-identity
 state stays cached. To truly roll back a release, do this:

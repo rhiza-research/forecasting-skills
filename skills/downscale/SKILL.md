@@ -1,6 +1,6 @@
 ---
 name: downscale
-description: Downscale a Rhiza Envelope Zarr onto a FINER-OR-EQUAL grid, adding information via a chosen --method (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
+description: Downscale a weather-skills envelope Zarr onto a FINER-OR-EQUAL grid, adding information via a chosen --method (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
@@ -71,9 +71,9 @@ mapped; others pass through unchanged.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. This skill reads the upstream
-input's `rhiza_history` (default `[]` with a stderr warning if absent) and
+input's `weather_skills_history` (default `[]` with a stderr warning if absent) and
 appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings — so `method`, `factor`, `target_resolution`,
 `reference_grid`, `dims`, `variable`, `qq_reference`, and `time_dim` are
@@ -83,9 +83,9 @@ recorded under their argparse dest names (underscored). `input` is a
 field: a list of `{basename, hash}` dicts content-hashing each supplied
 reference zarr's stored bytes, so editing a reference in place (same path,
 changed content) invalidates the cache and forces a recompute. `version` is
-the `_RHIZA_SKILL_VERSION` constant in `scripts/downscale.py`, kept in lockstep
+the `_SKILL_VERSION` constant in `scripts/downscale.py`, kept in lockstep
 with `metadata.version` in this SKILL.md by the CI version-bump workflow.
-Cache-hit comparison reads the existing output's `rhiza_history`: a hit requires
+Cache-hit comparison reads the existing output's `weather_skills_history`: a hit requires
 the upstream chain to match and the last entry's `skill`, `version`, `args`,
 `input.basename`, and `reference_inputs` to match the proposed new entry; on a
 hit the script returns without recomputing. The main `--input` hash is not part

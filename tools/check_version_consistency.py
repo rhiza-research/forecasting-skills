@@ -3,18 +3,18 @@
 # dependencies = []
 # ///
 """Static check: a skill's SKILL.md `metadata.version` and its scripts'
-`_RHIZA_SKILL_VERSION` must agree.
+`_SKILL_VERSION` must agree.
 
 For each skill that carries BOTH:
   - a nested `metadata.version` field in `skills/<name>/SKILL.md` frontmatter, AND
   - at least one `.py` file under `skills/<name>/scripts/` with a top-level
-    `_RHIZA_SKILL_VERSION = "..."` constant,
+    `_SKILL_VERSION = "..."` constant,
 
 verify the two values match. Fails the check with a list of mismatches.
 
 This guards against the failure mode where someone hand-edits one of the two
 without the version-bump workflow's lockstep rewrite — for example, editing
-`_RHIZA_SKILL_VERSION` directly in a script (which would shift the runtime
+`_SKILL_VERSION` directly in a script (which would shift the runtime
 constant out of sync with the SKILL.md `metadata.version` that downstream
 caches key on).
 
@@ -73,7 +73,7 @@ def _read_skill_md_version(skill_md: Path) -> str | None:
 
 
 def _read_script_constants(scripts_dir: Path) -> tuple[dict[Path, str], list[Path]]:
-    """Return ({script_path: _RHIZA_SKILL_VERSION value}, scripts_missing_constant).
+    """Return ({script_path: _SKILL_VERSION value}, scripts_missing_constant).
 
     `scripts_missing_constant` is empty when no script in the directory
     carries the constant (a skill that legitimately doesn't use it). It's
@@ -129,7 +129,7 @@ def _check(root: Path) -> int:
             if script_version != md_version:
                 mismatches.append(
                     f"{skill}: SKILL.md metadata.version {md_version!r} != "
-                    f"{script_path.relative_to(root)} _RHIZA_SKILL_VERSION {script_version!r}"
+                    f"{script_path.relative_to(root)} _SKILL_VERSION {script_version!r}"
                 )
         # Partial-drift case: at least one script in the skill carries
         # the constant, at least one doesn't. Either the contributor
@@ -139,7 +139,7 @@ def _check(root: Path) -> int:
         for lacking_path in lacking:
             drift_partials.append(
                 f"{skill}: {lacking_path.relative_to(root)} is missing "
-                "_RHIZA_SKILL_VERSION but a sibling script in the same "
+                "_SKILL_VERSION but a sibling script in the same "
                 "skill has it"
             )
 

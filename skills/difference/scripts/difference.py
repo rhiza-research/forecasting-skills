@@ -7,7 +7,7 @@
 #   "zarr>=3.2",
 # ]
 # ///
-"""Subtract one Rhiza Envelope Zarr from another (A - B).
+"""Subtract one weather-skills envelope Zarr from another (A - B).
 
 Takes exactly two inputs: the first is the minuend (A), the second the
 subtrahend (B). Subtraction is xarray-aligned (inner join on shared dims) with
@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.2"
+_SKILL_VERSION = "0.1.2"
 
 
 def _hash_zarr(zarr_path: Path) -> str:
@@ -62,7 +62,8 @@ def _load_history(zarr_path: Path) -> list:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -73,10 +74,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -124,7 +125,7 @@ def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--input",
@@ -197,7 +198,7 @@ def main() -> None:
     upstream = input_histories[0]
     entry = {
         "skill": "difference",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": norm_args,
         "input": [
             {"basename": ip.name, "hash": _hash_zarr(ip), "history": hist}
@@ -227,13 +228,13 @@ def main() -> None:
             sys.exit(2)
     ds_a, ds_b = opened
 
-    # Flag each input that carries no upstream rhiza_history as opaque (same
+    # Flag each input that carries no upstream weather_skills_history as opaque (same
     # note reduce prints for its single input), so a non-reproducible input
     # branch is surfaced per input rather than silently recorded as `[]`.
     for ip, hist in zip(paths, input_histories, strict=True):
         if not hist:
             print(
-                f"Warning: no upstream rhiza_history on input {ip.name}; treating input as opaque.",
+                f"Warning: no upstream weather_skills_history on input {ip.name}; treating input as opaque.",
                 file=sys.stderr,
             )
 
@@ -399,8 +400,13 @@ def main() -> None:
     # `input` list records every input branch in full.
     out_ds.attrs = {
         **ds_a.attrs,
-        "rhiza_history": json.dumps(upstream + [entry], sort_keys=True),
+        "weather_skills_history": json.dumps(upstream + [entry], sort_keys=True),
     }
+    # compatibility migration for the rhiza_ attr prefix; scheduled for removal
+    for _old in ("rhiza_history", "rhiza_source", "rhiza_forecast_init"):
+        if _old in out_ds.attrs:
+            _new = "weather_skills_" + _old.removeprefix("rhiza_")
+            out_ds.attrs.setdefault(_new, out_ds.attrs.pop(_old))
     for v in out_ds.variables:
         out_ds[v].encoding = {}
 

@@ -1,6 +1,6 @@
 ---
 name: reduce
-description: Collapse one or more named dimensions of a Rhiza Envelope Zarr with a statistic (mean, std, min, max, sum, median) — e.g. ensemble spread as the std across `number`, model disagreement as the std across a model dim, or a time-mean baseline for anomalies. Use whenever a dataset needs a statistical reduction along a named dimension.
+description: Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic (mean, std, min, max, sum, median) — e.g. ensemble spread as the std across `number`, model disagreement as the std across a model dim, or a time-mean baseline for anomalies. Use whenever a dataset needs a statistical reduction along a named dimension.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
@@ -86,7 +86,7 @@ dims, coords, and pass-through variables are unchanged.
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: the input's chain plus
+The output stamps a JSON-encoded `weather_skills_history` attr: the input's chain plus
 an entry for this run, each entry `{skill, version, args, input}` (`version`
 is the value printed by `--help`). Flag values in `args` are recorded under
 underscored names (e.g. a flag `--time-dim` is recorded as `time_dim`);

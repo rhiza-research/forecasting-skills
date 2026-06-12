@@ -122,15 +122,15 @@ forecasting-skills clip-region \
     <h2>The envelope contract</h2>
   </header>
   <p>
-    Every skill reads and writes the <em>Rhiza Envelope</em>: a CF-compliant Zarr v3
+    Every skill reads and writes the <em>weather-skills envelope</em>: a CF-compliant Zarr v3
     store with a small set of canonical shapes. Gridded data carries
     <code>(number?, step|time, latitude, longitude)</code> dimensions; station data
     carries <code>(time, station_id)</code> with per-station latitude and longitude
-    coordinates. Every zarr-writing skill appends to a <code>rhiza_history</code>
+    coordinates. Every zarr-writing skill appends to a <code>weather_skills_history</code>
     attribute — a JSON-encoded, append-only provenance chain recording the skill, its
     version, its arguments, and a hash of its input — so any artifact, including a plot
     PNG, can be traced back to the commands that produced it. Consumers rely only on
-    dimensions, coordinates, data variables, and <code>rhiza_*</code> attributes, never
+    dimensions, coordinates, data variables, and <code>weather_skills_*</code> attributes, never
     on per-variable codec encoding, which keeps skills independent across library
     versions. The full contract is documented in
     <a href="https://github.com/rhiza-research/forecasting-skills/blob/main/ENVELOPE.md">ENVELOPE.md</a>.

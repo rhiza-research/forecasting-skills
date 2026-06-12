@@ -8,7 +8,7 @@
 #   "numpy",
 # ]
 # ///
-"""Convert a Rhiza Envelope Zarr's time axis to a target CF calendar.
+"""Convert a weather-skills envelope Zarr's time axis to a target CF calendar.
 
 Wraps xarray's ``Dataset.convert_calendar`` so two datasets on different CF
 calendars can be aligned to a common calendar before comparison. Converting to a
@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_SKILL_VERSION = "0.1.3"
 
 
 def _hash_zarr(zarr_path: Path) -> str:
@@ -47,7 +47,8 @@ def _load_history(zarr_path: Path) -> list:
         import xarray as xr
 
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except FileNotFoundError:
         # A not-yet-existing output read during a cache check is a silent miss.
         return []
@@ -58,10 +59,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -113,7 +114,7 @@ def _source_calendar(time_coord) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument("--input", "-i", required=True)
     p.add_argument("--output", "-o", required=True)
@@ -152,7 +153,7 @@ def main() -> None:
     # cache-hit check so we don't hash hundreds of MB of zarr on hits.
     partial_entry = {
         "skill": "convert-calendar",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
         "input": {"basename": Path(args.input).name},
     }
@@ -270,13 +271,18 @@ def main() -> None:
 
     if not upstream:
         print(
-            "Warning: no upstream rhiza_history on input; treating input as opaque.",
+            "Warning: no upstream weather_skills_history on input; treating input as opaque.",
             file=sys.stderr,
         )
     out_ds.attrs = {
         **ds.attrs,
-        "rhiza_history": json.dumps(upstream + [entry], sort_keys=True),
+        "weather_skills_history": json.dumps(upstream + [entry], sort_keys=True),
     }
+    # compatibility migration for the rhiza_ attr prefix; scheduled for removal
+    for _old in ("rhiza_history", "rhiza_source", "rhiza_forecast_init"):
+        if _old in out_ds.attrs:
+            _new = "weather_skills_" + _old.removeprefix("rhiza_")
+            out_ds.attrs.setdefault(_new, out_ds.attrs.pop(_old))
     # Clear stale per-variable encoding before write. The input's time coord
     # carries `units`/`calendar` encoding for the OLD calendar; re-encoding the
     # new calendar axis with that stale encoding would corrupt the time values.

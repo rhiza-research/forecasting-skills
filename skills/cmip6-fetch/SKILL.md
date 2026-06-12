@@ -1,6 +1,6 @@
 ---
 name: cmip6-fetch
-description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipitation) for a date range and region from the public, credential-free Pangeo Google Cloud catalog, and write a Rhiza Envelope Zarr. Use when a task needs climate-projection grids (historical or future scenario) for downstream clipping, aggregation, comparison, or plotting.
+description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipitation) for a date range and region from the public, credential-free Pangeo Google Cloud catalog, and write a weather-skills envelope Zarr. Use when a task needs climate-projection grids (historical or future scenario) for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.11+ and uv. Reads the public Pangeo CMIP6 collection from Google Cloud (gs://cmip6) over anonymous access; no credentials required.
 metadata:
@@ -12,7 +12,7 @@ metadata:
 
 Resolves a single CMIP6 dataset from the [Pangeo CMIP6](https://pangeo-data.github.io/pangeo-cmip6-cloud/)
 catalog on Google Cloud, opens its analysis-ready Zarr store anonymously, subsets
-it by bounding box and time, maps its dimensions onto the Rhiza Envelope analysis
+it by bounding box and time, maps its dimensions onto the weather-skills envelope analysis
 shape, and writes a consolidated Zarr store. CMIP6 is faceted, so the dataset is
 selected with facet flags (model, experiment, variable, member, table, grid) that
 are validated against the catalog CSV.
@@ -21,8 +21,8 @@ are validated against the catalog CSV.
 
 - A task needs climate-model projection output — historical runs or future
   scenarios (ssp*) — as gridded data, with no credentials.
-- A downstream skill will clip, aggregate, compare, or plot the result as a Rhiza
-  Envelope Zarr.
+- A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
+  envelope Zarr.
 
 CMIP6 is model projection, not observation or short-range forecast. Historical
 runs cover 1850–2014 and scenario (`ssp*`) runs continue to 2100, so the natural
@@ -68,7 +68,7 @@ regular 1-D lat/lon grids.
 
 ### Output
 
-A consolidated Rhiza Envelope analysis Zarr with a `time` dimension and dims
+A consolidated weather-skills envelope analysis Zarr with a `time` dimension and dims
 `(time, latitude, longitude)`, carrying the requested variable.
 
 The output is fully CF-1.13 compliant. CMIP6 source data is already strongly
@@ -79,12 +79,12 @@ mapping onto the envelope would otherwise break:
   `references`, `tracking_id`, etc.) are preserved; `Conventions` is overwritten
   to `CF-1.13` (the source carries an older inherited value such as
   `CF-1.7 CMIP-6.0 UGRID-1.0`); a `history` line is appended; and
-  `rhiza_source=cmip6:<model>/<experiment>/<member>/<table>/<variable>/<grid>`
-  plus the provenance `rhiza_history` are added.
+  `weather_skills_source=cmip6:<model>/<experiment>/<member>/<table>/<variable>/<grid>`
+  plus the provenance `weather_skills_history` are added.
 - **Coordinates.** `latitude`/`longitude`/`time` carry CF `standard_name`,
   `units` (`degrees_north`/`degrees_east`), and `axis` (`Y`/`X`/`T`). cf-xarray
   resolves the X/Y/T axes — verified on the way out.
-- **Bounds integrity.** The Rhiza Envelope does not carry cell bounds, so the
+- **Bounds integrity.** The weather-skills envelope does not carry cell bounds, so the
   `*_bnds` variables are dropped. The `bounds` attr each coordinate would
   otherwise still carry (a dangling CF §7.1 reference to an absent variable) is
   removed, so no coordinate points at a missing variable.
@@ -122,7 +122,7 @@ Failures are reactive and each emits a one-line actionable message:
 
 ### Provenance
 
-The output stamps a JSON-encoded `rhiza_history` attr: an append-only array of
+The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="cmip6-fetch"` and `input=null`. `args` records the
 resolved facets (`model`, `experiment`, `variable`, `member`, `table`, the chosen

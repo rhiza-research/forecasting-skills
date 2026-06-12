@@ -11,7 +11,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a Rhiza Envelope Zarr."""
+"""Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
 
 import argparse
 import json
@@ -31,7 +31,7 @@ import xarray as xr
 from earthaccess.exceptions import LoginAttemptFailure, LoginStrategyUnavailable
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_RHIZA_SKILL_VERSION = "0.1.3"
+_SKILL_VERSION = "0.1.3"
 
 _SHORT_NAME = "SPL3SMP_E"
 _FILL = -9999.0
@@ -54,7 +54,7 @@ _SM_STANDARD_NAME = "volume_fraction_of_condensed_water_in_soil"
 # --- Source -> output transforms ---
 # Pass-through is the default for everything not listed here (values, fill, dtype,
 # time). The divergences this skill introduces between the raw SPL3SMP_E granule
-# and the output Envelope are:
+# and the output envelope are:
 #
 #   - soil_moisture units: PASS THROUGH VERBATIM. The granule's `units` attribute
 #     (cm3/cm3, a dimensionless volumetric ratio) is read off the dataset and
@@ -245,7 +245,8 @@ def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
 def _load_history(zarr_path: Path) -> list:
     try:
         with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            raw = ds.attrs.get("rhiza_history")
+            # compatibility read for the rhiza_ attr prefix; scheduled for removal
+            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
     except (FileNotFoundError, KeyError, ValueError):
         # A not-yet-existing or unreadable output during a cache check is a miss.
         return []
@@ -256,10 +257,10 @@ def _load_history(zarr_path: Path) -> list:
     except json.JSONDecodeError:
         parsed = None
     if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the rhiza_history
+        # A present-but-non-array value is malformed under the weather_skills_history
         # contract; treat it as no history and flag it on stderr.
         print(
-            f"ignoring malformed rhiza_history on {zarr_path}; "
+            f"ignoring malformed weather_skills_history on {zarr_path}; "
             "run `provenance --check` for details",
             file=sys.stderr,
         )
@@ -604,9 +605,9 @@ def _stamp_cf(ds, entry: dict) -> None:
         source=_CF_SOURCE,
         institution=_CF_INSTITUTION,
         references=_CF_REFERENCES,
-        history=f"{now_iso}: fetched via smap-fetch v{_RHIZA_SKILL_VERSION}",
-        rhiza_source="smap",
-        rhiza_history=json.dumps([entry], sort_keys=True),
+        history=f"{now_iso}: fetched via smap-fetch v{_SKILL_VERSION}",
+        weather_skills_source="smap",
+        weather_skills_history=json.dumps([entry], sort_keys=True),
     )
 
     ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
@@ -678,7 +679,7 @@ def _attach_bbox_value(argv):
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__,
-        epilog=f"skill version: {_RHIZA_SKILL_VERSION}",
+        epilog=f"skill version: {_SKILL_VERSION}",
     )
     p.add_argument(
         "--start",
@@ -729,7 +730,7 @@ def main() -> None:
 
     entry = {
         "skill": "smap-fetch",
-        "version": _RHIZA_SKILL_VERSION,
+        "version": _SKILL_VERSION,
         "args": {
             "bbox": args.bbox,
             "overpass": args.overpass,
@@ -796,7 +797,7 @@ def main() -> None:
     # Stream one day at a time: download a granule, read its (latitude, longitude)
     # slice, then write/append it to Zarr as a single time step before moving to the
     # next day. Peak resident memory is bounded to one day's grid rather than the
-    # whole window. Full CF metadata + rhiza_source/history are stamped on every
+    # whole window. Full CF metadata + weather_skills_source/history are stamped on every
     # write because a to_zarr append rewrites the root group attrs from the
     # appended dataset; the entry is identical each time, so the final stamp is
     # stable. xarray appends only the time-varying soil_moisture along `time`; the
@@ -806,7 +807,7 @@ def main() -> None:
     #
     # Partial-store safety: the first day is written with mode="w" and subsequent
     # days append. If a write fails mid-stream the store is left truncated, and a
-    # subsequent identical run would see a matching rhiza_history and treat the
+    # subsequent identical run would see a matching weather_skills_history and treat the
     # truncated store as a complete cache hit. To prevent that, `store_created` is
     # flipped to True the moment this run starts writing (just before the first
     # mode="w" call, after any pre-existing store has been removed), and `_fail`
