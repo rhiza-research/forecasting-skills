@@ -12,7 +12,7 @@
 
 Some forecast variables (e.g. ECMWF S2S ``tp``, surface radiation, evaporation,
 SWE) are stored as values accumulated from the forecast initialization time.
-This skill converts those to per-step diffs: ``out[i] = arr[i+1] - arr[i]``,
+This skill converts those to per-step differences: ``out[i] = arr[i+1] - arr[i]``,
 clipped at zero. The output ``step`` coord drops the first input step, so the
 resulting axis labels each value with the end of the period it covers.
 """

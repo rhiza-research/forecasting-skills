@@ -1,6 +1,6 @@
 ---
 name: deaccumulate
-description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step diffs, so each step value represents the period since the previous step rather than the accumulation since initialization.
+description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step differences, so each step value represents the period since the previous step rather than the accumulation since initialization.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
@@ -87,13 +87,13 @@ translate underscore → hyphen.
 
 ## Composition with aggregate-temporal
 
-Per-step diffs are additive across consecutive intervals, so running
+Per-step differences are additive across consecutive intervals, so running
 `aggregate-temporal --method sum` on a deaccumulated forecast produces
 correct per-window totals (e.g. weekly or dekadal precipitation). Running
 `aggregate-temporal --method sum` directly on an accumulated variable
 double-counts the earlier steps and inflates totals.
 
-`deaccumulate` is also useful standalone: per-period diffs can be plotted
+`deaccumulate` is also useful standalone: per-period differences can be plotted
 directly, or compared to per-period observations (e.g. IMERG, CHIRPS, station
 data) without an extra aggregation step.
 
