@@ -227,7 +227,7 @@ def main() -> None:
     p.add_argument(
         "--to-units",
         required=True,
-        help="Target units string (e.g. 'mm/day'); becomes the output variable's units attr.",
+        help="Target units string (e.g. 'mm/day'); becomes the output variable's units attribute.",
     )
     p.add_argument(
         "--standard-name",

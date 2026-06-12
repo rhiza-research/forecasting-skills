@@ -40,8 +40,8 @@
         <h1>Let your AI assistant fetch, transform, and visualize weather <span class="no-break">data —</span> <span class="h1-hook">with provenance <span class="no-break">you can audit.</span></span></h1>
         <p class="lede">
           Curated, standards-compliant <a href="https://agentskills.io">Agent Skills</a>
-          that run in any AI environment with a code-execution runtime and uv,
-          to be stewarded by a community working group. Initiated by Rhiza Research.
+          that run in any AI environment with a code-execution runtime and uv.
+          Initiated by Rhiza Research. A community working group will steward the catalog.
         </p>
       </div>
       <figure class="artifact-card">
@@ -57,7 +57,7 @@
     </div>
     <aside class="notice" role="note">
       <strong>Early stage.</strong> Under active development — not production ready.
-      Interfaces, envelope schema, and skill boundaries may change without notice.
+      Interfaces, the envelope schema, and skill boundaries may change without notice.
     </aside>
   </div>
 </section>
@@ -76,7 +76,7 @@
       <h3>Reviewed contributions</h3>
       <p>
         Every skill enters the catalog through a pull request reviewed against
-        the contribution guidelines and CI checks. A working group of weather and climate data practitioners
+        the contribution guidelines and validated by CI checks. A working group of weather and climate data practitioners
         will oversee a formal submission and review process.
       </p>
     </div>
@@ -130,7 +130,7 @@ forecasting-skills &lt;skill&gt; [args]           # run one</code></pre>
   </div>
 
   <div class="install-path">
-    <h3>As agent skills</h3>
+    <h3>As an agent skill set</h3>
     <p>For use by an LLM agent, install the <code>SKILL.md</code> files into your project with <a href="https://github.com/rohitg00/skillkit">skillkit</a>:</p>
     <pre><code># List what skillkit discovers in the repo
 npx skillkit install rhiza-research/forecasting-skills --list
@@ -156,11 +156,11 @@ claude plugin install rhiza-forecasting@rhiza</code></pre>
     <h2>Pipeline and envelope</h2>
   </header>
   <p>
-    Pipelines chain three kinds of skill: fetchers pull data from a source and write
+    Pipelines chain three kinds of skills: fetchers pull data from a source and write
     a standard envelope, transforms operate on any envelope, and visualization
     skills render the result. A fourth group, agent capabilities, supports
     pipelines without producing an envelope — resolving a region name to a
-    bounding box, or composing results into an email report. A user states the
+    bounding box or composing results into an email report. A user states the
     goal in natural language and the agent picks and composes skills from the set.
   </p>
   <ol class="flow" role="list" aria-label="Pipeline stages">
@@ -180,7 +180,7 @@ claude plugin install rhiza-forecasting@rhiza</code></pre>
     </li>
     <li class="flow-stage">
       <h3>visualize</h3>
-      <p>envelope &#8594; artifact</p>
+      <p>envelope &#8594; PNG</p>
       <ul>
         <!-- gen:flow-output -->
       </ul>
@@ -225,7 +225,7 @@ forecasting-skills clip-region \
       <h3>Gridded envelope</h3>
       <pre><code>(number?, step|time,
  latitude, longitude)</code></pre>
-      <p>forecasts, satellite grids, reanalysis</p>
+      <p>forecasts, satellite grids, reanalyses</p>
     </div>
     <div class="schema">
       <h3>Station envelope</h3>

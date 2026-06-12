@@ -1,6 +1,6 @@
 ---
 name: convert-calendar
-description: Convert a weather-skills envelope Zarr's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields cftime. Dates not representable in the target calendar are dropped.
+description: Convert a weather-skills envelope Zarr's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields a cftime axis. Dates not representable in the target calendar are dropped.
 license: MIT
 compatibility: Requires Python 3.10+ and uv.
 metadata:
