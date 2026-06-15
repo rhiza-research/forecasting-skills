@@ -17,7 +17,7 @@
   "use strict";
 
   var EVENTS = [
-    { type: "user", time: "8:25 AM", text: "Can you fetch the last 3 weeks of IMERG data and Senegal and group it by week?" },
+    { type: "user", text: "Can you fetch the last 3 weeks of IMERG data and Senegal and group it by week?" },
     {
       type: "tools",
       title: "Viewed 3 files, ran a command",
@@ -59,7 +59,7 @@
       label: "imerg_sen_weekly.png",
       alt: "Three-panel weekly IMERG precipitation map for Senegal, May 24 to June 13 2026, masked to the country border.",
     },
-    { type: "user", time: "8:28 AM", text: "Can you also include rain in the Gambia?" },
+    { type: "user", text: "Can you also include rain in the Gambia?" },
     { type: "say", html: "The Gambia is fully enclosed within Senegal, so the existing clip already covers it spatially — I just need to re-plot with an expanded mask that includes both countries." },
     {
       type: "tools",
@@ -117,7 +117,6 @@
     var bubble = el("div", "dm-user");
     bubble.appendChild(el("span", "dm-user-text", null)).textContent = ev.text;
     row.appendChild(bubble);
-    row.appendChild(el("span", "dm-time", ev.time));
     thread.appendChild(row);
     requestAnimationFrame(function () { row.classList.remove("dm-enter"); });
     follow(thread);

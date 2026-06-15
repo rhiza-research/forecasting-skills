@@ -370,14 +370,6 @@ pre code {
   color: var(--ink);
 }
 
-.dm-time {
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  color: var(--ink-soft);
-  margin-top: 0.25rem;
-  margin-right: 0.15rem;
-}
-
 .dm-say {
   font-family: var(--serif);
   font-size: 0.98rem;
