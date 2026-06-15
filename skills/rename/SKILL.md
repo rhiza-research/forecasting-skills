@@ -4,7 +4,7 @@ description: Rename one data variable in a weather-skills envelope Zarr to a new
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   catalog-group: transforms
 ---
 

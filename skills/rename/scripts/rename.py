@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.0"
+_SKILL_VERSION = "0.1.1"
 
 
 def _hash_zarr(zarr_path: Path) -> str:
