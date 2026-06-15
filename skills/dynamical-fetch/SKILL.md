@@ -2,9 +2,9 @@
 name: dynamical-fetch
 description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, and their analyses) and write a weather-skills envelope Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
-compatibility: Requires Python 3.11+ and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
+compatibility: Requires Python 3.12+ and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: fetchers
 ---
 

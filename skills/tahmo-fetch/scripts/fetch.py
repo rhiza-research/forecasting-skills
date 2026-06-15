@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = [
 #   "cftime",
 #   "xarray",
@@ -30,7 +30,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.9"
+_SKILL_VERSION = "0.1.10"
 
 # How far back from today the `latest` resolver requests observations to find
 # the newest available TAHMO observation date. Station reporting can lag a few

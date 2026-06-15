@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
 #   "cftime",
 #   "dynamical-catalog==0.5.0",
@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.8"
 
 # Coords dynamical attaches that are not part of the weather-skills envelope: forecast
 # bookkeeping (valid_time, *_forecast_length) and the CRS scalar (spatial_ref).

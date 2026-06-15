@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12"
 # dependencies = [
 #   "cf-xarray>=0.11",
 #   "cftime>=1.6",
@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.1.9"
 
 # Time-unit tokens that, when they appear as a per-time denominator, mark a
 # rate. Deliberately excludes length/mass/etc. tokens (e.g. ``m``) so that a
