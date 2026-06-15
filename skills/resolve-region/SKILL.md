@@ -2,7 +2,7 @@
 name: resolve-region
 description: Resolve an ISO 3166-1 alpha-3 country code to a lat/lon bbox (and optionally a boundary polygon GeoJSON) from a bundled Natural Earth 1:110m admin-0 dataset. Use when you need to turn a country into a `--bbox N/W/S/E` value (or a polygon mask) for clip-region, ecmwf-fetch, plot, or plot-compare.
 license: MIT
-compatibility: Requires Python 3.10+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.5"
   catalog-group: agent-tooling
@@ -46,20 +46,20 @@ code early rather than resolve the wrong country.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py <CODE> [--geojson PATH]
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/resolve.py <CODE> [--geojson PATH]
 ```
 
 Print just the bbox:
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN
 # -> 5.506/33.893568969666944/-4.67677/41.85508309264397   (N/W/S/E)
 ```
 
 Also write the boundary polygon:
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN --geojson /tmp/ken.json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN --geojson /tmp/ken.json
 ```
 
 ### Arguments
@@ -95,11 +95,11 @@ returns the full width `-180`/`180`.
 ```bash
 # Resolve a country to a bbox; pass the printed value to a --bbox consumer
 # such as the clip-region, ecmwf-fetch, plot, or plot-compare skill:
-BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN)
+BBOX=$(uv run --script ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN)
 
 # Resolve a country to a boundary polygon; pass the file to the plot-compare
 # skill's --mask-geojson to mask grid cells outside the country:
-uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN --geojson /tmp/ken.json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN --geojson /tmp/ken.json
 ```
 
 ## Data

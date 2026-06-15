@@ -2,7 +2,7 @@
 name: coarsen
 description: Coarsen or align a weather-skills envelope Zarr by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
 license: MIT
-compatibility: Requires Python 3.10+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.7"
   catalog-group: transforms
@@ -38,7 +38,7 @@ most_common); this skill is linear-only.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --output <out.zarr> \
     --target-resolution DEG --offset DEG \
     [--variable NAME] [--dims LAT,LON]
 ```
@@ -83,19 +83,19 @@ hits on basename).
 The `args` dict stores argparse dest names (underscored, e.g.
 `target_resolution`, `offset`), not the hyphenated CLI flag names
 (`--target-resolution`, `--offset`). A consumer reconstructing a
-`uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
+`uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
 underscore → hyphen.
 
 ## Examples
 
 ```bash
 # Onto sheerwater's global0_25 alignment.
-uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/imerg.zarr -o /tmp/imerg_p25.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/imerg.zarr -o /tmp/imerg_p25.zarr \
     --target-resolution 0.25 --offset 0.0
 ```
 
 ```bash
 # Onto sheerwater's global0_1 alignment.
-uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/chirps.zarr -o /tmp/chirps_p1.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/chirps.zarr -o /tmp/chirps_p1.zarr \
     --target-resolution 0.1 --offset 0.05
 ```

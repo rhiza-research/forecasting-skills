@@ -2,7 +2,7 @@
 name: concat
 description: Concatenate two or more weather-skills envelope Zarr stores along a named dimension, optionally assigning coordinate values to the new axis. Use when combining ensemble members, stitching time windows, or merging per-country fetches into a single dataset.
 license: MIT
-compatibility: Requires Python 3.10+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.7"
   catalog-group: transforms
@@ -21,7 +21,7 @@ Source-agnostic concatenation along a named dim. Inputs must share all other dim
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/concat.py -i a.zarr -i b.zarr [-i ...] --dim DIM --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/concat.py -i a.zarr -i b.zarr [-i ...] --dim DIM --output <out.zarr> \
     [--coords V1,V2,...]
 ```
 
@@ -66,5 +66,5 @@ do not.
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/concat.py -i /tmp/cf.zarr -i /tmp/pf.zarr --dim number --output /tmp/ens.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/concat.py -i /tmp/cf.zarr -i /tmp/pf.zarr --dim number --output /tmp/ens.zarr
 ```

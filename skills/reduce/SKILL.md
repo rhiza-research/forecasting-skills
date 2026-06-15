@@ -2,7 +2,7 @@
 name: reduce
 description: Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic (mean, std, min, max, sum, median) — e.g. ensemble spread as the std across `number`, model disagreement as the std across a model dim, or a time-mean baseline for anomalies. Use whenever a dataset needs a statistical reduction along a named dimension.
 license: MIT
-compatibility: Requires Python 3.12+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.4"
   catalog-group: transforms
@@ -30,7 +30,7 @@ NaNs are skipped (xarray's default `skipna`).
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py --input <in.zarr> --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/reduce.py --input <in.zarr> --output <out.zarr> \
     --dim DIM [--dim DIM ...] --method mean|std|min|max|sum|median \
     [--variable VAR ...]
 ```
@@ -104,12 +104,12 @@ input misses).
 
 ```bash
 # Ensemble spread: where is the forecast most/least certain.
-uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_spread.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/reduce.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_spread.zarr \
     --dim number --method std
 ```
 
 ```bash
 # Time-mean baseline to feed `difference` for anomalies.
-uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py -i /tmp/sst.zarr -o /tmp/sst_baseline.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/reduce.py -i /tmp/sst.zarr -o /tmp/sst_baseline.zarr \
     --dim time --method mean
 ```

@@ -2,7 +2,7 @@
 name: unit-convert
 description: Convert one data variable in a weather-skills envelope Zarr to a target units string (e.g. a precipitation flux `kg m-2 s-1` to a depth rate `mm/day`), updating the variable's values and its `units` attribute.
 license: MIT
-compatibility: Requires Python 3.12+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.5"
   catalog-group: transforms
@@ -41,7 +41,7 @@ skill rewrites that to the form pint parses.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py --input <in.zarr> --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py --input <in.zarr> --output <out.zarr> \
     --to-units <UNITS> [--variable NAME] [--standard-name NAME]
 ```
 
@@ -109,17 +109,17 @@ SKILL.md by the CI version-bump workflow.
 
 The `args` dict stores argparse dest names (underscored, e.g. `to_units`), not
 the hyphenated CLI flag names (`--to-units`). A consumer reconstructing a
-`uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
+`uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
 underscore → hyphen.
 
 ## Examples
 
 ```bash
 # Precipitation flux -> depth rate so a forecast plots on the mm colormap.
-uv run ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py -i /tmp/gfs.zarr -o /tmp/gfs_mm.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py -i /tmp/gfs.zarr -o /tmp/gfs_mm.zarr \
     --variable precipitation_surface --to-units 'mm/day'
 
 # Depth in metres -> millimetres.
-uv run ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py -i /tmp/tp_m.zarr -o /tmp/tp_mm.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py -i /tmp/tp_m.zarr -o /tmp/tp_mm.zarr \
     --to-units mm
 ```

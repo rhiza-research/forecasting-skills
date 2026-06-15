@@ -2,7 +2,7 @@
 name: cmip6-fetch
 description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipitation) for a date range and region from the public, credential-free Pangeo Google Cloud catalog, and write a weather-skills envelope Zarr. Use when a task needs climate-projection grids (historical or future scenario) for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
-compatibility: Requires Python 3.11+ and uv. Reads the public Pangeo CMIP6 collection from Google Cloud (gs://cmip6) over anonymous access; no credentials required.
+compatibility: Requires Python 3.12 and uv. Reads the public Pangeo CMIP6 collection from Google Cloud (gs://cmip6) over anonymous access; no credentials required.
 metadata:
   version: "0.1.4"
   catalog-group: fetchers
@@ -31,7 +31,7 @@ windows are multi-year to multi-decadal.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <id> -v <variable> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <id> -v <variable> \
   [--member <id>] [--table <id>] [--grid <label>] \
   --start <date> --end <date> [--bbox N/W/S/E] -o <path.zarr>
 ```
@@ -135,14 +135,14 @@ Inspect a written output's provenance with the `provenance` skill.
 ```bash
 # GFDL-CM4 historical near-surface air temperature over East Africa,
 # a multi-decade monthly slice
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
   --table Amon --start 1980-01-01 --end 2014-12-31 --bbox 7/32/-6/43 -o /tmp/cmip6_hist.zarr
 
 # Full historical monthly record (1850–2014), global grid
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
   --table Amon --start 1850-01-01 --end 2014-12-31 -o /tmp/cmip6_full_hist.zarr
 
 # A future scenario: monthly precipitation under ssp245, mid-century decade
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment ssp245 -v pr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment ssp245 -v pr \
   --table Amon --start 2040-01-01 --end 2049-12-31 -o /tmp/cmip6_ssp245.zarr
 ```

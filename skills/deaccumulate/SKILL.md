@@ -2,7 +2,7 @@
 name: deaccumulate
 description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step differences, so each step value represents the period since the previous step rather than the accumulation since initialization.
 license: MIT
-compatibility: Requires Python 3.12+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.9"
   catalog-group: transforms
@@ -44,7 +44,7 @@ the variable's metadata before differencing:
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py --input <in.zarr> --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py --input <in.zarr> --output <out.zarr> \
     [--variable NAME]
 ```
 
@@ -82,7 +82,7 @@ workflow.
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Composition with aggregate-temporal
@@ -100,6 +100,6 @@ data) without an extra aggregation step.
 ## Examples
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_per_step.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_per_step.zarr \
     --variable tp
 ```

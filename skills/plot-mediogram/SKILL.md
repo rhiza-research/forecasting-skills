@@ -2,7 +2,7 @@
 name: plot-mediogram
 description: Render an ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate (historical) ensemble at a single lat/lon. Two-layer boxplots per time step show an extremes box underneath (p0–p100 whiskers, p10–p90 box, p50 median) with a wider p25–p75 IQR box overlaid on top, whose visible black caps mark the IQR edges.
 license: MIT
-compatibility: Requires Python 3.10+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.7"
   catalog-group: visualization
@@ -30,7 +30,7 @@ Lat/lon selection is nearest-neighbor.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py --forecast <forecast.zarr> --mclimate <mclimate.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py --forecast <forecast.zarr> --mclimate <mclimate.zarr> \
     --lat <lat> --lon <lon> --output <out.png> \
     [--variable NAME] [--title TEXT]
 ```
@@ -92,7 +92,7 @@ exiftool out.png
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py \
     --forecast /tmp/ecmwf_forecast.zarr \
     --mclimate /tmp/ecmwf_mclimate.zarr \
     --lat -1.3 --lon 36.8 \
