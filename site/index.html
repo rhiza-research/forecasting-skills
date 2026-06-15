@@ -21,6 +21,7 @@
       <a href="https://github.com/rhiza-research/forecasting-skills">github</a>
     </div>
     <nav class="masthead-nav" aria-label="Sections">
+      <a href="#demo">see it run</a>
       <a href="#standards">standards and review</a>
       <a href="#install">runs anywhere</a>
       <a href="#mechanics">pipeline and envelope</a>
@@ -59,6 +60,36 @@
       <strong>Early stage.</strong> Under active development — not production ready.
       Interfaces, the envelope schema, and skill boundaries may change without notice.
     </aside>
+  </div>
+</section>
+
+<section id="demo" class="demo">
+  <div class="demo-inner">
+    <p class="demo-caption">
+      <span class="demo-eyebrow">how it works</span>
+      From a plain-language request, the agent picks and composes skills. This is
+      a real session, replayed: resolve Senegal's bounding box &#8594; fetch IMERG
+      &#8594; clip to the region &#8594; aggregate to weekly totals &#8594; plot —
+      then a follow-up adds The Gambia by merging the mask, no re-fetch needed.
+    </p>
+    <div class="demo-stage" data-demo-replay aria-label="Replay of an agent session composing weather skills">
+      <div class="demo-screen">
+        <span class="demo-screen-label">agent session &#183; replay</span>
+      </div>
+      <div class="demo-thread" data-demo-thread></div>
+      <div class="demo-composer" aria-hidden="true">
+        <span class="demo-composer-text">Ask for weather or climate data&#8230;</span>
+        <span class="demo-composer-send">&#8593;</span>
+      </div>
+      <noscript>
+        <figure class="demo-figure">
+          <img src="demo_sen_gmb_weekly.png" width="3259" height="870"
+               alt="Three-panel weekly IMERG precipitation map for Senegal and The Gambia, May 24 to June 13 2026, produced by the agent pipeline: resolve region, fetch IMERG, clip, aggregate weekly, plot with a country mask."
+               loading="lazy" decoding="async">
+          <figcaption class="demo-fig-cap">imerg_sen_gmb_weekly.png &#8212; the final output of the replayed session.</figcaption>
+        </figure>
+      </noscript>
+    </div>
   </div>
 </section>
 
@@ -287,5 +318,6 @@ longitude(station_id)</code></pre>
   </div>
 </footer>
 
+<script src="demo.js" defer></script>
 </body>
 </html>

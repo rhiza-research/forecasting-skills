@@ -248,6 +248,310 @@ pre code {
   font-size: 0.9rem;
 }
 
+/* ---------- demo band ---------- */
+
+.demo {
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-deep);
+}
+
+.demo-inner {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 2.75rem 1.25rem;
+}
+
+.demo-caption {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  margin: 0 0 1.25rem;
+  max-width: 74ch;
+}
+
+.demo-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent-deep);
+  margin-right: 0.6rem;
+}
+
+/* The replay "screen": a framed card holding the scrolling chat thread. */
+.demo-stage {
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--accent) 8%, transparent);
+  overflow: hidden;
+}
+
+.demo-screen {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-deep);
+}
+
+.demo-screen::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0.85rem 0 0 var(--rule), 1.7rem 0 0 var(--rule);
+  /* The two extra dots are box-shadows (no layout box), so reserve their
+     width plus a gap here; otherwise the label overlaps the third dot. */
+  margin-right: 2.1rem;
+}
+
+.demo-screen-label {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-soft);
+}
+
+.demo-thread {
+  height: 27rem;
+  overflow: hidden;
+  padding: 1.25rem 1.25rem 0.5rem;
+  scroll-behavior: smooth;
+  transition: opacity 0.45s ease;
+}
+
+.demo-thread.dm-fade { opacity: 0; }
+
+.dm-row { margin-bottom: 1rem; }
+
+/* Entry animation for each appended block. */
+.dm-enter { opacity: 0; transform: translateY(8px); }
+.dm-row, .dm-step {
+  transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+}
+
+.dm-row-user { display: flex; flex-direction: column; align-items: flex-end; }
+
+.dm-user {
+  max-width: 80%;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  border-radius: 0.75rem 0.75rem 0.2rem 0.75rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+.dm-time {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+  margin-top: 0.25rem;
+  margin-right: 0.15rem;
+}
+
+.dm-say {
+  font-family: var(--serif);
+  font-size: 0.98rem;
+  line-height: 1.55;
+  color: var(--ink);
+  max-width: 60ch;
+}
+
+.dm-say strong { font-weight: 700; }
+
+/* Tool-call group: header + a left-railed list of sub-steps. */
+.dm-tools {
+  border: 1px solid var(--rule-faint);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--paper-deep) 60%, transparent);
+  padding: 0.5rem 0.75rem;
+  max-width: 46ch;
+}
+
+.dm-tools-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dm-tools-title {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
+/* A small spinner while the group runs; a filled dot once it's done. */
+.dm-spark {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid var(--rule);
+  border-top-color: var(--accent);
+}
+
+.dm-running .dm-spark { animation: dm-spin 0.7s linear infinite; }
+
+.dm-done .dm-spark {
+  border: none;
+  background: var(--accent);
+}
+
+@keyframes dm-spin { to { transform: rotate(360deg); } }
+
+.dm-steps {
+  margin-top: 0.35rem;
+  padding-left: 0.3rem;
+  border-left: 1px solid var(--rule-faint);
+}
+
+.dm-step {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.12rem 0 0.12rem 0.55rem;
+}
+
+.dm-check { color: var(--accent); font-size: 0.7rem; flex-shrink: 0; }
+
+.dm-step-text {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+/* Output image card. */
+.dm-image {
+  margin: 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--paper);
+  max-width: 100%;
+}
+
+.dm-image-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dm-image-cap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border-top: 1px solid var(--rule);
+  background: var(--paper-deep);
+}
+
+.dm-image-icon { color: var(--ink-soft); font-size: 0.8rem; }
+
+.dm-image-name {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink);
+}
+
+.dm-image-kind {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule-faint);
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+}
+
+/* Static, non-interactive composer to frame the thread as a chat. */
+.demo-composer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.25rem 1rem 1rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.6rem;
+  background: var(--paper-deep);
+}
+
+.demo-composer-text {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+/* While a question is being typed, the text is real input, not placeholder. */
+.demo-composer-text.is-typing { color: var(--ink); }
+
+.dm-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  vertical-align: -0.15em;
+  margin-left: 1px;
+  background: var(--accent);
+  animation: dm-blink 1s step-end infinite;
+}
+
+@keyframes dm-blink { 50% { opacity: 0; } }
+
+.demo-composer-send {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--paper);
+  font-size: 0.8rem;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.demo-composer-send.is-active {
+  transform: scale(0.88);
+  background: var(--accent-deep);
+}
+
+/* <noscript> / reduced-motion fallback figure. */
+.demo-figure { margin: 1rem; }
+
+.demo-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+}
+
+.demo-fig-cap {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  margin-top: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-thread { overflow-y: auto; }
+  .dm-enter { opacity: 1; transform: none; }
+  .dm-running .dm-spark { animation: none; }
+  .dm-caret { animation: none; }
+}
+
 /* ---------- sections ---------- */
 
 .section {
