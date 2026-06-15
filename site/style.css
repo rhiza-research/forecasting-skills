@@ -241,7 +241,7 @@ pre code {
 
 .notice {
   margin-top: 1.75rem;
-  max-width: 46rem;
+  max-width: 62rem;
   background: var(--warn-bg);
   border-left: 3px solid var(--warn-edge);
   padding: 0.65rem 1rem;
@@ -552,6 +552,10 @@ pre code {
 
 .section > p { max-width: 62ch; }
 
+/* The standards intro is a single short sentence; let it use the full column
+   so it sits on one line instead of wrapping at the body measure. */
+#standards > p { max-width: none; }
+
 .section-head {
   display: flex;
   align-items: baseline;
@@ -775,7 +779,9 @@ pre code {
 }
 
 .install-path h3 { margin: 0 0 0.4rem; font-size: 1.1rem; }
-.install-path p { max-width: 62ch; margin: 0.4rem 0; }
+/* These paragraphs are short captions introducing a code block; let them fill
+   the column so each fits on one line rather than wrapping at the body measure. */
+.install-path p { margin: 0.4rem 0; }
 .install-path pre { max-width: 46rem; }
 
 /* ---------- governance ---------- */
