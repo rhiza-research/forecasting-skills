@@ -782,7 +782,9 @@ pre code {
 /* These paragraphs are short captions introducing a code block; let them fill
    the column so each fits on one line rather than wrapping at the body measure. */
 .install-path p { margin: 0.4rem 0; }
-.install-path pre { max-width: 46rem; }
+.install-path pre {
+  max-width: 52rem;
+}
 
 /* ---------- governance ---------- */
 
