@@ -248,39 +248,11 @@ pre code {
   font-size: 0.9rem;
 }
 
-/* ---------- demo band ---------- */
-
-.demo {
-  border-bottom: 1px solid var(--rule);
-  background: var(--paper-deep);
-}
-
-.demo-inner {
-  max-width: 62rem;
-  margin: 0 auto;
-  padding: 2.75rem 1.25rem;
-}
-
-.demo-caption {
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--ink-soft);
-  margin: 0 0 1.25rem;
-  max-width: 74ch;
-}
-
-.demo-eyebrow {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--accent-deep);
-  margin-right: 0.6rem;
-}
+/* ---------- demo: replayed agent session ---------- */
 
 /* The replay "screen": a framed card holding the scrolling chat thread. */
 .demo-stage {
+  margin-top: 1.5rem;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: var(--paper);
