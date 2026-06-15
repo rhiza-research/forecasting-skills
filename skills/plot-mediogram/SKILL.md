@@ -4,7 +4,7 @@ description: Render an ECMWF-style mediogram PNG comparing a forecast ensemble a
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: visualization
 ---
 

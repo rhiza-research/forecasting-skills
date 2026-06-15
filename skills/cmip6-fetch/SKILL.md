@@ -4,7 +4,7 @@ description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipita
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads the public Pangeo CMIP6 collection from Google Cloud (gs://cmip6) over anonymous access; no credentials required.
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   catalog-group: fetchers
 ---
 

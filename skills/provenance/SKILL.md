@@ -4,7 +4,7 @@ description: Inspect the weather_skills_history provenance chain stamped on a we
 license: MIT
 compatibility: Requires Python 3.12 and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: agent-tooling
 ---
 

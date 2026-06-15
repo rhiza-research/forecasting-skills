@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.11"
+_SKILL_VERSION = "0.1.12"
 
 
 def _cf_dim(obj, cf_name):

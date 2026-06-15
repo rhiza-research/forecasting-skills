@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.8"
 
 
 def _parse_chain(raw: str) -> list:

@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.1.9"
 
 # Coords dynamical attaches that are not part of the weather-skills envelope: forecast
 # bookkeeping (valid_time, *_forecast_length) and the CRS scalar (spatial_ref).

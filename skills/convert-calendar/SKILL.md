@@ -4,7 +4,7 @@ description: Convert a weather-skills envelope Zarr's time axis to a target CF c
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   catalog-group: transforms
 ---
 

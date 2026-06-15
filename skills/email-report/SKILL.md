@@ -4,7 +4,7 @@ description: Assemble an email message with optional file attachments and write 
 license: MIT
 compatibility: Requires Python 3.12 and uv. Stdlib only.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   catalog-group: agent-tooling
 ---
 

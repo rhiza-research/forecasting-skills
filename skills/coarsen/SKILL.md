@@ -4,7 +4,7 @@ description: Coarsen or align a weather-skills envelope Zarr by linearly interpo
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: transforms
 ---
 

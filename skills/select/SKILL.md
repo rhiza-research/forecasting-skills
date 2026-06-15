@@ -4,7 +4,7 @@ description: Select entries along one named dimension of a weather-skills envelo
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: transforms
 ---
 

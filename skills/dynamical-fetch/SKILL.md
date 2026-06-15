@@ -4,7 +4,7 @@ description: Fetch a dataset from the dynamical.org open weather catalog (GFS, G
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 metadata:
-  version: "0.1.8"
+  version: "0.1.9"
   catalog-group: fetchers
 ---
 
