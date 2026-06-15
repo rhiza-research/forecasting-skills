@@ -358,7 +358,10 @@ pre code {
   border-radius: 4px;
   background: color-mix(in srgb, var(--paper-deep) 60%, transparent);
   padding: 0.5rem 0.75rem;
-  max-width: 46ch;
+  /* Size to the widest step label so each fits on one line, capped at the
+     thread width rather than a fixed measure. */
+  width: fit-content;
+  max-width: 100%;
 }
 
 .dm-tools-head {
