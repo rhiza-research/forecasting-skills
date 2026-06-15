@@ -59,7 +59,7 @@
       label: "imerg_sen_weekly.png",
       alt: "Three-panel weekly IMERG precipitation map for Senegal, May 24 to June 13 2026, masked to the country border.",
     },
-    { type: "user", text: "Can you also include rain in the Gambia?" },
+    { type: "user", text: "Can you also include rain in The Gambia?" },
     { type: "say", html: "The Gambia is fully enclosed within Senegal, so the existing clip already covers it spatially — I just need to re-plot with an expanded mask that includes both countries." },
     {
       type: "tools",
