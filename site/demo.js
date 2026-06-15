@@ -83,12 +83,11 @@
   var TYPE_MIN = 26; // fastest per-character delay when typing a question (ms)
   var TYPE_VAR = 46; // added random jitter per character (ms)
   var SUBMIT_PAUSE = 480; // pause after typing finishes, before submitting (ms)
-  var END_HOLD = 4200; // pause on the final frame before looping (ms)
-  var FADE = 480; // cross-fade when restarting (ms)
 
-  // Composer elements, resolved once in start().
+  // Composer and control elements, resolved once in start().
   var composerText = null;
   var sendBtn = null;
+  var replayBtn = null;
   var placeholder = "";
 
   function el(tag, cls, html) {
@@ -263,21 +262,28 @@
     thread.scrollTop = 0;
   }
 
-  function runLoop(thread) {
+  // Playback finished: hand scroll control to the user and offer a replay.
+  function finish(thread) {
+    thread.classList.add("dm-scrollable");
+    follow(thread);
+    if (replayBtn) replayBtn.hidden = false;
+  }
+
+  function replay(thread) {
+    if (replayBtn) replayBtn.hidden = true;
+    thread.classList.remove("dm-scrollable");
+    thread.textContent = "";
+    thread.scrollTop = 0;
+    if (composerText) composerText.textContent = placeholder;
+    playOnce(thread);
+  }
+
+  // Play the transcript through once, then stop on the finished thread.
+  function playOnce(thread) {
     var idx = 0;
     function step() {
       if (idx >= EVENTS.length) {
-        setTimeout(function () {
-          thread.classList.add("dm-fade");
-          setTimeout(function () {
-            thread.textContent = "";
-            thread.scrollTop = 0;
-            thread.classList.remove("dm-fade");
-            if (composerText) composerText.textContent = placeholder;
-            idx = 0;
-            step();
-          }, FADE);
-        }, END_HOLD);
+        finish(thread);
         return;
       }
       var ev = EVENTS[idx];
@@ -310,7 +316,18 @@
       renderStaticAll(thread);
       return;
     }
-    // Only start once the stage scrolls into view.
+
+    // A Replay control, hidden until the first run finishes.
+    var screen = stage.querySelector(".demo-screen");
+    if (screen) {
+      replayBtn = el("button", "demo-replay", "&#8635; Replay");
+      replayBtn.type = "button";
+      replayBtn.hidden = true;
+      replayBtn.addEventListener("click", function () { replay(thread); });
+      screen.appendChild(replayBtn);
+    }
+
+    // Autoplay once when the stage scrolls into view.
     var started = false;
     if ("IntersectionObserver" in window) {
       var io = new IntersectionObserver(function (entries) {
@@ -318,13 +335,13 @@
           if (entry.isIntersecting && !started) {
             started = true;
             io.disconnect();
-            runLoop(thread);
+            playOnce(thread);
           }
         });
       }, { threshold: 0.25 });
       io.observe(stage);
     } else {
-      runLoop(thread);
+      playOnce(thread);
     }
   }
 

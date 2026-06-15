@@ -323,10 +323,32 @@ pre code {
   overflow: hidden;
   padding: 1.25rem 1.25rem 0.5rem;
   scroll-behavior: smooth;
-  transition: opacity 0.45s ease;
 }
 
-.demo-thread.dm-fade { opacity: 0; }
+/* Once playback finishes, the user can scroll the thread to reread. */
+.demo-thread.dm-scrollable { overflow-y: auto; }
+
+.demo-replay {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent-deep);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.demo-replay:hover { background: var(--paper); border-color: var(--accent); }
+.demo-replay[hidden] { display: none; }
 
 .dm-row { margin-bottom: 1rem; }
 
