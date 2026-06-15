@@ -59,7 +59,14 @@ GROUPS: list[tuple[str, str, str | None]] = [
 ]
 
 # Files copied verbatim from site/ into the output directory.
-STATIC_FILES = ("style.css", "CNAME", "404.html")
+STATIC_FILES = (
+    "style.css",
+    "CNAME",
+    "404.html",
+    "demo.js",
+    "demo_sen_weekly.png",
+    "demo_sen_gmb_weekly.png",
+)
 
 # Written into the output directory so a later build can recognize the
 # directory as its own prior output and clean it safely.
