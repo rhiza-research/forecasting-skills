@@ -39,7 +39,7 @@ Initiated by Rhiza Research.
 | `unit-convert` | Convert a variable to target `--to-units` (e.g. precip flux `kg m-2 s-1` → depth rate `mm/day`, via a liquid-water density bridge) |
 | `downscale` | Spatial downscaling onto a finer grid (by factor, finer resolution, or a reference grid) via `--method` (linear-interpolation or q-q empirical quantile mapping) |
 | `coarsen` | Coarsen or align a grid by linear interpolation onto a target `(resolution, offset)` — geometry only, adds no information |
-| `rename` | Rename a data variable so obs and forecast inputs share a name before `concat` |
+| `rename` | Rename a data variable to a new name |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
 | `reduce` | Collapse named dims with a statistic (mean/std/min/max/sum/median) — e.g. ensemble spread as the std across `number`, or a time-mean baseline |
 | `difference` | Subtract one envelope from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |

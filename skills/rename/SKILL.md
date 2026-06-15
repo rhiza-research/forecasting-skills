@@ -1,6 +1,6 @@
 ---
 name: rename
-description: Rename a data variable in a weather-skills envelope Zarr so obs and forecast inputs share a name before concat.
+description: Rename one data variable in a weather-skills envelope Zarr to a new name, writing a new envelope. The renamed variable keeps its values and attributes; all other variables, coordinates, and dimensions pass through unchanged.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 metadata:
@@ -17,12 +17,9 @@ dimensions are out of scope; only a data variable is renamed.
 
 ## When to use
 
-- Obs and forecast sources name the same physical quantity differently — IMERG
-  writes `precip`, IFS writes `precipitation_surface` — and `concat` requires
-  matching variable names across inputs. Rename each input's variable to a
-  shared name, then concatenate.
-- Any time a downstream consumer expects a specific variable name that the input
-  does not already carry.
+- A data variable needs a different name.
+- Two datasets carry the same quantity under different variable names and need
+  to match.
 
 ## Usage
 
