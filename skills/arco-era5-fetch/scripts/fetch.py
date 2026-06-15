@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.1.7"
 
 # Public, credential-free ARCO-ERA5 analysis-ready store: 0.25 deg equiangular
 # lat/lon, hourly, dims (time, latitude, longitude, level). Opened anonymously.
@@ -607,13 +607,34 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # `latest` resolves from the store's own time coord max; memoized so it is
-    # read at most once and only when a token references `latest`.
+    # `latest` resolves to the newest date that actually has data. The store's
+    # `time` coordinate is pre-allocated far into the future (empty placeholder
+    # slots out to ~2050), so its max is not the data edge. The real extent is
+    # published in the store's global attrs: `valid_time_stop_era5t` marks the
+    # near-real-time (ERA5T) edge and `valid_time_stop` the finalized-ERA5 edge.
+    # Both are inclusive (data exists through that date); the near-real-time edge
+    # is preferred. Fall back to the time-coord max only if neither attr is
+    # present or parseable. Memoized so it is computed at most once and only when
+    # a token references `latest`. These marker attrs are trusted as the data
+    # edge and are not cross-checked against the actually-filled `time` slots, so
+    # in the rare case the store publishes a marker ahead of its written data, a
+    # `latest`-anchored request resolves to a date with no time steps and exits
+    # with the existing clean "no data in <start>..<end>" error rather than
+    # silently returning wrong data.
     _latest_cache: dict = {}
 
     def _latest() -> date:
         if "v" not in _latest_cache:
-            _latest_cache["v"] = _np_to_date(ds["time"].values.max())
+            for attr in ("valid_time_stop_era5t", "valid_time_stop"):
+                raw = ds.attrs.get(attr)
+                if raw and _ABS_DATE_RE.match(str(raw).strip()):
+                    try:
+                        _latest_cache["v"] = date.fromisoformat(str(raw).strip())
+                        break
+                    except ValueError:
+                        pass
+            else:
+                _latest_cache["v"] = _np_to_date(ds["time"].values.max())
         return _latest_cache["v"]
 
     start_date, end_date, log_line = _resolve_window(args.start, args.end, _latest)

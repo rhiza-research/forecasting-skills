@@ -4,7 +4,7 @@ description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, press
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads the public ARCO-ERA5 analysis-ready Zarr from Google Cloud (gs://gcp-public-data-arco-era5) over anonymous access; no credentials required.
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
   catalog-group: fetchers
 ---
 
@@ -37,7 +37,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date>
 - `--start`, `--end` — inclusive date range. Each value is one of:
   - an absolute ISO date `YYYY-MM-DD`;
   - `now` or `today` — the current UTC date;
-  - `latest` — the newest date present in the store (read from its `time` coord);
+  - `latest` — the newest date with available data;
   - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
     days). The offset is capped at 36525 days; a larger value, a future `+`
     offset, a month/year unit, or any malformed value exits 2 before any network
