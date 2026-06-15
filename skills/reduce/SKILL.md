@@ -4,7 +4,7 @@ description: Collapse one or more named dimensions of a weather-skills envelope 
 license: MIT
 compatibility: Requires Python 3.12+ and uv.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: transforms
 ---
 

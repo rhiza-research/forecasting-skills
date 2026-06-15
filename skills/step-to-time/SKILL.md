@@ -4,7 +4,7 @@ description: Realize a forecast envelope's `step` lead-time axis as wall-clock v
 license: MIT
 compatibility: Requires Python 3.12+ and uv.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: transforms
 ---
 

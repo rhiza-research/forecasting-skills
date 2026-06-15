@@ -4,7 +4,7 @@ description: Convert one data variable in a weather-skills envelope Zarr to a ta
 license: MIT
 compatibility: Requires Python 3.12+ and uv.
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   catalog-group: transforms
 ---
 

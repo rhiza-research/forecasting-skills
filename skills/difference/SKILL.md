@@ -4,7 +4,7 @@ description: Subtract one weather-skills envelope Zarr from another (A − B) wi
 license: MIT
 compatibility: Requires Python 3.12+ and uv.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: transforms
 ---
 
