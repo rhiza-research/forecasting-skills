@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12,<3.13"
 # dependencies = []
 # ///
 """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""

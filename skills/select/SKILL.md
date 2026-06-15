@@ -32,7 +32,7 @@ through unchanged. Works on gridded and station envelopes alike.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py --input <in.zarr> --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py --input <in.zarr> --output <out.zarr> \
     --dim DIM (--index N [--index N ...] | --value V [--value V ...])
 ```
 
@@ -117,9 +117,9 @@ outputs along a new `model` dim with the `concat` skill
 (`--dim model --coords ECMWF,GFS`):
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/ecmwf_weekly.zarr -o /tmp/ecmwf_w1.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/ecmwf_weekly.zarr -o /tmp/ecmwf_w1.zarr \
     --dim step --index 0
-uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/gfs_weekly.zarr -o /tmp/gfs_w1.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/gfs_weekly.zarr -o /tmp/gfs_w1.zarr \
     --dim step --index 0
 ```
 

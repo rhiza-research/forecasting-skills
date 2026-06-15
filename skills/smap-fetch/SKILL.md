@@ -33,7 +33,7 @@ skill is built for a bounded `--bbox` over a short window — pass `--bbox`.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
 ```
 
 Requires Earthdata credentials in the environment (`EARTHDATA_USERNAME` /
@@ -142,10 +142,10 @@ not RAM, bounds the window. Keep the window short and `--bbox` tight, and run th
 
 ```bash
 # Soil moisture over a Horn-of-Africa bbox for two days (AM overpass)
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start 2024-06-01 --end 2024-06-02 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start 2024-06-01 --end 2024-06-02 \
   -o /tmp/smap.zarr
 
 # A bounded bbox over the last week ending at the newest available granule, PM overpass
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start latest-1w --end latest \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start latest-1w --end latest \
   --overpass PM -o /tmp/smap_pm.zarr
 ```

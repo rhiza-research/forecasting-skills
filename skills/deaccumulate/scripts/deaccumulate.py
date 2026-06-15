@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "cf-xarray>=0.11",
 #   "cftime>=1.6",

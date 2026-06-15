@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "cftime",
 #   "xarray",
@@ -10,7 +10,7 @@
 # ]
 #
 # [tool.uv.sources]
-# tahmo = { git = "https://github.com/rhiza-research/tahmo-api" }
+# tahmo = { git = "https://github.com/rhiza-research/tahmo-api", rev = "8ed3adc22b5b7c53d08753e45676e9d4a0a52ab8" }
 # ///
 """Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr.
 

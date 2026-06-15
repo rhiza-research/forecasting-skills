@@ -39,7 +39,7 @@ a message to select a single init first.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py --input <in.zarr> --output <out.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py --input <in.zarr> --output <out.zarr>
 ```
 
 ### Arguments
@@ -90,5 +90,5 @@ input misses).
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py -i /tmp/ecmwf_daily.zarr -o /tmp/ecmwf_valid.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py -i /tmp/ecmwf_daily.zarr -o /tmp/ecmwf_valid.zarr
 ```

@@ -29,7 +29,7 @@ For two-dataset comparisons, use the `plot-compare` skill.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> \
     [--variable NAME] [--style heatmap|timeseries] \
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
@@ -122,20 +122,20 @@ exiftool out.png
 
 Multi-step forecast panel:
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
     --variable tp --style heatmap --colormap magma --title "S2S precip"
 ```
 
 Multi-step forecast panel with a custom precipitation palette:
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
     --variable tp --style heatmap \
     --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple
 ```
 
 Single-step map with cities and an explicit extent:
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf_step0.png \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf_step0.png \
     --variable tp --index step=0 \
     --extent 11,29,-30,-15 \
     --cities '{"Windhoek": [-22.55, 17.08]}'
@@ -143,12 +143,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ec
 
 Country-shaped map masked to a boundary polygon:
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/chirps_kenya.zarr -o /tmp/kenya.png \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/chirps_kenya.zarr -o /tmp/kenya.png \
     --variable precip --bbox 5.0/33.9/-4.7/41.9 --mask-geojson /tmp/kenya.geojson
 ```
 
 Time series:
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ts.png \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ts.png \
     --variable tp --style timeseries
 ```

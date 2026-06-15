@@ -28,7 +28,7 @@ Not for reanalysis, climatology, or deterministic HRES — this skill is S2S onl
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --output <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --output <path.zarr>
 ```
 
 ### Arguments
@@ -96,19 +96,19 @@ records the run's flag values under underscored names (e.g. a flag
 ## Examples
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/59 --output /tmp/ecmwf.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/59 --output /tmp/ecmwf.zarr
 ```
 
 ```bash
 # Fetch over a country: get its bbox from the resolve-region skill (e.g. KEN → 5.5/33.9/-4.7/41.9)
 BBOX=5.5/33.9/-4.7/41.9
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox "$BBOX" --output /tmp/ecmwf_kenya.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox "$BBOX" --output /tmp/ecmwf_kenya.zarr
 ```
 
 ```bash
 # Newest available init (slow: probes init dates backward via ECDS submits)
 # (bbox from the resolve-region skill, e.g. KEN)
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date latest --bbox 5.5/33.9/-4.7/41.9 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date latest --bbox 5.5/33.9/-4.7/41.9 \
     --output /tmp/ecmwf_latest.zarr
 ```
 

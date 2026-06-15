@@ -24,7 +24,7 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
     --period daily|weekly|dekadal|monthly [--method sum|mean|max|min] \
     [--variable VAR ...] [--time-dim DIM] [--anchor-end YYYY-MM-DD]
 ```
@@ -114,7 +114,7 @@ entry's `skill`, `args`, and `input` to match the proposed new entry.
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ### Step coordinate convention
@@ -147,7 +147,7 @@ fixed-width windows, not calendar months. Without `--anchor-end`,
 Example — anchor the last weekly bin to end on 2026-05-12:
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py -i /tmp/imerg.zarr -o /tmp/imerg_weekly.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/aggregate.py -i /tmp/imerg.zarr -o /tmp/imerg_weekly.zarr \
     --period weekly --method sum --anchor-end 2026-05-12
 ```
 
@@ -161,11 +161,11 @@ accumulated variable double-counts earlier steps and inflates totals.
 ## Examples
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py -i /tmp/imerg.zarr -o /tmp/imerg_dekadal.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/aggregate.py -i /tmp/imerg.zarr -o /tmp/imerg_dekadal.zarr \
     --period dekadal --method sum
 ```
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_weekly.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/aggregate.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_weekly.zarr \
     --period weekly --method sum
 ```

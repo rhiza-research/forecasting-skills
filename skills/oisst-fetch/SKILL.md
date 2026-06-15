@@ -26,7 +26,7 @@ window rather than whole yearly files, with no credentials.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox N/W/S/E] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox N/W/S/E] -o <path.zarr>
 ```
 
 ### Arguments
@@ -130,10 +130,10 @@ by `--help`. Inspect a written output's provenance with the `provenance` skill.
 
 ```bash
 # SST over the seas around East Africa for three days
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start 2024-06-01 --end 2024-06-03 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start 2024-06-01 --end 2024-06-03 \
   -o /tmp/oisst.zarr
 
 # Last 3 weeks ending at the newest available day, over a bounded region
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start latest-3w --end latest \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start latest-3w --end latest \
   -o /tmp/oisst_week.zarr
 ```

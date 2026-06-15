@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "cftime",
 #   "ecmwf-datastores-client==0.4.2",

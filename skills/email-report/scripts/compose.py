@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12,<3.13"
 # dependencies = []
 # ///
 """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""

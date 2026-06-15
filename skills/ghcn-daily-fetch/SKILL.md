@@ -36,7 +36,7 @@ For African stations with sub-daily sensor data, `tahmo-fetch` is an alternative
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start <date> --end <date> [-v VAR ...] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start <date> --end <date> [-v VAR ...] -o <path.zarr>
 ```
 
 ### Arguments
@@ -129,10 +129,10 @@ with the `provenance` skill.
 
 ```bash
 # Precip + max temperature for NYC-area stations over three days
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start 2024-06-01 --end 2024-06-03 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start 2024-06-01 --end 2024-06-03 \
   -v precip -v tmax -o /tmp/ghcn.zarr
 
 # Default variables (precip, tmax, tmin) over Kenya for the last 3 weeks
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5.5/33.9/-4.7/41.9 --start latest-3w --end latest \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5.5/33.9/-4.7/41.9 --start latest-3w --end latest \
   -o /tmp/ghcn_kenya.zarr
 ```

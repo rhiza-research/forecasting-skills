@@ -29,7 +29,7 @@ join on shared dims, broadcasting over dims present on only one side — so a
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/difference.py -i a.zarr -i b.zarr --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/difference.py -i a.zarr -i b.zarr --output <out.zarr> \
     [--variable VAR ...]
 ```
 
@@ -118,12 +118,12 @@ the baseline.
 ```bash
 # Field minus its time-mean baseline (the baseline produced by the reduce
 # skill), broadcast over time.
-uv run ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/sst.zarr -i /tmp/sst_baseline.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/sst.zarr -i /tmp/sst_baseline.zarr \
     --output /tmp/sst_anom.zarr
 ```
 
 ```bash
 # Projected change: scenario time-mean minus historical time-mean.
-uv run ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/ssp245_mean.zarr -i /tmp/historical_mean.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/ssp245_mean.zarr -i /tmp/historical_mean.zarr \
     --output /tmp/change_2050.zarr
 ```

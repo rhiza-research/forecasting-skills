@@ -72,7 +72,7 @@ end − bin_width + 1 day. Matches `aggregate-temporal` and
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--variable-a NAME] [--variable-b NAME] \
     [--colormap NAME] [--colormap-a NAME] [--colormap-b NAME] \
     [--shared-scale | --independent-scale] [--title TEXT] \
@@ -210,7 +210,7 @@ exiftool out.png
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i /tmp/tahmo_dekadal.zarr -i /tmp/imerg_dekadal.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i /tmp/tahmo_dekadal.zarr -i /tmp/imerg_dekadal.zarr \
     --variable precip --output /tmp/sat_vs_station.png \
     --title "IMERG vs TAHMO dekadal"
 ```
