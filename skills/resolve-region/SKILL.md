@@ -2,7 +2,7 @@
 name: resolve-region
 description: Resolve an ISO 3166-1 alpha-3 country code to a lat/lon bbox (and optionally a boundary polygon GeoJSON) from a bundled Natural Earth 1:110m admin-0 dataset. Use when you need to turn a country into a `--bbox N/W/S/E` value (or a polygon mask) for clip-region, ecmwf-fetch, plot, or plot-compare.
 license: MIT
-compatibility: Requires Python 3.10+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.5"
   catalog-group: agent-tooling

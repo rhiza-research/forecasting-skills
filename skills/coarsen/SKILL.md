@@ -2,7 +2,7 @@
 name: coarsen
 description: Coarsen or align a weather-skills envelope Zarr by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
 license: MIT
-compatibility: Requires Python 3.10+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
   version: "0.1.7"
   catalog-group: transforms
