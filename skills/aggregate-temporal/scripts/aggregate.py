@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "cf-xarray",
 #   "cftime",
@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.1.11"
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}

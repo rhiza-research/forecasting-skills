@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "xarray",
 #   "zarr",
@@ -40,7 +40,7 @@ import requests
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.5"
+_SKILL_VERSION = "0.1.6"
 
 _API_BASE = "https://api.openaq.org/v3"
 HTTP_TIMEOUT = 60

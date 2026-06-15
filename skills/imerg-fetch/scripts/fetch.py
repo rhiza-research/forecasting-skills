@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "cftime",
 #   "earthaccess",
@@ -26,7 +26,7 @@ import earthaccess
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.1.11"
 
 SHORTNAMES = {
     "late": "GPM_3IMERGDL",

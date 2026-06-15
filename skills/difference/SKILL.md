@@ -2,9 +2,9 @@
 name: difference
 description: Subtract one weather-skills envelope Zarr from another (A − B) with xarray inner-join alignment and broadcasting — e.g. anomalies as a field minus its baseline mean, or a scenario-minus-historical change map. Use whenever two envelopes must be compared cell-by-cell as a difference field.
 license: MIT
-compatibility: Requires Python 3.12+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   catalog-group: transforms
 ---
 
@@ -29,7 +29,7 @@ join on shared dims, broadcasting over dims present on only one side — so a
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/difference.py -i a.zarr -i b.zarr --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/difference.py -i a.zarr -i b.zarr --output <out.zarr> \
     [--variable VAR ...]
 ```
 
@@ -118,12 +118,12 @@ the baseline.
 ```bash
 # Field minus its time-mean baseline (the baseline produced by the reduce
 # skill), broadcast over time.
-uv run ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/sst.zarr -i /tmp/sst_baseline.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/sst.zarr -i /tmp/sst_baseline.zarr \
     --output /tmp/sst_anom.zarr
 ```
 
 ```bash
 # Projected change: scenario time-mean minus historical time-mean.
-uv run ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/ssp245_mean.zarr -i /tmp/historical_mean.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/difference.py -i /tmp/ssp245_mean.zarr -i /tmp/historical_mean.zarr \
     --output /tmp/change_2050.zarr
 ```

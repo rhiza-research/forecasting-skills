@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "xarray",
 #   "zarr",
@@ -26,7 +26,7 @@ import numpy as np
 import xarray as xr
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.4"
+_SKILL_VERSION = "0.1.5"
 
 # --- Source -> output transforms ---
 #

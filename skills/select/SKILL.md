@@ -2,9 +2,9 @@
 name: select
 description: Select entries along one named dimension of a weather-skills envelope Zarr, by integer position or by coordinate value. A single selection collapses the dimension and drops the coordinates it leaves scalar, so outputs from different sources are ready to concat — e.g. pick the same forecast week from several model envelopes before merging them along a new model dim.
 license: MIT
-compatibility: Requires Python 3.12+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   catalog-group: transforms
 ---
 
@@ -32,7 +32,7 @@ through unchanged. Works on gridded and station envelopes alike.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py --input <in.zarr> --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py --input <in.zarr> --output <out.zarr> \
     --dim DIM (--index N [--index N ...] | --value V [--value V ...])
 ```
 
@@ -117,9 +117,9 @@ outputs along a new `model` dim with the `concat` skill
 (`--dim model --coords ECMWF,GFS`):
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/ecmwf_weekly.zarr -o /tmp/ecmwf_w1.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/ecmwf_weekly.zarr -o /tmp/ecmwf_w1.zarr \
     --dim step --index 0
-uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/gfs_weekly.zarr -o /tmp/gfs_w1.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/gfs_weekly.zarr -o /tmp/gfs_w1.zarr \
     --dim step --index 0
 ```
 

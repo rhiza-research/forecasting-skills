@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "cftime",
 #   "requests",
@@ -222,7 +222,7 @@ class DayUnavailable(Exception):
 
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.15"
+_SKILL_VERSION = "0.1.16"
 
 
 def _load_history(zarr_path: Path) -> list:

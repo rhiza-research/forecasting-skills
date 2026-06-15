@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "cartopy",
 #   "cf-xarray",
@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.12"
+_SKILL_VERSION = "0.1.13"
 
 
 def _lat_slice(lat_vals, north, south):

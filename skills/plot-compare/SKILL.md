@@ -2,9 +2,9 @@
 name: plot-compare
 description: Render a side-by-side multi-panel comparison PNG of two weather-skills envelope Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC.
 license: MIT
-compatibility: Requires Python 3.10+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.12"
+  version: "0.1.13"
   catalog-group: visualization
 ---
 
@@ -72,7 +72,7 @@ end − bin_width + 1 day. Matches `aggregate-temporal` and
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--variable-a NAME] [--variable-b NAME] \
     [--colormap NAME] [--colormap-a NAME] [--colormap-b NAME] \
     [--shared-scale | --independent-scale] [--title TEXT] \
@@ -210,7 +210,7 @@ exiftool out.png
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i /tmp/tahmo_dekadal.zarr -i /tmp/imerg_dekadal.zarr \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i /tmp/tahmo_dekadal.zarr -i /tmp/imerg_dekadal.zarr \
     --variable precip --output /tmp/sat_vs_station.png \
     --title "IMERG vs TAHMO dekadal"
 ```

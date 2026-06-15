@@ -2,9 +2,9 @@
 name: email-report
 description: Assemble an email message with optional file attachments and write it to disk as a standards-compliant .eml file. Mocks actual SMTP delivery — does not send. Use at the end of a pipeline to materialize what would have been sent.
 license: MIT
-compatibility: Requires Python 3.10+ and uv. Stdlib only.
+compatibility: Requires Python 3.12 and uv. Stdlib only.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   catalog-group: agent-tooling
 ---
 
@@ -20,7 +20,7 @@ Produces an RFC 5322 message (`.eml`) from the provided metadata and attachments
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/compose.py --from SENDER --to "a@x,b@y" --subject "..." \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/compose.py --from SENDER --to "a@x,b@y" --subject "..." \
     --body-file BODY.txt --output <mail.eml> [--attach f1 f2 ...] \
     [--reply-to ADDR] [--cc "c@z,..."]
 ```
@@ -43,7 +43,7 @@ A single `.eml` file on disk. It includes multipart/mixed boundaries, correctly 
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/compose.py --from "Sender <sender@example.com>" \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/compose.py --from "Sender <sender@example.com>" \
     --to "recipient1@example.com,recipient2@example.com" \
     --subject "Daily Outlook" --body-file body.txt \
     --attach /tmp/weekly.png /tmp/dekadal.png \

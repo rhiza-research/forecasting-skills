@@ -2,9 +2,9 @@
 name: clip-region
 description: Spatially subset a gridded weather-skills envelope Zarr to an explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a custom bounding box before downstream aggregation or plotting. To clip to a country, get its bbox from the resolve-region skill first.
 license: MIT
-compatibility: Requires Python 3.10+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.8"
+  version: "0.1.9"
   catalog-group: transforms
 ---
 
@@ -22,7 +22,7 @@ Does **not** clip station-schema envelopes (station_id-indexed). For stations, f
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
     --bbox N/W/S/E [--dims LAT,LON]
 ```
 
@@ -59,7 +59,7 @@ entry's `skill`, `args`, and `input` to match the proposed new entry.
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Example
@@ -67,5 +67,5 @@ translate underscore → hyphen.
 ```bash
 # Get BBOX from the resolve-region skill for your country (e.g. KEN → 5.5/33.9/-4.7/41.9):
 BBOX=5.5/33.9/-4.7/41.9
-uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --bbox "$BBOX"
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --bbox "$BBOX"
 ```

@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12,<3.13"
 # dependencies = []
 # ///
 """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.5"
+_SKILL_VERSION = "0.1.6"
 
 
 def _iter_coords(coords):

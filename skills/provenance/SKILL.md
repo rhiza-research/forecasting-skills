@@ -2,9 +2,9 @@
 name: provenance
 description: Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact (an envelope Zarr or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
 license: MIT
-compatibility: Requires Python 3.10+ and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
+compatibility: Requires Python 3.12 and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: agent-tooling
 ---
 
@@ -30,7 +30,7 @@ writes a file or modifies its input.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py --input <artifact> [--format human|json|script] [--check]
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py --input <artifact> [--format human|json|script] [--check]
 ```
 
 ### Arguments
@@ -119,7 +119,7 @@ Exit codes:
 
 ```bash
 # Validate that a freshly produced artifact conforms to the schema.
-uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.zarr --check
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.zarr --check
 ```
 
 ## Reproduction-script caveats
@@ -137,11 +137,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.zarr --check
 
 ```bash
 # Human-readable lineage of a clipped forecast zarr.
-uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/ecmwf_kenya.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/ecmwf_kenya.zarr
 
 # Raw chain as JSON.
-uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format json
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format json
 
 # Reproduction script, saved by the user via redirect.
-uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format script > repro.sh
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format script > repro.sh
 ```

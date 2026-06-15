@@ -2,9 +2,9 @@
 name: chirps-fetch
 description: Fetch CHIRPS precipitation observations for a date range — the validated final product back to 1998, with a preliminary fallback for very recent days — and write a weather-skills envelope Zarr. Use when a task needs CHIRPS rainfall, recent or historical, e.g. to compare against a forecast or station data, or to build a reference period.
 license: MIT
-compatibility: Requires Python 3.12+ and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
+compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
 metadata:
-  version: "0.1.15"
+  version: "0.1.16"
   catalog-group: fetchers
 ---
 
@@ -22,7 +22,7 @@ Coverage starts in 1998 (CHIRPS v3.0 `sat`); dates before 1998 are unavailable a
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
@@ -83,8 +83,8 @@ output's provenance with the `provenance` skill.
 
 ```bash
 # Absolute window (inclusive both ends)
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-02-15 --output /tmp/chirps.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-02-15 --output /tmp/chirps.zarr
 
 # Last 3 weeks ending at the newest available CHIRPS day (duration idiom: 21 days incl. latest)
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start latest-3w --end latest --output /tmp/chirps.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start latest-3w --end latest --output /tmp/chirps.zarr
 ```

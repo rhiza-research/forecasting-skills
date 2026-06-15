@@ -2,9 +2,9 @@
 name: step-to-time
 description: Realize a forecast envelope's `step` lead-time axis as wall-clock valid times (`time = init + step`), replacing the `step` dim with a `time` dim. Use it to compare a forecast against observations — e.g. before plot-compare, plot-timeseries, or difference against a time-based dataset.
 license: MIT
-compatibility: Requires Python 3.12+ and uv.
+compatibility: Requires Python 3.12 and uv.
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   catalog-group: transforms
 ---
 
@@ -39,7 +39,7 @@ a message to select a single init first.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py --input <in.zarr> --output <out.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py --input <in.zarr> --output <out.zarr>
 ```
 
 ### Arguments
@@ -90,5 +90,5 @@ input misses).
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py -i /tmp/ecmwf_daily.zarr -o /tmp/ecmwf_valid.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py -i /tmp/ecmwf_daily.zarr -o /tmp/ecmwf_valid.zarr
 ```

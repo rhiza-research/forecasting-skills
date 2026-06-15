@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "cftime>=1.6",
 #   "xarray>=2026.4",
@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.4"
+_SKILL_VERSION = "0.1.5"
 
 
 def _hash_zarr(zarr_path: Path) -> str:

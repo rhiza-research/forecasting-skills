@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "xarray",
 #   "zarr",
@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.5"
+_SKILL_VERSION = "0.1.6"
 
 # Public, credential-free ARCO-ERA5 analysis-ready store: 0.25 deg equiangular
 # lat/lon, hourly, dims (time, latitude, longitude, level). Opened anonymously.

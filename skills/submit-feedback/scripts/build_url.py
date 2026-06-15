@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12,<3.13"
 # dependencies = []
 # ///
 """Build a length-checked prefilled GitHub "new issue" URL for filing feedback.
@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.1.7"
 
 # The target repository is fixed so feedback always lands in the right place and
 # the caller cannot direct it elsewhere by guessing a slug.

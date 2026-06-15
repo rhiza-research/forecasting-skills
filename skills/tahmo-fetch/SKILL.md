@@ -2,9 +2,9 @@
 name: tahmo-fetch
 description: Fetch TAHMO station observations for one or more African countries and write a weather-skills envelope Zarr (station schema). Use when a task needs in-situ station rainfall/temperature/humidity/pressure, e.g. to compare against gridded satellite or forecast data.
 license: MIT
-compatibility: Requires Python 3.11+ and uv. Installs the TAHMO Python SDK directly from GitHub (git+https://github.com/rhiza-research/tahmo-api) via uv script metadata. Requires TAHMO_API_USERNAME and TAHMO_API_PASSWORD in the environment.
+compatibility: Requires Python 3.12 and uv. Installs the TAHMO Python SDK directly from GitHub (git+https://github.com/rhiza-research/tahmo-api) via uv script metadata. Requires TAHMO_API_USERNAME and TAHMO_API_PASSWORD in the environment.
 metadata:
-  version: "0.1.10"
+  version: "0.1.11"
   catalog-group: fetchers
   openclaw:
     requires:
@@ -26,7 +26,7 @@ Downloads TAHMO station observations via the TAHMO SDK for the requested countri
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
@@ -82,16 +82,16 @@ workflow.
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Example
 
 ```bash
 # Absolute window (inclusive both ends)
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --country Ghana --start 2026-01-01 --end 2026-02-15 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --country Ghana --start 2026-01-01 --end 2026-02-15 \
     --output /tmp/tahmo.zarr
 
 # Last 3 weeks ending at the newest available observation (duration idiom: 21 days incl. latest)
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --start latest-3w --end latest --output /tmp/tahmo.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --start latest-3w --end latest --output /tmp/tahmo.zarr
 ```
