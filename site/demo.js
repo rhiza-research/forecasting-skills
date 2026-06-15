@@ -17,7 +17,7 @@
   "use strict";
 
   var EVENTS = [
-    { type: "user", text: "Can you fetch the last 3 weeks of IMERG data and Senegal and group it by week?" },
+    { type: "user", text: "Can you fetch the last 3 weeks of IMERG data in Senegal and group it by week?" },
     {
       type: "tools",
       title: "Viewed 3 files, ran a command",
