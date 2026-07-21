@@ -397,8 +397,8 @@ jobs:
   # skills/ -- nothing else from the repo (no demo/, tools/, CI, or tests).
   # marketplace.json sources the rhiza-forecasting plugin from this branch, so
   # installs never pull the repo's non-runtime content. One appended commit per
-  # merge (no force-push); the commit SHA is the plugin version, since
-  # plugin.json carries no `version`.
+  # merge (no force-push). The published manifest carries a `version` stamped by
+  # this job; the repo's own plugin.json has no `version` key.
   #
   # Sequencing: `needs: bump` so this runs after the bump commit lands, and the
   # checkout takes main's latest tip to capture it. The bot's `[skip ci]` bump
@@ -450,15 +450,68 @@ jobs:
           if git ls-remote --exit-code --heads origin plugin-dist >/dev/null 2>&1; then
             git fetch origin plugin-dist:plugin-dist
             git worktree add "$worktree" plugin-dist
-            cd "$worktree"
           else
             git worktree add --detach "$worktree"
-            cd "$worktree"
-            git checkout --orphan plugin-dist
+            git -C "$worktree" checkout --orphan plugin-dist
           fi
+
+          # Writes `version` into a manifest, leaving the file untouched when the
+          # version is empty (first publish, before anything has been stamped).
+          stamp_version() {
+            python3 -c '
+          import json
+          import sys
+
+          path, version = sys.argv[1], sys.argv[2]
+          if not version:
+              sys.exit(0)
+          with open(path) as fh:
+              manifest = json.load(fh)
+          manifest["version"] = version
+          with open(path, "w") as fh:
+              fh.write(json.dumps(manifest, indent=2) + "\n")
+          ' "$1" "$2"
+          }
+
+          # The version currently on plugin-dist. Deriving the next version from
+          # what actually shipped keeps the sequence monotonic by construction.
+          # github.run_number is unusable here: it is scoped to one workflow file
+          # and restarts at 1 if that file is renamed or recreated, which would
+          # publish a lower version and silently cut off updates for every
+          # installed user.
+          published=""
+          if [ -f "$worktree/.claude-plugin/plugin.json" ]; then
+            published="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("version", ""))' "$worktree/.claude-plugin/plugin.json")"
+          fi
+
+          # Version scheme: <year>.<month*100+day>.<counter>, e.g. 2026.721.0.
+          # Major sorts by year, minor by MMDD as a plain integer, and the
+          # counter breaks ties between two publishes on the same day. If the
+          # published version is dated at or ahead of today, its date is kept and
+          # the counter advanced, so the value never decreases.
+          next_version="$(python3 -c '
+          import datetime
+          import sys
+
+          prev = sys.argv[1].split(".")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          today = (now.year, now.month * 100 + now.day)
+          if len(prev) == 3 and all(part.isdigit() for part in prev):
+              year, mmdd, counter = (int(part) for part in prev)
+              if (year, mmdd) >= today:
+                  print(f"{year}.{mmdd}.{counter + 1}")
+                  sys.exit(0)
+          print(f"{today[0]}.{today[1]}.0")
+          ' "$published")"
+
+          # Compare under the version already published, so the version field
+          # itself cannot be what differs. Without this the payload would change
+          # on every run and a docs-only merge would publish a pointless commit.
+          stamp_version "$stage/.claude-plugin/plugin.json" "$published"
 
           # Replace tracked content with the staged payload, then commit only if
           # something actually changed.
+          cd "$worktree"
           git rm -rfq . >/dev/null 2>&1 || true
           cp -R "$stage"/. .
           git add -A
@@ -466,7 +519,19 @@ jobs:
             echo "plugin-dist already current; nothing to publish."
             exit 0
           fi
-          git commit -m "release: sync plugin-dist from ${GITHUB_SHA}"
+
+          # Something did change, so this is a real publish: stamp the new
+          # version and re-stage.
+          stamp_version .claude-plugin/plugin.json "$next_version"
+          git add -A
+
+          # Validate exactly what is about to ship. Run it from the worktree: at
+          # the repo root the sibling marketplace.json is picked up instead and
+          # the plugin manifest goes unchecked. Node and npm come with the runner
+          # image, so npx needs no setup-node and installs nothing persistent.
+          npx -y @anthropic-ai/claude-code@2.1.216 plugin validate . --strict
+
+          git commit -m "release: publish plugin ${next_version} from ${GITHUB_SHA}"
           # Append-only: a plain push (no --force). Fast-forwards because the
           # commit is based on plugin-dist's tip (or the branch is new).
           git push origin plugin-dist
