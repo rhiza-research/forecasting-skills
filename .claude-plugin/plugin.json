@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "rhiza-forecasting",
-  "displayName": "Rhiza Forecasting",
+  "displayName": "Weather Skills",
   "description": "Forecasting assistant agent plus weather and climate data skills.",
   "author": {
     "name": "Rhiza Research",
