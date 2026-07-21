@@ -123,6 +123,43 @@ Equivalently, you can skip the revert and just land a forward fix — a new
 commit that supersedes the bad release on top, which the workflow will bump
 to a new version. This is simpler when the bad state is recoverable in-place.
 
+## Plugin version
+
+The repo also ships as a Claude Code plugin. After a real merge, the `dist` job
+in `.github/workflows/version-bump.yml` copies the plugin payload —
+`.claude-plugin/plugin.json`, `agents/forecaster.md`, and `skills/` — onto the
+`plugin-dist` branch, which is the source `.claude-plugin/marketplace.json`
+installs from.
+
+The manifest in that payload carries a `version` stamped by the job. The
+committed `.claude-plugin/plugin.json` has no `version` key; the value exists
+only in what ships, so no contributor sets it by hand.
+
+The stamped value is `<year>.<month*100+day>.<counter>` — for example
+`2026.721.0` for the first publish on 21 July 2026. Major sorts by year, minor
+by `MMDD` read as a plain integer (`721` < `805` < `1231`), and the counter
+distinguishes two publishes on the same day.
+
+The counter is read from the version already on `plugin-dist` and incremented
+whenever that version's date is the current date or later. Deriving it from
+what shipped is what keeps the sequence strictly increasing, which the plugin
+system requires: a version that went backwards would leave every installed user
+pinned at the higher number, silently receiving no further updates.
+`github.run_number` is not usable here — it is scoped to a single workflow file
+and restarts at 1 if that file is renamed or recreated.
+
+The plugin version is independent of the `metadata.version` fields in
+`skills/<name>/SKILL.md`. It is not derived from any skill version or from a
+PR's `release:` label. It identifies a published snapshot of the whole payload;
+each skill version identifies that one skill.
+
+A merge that leaves the payload otherwise identical publishes nothing. The job
+compares the payload under the version already published, so a docs-only change
+produces no `plugin-dist` commit and no new plugin version. On a real change,
+the job runs `claude plugin validate . --strict` against the branch worktree
+before committing, so a payload that fails strict validation fails the job
+rather than shipping.
+
 ## Branch protection settings (configured manually by the maintainer)
 
 Configure these on `main` under Settings → Branches → Branch protection rules:
