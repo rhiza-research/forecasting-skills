@@ -145,8 +145,24 @@ whenever that version's date is the current date or later. Deriving it from
 what shipped is what keeps the sequence strictly increasing, which the plugin
 system requires: a version that went backwards would leave every installed user
 pinned at the higher number, silently receiving no further updates.
-`github.run_number` is not usable here — it is scoped to a single workflow file
-and restarts at 1 if that file is renamed or recreated.
+`github.run_number` is not a substitute. GitHub documents it as "a unique number
+for each run of a particular workflow in a repository", beginning at 1 for that
+workflow's first run and incrementing with each new run. That definition carries
+no guarantee that the counter never restarts, and the plugin version cannot
+depend on a property GitHub does not promise — so the counter is read from what
+actually shipped instead.
+
+If the version already on `plugin-dist` is not exactly three numeric components
+(for example `2026.721.10-hotfix`, or a value with a stray trailing space, or a
+`version` key that is not a JSON string), the job fails and names the offending
+value. Deriving a version from an unrecognized one risks going backwards, which
+is unrecoverable for anyone already installed. Repair
+`.claude-plugin/plugin.json` on `plugin-dist` and re-run.
+
+If that manifest cannot be read or parsed at all, the job logs a warning and
+proceeds as if nothing were published, stamping `<today>.0`. A hard failure
+there would abort identically on every subsequent run until someone repaired the
+branch by hand, so an unreadable manifest cannot wedge publishing.
 
 The plugin version is independent of the `metadata.version` fields in
 `skills/<name>/SKILL.md`. It is not derived from any skill version or from a

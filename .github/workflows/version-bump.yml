@@ -475,13 +475,93 @@ jobs:
 
           # The version currently on plugin-dist. Deriving the next version from
           # what actually shipped keeps the sequence monotonic by construction.
-          # github.run_number is unusable here: it is scoped to one workflow file
-          # and restarts at 1 if that file is renamed or recreated, which would
-          # publish a lower version and silently cut off updates for every
-          # installed user.
+          # github.run_number is not a substitute: GitHub documents it only as
+          # "a unique number for each run of a particular workflow in a
+          # repository", beginning at 1 for that workflow's first run and
+          # incrementing with each new run. Nothing in that definition
+          # guarantees the counter never restarts, and a restart would publish a
+          # lower version and silently cut off updates for every installed user.
+          #
+          # Three outcomes are distinguished:
+          #   - exit 0: the manifest parsed; stdout is the version (empty when
+          #     the manifest carries no `version` key).
+          #   - exit 3: a `version` key is present but is not a JSON string.
+          #     Non-conforming, so the job fails below rather than guessing.
+          #   - exit 4: the manifest is missing, unreadable, or not parseable
+          #     JSON. Treated as "no published version" with a loud warning: a
+          #     hard failure here would wedge every subsequent run identically
+          #     until someone repaired the branch by hand.
           published=""
-          if [ -f "$worktree/.claude-plugin/plugin.json" ]; then
-            published="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("version", ""))' "$worktree/.claude-plugin/plugin.json")"
+          manifest="$worktree/.claude-plugin/plugin.json"
+          if [ -f "$manifest" ]; then
+            if published="$(python3 - "$manifest" <<'PY'
+          import json
+          import sys
+
+          try:
+              with open(sys.argv[1]) as fh:
+                  manifest = json.load(fh)
+          except (OSError, ValueError) as exc:
+              print(f"{sys.argv[1]}: {exc}", file=sys.stderr)
+              raise SystemExit(4) from None
+          if not isinstance(manifest, dict):
+              print(f"{sys.argv[1]}: top-level JSON value is not an object", file=sys.stderr)
+              raise SystemExit(4)
+          version = manifest.get("version")
+          if version is None:
+              print("")
+          elif isinstance(version, str):
+              print(version)
+          else:
+              print(f"{sys.argv[1]}: version is {version!r}, not a JSON string", file=sys.stderr)
+              raise SystemExit(3)
+          PY
+          )"; then
+              read_rc=0
+            else
+              read_rc=$?
+            fi
+            case "$read_rc" in
+              0) ;;
+              3)
+                echo "::error::The plugin version published on plugin-dist is not a JSON string (see the message above). Refusing to publish: a version derived from it could go backwards and strand every installed user. Repair .claude-plugin/plugin.json on the plugin-dist branch."
+                exit 1
+                ;;
+              4)
+                echo "::warning::Could not read the plugin version published on plugin-dist (see the message above). Continuing as if nothing were published, which may republish a version lower than the unreadable one. Repair .claude-plugin/plugin.json on the plugin-dist branch."
+                published=""
+                ;;
+              *)
+                echo "::error::Reading the published plugin version failed unexpectedly (exit ${read_rc})."
+                exit 1
+                ;;
+            esac
+          fi
+
+          # A non-empty published version must be exactly three numeric
+          # components. Anything else (a suffix like `-hotfix`, a stray space, a
+          # missing component) is rejected rather than treated as unset: falling
+          # through to `<today>.0` can produce a version LOWER than what is
+          # published, which permanently strands every installed user.
+          if ! python3 - "$published" <<'PY'
+          import sys
+
+          published = sys.argv[1]
+          if not published:
+              raise SystemExit(0)
+          parts = published.split(".")
+          if len(parts) != 3 or not all(p.isascii() and p.isdigit() for p in parts):
+              print(
+                  f"::error::The plugin version published on plugin-dist is {published!r}, "
+                  "which is not <year>.<mmdd>.<counter> with three numeric components. "
+                  "Refusing to publish: a version derived from it could go backwards and "
+                  "strand every installed user. Repair .claude-plugin/plugin.json on the "
+                  "plugin-dist branch."
+              )
+              raise SystemExit(1)
+          PY
+          then
+            exit 1
           fi
 
           # Version scheme: <year>.<month*100+day>.<counter>, e.g. 2026.721.0.
