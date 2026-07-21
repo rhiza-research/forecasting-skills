@@ -183,7 +183,10 @@ validation fails the job rather than shipping. The CLI version is pinned so a
 validation failure reproduces locally under the same version the job ran.
 
 The call is retried up to three times with a 10-second pause, so a transient npm
-registry error does not fail an otherwise good release.
+registry error does not fail an otherwise good release. Each attempt is wrapped
+in `timeout 60`, so a hung npx fails that attempt instead of consuming the job's
+whole 5-minute budget: the loop's worst case is 200 seconds and the job still
+ends with a readable error rather than being killed mid-command.
 
 ## Branch protection settings (configured manually by the maintainer)
 

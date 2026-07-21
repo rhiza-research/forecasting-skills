@@ -615,13 +615,28 @@ jobs:
           #
           # Retry a few times: npx resolves the pinned package from the npm
           # registry on every run, so a transient registry error would otherwise
-          # fail a release whose payload is fine. Three attempts with a 10s pause
-          # between them add at most ~20s of waiting, well inside this job's
-          # 5-minute timeout. A payload that genuinely fails --strict fails all
-          # three attempts and then fails the job.
+          # fail a release whose payload is fine. A payload that genuinely fails
+          # --strict fails all three attempts and then fails the job.
+          #
+          # Each attempt is wrapped in `timeout` (coreutils, in the runner
+          # image's apt package set) so the retry loop has a bound the job's
+          # 5-minute timeout-minutes cannot be exceeded by. Without it, an npx
+          # that hangs against a degraded registry consumes the whole job budget
+          # inside one attempt and the job is killed mid-command with no
+          # diagnostic. The retry sleeps are not the dominant cost -- each
+          # attempt re-resolves and re-downloads the pinned package, which is
+          # what runs long when the registry is slow.
+          #
+          # Worst-case wall clock for the loop: 3 attempts x 60s, plus 2 sleeps
+          # of 10s, is 200s. That leaves ~100s of the job's 300s budget for
+          # checkout, the worktree setup, and the push. A healthy registry
+          # resolves and validates in a few seconds, so 60s is a wide margin
+          # around the normal case rather than a tight fit. `timeout` exits 124
+          # when it fires, which the loop treats as a failed attempt like any
+          # other non-zero exit.
           validate_attempts=0
           validate_max_attempts=3
-          until npx -y @anthropic-ai/claude-code@2.1.216 plugin validate . --strict; do
+          until timeout 60 npx -y @anthropic-ai/claude-code@2.1.216 plugin validate . --strict; do
             validate_attempts=$((validate_attempts + 1))
             if [ "$validate_attempts" -ge "$validate_max_attempts" ]; then
               echo "::error::plugin validate failed on all ${validate_attempts} attempts; not publishing."
