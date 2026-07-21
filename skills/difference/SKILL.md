@@ -3,6 +3,7 @@ name: difference
 description: Subtract one weather-skills envelope Zarr from another (A − B) with xarray inner-join alignment and broadcasting — e.g. anomalies as a field minus its baseline mean, or a scenario-minus-historical change map. Use whenever two envelopes must be compared cell-by-cell as a difference field.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/difference.py *)
 metadata:
   version: "0.1.5"
   catalog-group: transforms

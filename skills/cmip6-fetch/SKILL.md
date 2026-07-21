@@ -3,6 +3,7 @@ name: cmip6-fetch
 description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipitation) for a date range and region from the public, credential-free Pangeo Google Cloud catalog, and write a weather-skills envelope Zarr. Use when a task needs climate-projection grids (historical or future scenario) for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads the public Pangeo CMIP6 collection from Google Cloud (gs://cmip6) over anonymous access; no credentials required.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.5"
   catalog-group: fetchers

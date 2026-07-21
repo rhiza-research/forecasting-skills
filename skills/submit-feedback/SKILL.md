@@ -3,6 +3,7 @@ name: submit-feedback
 description: Build a prefilled GitHub new-issue link the user clicks to file feedback under their own GitHub account. You supply the title and body; the skill URL-encodes them and checks that the link fits GitHub's length limit. Use when a user wants to report a bug or suggestion about the skills.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Builds a URL string only; reads no credentials, makes no network request, and writes no file.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/build_url.py *)
 metadata:
   version: "0.1.7"
   catalog-group: agent-tooling
