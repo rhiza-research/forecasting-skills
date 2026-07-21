@@ -216,17 +216,44 @@ Every skill declares one pre-approved command in its `SKILL.md` frontmatter:
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/<script>.py *)
 ```
 
-The pattern is narrow in one dimension and wide in another. It names exactly one
-interpreter and one script path inside the skill's own directory, so the grant
-cannot be used to run an arbitrary program. But the trailing `*` matches any
-argument list, so an agent running under this grant invokes that script with any
-flags it chooses and no per-call prompt. Concretely, that means the following
-happen without confirmation:
+The pattern fixes the leading program and the script path: a matching command
+has to begin with `uv run --script` followed by that one script inside the
+skill's own directory. Everything after that is a single trailing `*`, which
+matches the whole argument tail, shell metacharacters included. Claude Code's
+[permission rules](https://code.claude.com/docs/en/permissions) split a command
+on the separators `&&`, `||`, `;`, `|`, `|&`, `&`, and newlines and require each
+subcommand to match a rule on its own, so the grant does not carry over to a
+chained second command. Beyond that split the argument tail is not parsed
+against the pattern: constructs that stay inside a single command, such as
+command substitution with `$(...)` and output redirection with `>`, are part of
+what the `*` matches. The same documentation warns that "Bash permission
+patterns that try to constrain command arguments are fragile." Read this grant
+as pinning down the program and the script, and not as a constraint on what the
+arguments can do.
 
-- **Network requests to data providers.** Fetchers reach their source over the
-  network — CHIRPS at `data.chc.ucsb.edu`, NASA Earthdata for IMERG and SMAP,
-  the ECMWF data stores, the TAHMO API, OpenAQ, and the dynamical.org catalog.
-  The `--bbox`, `--start`, and `--end` values decide how much is transferred.
+An agent running under the grant therefore invokes that script with any flags it
+chooses and no per-call prompt. The following happen without confirmation:
+
+- **Network requests to data providers.** Every fetcher reaches its source over
+  the network, and the `--bbox`, `--start`, and `--end` values decide how much
+  is transferred. Each fetcher and where it connects:
+
+  | Skill | Reaches |
+  |---|---|
+  | `arco-era5-fetch` | `gs://gcp-public-data-arco-era5/…` on Google Cloud Storage, read anonymously through `gcsfs` |
+  | `chirps-fetch` | `data.chc.ucsb.edu` |
+  | `cmip6-fetch` | the catalog at `storage.googleapis.com/cmip6/pangeo-cmip6.csv`, then the `gs://` store named by the matched catalog row, read anonymously through `gcsfs` |
+  | `dynamical-fetch` | the dynamical.org open catalog on AWS Open Data, through the `dynamical-catalog` library |
+  | `ecmwf-fetch` | the ECMWF data store at the URL in `ECMWF_DATASTORES_URL` (`https://ecds.ecmwf.int/api`) |
+  | `ghcn-daily-fetch` | `noaa-ghcn-pds.s3.amazonaws.com` |
+  | `imerg-fetch` | NASA Earthdata through `earthaccess`: authentication against `urs.earthdata.nasa.gov`, then the granule hosts the CMR search returns |
+  | `oisst-fetch` | the NOAA PSL OPeNDAP server at `psl.noaa.gov/thredds/…` |
+  | `openaq-fetch` | `api.openaq.org/v3` |
+  | `smap-fetch` | NASA Earthdata through `earthaccess`, the same path as `imerg-fetch` |
+  | `tahmo-fetch` | the TAHMO API, through the TAHMO Python SDK |
+
+  No other skill opens a network connection of its own; `resolve-region` reads
+  boundaries bundled in the skill directory.
 - **Use of credentials already in the environment.** Fetchers that need
   authentication read it themselves: `ECMWF_DATASTORES_URL` /
   `ECMWF_DATASTORES_KEY`, `TAHMO_API_USERNAME` / `TAHMO_API_PASSWORD`,
@@ -239,16 +266,44 @@ happen without confirmation:
   from a git repository — `https://github.com/rhiza-research/tahmo-api`, pinned
   in its script metadata to commit `8ed3adc`.
 - **Writes to any path passed as an output argument.** `--output` is not
-  confined to a working directory. Missing parent directories are created. An
-  existing file at that path is overwritten, and for the skills that write Zarr
-  an existing directory at that path is removed and rewritten.
+  confined to a working directory, and missing parent directories are created.
+  What happens to something already sitting at that path depends on what the
+  skill writes:
+  - `plot`, `plot-compare`, `plot-mediogram`, `plot-timeseries` and
+    `email-report` write one file and overwrite whatever is there.
+    `resolve-region`'s optional `--geojson` path behaves the same way.
+  - The Zarr-writing skills replace a whole store: the directory at `--output`
+    is deleted and written fresh, so its previous contents are gone. Against a
+    regular file rather than a directory they diverge. `arco-era5-fetch`,
+    `cmip6-fetch` and `oisst-fetch` delete the file and write the store in its
+    place. `rename` and `select` reject the path and exit 2. The remaining
+    Zarr writers call `shutil.rmtree` on it, which raises `NotADirectoryError`
+    and leaves the file untouched.
 
 This is the trade the grant makes: an agent composes a whole pipeline without
 interrupting the user at every step, and in exchange the user pre-authorizes
 that behavior for every script in the set. Run these skills with credentials
 scoped to what the task needs, and point `--output` at a directory you are
-willing to have written to. To require a prompt for a given skill instead,
-remove its `allowed-tools:` line from the installed `SKILL.md`.
+willing to have written to.
+
+To require a prompt for a skill, add an `ask` rule (or a `deny` rule to block it
+outright) to a Claude Code settings file — `.claude/settings.json` for one
+project, `~/.claude/settings.json` for every project. Permission rules are
+evaluated deny, then ask, then allow, so a matching `ask` rule prompts even
+though the skill's `allow` grant matches the same command:
+
+```json
+{
+  "permissions": {
+    "ask": [
+      "Bash(uv run --script */chirps-fetch/scripts/fetch.py *)"
+    ]
+  }
+}
+```
+
+A settings rule is where this belongs: the `SKILL.md` files live inside the
+managed plugin install and are rewritten by the next plugin update.
 
 ## Alternatives considered
 
