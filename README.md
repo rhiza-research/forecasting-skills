@@ -208,6 +208,48 @@ Fetchers read credentials from environment variables (or `.netrc` where
 supported by the underlying client). Nothing is hardcoded. See each skill's
 `compatibility:` frontmatter for the specific vars required.
 
+## What `allowed-tools` pre-approves
+
+Every skill declares one pre-approved command in its `SKILL.md` frontmatter:
+
+```
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/<script>.py *)
+```
+
+The pattern is narrow in one dimension and wide in another. It names exactly one
+interpreter and one script path inside the skill's own directory, so the grant
+cannot be used to run an arbitrary program. But the trailing `*` matches any
+argument list, so an agent running under this grant invokes that script with any
+flags it chooses and no per-call prompt. Concretely, that means the following
+happen without confirmation:
+
+- **Network requests to data providers.** Fetchers reach their source over the
+  network — CHIRPS at `data.chc.ucsb.edu`, NASA Earthdata for IMERG and SMAP,
+  the ECMWF data stores, the TAHMO API, OpenAQ, and the dynamical.org catalog.
+  The `--bbox`, `--start`, and `--end` values decide how much is transferred.
+- **Use of credentials already in the environment.** Fetchers that need
+  authentication read it themselves: `ECMWF_DATASTORES_URL` /
+  `ECMWF_DATASTORES_KEY`, `TAHMO_API_USERNAME` / `TAHMO_API_PASSWORD`,
+  `OPENAQ_API_KEY`, and NASA Earthdata credentials via environment variables or
+  a `.netrc` entry. Whatever is set when the agent runs is what gets used.
+- **Dependency resolution at run time.** Each script's PEP 723 inline dependency
+  block is resolved by `uv run --script` on invocation, against the
+  `<script>.py.lock` file committed alongside it, which downloads and installs
+  packages into uv's cache on first use. `tahmo-fetch` additionally installs
+  from a git repository — `https://github.com/rhiza-research/tahmo-api`, pinned
+  in its script metadata to commit `8ed3adc`.
+- **Writes to any path passed as an output argument.** `--output` is not
+  confined to a working directory. Missing parent directories are created. An
+  existing file at that path is overwritten, and for the skills that write Zarr
+  an existing directory at that path is removed and rewritten.
+
+This is the trade the grant makes: an agent composes a whole pipeline without
+interrupting the user at every step, and in exchange the user pre-authorizes
+that behavior for every script in the set. Run these skills with credentials
+scoped to what the task needs, and point `--output` at a directory you are
+willing to have written to. To require a prompt for a given skill instead,
+remove its `allowed-tools:` line from the installed `SKILL.md`.
+
 ## Alternatives considered
 
 See [`ALTERNATIVES.md`](ALTERNATIVES.md) for the tools we surveyed (CDO, GDAL,
