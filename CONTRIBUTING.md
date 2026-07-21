@@ -172,9 +172,15 @@ each skill version identifies that one skill.
 A merge that leaves the payload otherwise identical publishes nothing. The job
 compares the payload under the version already published, so a docs-only change
 produces no `plugin-dist` commit and no new plugin version. On a real change,
-the job runs `claude plugin validate . --strict` against the branch worktree
-before committing, so a payload that fails strict validation fails the job
-rather than shipping.
+the job runs
+
+```
+npx -y @anthropic-ai/claude-code@2.1.216 plugin validate . --strict
+```
+
+against the branch worktree before committing, so a payload that fails strict
+validation fails the job rather than shipping. The CLI version is pinned so a
+validation failure reproduces locally under the same version the job ran.
 
 ## Branch protection settings (configured manually by the maintainer)
 
