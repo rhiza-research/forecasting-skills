@@ -182,6 +182,9 @@ against the branch worktree before committing, so a payload that fails strict
 validation fails the job rather than shipping. The CLI version is pinned so a
 validation failure reproduces locally under the same version the job ran.
 
+The call is retried up to three times with a 10-second pause, so a transient npm
+registry error does not fail an otherwise good release.
+
 ## Branch protection settings (configured manually by the maintainer)
 
 Configure these on `main` under Settings → Branches → Branch protection rules:
