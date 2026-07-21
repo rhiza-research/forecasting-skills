@@ -127,9 +127,9 @@ to a new version. This is simpler when the bad state is recoverable in-place.
 
 The repo also ships as a Claude Code plugin. After a real merge, the `dist` job
 in `.github/workflows/version-bump.yml` copies the plugin payload —
-`.claude-plugin/plugin.json`, `agents/forecaster.md`, and `skills/` — onto the
-`plugin-dist` branch, which is the source `.claude-plugin/marketplace.json`
-installs from.
+`.claude-plugin/plugin.json`, `agents/forecaster.md`, `skills/`, and `LICENSE`
+— onto the `plugin-dist` branch, which is the source
+`.claude-plugin/marketplace.json` installs from.
 
 The manifest in that payload carries a `version` stamped by the job. The
 committed `.claude-plugin/plugin.json` has no `version` key; the value exists

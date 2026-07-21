@@ -393,8 +393,9 @@ jobs:
           done
 
   # After a real merge (skill bump and/or agent change), publish a lean copy of
-  # just the plugin to the `plugin-dist` branch: the manifest, the agent, and
-  # skills/ -- nothing else from the repo (no demo/, tools/, CI, or tests).
+  # just the plugin to the `plugin-dist` branch: the manifest, the agent,
+  # skills/, and LICENSE -- nothing else from the repo (no demo/, tools/, CI, or
+  # tests).
   # marketplace.json sources the rhiza-forecasting plugin from this branch, so
   # installs never pull the repo's non-runtime content. One appended commit per
   # merge (no force-push). The published manifest carries a `version` stamped by
@@ -432,14 +433,16 @@ jobs:
           git config user.name "forecasting-skills-release-bot[bot]"
           git config user.email "3799090+forecasting-skills-release-bot[bot]@users.noreply.github.com"
 
-          # Stage exactly the plugin payload from main: manifest, agent, skills.
-          # Nothing else in the repo is copied, so the published plugin never
-          # carries demo/, tools/, CI, or tests.
+          # Stage exactly the plugin payload from main: manifest, agent, skills,
+          # and the LICENSE whose terms the manifest declares. Nothing else in
+          # the repo is copied, so the published plugin never carries demo/,
+          # tools/, CI, or tests.
           stage="${RUNNER_TEMP}/plugin-payload"
           rm -rf "$stage"
           mkdir -p "$stage/.claude-plugin" "$stage/agents"
           cp .claude-plugin/plugin.json "$stage/.claude-plugin/plugin.json"
           cp agents/forecaster.md "$stage/agents/forecaster.md"
+          cp LICENSE "$stage/LICENSE"
           cp -R skills "$stage/skills"
 
           # Check out plugin-dist in a separate worktree so the main checkout is
