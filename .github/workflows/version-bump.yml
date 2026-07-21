@@ -489,11 +489,16 @@ jobs:
           #   - exit 0: the manifest parsed; stdout is the version (empty when
           #     the manifest carries no `version` key).
           #   - exit 3: a `version` key is present but is not a JSON string.
-          #     Non-conforming, so the job fails below rather than guessing.
-          #   - exit 4: the manifest is missing, unreadable, or not parseable
-          #     JSON. Treated as "no published version" with a loud warning: a
-          #     hard failure here would wedge every subsequent run identically
-          #     until someone repaired the branch by hand.
+          #     `null` counts: a present key whose value is not a string is
+          #     non-conforming whatever the value, so the job fails below rather
+          #     than guessing. Only an absent key means "nothing published".
+          #   - exit 4: the manifest is unreadable, is not parseable JSON, or
+          #     parses to something other than a JSON object. (A manifest that
+          #     does not exist is handled by the `[ -f ]` guard around this
+          #     block and never reaches the parser.) Treated as "no published
+          #     version" with a loud warning: a hard failure here would wedge
+          #     every subsequent run identically until someone repaired the
+          #     branch by hand.
           published=""
           manifest="$worktree/.claude-plugin/plugin.json"
           if [ -f "$manifest" ]; then
@@ -510,14 +515,25 @@ jobs:
           if not isinstance(manifest, dict):
               print(f"{sys.argv[1]}: top-level JSON value is not an object", file=sys.stderr)
               raise SystemExit(4)
-          version = manifest.get("version")
-          if version is None:
+          # Key presence, not truthiness of the value: `"version": null` is a
+          # present key carrying a non-string, which is non-conforming and must
+          # fail like any other non-string type. Only an absent key means
+          # nothing has been published yet.
+          if "version" not in manifest:
               print("")
-          elif isinstance(version, str):
-              print(version)
           else:
-              print(f"{sys.argv[1]}: version is {version!r}, not a JSON string", file=sys.stderr)
-              raise SystemExit(3)
+              version = manifest["version"]
+              if isinstance(version, str):
+                  print(version)
+              else:
+                  # json.dumps so the message names the offending value in the
+                  # JSON spelling the file uses (`null`, `true`, `[]`) rather
+                  # than its Python repr.
+                  print(
+                      f"{sys.argv[1]}: version is {json.dumps(version)}, not a JSON string",
+                      file=sys.stderr,
+                  )
+                  raise SystemExit(3)
           PY
           )"; then
               read_rc=0

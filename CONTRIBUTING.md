@@ -154,8 +154,10 @@ actually shipped instead.
 
 If the version already on `plugin-dist` is not exactly three numeric components
 (for example `2026.721.10-hotfix`, or a value with a stray trailing space, or a
-`version` key that is not a JSON string), the job fails and names the offending
-value. Deriving a version from an unrecognized one risks going backwards, which
+`version` key whose value is not a JSON string — `null` included), the job fails
+and names the offending value. A manifest with no `version` key at all is the
+one accepted "nothing published yet" state and stamps `<today>.0`. Deriving a
+version from an unrecognized one risks going backwards, which
 is unrecoverable for anyone already installed. Repair
 `.claude-plugin/plugin.json` on `plugin-dist` and re-run.
 
