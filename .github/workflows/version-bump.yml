@@ -663,6 +663,13 @@ jobs:
           done
 
           git commit -m "release: publish plugin ${next_version} from ${GITHUB_SHA}"
+          # Tag the payload commit with its version. This runs only on a real
+          # publish -- the no-op `exit 0` above returns before reaching here
+          # when the payload is unchanged, so no tag is ever created for a
+          # no-op run. Nothing in this workflow consumes the tag; it exists so
+          # a release can later be cut from the exact published payload.
+          git tag "plugin-v${next_version}"
           # Append-only: a plain push (no --force). Fast-forwards because the
-          # commit is based on plugin-dist's tip (or the branch is new).
-          git push origin plugin-dist
+          # commit is based on plugin-dist's tip (or the branch is new). The
+          # tag is pushed alongside the branch in the same command.
+          git push origin plugin-dist "plugin-v${next_version}"
