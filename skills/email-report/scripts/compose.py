@@ -12,7 +12,7 @@ from email.utils import formatdate, make_msgid
 from pathlib import Path
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.1.7"
 
 
 def main() -> None:

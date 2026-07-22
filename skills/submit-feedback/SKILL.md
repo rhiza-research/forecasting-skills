@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Builds a URL string only; reads no credentials, makes no network request, and writes no file.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/build_url.py *)
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: agent-tooling
 ---
 

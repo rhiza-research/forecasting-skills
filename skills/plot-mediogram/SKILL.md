@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py *)
 metadata:
-  version: "0.1.8"
+  version: "0.1.9"
   catalog-group: visualization
 ---
 

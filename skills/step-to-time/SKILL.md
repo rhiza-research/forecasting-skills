@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py *)
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   catalog-group: transforms
 ---
 

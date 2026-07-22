@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.16"
+  version: "0.1.17"
   catalog-group: fetchers
 ---
 
