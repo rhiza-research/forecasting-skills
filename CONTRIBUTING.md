@@ -135,6 +135,9 @@ The manifest in that payload carries a `version` stamped by the job. The
 committed `.claude-plugin/plugin.json` has no `version` key; the value exists
 only in what ships, so no contributor sets it by hand.
 
+Each publish also tags the payload commit `plugin-v<version>` and pushes the tag
+together with the `plugin-dist` branch.
+
 The stamped value is `<year>.<month*100+day>.<counter>` — for example
 `2026.721.0` for the first publish on 21 July 2026. Major sorts by year, minor
 by `MMDD` read as a plain integer (`721` < `805` < `1231`), and the counter
