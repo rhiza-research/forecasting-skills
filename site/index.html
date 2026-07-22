@@ -176,9 +176,13 @@ npx skillkit install rhiza-research/forecasting-skills --skill=ecmwf-fetch</code
 
   <div class="install-path">
     <h3>As a plugin</h3>
-    <p>For Claude Code, install the plugin from the in-repo marketplace:</p>
+    <p>For Claude Code, the plugin is available on two channels. Edge is rolling — always the latest published build:</p>
     <pre><code>claude plugin marketplace add rhiza-research/forecasting-skills
-claude plugin install rhiza-forecasting@rhiza</code></pre>
+claude plugin install rhiza-forecasting@weather-skills-edge</code></pre>
+    <p>Stable is a pinned, promoted version that changes only when a release is promoted:</p>
+    <pre><code>claude plugin marketplace add https://weather-skills.org/marketplace.json
+claude plugin install rhiza-forecasting@weather-skills</code></pre>
+    <p>Both channels install the same <code>rhiza-forecasting</code> plugin.</p>
   </div>
 </section>
 
