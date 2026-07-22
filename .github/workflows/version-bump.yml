@@ -668,8 +668,10 @@ jobs:
           # when the payload is unchanged, so no tag is ever created for a
           # no-op run. Nothing in this workflow consumes the tag; it exists so
           # a release can later be cut from the exact published payload.
-          git tag "plugin-v${next_version}"
-          # Append-only: a plain push (no --force). Fast-forwards because the
-          # commit is based on plugin-dist's tip (or the branch is new). The
-          # tag is pushed alongside the branch in the same command.
-          git push origin plugin-dist "plugin-v${next_version}"
+          git tag -a -m "plugin ${next_version}" "plugin-v${next_version}"
+          # Append-only: no --force. The branch update fast-forwards because the
+          # commit is based on plugin-dist's tip (or the branch is new).
+          # --atomic pushes the branch and the tag as a single unit: both refs
+          # update or neither does. Without it, the branch could publish while
+          # the tag ref is rejected, leaving a published-but-untagged version.
+          git push --atomic origin plugin-dist "plugin-v${next_version}"
