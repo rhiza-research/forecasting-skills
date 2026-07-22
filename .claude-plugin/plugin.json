@@ -1,4 +1,23 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "rhiza-forecasting",
-  "description": "Forecasting assistant agent plus weather and climate data skills."
+  "displayName": "Weather Skills",
+  "description": "Forecasting assistant agent plus weather and climate data skills.",
+  "author": {
+    "name": "Rhiza Research",
+    "url": "https://github.com/rhiza-research"
+  },
+  "homepage": "https://weather-skills.org",
+  "repository": "https://github.com/rhiza-research/forecasting-skills",
+  "license": "MIT",
+  "keywords": [
+    "weather",
+    "climate",
+    "forecasting",
+    "precipitation",
+    "reanalysis",
+    "geospatial",
+    "zarr",
+    "xarray"
+  ]
 }

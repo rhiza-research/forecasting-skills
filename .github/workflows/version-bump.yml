@@ -393,12 +393,13 @@ jobs:
           done
 
   # After a real merge (skill bump and/or agent change), publish a lean copy of
-  # just the plugin to the `plugin-dist` branch: the manifest, the agent, and
-  # skills/ -- nothing else from the repo (no demo/, tools/, CI, or tests).
+  # just the plugin to the `plugin-dist` branch: the manifest, the agent,
+  # skills/, and LICENSE -- nothing else from the repo (no demo/, tools/, CI, or
+  # tests).
   # marketplace.json sources the rhiza-forecasting plugin from this branch, so
   # installs never pull the repo's non-runtime content. One appended commit per
-  # merge (no force-push); the commit SHA is the plugin version, since
-  # plugin.json carries no `version`.
+  # merge (no force-push). The published manifest carries a `version` stamped by
+  # this job; the repo's own plugin.json has no `version` key.
   #
   # Sequencing: `needs: bump` so this runs after the bump commit lands, and the
   # checkout takes main's latest tip to capture it. The bot's `[skip ci]` bump
@@ -432,14 +433,16 @@ jobs:
           git config user.name "forecasting-skills-release-bot[bot]"
           git config user.email "3799090+forecasting-skills-release-bot[bot]@users.noreply.github.com"
 
-          # Stage exactly the plugin payload from main: manifest, agent, skills.
-          # Nothing else in the repo is copied, so the published plugin never
-          # carries demo/, tools/, CI, or tests.
+          # Stage exactly the plugin payload from main: manifest, agent, skills,
+          # and the LICENSE whose terms the manifest declares. Nothing else in
+          # the repo is copied, so the published plugin never carries demo/,
+          # tools/, CI, or tests.
           stage="${RUNNER_TEMP}/plugin-payload"
           rm -rf "$stage"
           mkdir -p "$stage/.claude-plugin" "$stage/agents"
           cp .claude-plugin/plugin.json "$stage/.claude-plugin/plugin.json"
           cp agents/forecaster.md "$stage/agents/forecaster.md"
+          cp LICENSE "$stage/LICENSE"
           cp -R skills "$stage/skills"
 
           # Check out plugin-dist in a separate worktree so the main checkout is
@@ -450,15 +453,164 @@ jobs:
           if git ls-remote --exit-code --heads origin plugin-dist >/dev/null 2>&1; then
             git fetch origin plugin-dist:plugin-dist
             git worktree add "$worktree" plugin-dist
-            cd "$worktree"
           else
             git worktree add --detach "$worktree"
-            cd "$worktree"
-            git checkout --orphan plugin-dist
+            git -C "$worktree" checkout --orphan plugin-dist
           fi
+
+          # Writes `version` into a manifest, leaving the file untouched when the
+          # version is empty (first publish, before anything has been stamped).
+          stamp_version() {
+            python3 -c '
+          import json
+          import sys
+
+          path, version = sys.argv[1], sys.argv[2]
+          if not version:
+              sys.exit(0)
+          with open(path) as fh:
+              manifest = json.load(fh)
+          manifest["version"] = version
+          with open(path, "w") as fh:
+              fh.write(json.dumps(manifest, indent=2) + "\n")
+          ' "$1" "$2"
+          }
+
+          # The version currently on plugin-dist. Deriving the next version from
+          # what actually shipped keeps the sequence monotonic by construction.
+          # github.run_number is not a substitute: GitHub documents it only as
+          # "a unique number for each run of a particular workflow in a
+          # repository", beginning at 1 for that workflow's first run and
+          # incrementing with each new run. Nothing in that definition
+          # guarantees the counter never restarts, and a restart would publish a
+          # lower version and silently cut off updates for every installed user.
+          #
+          # Three outcomes are distinguished:
+          #   - exit 0: the manifest parsed; stdout is the version (empty when
+          #     the manifest carries no `version` key).
+          #   - exit 3: a `version` key is present but is not a JSON string.
+          #     `null` counts: a present key whose value is not a string is
+          #     non-conforming whatever the value, so the job fails below rather
+          #     than guessing. Only an absent key means "nothing published".
+          #   - exit 4: the manifest is unreadable, is not parseable JSON, or
+          #     parses to something other than a JSON object. (A manifest that
+          #     does not exist is handled by the `[ -f ]` guard around this
+          #     block and never reaches the parser.) Treated as "no published
+          #     version" with a loud warning: a hard failure here would wedge
+          #     every subsequent run identically until someone repaired the
+          #     branch by hand.
+          published=""
+          manifest="$worktree/.claude-plugin/plugin.json"
+          if [ -f "$manifest" ]; then
+            if published="$(python3 - "$manifest" <<'PY'
+          import json
+          import sys
+
+          try:
+              with open(sys.argv[1]) as fh:
+                  manifest = json.load(fh)
+          except (OSError, ValueError) as exc:
+              print(f"{sys.argv[1]}: {exc}", file=sys.stderr)
+              raise SystemExit(4) from None
+          if not isinstance(manifest, dict):
+              print(f"{sys.argv[1]}: top-level JSON value is not an object", file=sys.stderr)
+              raise SystemExit(4)
+          # Key presence, not truthiness of the value: `"version": null` is a
+          # present key carrying a non-string, which is non-conforming and must
+          # fail like any other non-string type. Only an absent key means
+          # nothing has been published yet.
+          if "version" not in manifest:
+              print("")
+          else:
+              version = manifest["version"]
+              if isinstance(version, str):
+                  print(version)
+              else:
+                  # json.dumps so the message names the offending value in the
+                  # JSON spelling the file uses (`null`, `true`, `[]`) rather
+                  # than its Python repr.
+                  print(
+                      f"{sys.argv[1]}: version is {json.dumps(version)}, not a JSON string",
+                      file=sys.stderr,
+                  )
+                  raise SystemExit(3)
+          PY
+          )"; then
+              read_rc=0
+            else
+              read_rc=$?
+            fi
+            case "$read_rc" in
+              0) ;;
+              3)
+                echo "::error::The plugin version published on plugin-dist is not a JSON string (see the message above). Refusing to publish: a version derived from it could go backwards and strand every installed user. Repair .claude-plugin/plugin.json on the plugin-dist branch."
+                exit 1
+                ;;
+              4)
+                echo "::warning::Could not read the plugin version published on plugin-dist (see the message above). Continuing as if nothing were published, which may republish a version lower than the unreadable one. Repair .claude-plugin/plugin.json on the plugin-dist branch."
+                published=""
+                ;;
+              *)
+                echo "::error::Reading the published plugin version failed unexpectedly (exit ${read_rc})."
+                exit 1
+                ;;
+            esac
+          fi
+
+          # A non-empty published version must be exactly three numeric
+          # components. Anything else (a suffix like `-hotfix`, a stray space, a
+          # missing component) is rejected rather than treated as unset: falling
+          # through to `<today>.0` can produce a version LOWER than what is
+          # published, which permanently strands every installed user.
+          if ! python3 - "$published" <<'PY'
+          import sys
+
+          published = sys.argv[1]
+          if not published:
+              raise SystemExit(0)
+          parts = published.split(".")
+          if len(parts) != 3 or not all(p.isascii() and p.isdigit() for p in parts):
+              print(
+                  f"::error::The plugin version published on plugin-dist is {published!r}, "
+                  "which is not <year>.<mmdd>.<counter> with three numeric components. "
+                  "Refusing to publish: a version derived from it could go backwards and "
+                  "strand every installed user. Repair .claude-plugin/plugin.json on the "
+                  "plugin-dist branch."
+              )
+              raise SystemExit(1)
+          PY
+          then
+            exit 1
+          fi
+
+          # Version scheme: <year>.<month*100+day>.<counter>, e.g. 2026.721.0.
+          # Major sorts by year, minor by MMDD as a plain integer, and the
+          # counter breaks ties between two publishes on the same day. If the
+          # published version is dated at or ahead of today, its date is kept and
+          # the counter advanced, so the value never decreases.
+          next_version="$(python3 -c '
+          import datetime
+          import sys
+
+          prev = sys.argv[1].split(".")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          today = (now.year, now.month * 100 + now.day)
+          if len(prev) == 3 and all(part.isdigit() for part in prev):
+              year, mmdd, counter = (int(part) for part in prev)
+              if (year, mmdd) >= today:
+                  print(f"{year}.{mmdd}.{counter + 1}")
+                  sys.exit(0)
+          print(f"{today[0]}.{today[1]}.0")
+          ' "$published")"
+
+          # Compare under the version already published, so the version field
+          # itself cannot be what differs. Without this the payload would change
+          # on every run and a docs-only merge would publish a pointless commit.
+          stamp_version "$stage/.claude-plugin/plugin.json" "$published"
 
           # Replace tracked content with the staged payload, then commit only if
           # something actually changed.
+          cd "$worktree"
           git rm -rfq . >/dev/null 2>&1 || true
           cp -R "$stage"/. .
           git add -A
@@ -466,7 +618,60 @@ jobs:
             echo "plugin-dist already current; nothing to publish."
             exit 0
           fi
-          git commit -m "release: sync plugin-dist from ${GITHUB_SHA}"
-          # Append-only: a plain push (no --force). Fast-forwards because the
+
+          # Something did change, so this is a real publish: stamp the new
+          # version and re-stage.
+          stamp_version .claude-plugin/plugin.json "$next_version"
+          git add -A
+
+          # Validate exactly what is about to ship. Run it from the worktree: at
+          # the repo root the sibling marketplace.json is picked up instead and
+          # the plugin manifest goes unchecked. Node and npm come with the runner
+          # image, so npx needs no setup-node and installs nothing persistent.
+          #
+          # Retry a few times: npx resolves the pinned package from the npm
+          # registry on every run, so a transient registry error would otherwise
+          # fail a release whose payload is fine. A payload that genuinely fails
+          # --strict fails all three attempts and then fails the job.
+          #
+          # Each attempt is wrapped in `timeout` (coreutils, in the runner
+          # image's apt package set) so the retry loop has a bound the job's
+          # 5-minute timeout-minutes cannot be exceeded by. Without it, an npx
+          # that hangs against a degraded registry consumes the whole job budget
+          # inside one attempt and the job is killed mid-command with no
+          # diagnostic. The retry sleeps are not the dominant cost -- each
+          # attempt re-resolves and re-downloads the pinned package, which is
+          # what runs long when the registry is slow.
+          #
+          # Worst-case wall clock for the loop: 3 attempts x 60s, plus 2 sleeps
+          # of 10s, is 200s. That leaves ~100s of the job's 300s budget for
+          # checkout, the worktree setup, and the push. A healthy registry
+          # resolves and validates in a few seconds, so 60s is a wide margin
+          # around the normal case rather than a tight fit. `timeout` exits 124
+          # when it fires, which the loop treats as a failed attempt like any
+          # other non-zero exit.
+          validate_attempts=0
+          validate_max_attempts=3
+          until timeout 60 npx -y @anthropic-ai/claude-code@2.1.216 plugin validate . --strict; do
+            validate_attempts=$((validate_attempts + 1))
+            if [ "$validate_attempts" -ge "$validate_max_attempts" ]; then
+              echo "::error::plugin validate failed on all ${validate_attempts} attempts; not publishing."
+              exit 1
+            fi
+            echo "plugin validate failed; retrying in 10s (${validate_attempts}/${validate_max_attempts})." >&2
+            sleep 10
+          done
+
+          git commit -m "release: publish plugin ${next_version} from ${GITHUB_SHA}"
+          # Tag the payload commit with its version. This runs only on a real
+          # publish -- the no-op `exit 0` above returns before reaching here
+          # when the payload is unchanged, so no tag is ever created for a
+          # no-op run. Nothing in this workflow consumes the tag; it exists so
+          # a release can later be cut from the exact published payload.
+          git tag -a -m "plugin ${next_version}" "plugin-v${next_version}"
+          # Append-only: no --force. The branch update fast-forwards because the
           # commit is based on plugin-dist's tip (or the branch is new).
-          git push origin plugin-dist
+          # --atomic pushes the branch and the tag as a single unit: both refs
+          # update or neither does. Without it, the branch could publish while
+          # the tag ref is rejected, leaving a published-but-untagged version.
+          git push --atomic origin plugin-dist "plugin-v${next_version}"

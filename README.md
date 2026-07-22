@@ -59,7 +59,47 @@ envelope output.
 ## Install
 
 These skills live at <https://github.com/rhiza-research/forecasting-skills>.
-There are two ways to use them.
+There are three ways to use them.
+
+### As a Claude Code plugin
+
+Install the plugin once — add the marketplace, then install the plugin:
+
+```bash
+claude plugin marketplace add rhiza-research/forecasting-skills
+claude plugin install rhiza-forecasting@rhiza
+```
+
+Then run the bundled `forecaster` agent. The `--allowedTools` flag pre-approves
+the plugin's skills for the session so a multi-step pipeline runs end to end
+without a prompt at each step:
+
+```bash
+claude --agent rhiza-forecasting:forecaster --allowedTools "Skill(rhiza-forecasting:*)"
+```
+
+Fetchers still need their credentials in the environment; see each skill's
+`compatibility:` frontmatter for what it reads (for example an
+`EXAMPLE_API_KEY`).
+
+To make the approval permanent instead of passing the flag every time, add the
+same rule to `permissions.allow` in a settings file (`.claude/settings.json` for
+one project, `~/.claude/settings.json` for every project):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Skill(rhiza-forecasting:*)"
+    ]
+  }
+}
+```
+
+With that rule in place, plain `claude --agent rhiza-forecasting:forecaster`
+works without the flag. This lets the plugin's skills run unprompted —
+including reaching the network and writing output files — so add an `ask` or
+`deny` rule instead if you want to be prompted for some or all of them.
 
 ### As a CLI tool
 

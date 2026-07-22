@@ -3,6 +3,7 @@ name: unit-convert
 description: Convert one data variable in a weather-skills envelope Zarr to a target units string (e.g. a precipitation flux `kg m-2 s-1` to a depth rate `mm/day`), updating the variable's values and its `units` attribute.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py *)
 metadata:
   version: "0.1.6"
   catalog-group: transforms

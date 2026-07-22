@@ -123,6 +123,76 @@ Equivalently, you can skip the revert and just land a forward fix — a new
 commit that supersedes the bad release on top, which the workflow will bump
 to a new version. This is simpler when the bad state is recoverable in-place.
 
+## Plugin version
+
+The repo also ships as a Claude Code plugin. After a real merge, the `dist` job
+in `.github/workflows/version-bump.yml` copies the plugin payload —
+`.claude-plugin/plugin.json`, `agents/forecaster.md`, `skills/`, and `LICENSE`
+— onto the `plugin-dist` branch, which is the source
+`.claude-plugin/marketplace.json` installs from.
+
+The manifest in that payload carries a `version` stamped by the job. The
+committed `.claude-plugin/plugin.json` has no `version` key; the value exists
+only in what ships, so no contributor sets it by hand.
+
+Each publish also tags the payload commit `plugin-v<version>` and pushes the tag
+together with the `plugin-dist` branch.
+
+The stamped value is `<year>.<month*100+day>.<counter>` — for example
+`2026.721.0` for the first publish on 21 July 2026. Major sorts by year, minor
+by `MMDD` read as a plain integer (`721` < `805` < `1231`), and the counter
+distinguishes two publishes on the same day.
+
+The counter is read from the version already on `plugin-dist` and incremented
+whenever that version's date is the current date or later. Deriving it from
+what shipped is what keeps the sequence strictly increasing, which the plugin
+system requires: a version that went backwards would leave every installed user
+pinned at the higher number, silently receiving no further updates.
+`github.run_number` is not a substitute. GitHub documents it as "a unique number
+for each run of a particular workflow in a repository", beginning at 1 for that
+workflow's first run and incrementing with each new run. That definition carries
+no guarantee that the counter never restarts, and the plugin version cannot
+depend on a property GitHub does not promise — so the counter is read from what
+actually shipped instead.
+
+If the version already on `plugin-dist` is not exactly three numeric components
+(for example `2026.721.10-hotfix`, or a value with a stray trailing space, or a
+`version` key whose value is not a JSON string — `null` included), the job fails
+and names the offending value. A manifest with no `version` key at all is the
+one accepted "nothing published yet" state and stamps `<today>.0`. Deriving a
+version from an unrecognized one risks going backwards, which
+is unrecoverable for anyone already installed. Repair
+`.claude-plugin/plugin.json` on `plugin-dist` and re-run.
+
+If that manifest cannot be read or parsed at all, the job logs a warning and
+proceeds as if nothing were published, stamping `<today>.0`. A hard failure
+there would abort identically on every subsequent run until someone repaired the
+branch by hand, so an unreadable manifest cannot wedge publishing.
+
+The plugin version is independent of the `metadata.version` fields in
+`skills/<name>/SKILL.md`. It is not derived from any skill version or from a
+PR's `release:` label. It identifies a published snapshot of the whole payload;
+each skill version identifies that one skill.
+
+A merge that leaves the payload otherwise identical publishes nothing. The job
+compares the payload under the version already published, so a docs-only change
+produces no `plugin-dist` commit and no new plugin version. On a real change,
+the job runs
+
+```
+npx -y @anthropic-ai/claude-code@2.1.216 plugin validate . --strict
+```
+
+against the branch worktree before committing, so a payload that fails strict
+validation fails the job rather than shipping. The CLI version is pinned so a
+validation failure reproduces locally under the same version the job ran.
+
+The call is retried up to three times with a 10-second pause, so a transient npm
+registry error does not fail an otherwise good release. Each attempt is wrapped
+in `timeout 60`, so a hung npx fails that attempt instead of consuming the job's
+whole 5-minute budget: the loop's worst case is 200 seconds and the job still
+ends with a readable error rather than being killed mid-command.
+
 ## Branch protection settings (configured manually by the maintainer)
 
 Configure these on `main` under Settings → Branches → Branch protection rules:
