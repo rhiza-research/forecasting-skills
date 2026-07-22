@@ -59,7 +59,45 @@ envelope output.
 ## Install
 
 These skills live at <https://github.com/rhiza-research/forecasting-skills>.
-There are two ways to use them.
+There are three ways to use them.
+
+### As a Claude Code plugin
+
+Install the plugin once — add the marketplace, then install the plugin:
+
+```bash
+claude plugin marketplace add rhiza-research/forecasting-skills
+claude plugin install rhiza-forecasting@rhiza
+```
+
+Then run the bundled `forecaster` agent. The `--allowedTools` flag pre-approves
+the plugin's skills for the session so a multi-step pipeline runs end to end
+without a prompt at each step:
+
+```bash
+claude --agent rhiza-forecasting:forecaster --allowedTools "Skill(rhiza-forecasting:*)"
+```
+
+Fetchers still need their credentials in the environment; see each skill's
+`compatibility:` frontmatter for what it reads (for example an
+`EXAMPLE_API_KEY`).
+
+To make the approval permanent instead of passing the flag every time, add the
+same rule to `permissions.allow` in a settings file (`.claude/settings.json` for
+one project, `~/.claude/settings.json` for every project):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Skill(rhiza-forecasting:*)"
+    ]
+  }
+}
+```
+
+With that rule in place, plain `claude --agent rhiza-forecasting:forecaster`
+works without the flag.
 
 ### As a CLI tool
 
@@ -207,103 +245,6 @@ flag.
 Fetchers read credentials from environment variables (or `.netrc` where
 supported by the underlying client). Nothing is hardcoded. See each skill's
 `compatibility:` frontmatter for the specific vars required.
-
-## What `allowed-tools` pre-approves
-
-Every skill declares one pre-approved command in its `SKILL.md` frontmatter:
-
-```
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/<script>.py *)
-```
-
-The pattern fixes the leading program and the script path: a matching command
-has to begin with `uv run --script` followed by that one script inside the
-skill's own directory. Everything after that is a single trailing `*`, which
-matches the whole argument tail, shell metacharacters included. Claude Code's
-[permission rules](https://code.claude.com/docs/en/permissions) split a command
-on the separators `&&`, `||`, `;`, `|`, `|&`, `&`, and newlines and require each
-subcommand to match a rule on its own, so the grant does not carry over to a
-chained second command. Beyond that split the argument tail is not parsed
-against the pattern: constructs that stay inside a single command, such as
-command substitution with `$(...)` and output redirection with `>`, are part of
-what the `*` matches. The same documentation warns that "Bash permission
-patterns that try to constrain command arguments are fragile." Read this grant
-as pinning down the program and the script, and not as a constraint on what the
-arguments can do.
-
-An agent running under the grant therefore invokes that script with any flags it
-chooses and no per-call prompt. The following happen without confirmation:
-
-- **Network requests to data providers.** Every fetcher reaches its source over
-  the network, and the `--bbox`, `--start`, and `--end` values decide how much
-  is transferred. Each fetcher and where it connects:
-
-  | Skill | Reaches |
-  |---|---|
-  | `arco-era5-fetch` | `gs://gcp-public-data-arco-era5/…` on Google Cloud Storage, read anonymously through `gcsfs` |
-  | `chirps-fetch` | `data.chc.ucsb.edu` |
-  | `cmip6-fetch` | the catalog at `storage.googleapis.com/cmip6/pangeo-cmip6.csv`, then the `gs://` store named by the matched catalog row, read anonymously through `gcsfs` |
-  | `dynamical-fetch` | the dynamical.org open catalog on AWS Open Data, through the `dynamical-catalog` library |
-  | `ecmwf-fetch` | the ECMWF data store at the URL in `ECMWF_DATASTORES_URL` (`https://ecds.ecmwf.int/api`) |
-  | `ghcn-daily-fetch` | `noaa-ghcn-pds.s3.amazonaws.com` |
-  | `imerg-fetch` | NASA Earthdata through `earthaccess`: authentication against `urs.earthdata.nasa.gov`, then the granule hosts the CMR search returns |
-  | `oisst-fetch` | the NOAA PSL OPeNDAP server at `psl.noaa.gov/thredds/…` |
-  | `openaq-fetch` | `api.openaq.org/v3` |
-  | `smap-fetch` | NASA Earthdata through `earthaccess`, the same path as `imerg-fetch` |
-  | `tahmo-fetch` | the TAHMO API, through the TAHMO Python SDK |
-
-  No other skill opens a network connection of its own; `resolve-region` reads
-  boundaries bundled in the skill directory.
-- **Use of credentials already in the environment.** Fetchers that need
-  authentication read it themselves: `ECMWF_DATASTORES_URL` /
-  `ECMWF_DATASTORES_KEY`, `TAHMO_API_USERNAME` / `TAHMO_API_PASSWORD`,
-  `OPENAQ_API_KEY`, and NASA Earthdata credentials via environment variables or
-  a `.netrc` entry. Whatever is set when the agent runs is what gets used.
-- **Dependency resolution at run time.** Each script's PEP 723 inline dependency
-  block is resolved by `uv run --script` on invocation, against the
-  `<script>.py.lock` file committed alongside it, which downloads and installs
-  packages into uv's cache on first use. `tahmo-fetch` additionally installs
-  from a git repository — `https://github.com/rhiza-research/tahmo-api`, pinned
-  in its script metadata to commit `8ed3adc`.
-- **Writes to any path passed as an output argument.** `--output` is not
-  confined to a working directory, and missing parent directories are created.
-  What happens to something already sitting at that path depends on what the
-  skill writes:
-  - `plot`, `plot-compare`, `plot-mediogram`, `plot-timeseries` and
-    `email-report` write one file and overwrite whatever is there.
-    `resolve-region`'s optional `--geojson` path behaves the same way.
-  - The Zarr-writing skills replace a whole store: the directory at `--output`
-    is deleted and written fresh, so its previous contents are gone. Against a
-    regular file rather than a directory they diverge. `arco-era5-fetch`,
-    `cmip6-fetch` and `oisst-fetch` delete the file and write the store in its
-    place. `rename` and `select` reject the path and exit 2. The remaining
-    Zarr writers call `shutil.rmtree` on it, which raises `NotADirectoryError`
-    and leaves the file untouched.
-
-This is the trade the grant makes: an agent composes a whole pipeline without
-interrupting the user at every step, and in exchange the user pre-authorizes
-that behavior for every script in the set. Run these skills with credentials
-scoped to what the task needs, and point `--output` at a directory you are
-willing to have written to.
-
-To require a prompt for a skill, add an `ask` rule (or a `deny` rule to block it
-outright) to a Claude Code settings file — `.claude/settings.json` for one
-project, `~/.claude/settings.json` for every project. Permission rules are
-evaluated deny, then ask, then allow, so a matching `ask` rule prompts even
-though the skill's `allow` grant matches the same command:
-
-```json
-{
-  "permissions": {
-    "ask": [
-      "Bash(uv run --script */chirps-fetch/scripts/fetch.py *)"
-    ]
-  }
-}
-```
-
-A settings rule is where this belongs: the `SKILL.md` files live inside the
-managed plugin install and are rewritten by the next plugin update.
 
 ## Alternatives considered
 
