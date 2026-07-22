@@ -97,7 +97,9 @@ one project, `~/.claude/settings.json` for every project):
 ```
 
 With that rule in place, plain `claude --agent rhiza-forecasting:forecaster`
-works without the flag.
+works without the flag. This lets the plugin's skills run unprompted —
+including reaching the network and writing output files — so add an `ask` or
+`deny` rule instead if you want to be prompted for some or all of them.
 
 ### As a CLI tool
 
