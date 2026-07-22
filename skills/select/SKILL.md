@@ -3,8 +3,9 @@ name: select
 description: Select entries along one named dimension of a weather-skills envelope Zarr, by integer position or by coordinate value. A single selection collapses the dimension and drops the coordinates it leaves scalar, so outputs from different sources are ready to concat — e.g. pick the same forecast week from several model envelopes before merging them along a new model dim.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py *)
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   catalog-group: transforms
 ---
 

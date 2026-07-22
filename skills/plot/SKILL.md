@@ -3,8 +3,9 @@ name: plot
 description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills envelope Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
 metadata:
-  version: "0.1.13"
+  version: "0.1.14"
   catalog-group: visualization
 ---
 

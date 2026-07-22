@@ -3,8 +3,9 @@ name: plot-mediogram
 description: Render an ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate (historical) ensemble at a single lat/lon. Two-layer boxplots per time step show an extremes box underneath (p0–p100 whiskers, p10–p90 box, p50 median) with a wider p25–p75 IQR box overlaid on top, whose visible black caps mark the IQR edges.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py *)
 metadata:
-  version: "0.1.8"
+  version: "0.1.9"
   catalog-group: visualization
 ---
 

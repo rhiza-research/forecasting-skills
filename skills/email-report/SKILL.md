@@ -3,8 +3,9 @@ name: email-report
 description: Assemble an email message with optional file attachments and write it to disk as a standards-compliant .eml file. Mocks actual SMTP delivery — does not send. Use at the end of a pipeline to materialize what would have been sent.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Stdlib only.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/compose.py *)
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
   catalog-group: agent-tooling
 ---
 

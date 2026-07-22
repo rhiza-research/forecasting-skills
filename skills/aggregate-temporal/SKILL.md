@@ -3,8 +3,9 @@ name: aggregate-temporal
 description: Roll up a weather-skills envelope Zarr along its time axis (or forecast step axis) into fixed windows (daily, weekly, dekadal, monthly) with a chosen reducer. Use whenever any dataset needs to be resampled to a canonical aggregation period before plotting or comparison.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/aggregate.py *)
 metadata:
-  version: "0.1.11"
+  version: "0.1.12"
   catalog-group: transforms
 ---
 

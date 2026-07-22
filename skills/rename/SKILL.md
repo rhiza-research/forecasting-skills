@@ -3,8 +3,9 @@ name: rename
 description: Rename one data variable in a weather-skills envelope Zarr to a new name, writing a new envelope. The renamed variable keeps its values and attributes; all other variables, coordinates, and dimensions pass through unchanged.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
+allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/rename.py *)
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   catalog-group: transforms
 ---
 
