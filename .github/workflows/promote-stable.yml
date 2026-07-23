@@ -6,8 +6,14 @@ name: Promote stable plugin channel
 # releases/latest/download/marketplace.json serves it.
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "plugin-v<version> tag to promote"
+        required: true
+        type: string
   release:
-    types: [released]
+    types: [published]
 
 permissions:
   contents: write
@@ -18,17 +24,18 @@ concurrency:
 
 jobs:
   promote:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Check out release tag payload
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
 
       - name: Verify release tag
         env:
-          TAG_INPUT: ${{ github.event.release.tag_name }}
+          TAG_INPUT: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           set -euo pipefail
           # Read the untrusted tag through the TAG_INPUT env var rather than
