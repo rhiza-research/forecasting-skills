@@ -63,7 +63,6 @@ STATIC_FILES = (
     "style.css",
     "CNAME",
     "404.html",
-    "marketplace.json",
     "demo.js",
     "demo_sen_weekly.png",
     "demo_sen_gmb_weekly.png",
