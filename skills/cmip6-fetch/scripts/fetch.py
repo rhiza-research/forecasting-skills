@@ -531,6 +531,14 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
             f"variable {variable!r} has no `units` attribute; cannot write a "
             "CF-compliant store. The source dataset is missing CF units."
         )
+    if not str(units).strip():
+        # cf_units.Unit("") / all-whitespace parses as an "unknown" unit rather
+        # than raising, so udunits_error would let a blank units string through;
+        # reject it here, before the parse, the same way a missing value is.
+        raise DataError(
+            f"variable {variable!r} has a blank `units` attribute; cannot write a "
+            "CF-compliant store. The source dataset is missing CF units."
+        )
     units_exc = udunits_error(units)
     if units_exc is not None:
         raise DataError(
