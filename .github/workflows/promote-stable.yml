@@ -21,8 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out repository
+      - name: Check out release tag payload
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Verify release tag
         env:
@@ -50,11 +52,11 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # Read the stable manifest's shared fields from the edge manifest
-          # (.claude-plugin/marketplace.json) so the two channels can't drift.
-          # Only the marketplace `name` and the plugin `source` differ: the
-          # stable channel is named "weather-skills" and its source is pinned to
-          # this release's tag rather than tracking the plugin-dist branch.
+          # Derive the stable manifest from the promoted tag's own plugin
+          # manifest (.claude-plugin/plugin.json), which the checkout above
+          # pulled from the release tag's payload tree. The plugin manifest
+          # carries name/description/author; the marketplace `name` is the one
+          # fixed value and the plugin `source` is pinned to this release's tag.
           python3 - <<'PY'
           import json
           import os
@@ -62,14 +64,13 @@ jobs:
           tag = os.environ["TAG"]
           repo = os.environ["REPO"]
 
-          with open(".claude-plugin/marketplace.json") as fh:
-              edge = json.load(fh)
-          plugin = edge["plugins"][0]
+          with open(".claude-plugin/plugin.json") as fh:
+              plugin = json.load(fh)
 
           manifest = {
               "name": "weather-skills",
-              "description": edge["description"],
-              "owner": edge["owner"],
+              "description": plugin["description"],
+              "owner": {"name": plugin["author"]["name"]},
               "plugins": [
                   {
                       "name": plugin["name"],
