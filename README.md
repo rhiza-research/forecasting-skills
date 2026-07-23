@@ -77,7 +77,7 @@ Stable — a pinned, promoted version that changes only when a release is
 promoted:
 
 ```bash
-claude plugin marketplace add https://weather-skills.org/marketplace.json
+claude plugin marketplace add https://github.com/rhiza-research/forecasting-skills/releases/latest/download/marketplace.json
 claude plugin install rhiza-forecasting@weather-skills
 ```
 

@@ -180,7 +180,7 @@ npx skillkit install rhiza-research/forecasting-skills --skill=ecmwf-fetch</code
     <pre><code>claude plugin marketplace add rhiza-research/forecasting-skills
 claude plugin install rhiza-forecasting@weather-skills-edge</code></pre>
     <p>Stable is a pinned, promoted version that changes only when a release is promoted:</p>
-    <pre><code>claude plugin marketplace add https://weather-skills.org/marketplace.json
+    <pre><code>claude plugin marketplace add https://github.com/rhiza-research/forecasting-skills/releases/latest/download/marketplace.json
 claude plugin install rhiza-forecasting@weather-skills</code></pre>
     <p>Install from one channel, not both: both add the same <code>rhiza-forecasting</code> plugin (same name and <code>rhiza-forecasting:*</code> namespace), so adding both at once collides. The channels share an interface, not a version — the same skills and the same <code>Skill(rhiza-forecasting:*)</code> permission rule whichever you install, while edge tracks the latest build and stable stays on a pinned version.</p>
   </div>
