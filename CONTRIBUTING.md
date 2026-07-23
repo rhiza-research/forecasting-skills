@@ -174,6 +174,26 @@ The plugin version is independent of the `metadata.version` fields in
 PR's `release:` label. It identifies a published snapshot of the whole payload;
 each skill version identifies that one skill.
 
+## Stable plugin channel
+
+The stable plugin channel is served from GitHub's latest release asset, at
+`releases/latest/download/marketplace.json`. Promoting a version means
+publishing a non-prerelease GitHub Release from that version's `plugin-v<version>`
+tag. The `.github/workflows/promote-stable.yml` workflow fires on that release,
+generates a `marketplace.json` pinned to the release's tag, validates it, and
+uploads it as the release asset that the `releases/latest/download` URL resolves
+to.
+
+Because the channel tracks GitHub's "latest release," only plugin releases
+should ever be published: GitHub treats the most recent non-prerelease as
+"latest" regardless of its tag, so publishing a non-plugin release would move
+`releases/latest/download/marketplace.json` to an asset the promote workflow
+never wrote, breaking the stable URL.
+
+Rolling back is done through the same "latest release" mechanism: mark an older
+plugin release as latest, and its already-uploaded `marketplace.json` — pinned to
+that older tag — becomes what the stable URL serves.
+
 A merge that leaves the payload otherwise identical publishes nothing. The job
 compares the payload under the version already published, so a docs-only change
 produces no `plugin-dist` commit and no new plugin version. On a real change,
