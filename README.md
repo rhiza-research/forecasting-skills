@@ -63,12 +63,30 @@ There are three ways to use them.
 
 ### As a Claude Code plugin
 
-Install the plugin once — add the marketplace, then install the plugin:
+The plugin is available on two channels. Pick one, add its marketplace, then
+install the plugin.
+
+Edge — rolling; always the latest published build:
 
 ```bash
 claude plugin marketplace add rhiza-research/forecasting-skills
-claude plugin install rhiza-forecasting@rhiza
+claude plugin install rhiza-forecasting@weather-skills-edge
 ```
+
+Stable — a pinned, promoted version that changes only when a release is
+promoted:
+
+```bash
+claude plugin marketplace add https://github.com/rhiza-research/forecasting-skills/releases/latest/download/marketplace.json
+claude plugin install rhiza-forecasting@weather-skills
+```
+
+Install from one channel, not both: both add the same `rhiza-forecasting`
+plugin — same name and `rhiza-forecasting:*` namespace — so adding both at once
+collides. The channels share an interface, not a version: the same skills and
+the same `Skill(rhiza-forecasting:*)` permission rule whichever you install,
+while edge tracks the latest build and stable stays on a pinned version. So
+everything below — the run commands and that rule — is identical either way.
 
 Then run the bundled `forecaster` agent. The `--allowedTools` flag pre-approves
 the plugin's skills for the session so a multi-step pipeline runs end to end

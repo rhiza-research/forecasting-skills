@@ -5,7 +5,7 @@
 set -e
 
 claude plugin marketplace add rhiza-research/forecasting-skills
-claude plugin install rhiza-forecasting@rhiza
+claude plugin install rhiza-forecasting@weather-skills-edge
 
 cat <<'EOF'
 
