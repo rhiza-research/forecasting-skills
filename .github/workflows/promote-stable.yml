@@ -19,7 +19,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: promote-stable-${{ github.event.release.tag_name }}
+  group: promote-stable-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -50,6 +50,50 @@ jobs:
               ;;
           esac
           echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Precheck release and plugin manifest
+        env:
+          # $TAG is exported to $GITHUB_ENV by the previous step. GH_TOKEN/GH_REPO
+          # let `gh release view` resolve the release for the pinned tag. The
+          # untrusted tag reaches the shell only via the TAG env var, never
+          # through a GitHub Actions expression interpolation in this body.
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Fail fast on the manual-dispatch path: a hand-typed tag might have no
+          # published GitHub Release, or point at a tree with no plugin payload.
+          # Surface both as clean ::error:: lines here instead of a late "release
+          # not found" from the upload step or a raw Python traceback from the
+          # generate step.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::No GitHub Release exists for tag '$TAG' — publish a release for it before promoting."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+
+          try:
+              with open(".claude-plugin/plugin.json") as fh:
+                  plugin = json.load(fh)
+          except FileNotFoundError:
+              print("::error::.claude-plugin/plugin.json not found in the promoted tag's payload — not a plugin release.")
+              raise SystemExit(1)
+          except json.JSONDecodeError as exc:
+              print(f"::error::.claude-plugin/plugin.json is not valid JSON: {exc}")
+              raise SystemExit(1)
+
+          if not isinstance(plugin.get("name"), str) or not plugin["name"]:
+              print("::error::.claude-plugin/plugin.json is missing a 'name' field.")
+              raise SystemExit(1)
+          if not isinstance(plugin.get("description"), str) or not plugin["description"]:
+              print("::error::.claude-plugin/plugin.json is missing a 'description' field.")
+              raise SystemExit(1)
+          author = plugin.get("author")
+          if not isinstance(author, dict) or not isinstance(author.get("name"), str) or not author["name"]:
+              print("::error::.claude-plugin/plugin.json is missing an 'author.name' field.")
+              raise SystemExit(1)
+          PY
 
       - name: Generate marketplace.json
         env:
