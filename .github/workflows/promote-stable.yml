@@ -21,10 +21,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Verify release tag
+        env:
+          TAG_INPUT: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          TAG="${{ github.event.release.tag_name }}"
+          # Read the untrusted tag through the TAG_INPUT env var rather than
+          # interpolating the release tag expression into the shell body, so a
+          # tag carrying shell metacharacters can't be a template-injection sink.
+          TAG="$TAG_INPUT"
           case "$TAG" in
             plugin-v*) ;;
             *)
@@ -35,24 +43,40 @@ jobs:
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Generate marketplace.json
+        env:
+          # TAG is exported to $GITHUB_ENV by the previous step; REPO comes from
+          # the workflow context so the pinned source repo matches the upload
+          # target below. Both reach the shell as plain env vars.
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Read the stable manifest's shared fields from the edge manifest
+          # (.claude-plugin/marketplace.json) so the two channels can't drift.
+          # Only the marketplace `name` and the plugin `source` differ: the
+          # stable channel is named "weather-skills" and its source is pinned to
+          # this release's tag rather than tracking the plugin-dist branch.
           python3 - <<'PY'
           import json
           import os
 
           tag = os.environ["TAG"]
+          repo = os.environ["REPO"]
+
+          with open(".claude-plugin/marketplace.json") as fh:
+              edge = json.load(fh)
+          plugin = edge["plugins"][0]
+
           manifest = {
               "name": "weather-skills",
-              "description": "Forecasting assistant agent plus weather and climate data skills.",
-              "owner": {"name": "rhiza-research"},
+              "description": edge["description"],
+              "owner": edge["owner"],
               "plugins": [
                   {
-                      "name": "rhiza-forecasting",
-                      "description": "Forecasting assistant agent plus weather and climate data skills.",
+                      "name": plugin["name"],
+                      "description": plugin["description"],
                       "source": {
                           "source": "github",
-                          "repo": "rhiza-research/forecasting-skills",
+                          "repo": repo,
                           "ref": tag,
                       },
                   }
@@ -67,7 +91,25 @@ jobs:
       - name: Validate marketplace.json
         run: |
           set -euo pipefail
-          npx -y @anthropic-ai/claude-code@2.1.218 plugin validate marketplace.json --strict
+          # Retry a few times: npx resolves the pinned package from the npm
+          # registry on every run, so a transient registry error would otherwise
+          # fail a promote whose manifest is fine. A manifest that genuinely
+          # fails --strict fails all attempts and then fails the job. Each
+          # attempt is wrapped in `timeout` (coreutils, in the runner image) so a
+          # hung npx fails that attempt instead of consuming the job's whole
+          # 10-minute budget. `timeout` exits 124 when it fires, which the loop
+          # treats as a failed attempt like any other non-zero exit.
+          validate_attempts=0
+          validate_max_attempts=3
+          until timeout 60 npx -y @anthropic-ai/claude-code@2.1.218 plugin validate marketplace.json --strict; do
+            validate_attempts=$((validate_attempts + 1))
+            if [ "$validate_attempts" -ge "$validate_max_attempts" ]; then
+              echo "::error::plugin validate failed on all ${validate_attempts} attempts; not promoting."
+              exit 1
+            fi
+            echo "plugin validate failed; retrying in 10s (${validate_attempts}/${validate_max_attempts})." >&2
+            sleep 10
+          done
 
       - name: Upload marketplace.json to release
         env:
