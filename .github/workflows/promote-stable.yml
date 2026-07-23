@@ -1,0 +1,78 @@
+name: Promote stable plugin channel
+
+# Publishing a non-prerelease from a plugin payload tag promotes the stable
+# channel: generate a marketplace.json pinned to that release's tag, validate
+# it, and upload it as the release asset so
+# releases/latest/download/marketplace.json serves it.
+
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: promote-stable-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify release tag
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          case "$TAG" in
+            plugin-v*) ;;
+            *)
+              echo "::error::Release tag '$TAG' does not match plugin-v* — not a plugin payload release; refusing to promote."
+              exit 1
+              ;;
+          esac
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Generate marketplace.json
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+
+          tag = os.environ["TAG"]
+          manifest = {
+              "name": "weather-skills",
+              "description": "Forecasting assistant agent plus weather and climate data skills.",
+              "owner": {"name": "rhiza-research"},
+              "plugins": [
+                  {
+                      "name": "rhiza-forecasting",
+                      "description": "Forecasting assistant agent plus weather and climate data skills.",
+                      "source": {
+                          "source": "github",
+                          "repo": "rhiza-research/forecasting-skills",
+                          "ref": tag,
+                      },
+                  }
+              ],
+          }
+          with open("marketplace.json", "w") as fh:
+              json.dump(manifest, fh, indent=2)
+              fh.write("\n")
+          PY
+          cat marketplace.json
+
+      - name: Validate marketplace.json
+        run: |
+          set -euo pipefail
+          npx -y @anthropic-ai/claude-code@2.1.218 plugin validate marketplace.json --strict
+
+      - name: Upload marketplace.json to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" marketplace.json --clobber
