@@ -7,6 +7,10 @@
 #   "requests",
 #   "xarray",
 #   "cfgrib",
+#   # eccodeslib carries the native libeccodes that cfgrib loads on macOS/Linux;
+#   # eccodes drops this as a transitive dep via PyPI metadata (ecmwf/eccodes-python#150),
+#   # so it is declared directly. Windows bundles the library in eccodes itself.
+#   "eccodeslib",
 #   "zarr",
 #   "numpy",
 # ]
