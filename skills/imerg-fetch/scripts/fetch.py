@@ -22,7 +22,7 @@ from weather_skills_core import EntryOverride, UsageError, WroteSummary, weather
 from weather_skills_core.envelope import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.1.14"
 
 SHORTNAMES = {
     "late": "GPM_3IMERGDL",
@@ -224,8 +224,7 @@ def fetch(start_time, end_time, version):
                 if start_time + timedelta(days=i) > last_present
             ]
             missing_days = sorted(
-                set(start_time + timedelta(days=i) for i in range(requested_span))
-                - set(present_days)
+                {start_time + timedelta(days=i) for i in range(requested_span)} - set(present_days)
             )
             if missing_days != expected_tail:
                 # Interior hole: a missing day precedes a later present day. This

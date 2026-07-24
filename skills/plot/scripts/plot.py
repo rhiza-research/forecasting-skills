@@ -30,7 +30,7 @@ from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.15"
+_SKILL_VERSION = "0.1.16"
 
 
 # Strict decimal integer: optional single sign, then ASCII digits only.
@@ -183,7 +183,7 @@ def _panel_title(da, sdim, step_value, all_steps):
             end = time_val + np.asarray(step_value)
             start = end - dt
         return f"{str(start)[:16]} until {str(end)[:16]}"
-    except Exception:
+    except Exception:  # noqa: BLE001 -- best-effort time-range label; fall back on any failure
         return fallback
 
 

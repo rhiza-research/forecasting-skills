@@ -28,7 +28,7 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.util import is_transient, require_env
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.1.14"
 
 # How far back from today the `latest` resolver requests observations to find
 # the newest available TAHMO observation date. Station reporting can lag a few
@@ -133,7 +133,7 @@ def _station_frame(api, station_id: str, start: str, end: str):
 
     try:
         raw = _fetch_raw(api, station_id, start, end)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- per-station fetch: drop the station and warn on any failure
         print(f"{station_id}: DROPPED, fetch failed ({exc})", file=sys.stderr)
         return None
     if raw is None or len(raw) == 0:

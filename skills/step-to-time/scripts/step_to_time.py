@@ -20,7 +20,7 @@ date stays discoverable via the ``weather_skills_forecast_init`` dataset attr.
 from weather_skills_core import UsageError, WroteSummary, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.8"
 
 
 @weather_skill(
@@ -86,7 +86,7 @@ def step_to_time(ds):
         if np.isnat(init):
             raise UsageError("init date is missing/NaT.")
     else:
-        if init_scalar is None or init_scalar != init_scalar:
+        if init_scalar is None or init_scalar != init_scalar:  # noqa: PLR0124 -- self-inequality is the NaT test for object-dtype cftime scalars
             raise UsageError("init date is missing/NaT.")
 
     if is_datetime64:

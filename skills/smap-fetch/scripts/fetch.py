@@ -32,7 +32,7 @@ from weather_skills_core import DataError, SkillError, UsageError, weather_skill
 from weather_skills_core.envelope import cf_axes_missing, stamp_cf_coords, udunits_error
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.1.9"
 
 _SHORT_NAME = "SPL3SMP_E"
 _FILL = -9999.0
@@ -135,7 +135,7 @@ def _granule_date(granule) -> date:
     for url in granule.data_links():
         m = _GRANULE_DATE_RE.search(url.rsplit("/", 1)[-1])
         if m:
-            return datetime.strptime(m.group(1), "%Y%m%d").date()
+            return datetime.strptime(m.group(1), "%Y%m%d").date()  # noqa: DTZ007 -- date-only parse; a timezone is meaningless here
     raise ValueError("could not parse a YYYYMMDD date from the granule file name")
 
 

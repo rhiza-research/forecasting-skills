@@ -24,7 +24,7 @@ import sys
 from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.1.11"
 
 
 def _grid_spacing(coord_vals) -> float:
@@ -44,8 +44,8 @@ def _target_axis(coord_vals, resolution: float, offset: float):
     # Tolerance on (vmin, vmax) - offset / resolution to keep boundary points
     # that are on-grid up to floating-point noise.
     eps = 1e-9 * max(1.0, abs(vmin), abs(vmax)) / resolution
-    k_min = int(math.ceil((vmin - offset) / resolution - eps))
-    k_max = int(math.floor((vmax - offset) / resolution + eps))
+    k_min = math.ceil((vmin - offset) / resolution - eps)
+    k_max = math.floor((vmax - offset) / resolution + eps)
     if k_max < k_min:
         raise ValueError(
             f"No grid points at offset={offset}, resolution={resolution} "

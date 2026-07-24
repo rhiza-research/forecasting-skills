@@ -31,7 +31,7 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.15"
+_SKILL_VERSION = "0.1.16"
 
 # Shared categorical colormap and BoundaryNorm for precipitation (mm).
 PRECIP_COLORS = [
@@ -131,7 +131,7 @@ def _load_admin_boundaries(bbox=None):
             name="admin_1_states_provinces",
         )
         gdf = gpd.read_file(shp_path)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- optional admin overlay; warn and skip if unavailable
         print(
             f"Warning: admin boundaries unavailable ({exc}); skipping overlay.",
             file=sys.stderr,
@@ -145,13 +145,13 @@ def _load_admin_boundaries(bbox=None):
             clip_geom = box(xmin, ymin, xmax, ymax)
             try:
                 gdf = gdf.clip(clip_geom)
-            except Exception:
+            except Exception:  # noqa: BLE001 -- fall back to shapely intersection when .clip is unavailable
                 # Older geopandas may not expose .clip cleanly; fall back
                 # to a shapely intersection on each geometry.
                 gdf = gdf.copy()
                 gdf["geometry"] = gdf.geometry.intersection(clip_geom)
             gdf = gdf[~gdf.geometry.is_empty & gdf.geometry.notna()]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- optional bbox clip; warn and draw unclipped on failure
             print(
                 f"Warning: could not clip admin boundaries to bbox ({exc}); "
                 "drawing unclipped overlay.",

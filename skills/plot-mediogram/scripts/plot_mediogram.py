@@ -17,7 +17,7 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.envelope import cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.1.11"
 
 
 def _select_point(da, lat, lon):
@@ -78,7 +78,7 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
     import numpy as np
     from matplotlib.patches import Patch
 
-    variable = variable or (list(ds_fc.data_vars)[0] if ds_fc.data_vars else None)
+    variable = variable or (next(iter(ds_fc.data_vars)) if ds_fc.data_vars else None)
     if variable is None or variable not in ds_fc or variable not in ds_mc:
         raise UsageError(
             f"variable '{variable}' must exist in both inputs. "
@@ -133,10 +133,10 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
         widths=0.2,
         showfliers=False,
         patch_artist=True,
-        boxprops=dict(facecolor="cyan", alpha=1),
-        medianprops=dict(color="black", linewidth=1.5),
-        whiskerprops=dict(color="black", linewidth=1),
-        capprops=dict(color="gray", linewidth=1, alpha=0),
+        boxprops={"facecolor": "cyan", "alpha": 1},
+        medianprops={"color": "black", "linewidth": 1.5},
+        whiskerprops={"color": "black", "linewidth": 1},
+        capprops={"color": "gray", "linewidth": 1, "alpha": 0},
     )
     ax.bxp(
         mc_inner,
@@ -144,10 +144,10 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
         widths=0.2,
         showfliers=False,
         patch_artist=True,
-        boxprops=dict(facecolor="red", alpha=1),
-        medianprops=dict(color="black", linewidth=1.5),
-        whiskerprops=dict(color="black", linewidth=1),
-        capprops=dict(color="gray", linewidth=1, alpha=0),
+        boxprops={"facecolor": "red", "alpha": 1},
+        medianprops={"color": "black", "linewidth": 1.5},
+        whiskerprops={"color": "black", "linewidth": 1},
+        capprops={"color": "gray", "linewidth": 1, "alpha": 0},
     )
 
     ax.bxp(
@@ -156,10 +156,10 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
         widths=0.4,
         showfliers=False,
         patch_artist=True,
-        boxprops=dict(facecolor="cyan", alpha=1),
-        medianprops=dict(color="black", linewidth=1.5),
-        whiskerprops=dict(color="gray", linewidth=2),
-        capprops=dict(color="black", linewidth=1),
+        boxprops={"facecolor": "cyan", "alpha": 1},
+        medianprops={"color": "black", "linewidth": 1.5},
+        whiskerprops={"color": "gray", "linewidth": 2},
+        capprops={"color": "black", "linewidth": 1},
     )
     ax.bxp(
         mc_outer,
@@ -167,10 +167,10 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
         widths=0.4,
         showfliers=False,
         patch_artist=True,
-        boxprops=dict(facecolor="red", alpha=1),
-        medianprops=dict(color="black", linewidth=1.5),
-        whiskerprops=dict(color="gray", linewidth=2),
-        capprops=dict(color="black", linewidth=1),
+        boxprops={"facecolor": "red", "alpha": 1},
+        medianprops={"color": "black", "linewidth": 1.5},
+        whiskerprops={"color": "gray", "linewidth": 2},
+        capprops={"color": "black", "linewidth": 1},
     )
 
     ax.plot(time_steps, ensemble_mean, color="black", linewidth=1.2)
