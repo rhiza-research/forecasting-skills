@@ -27,7 +27,6 @@ import sys
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.decorator import rewrite_bbox_argv
 from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -376,6 +375,12 @@ def _normalize_entry_args(raw):
     output_type="png",
     variable="single",
     title=True,
+    bbox={
+        "mode": "optional",
+        "help": "N/W/S/E decimal degrees (heatmap only). Slices the gridded input "
+        "to the bbox and sets the axes extent to it (an explicit --extent still "
+        "overrides). Use the resolve-region skill to get a country's bbox.",
+    },
     extra_args={
         "style": {"choices": ["heatmap", "timeseries"], "default": "heatmap"},
         "colormap": {"default": "viridis"},
@@ -393,11 +398,6 @@ def _normalize_entry_args(raw):
             "help": 'City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
         },
         "fontsize": {"type": int, "default": 16},
-        "bbox": {
-            "help": "N/W/S/E decimal degrees (heatmap only). Slices the gridded input "
-            "to the bbox and sets the axes extent to it (an explicit --extent still "
-            "overrides). Use the resolve-region skill to get a country's bbox.",
-        },
         "mask_geojson": {
             "help": "Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
             "outside the polygon are set to NaN before plotting. Use resolve-region's "
@@ -431,18 +431,14 @@ def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, 
     except ValueError as exc:
         raise UsageError(str(exc)) from None
 
-    bbox_nwse = None
-    if bbox:
-        try:
-            bbox_nwse = tuple(float(x) for x in bbox.split("/"))
-            if len(bbox_nwse) != 4:
-                raise ValueError
-        except ValueError:
-            raise UsageError("--bbox must be N/W/S/E (decimal degrees).") from None
+    # The decorator parses --bbox to an (N, W, S, E) float tuple (or None).
+    bbox_nwse = bbox
 
     if bbox_nwse is not None and style != "heatmap":
+        r_n, r_w, r_s, r_e = bbox_nwse
         print(
-            f"Warning: --bbox {bbox} is a heatmap-only option; ignored for --style {style}.",
+            f"Warning: --bbox {r_n}/{r_w}/{r_s}/{r_e} is a heatmap-only option; "
+            f"ignored for --style {style}.",
             file=sys.stderr,
         )
 
@@ -647,9 +643,4 @@ def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, 
 
 
 if __name__ == "__main__":
-    # --bbox is an extra_args string flag here (the skill parses it itself),
-    # and the decorator rewrites "--bbox VAL" to "--bbox=VAL" only for the
-    # bbox toggle, so this script applies the rewrite to argv itself; without
-    # it argparse rejects a space-separated bbox whose north latitude is
-    # negative.
-    plot(rewrite_bbox_argv(sys.argv[1:]))
+    plot()

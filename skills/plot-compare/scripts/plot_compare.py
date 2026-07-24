@@ -28,7 +28,6 @@ independent otherwise (--shared-scale / --independent-scale override).
 import sys
 
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.decorator import rewrite_bbox_argv
 from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -261,6 +260,13 @@ def _ax_bounds(ds, variable):
     },
     title=True,
     time_dim=True,
+    bbox={
+        "mode": "optional",
+        "help": "N/W/S/E decimal degrees. Slices gridded inputs to the bbox, drops "
+        "stations outside the bbox, and sets axes to the bbox. Cells inside the "
+        "bbox but outside any --mask-geojson polygon are kept (rectangular "
+        "slice). Use the resolve-region skill to get a country's bbox.",
+    },
     extra_args={
         "variable_a": {
             "help": "Variable for row A. Overrides --variable for that row. "
@@ -299,12 +305,6 @@ def _ax_bounds(ds, variable):
             "Default: independent unless both rows are the same variable + units.",
         },
         "panels": {"type": int, "default": 3},
-        "bbox": {
-            "help": "N/W/S/E decimal degrees. Slices gridded inputs to the bbox, drops "
-            "stations outside the bbox, and sets axes to the bbox. Cells inside the "
-            "bbox but outside any --mask-geojson polygon are kept (rectangular "
-            "slice). Use the resolve-region skill to get a country's bbox.",
-        },
         "mask_geojson": {
             "help": "Path to a GeoJSON boundary polygon. Gridded cells outside the "
             "polygon are set to NaN before plotting. Use resolve-region's --geojson "
@@ -636,14 +636,8 @@ def plot_compare(
     # drop station inputs whose (lon, lat) is outside the bbox. This matches
     # upstream's ``ds.sel(longitude=slice, latitude=slice)`` rendering — the
     # bbox alone is a rectangle, not a country shape.
-    region_bbox = None
-    if bbox:
-        try:
-            region_bbox = tuple(float(x) for x in bbox.split("/"))
-            if len(region_bbox) != 4:
-                raise ValueError
-        except ValueError:
-            raise UsageError("--bbox must be N/W/S/E (decimal degrees).") from None
+    # The decorator parses --bbox to an (N, W, S, E) float tuple (or None).
+    region_bbox = bbox
     # When ``--mask-geojson`` is set: polygon-clip gridded inputs (cells outside
     # the polygon render as NaN/white), matching upstream sheerwater's
     # clip_region which polygon-clips IMERG/CHIRPS before plotting.
@@ -668,7 +662,7 @@ def plot_compare(
                     keep_ids = ds["station_id"].values[keep]
                     if len(keep_ids) == 0:
                         print(
-                            f"Warning: 0 stations inside --bbox {bbox} "
+                            f"Warning: 0 stations inside --bbox {r_n}/{r_w}/{r_s}/{r_e} "
                             f"on input '{ds_label}'; scatter will render empty.",
                             file=sys.stderr,
                         )
@@ -748,7 +742,7 @@ def plot_compare(
                 elif region_bbox is not None:
                     print(
                         f"Warning: input '{ds_label}' has no CF lat/lon "
-                        f"dims; --bbox {bbox} slice not applied.",
+                        f"dims; --bbox {r_n}/{r_w}/{r_s}/{r_e} slice not applied.",
                         file=sys.stderr,
                     )
                 elif region_polygon is not None:
@@ -946,9 +940,4 @@ def plot_compare(
 
 
 if __name__ == "__main__":
-    # --bbox is an extra_args string flag here (the skill parses it itself),
-    # and the decorator rewrites "--bbox VAL" to "--bbox=VAL" only for the
-    # bbox toggle, so this script applies the rewrite to argv itself; without
-    # it argparse rejects a space-separated bbox whose north latitude is
-    # negative.
-    plot_compare(rewrite_bbox_argv(sys.argv[1:]))
+    plot_compare()
