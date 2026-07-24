@@ -28,7 +28,7 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.util import is_transient, require_env
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.1.14"
 
 # How far back from today the `latest` resolver requests observations to find
 # the newest available TAHMO observation date. Station reporting can lag a few

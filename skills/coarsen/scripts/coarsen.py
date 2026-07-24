@@ -24,7 +24,7 @@ import sys
 from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.1.11"
 
 
 def _grid_spacing(coord_vals) -> float:
