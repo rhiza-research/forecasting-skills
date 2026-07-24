@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Stdlib only.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/compose.py *)
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   catalog-group: agent-tooling
 ---
 

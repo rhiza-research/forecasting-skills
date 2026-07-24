@@ -23,7 +23,7 @@ from weather_skills_core.envelope import normalize_longitude
 from weather_skills_core.provenance import make_completeness_probe
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.1.9"
 
 # Public, credential-free ARCO-ERA5 analysis-ready store: 0.25 deg equiangular
 # lat/lon, hourly, dims (time, latitude, longitude, level). Opened anonymously.

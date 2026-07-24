@@ -22,7 +22,7 @@ import sys
 from weather_skills_core import UsageError, WroteSummary, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.12"
+_SKILL_VERSION = "0.1.13"
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}

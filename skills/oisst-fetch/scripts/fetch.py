@@ -30,7 +30,7 @@ from weather_skills_core.envelope import cf_axes_missing, normalize_longitude, s
 from weather_skills_core.provenance import make_completeness_probe
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.1.7"
 
 # --- Source -> output transforms ---
 #

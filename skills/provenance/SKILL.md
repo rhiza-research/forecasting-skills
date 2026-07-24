@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py *)
 metadata:
-  version: "0.1.9"
+  version: "0.1.10"
   catalog-group: agent-tooling
 ---
 

@@ -31,7 +31,7 @@ from weather_skills_core.provenance import (
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.9"
+_SKILL_VERSION = "0.1.10"
 
 
 def _load_zarr(path: Path) -> dict:

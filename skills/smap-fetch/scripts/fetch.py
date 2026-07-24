@@ -32,7 +32,7 @@ from weather_skills_core import DataError, SkillError, UsageError, weather_skill
 from weather_skills_core.envelope import cf_axes_missing, stamp_cf_coords, udunits_error
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.8"
 
 _SHORT_NAME = "SPL3SMP_E"
 _FILL = -9999.0

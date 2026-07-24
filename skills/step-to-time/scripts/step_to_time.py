@@ -20,7 +20,7 @@ date stays discoverable via the ``weather_skills_forecast_init`` dataset attr.
 from weather_skills_core import UsageError, WroteSummary, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.1.7"
 
 
 @weather_skill(

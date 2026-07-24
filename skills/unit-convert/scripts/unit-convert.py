@@ -27,7 +27,7 @@ import tokenize
 from weather_skills_core import UsageError, WroteSummary, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.8"
 
 # CF/UDUNITS power notation uses a bare signed integer fused to its unit token
 # (``m-2``, ``s-1``, ``m2``); pint's parser expects ``m**-2``, ``s**-1``,

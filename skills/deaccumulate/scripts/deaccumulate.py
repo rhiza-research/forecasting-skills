@@ -21,7 +21,7 @@ import sys
 from weather_skills_core import UsageError, WroteSummary, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.11"
+_SKILL_VERSION = "0.1.12"
 
 # Time-unit tokens that, when they appear as a per-time denominator, mark a
 # rate. Deliberately excludes length/mass/etc. tokens (e.g. ``m``) so that a

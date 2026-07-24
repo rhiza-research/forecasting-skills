@@ -44,7 +44,7 @@ from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_
 from weather_skills_core.util import is_transient
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.8"
 
 _API_BASE = "https://api.openaq.org/v3"
 HTTP_TIMEOUT = 60

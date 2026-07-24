@@ -17,7 +17,7 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.envelope import cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.9"
+_SKILL_VERSION = "0.1.10"
 
 
 def _select_point(da, lat, lon):

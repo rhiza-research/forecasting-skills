@@ -38,7 +38,7 @@ from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_
 from weather_skills_core.util import is_transient
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.1.7"
 
 # Public, credential-free GHCN-Daily on the S3 website endpoint.
 _BASE_URL = "https://noaa-ghcn-pds.s3.amazonaws.com"

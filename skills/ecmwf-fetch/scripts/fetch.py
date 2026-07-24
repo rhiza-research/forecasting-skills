@@ -28,7 +28,7 @@ from weather_skills_core.envelope import parse_bbox, stamp_cf_attrs
 from weather_skills_core.util import require_env
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.11"
+_SKILL_VERSION = "0.1.12"
 
 # How far back from today the `latest` init probe looks. ECMWF S2S real-time
 # data is access-restricted (embargoed) for a recent window whose width is

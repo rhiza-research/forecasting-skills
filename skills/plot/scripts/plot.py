@@ -30,7 +30,7 @@ from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.14"
+_SKILL_VERSION = "0.1.15"
 
 
 # Strict decimal integer: optional single sign, then ASCII digits only.

@@ -19,7 +19,7 @@ from weather_skills_core.dates import np_to_date, parse_token, resolve_date, res
 from weather_skills_core.envelope import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.1.11"
 
 # Coords dynamical attaches that are not part of the weather-skills envelope: forecast
 # bookkeeping (valid_time, *_forecast_length) and the CRS scalar (spatial_ref).

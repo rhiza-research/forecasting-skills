@@ -30,7 +30,7 @@ from weather_skills_core.envelope import normalize_longitude, udunits_error
 from weather_skills_core.provenance import make_completeness_probe
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.1.7"
 
 # Public, credential-free Pangeo CMIP6 collection on Google Cloud. The catalog
 # CSV maps facet combinations to a Zarr store path (`zstore`); data is read

@@ -29,7 +29,7 @@ from weather_skills_core import provenance as _provenance
 from weather_skills_core.envelope import auto_variable, cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.1.14"
 
 
 def _pick_time_dim(da, override):
