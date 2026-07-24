@@ -70,11 +70,10 @@ def _xarray_bare_openers(tree: ast.AST) -> set[str]:
     """Local names bound to an opener via `from xarray import open_* [as Y]`."""
     bare: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.level == 0 and node.module == "xarray":
-                for alias in node.names:
-                    if alias.name in OPENERS:
-                        bare.add(alias.asname or alias.name)
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == "xarray":
+            for alias in node.names:
+                if alias.name in OPENERS:
+                    bare.add(alias.asname or alias.name)
     return bare
 
 
@@ -137,7 +136,7 @@ def main() -> None:
     for f in files:
         try:
             offense = check(f)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- report the parse error and continue scanning other files
             print(f"{f}: parse error: {e}", file=sys.stderr)
             any_offender = True
             continue

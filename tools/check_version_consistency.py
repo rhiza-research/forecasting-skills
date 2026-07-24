@@ -28,7 +28,7 @@ from pathlib import Path
 # Sibling module under tools/. Both this script and bump-skill-version.py
 # share these patterns so a change in one stays consistent with the other.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from rhiza_version_re import (  # noqa: E402
+from rhiza_version_re import (
     _VERSION_LINE_RE_VALUE,
     MetadataVersionParseError,
     find_metadata_version_line,
@@ -59,9 +59,9 @@ def _read_skill_md_version(skill_md: Path) -> str | None:
     # Strip surrounding quotes (single or double) if present. The
     # consistency check only cares about the value; preserving quote
     # style is the bump script's job.
-    if raw.startswith('"') and raw.endswith('"') and len(raw) >= 2:
-        value = raw[1:-1].strip()
-    elif raw.startswith("'") and raw.endswith("'") and len(raw) >= 2:
+    if (raw.startswith('"') and raw.endswith('"') and len(raw) >= 2) or (
+        raw.startswith("'") and raw.endswith("'") and len(raw) >= 2
+    ):
         value = raw[1:-1].strip()
     else:
         value = raw.strip()

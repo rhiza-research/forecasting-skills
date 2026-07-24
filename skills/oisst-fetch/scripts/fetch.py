@@ -20,9 +20,10 @@ from datetime import UTC, date, datetime
 # write time (cf_axes_missing, in the post-write decode check) — the final step,
 # after every per-year OPeNDAP fetch. Importing it eagerly at module top turns
 # that late import into a startup fail-fast probe: a missing dependency errors
-# before any network work rather than only after every fetch has run. The F401
-# noqa marks the probe-only import; removing it would drop the fail-fast
-# guarantee. (cf_units is imported where it is used directly, in _stamp_cf.)
+# before any network work rather than only after every fetch has run. The
+# F401 suppression below marks the probe-only import; removing it would drop the
+# fail-fast guarantee. (cf_units is imported where it is used directly, in
+# _stamp_cf.)
 import cf_xarray  # noqa: F401  (loaded lazily by core's cf_axes_missing at write time)
 from weather_skills_core import DataError, SkillError, UsageError, weather_skill
 from weather_skills_core.dates import np_to_date
@@ -198,7 +199,7 @@ def _cf_decode_check(out) -> None:
     try:
         with xr.open_zarr(out, consolidated=True, decode_cf=True) as ds:
             missing = cf_axes_missing(ds)
-    except Exception as exc:  # noqa: BLE001 -- a failed decode is itself the defect to report
+    except Exception as exc:
         raise DataError(
             f"wrote {out} but cf-xarray could not decode it ({exc}); the output "
             "is not CF-compliant."
@@ -356,7 +357,7 @@ def fetch(start_time, end_time, bbox, context):
     for year in years:
         try:
             dy = _open_year(year)
-        except Exception as exc:  # noqa: BLE001 -- open is metadata-only; failure = availability/transport
+        except Exception as exc:
             raise DataError(
                 f"could not open the OISST file for year {year} ({exc}). The year may be "
                 "outside the served range (1981-09 to present), or NOAA PSL's OPeNDAP server is "
@@ -379,7 +380,7 @@ def fetch(start_time, end_time, bbox, context):
             # _bbox_subset's empty-selection DataError already says what failed;
             # propagate it past the transfer-failure classifier below.
             raise
-        except Exception as exc:  # noqa: BLE001 -- classify the OPeNDAP data-transfer failure
+        except Exception as exc:
             if _is_availability_failure(exc):
                 raise UsageError(
                     f"could not read the OISST file for year {year} ({exc}). The year may be "

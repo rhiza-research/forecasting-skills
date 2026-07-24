@@ -135,7 +135,7 @@ def _granule_date(granule) -> date:
     for url in granule.data_links():
         m = _GRANULE_DATE_RE.search(url.rsplit("/", 1)[-1])
         if m:
-            return datetime.strptime(m.group(1), "%Y%m%d").date()
+            return datetime.strptime(m.group(1), "%Y%m%d").date()  # noqa: DTZ007 -- date-only parse; a timezone is meaningless here
     raise ValueError("could not parse a YYYYMMDD date from the granule file name")
 
 

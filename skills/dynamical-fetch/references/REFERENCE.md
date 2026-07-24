@@ -6,8 +6,9 @@ Datasets are opened with [`dynamical-catalog`](https://github.com/dynamical-org/
 
 ```python
 import dynamical_catalog
-dynamical_catalog.list()          # -> list of dataset id strings
-ds = dynamical_catalog.open(id)   # -> lazy, icechunk-backed xarray.Dataset
+
+dynamical_catalog.list()  # -> list of dataset id strings
+ds = dynamical_catalog.open(id)  # -> lazy, icechunk-backed xarray.Dataset
 ```
 
 `open()` reads only metadata until values are computed, so shape detection,

@@ -100,10 +100,8 @@ def _bbox_from_geometry(geometry):
     max_lat = float("-inf")
     for lon, lat in _iter_coords(geometry["coordinates"]):
         lons.append(lon)
-        if lat < min_lat:
-            min_lat = lat
-        if lat > max_lat:
-            max_lat = lat
+        min_lat = min(min_lat, lat)
+        max_lat = max(max_lat, lat)
     w, e = _lon_bounds(lons)
     return max_lat, w, min_lat, e
 

@@ -133,7 +133,7 @@ def _station_frame(api, station_id: str, start: str, end: str):
 
     try:
         raw = _fetch_raw(api, station_id, start, end)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- per-station fetch: drop the station and warn on any failure
         print(f"{station_id}: DROPPED, fetch failed ({exc})", file=sys.stderr)
         return None
     if raw is None or len(raw) == 0:

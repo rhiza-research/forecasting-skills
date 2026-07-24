@@ -86,7 +86,7 @@ def step_to_time(ds):
         if np.isnat(init):
             raise UsageError("init date is missing/NaT.")
     else:
-        if init_scalar is None or init_scalar != init_scalar:
+        if init_scalar is None or init_scalar != init_scalar:  # noqa: PLR0124 -- self-inequality is the NaT test for object-dtype cftime scalars
             raise UsageError("init date is missing/NaT.")
 
     if is_datetime64:

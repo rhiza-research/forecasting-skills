@@ -38,7 +38,7 @@ from pathlib import Path
 # sys.path so this script stays runnable as `python3 .github/scripts/...`
 # from the repo root without requiring an installed package.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "tools"))
-from rhiza_version_re import (  # noqa: E402
+from rhiza_version_re import (
     _VERSION_LINE_RE_REWRITE,
     MetadataVersionParseError,
     find_metadata_version_line,
@@ -96,14 +96,18 @@ def _bump_skill_md(text: str, kind: str) -> tuple[str, str, str]:
     # malformed (e.g. `---name: foo\n...` with no separator between the
     # opening fence and the first key). Reject early with a specific message
     # rather than letting the downstream parser produce a confusing error.
-    if not text.startswith("---\n") and text.strip() != "---":
-        # Allow exact `---` only (a frontmatter-only file is handled below).
-        # Anything else with content directly after the opening `---` is
-        # malformed.
-        if len(text) > 3 and text[3] not in ("\n", "\r"):
-            raise ValueError(
-                "SKILL.md frontmatter is malformed: opening `---` is not followed by a newline"
-            )
+    # Allow exact `---` only (a frontmatter-only file is handled below).
+    # Anything else with content directly after the opening `---` is
+    # malformed.
+    if (
+        not text.startswith("---\n")
+        and text.strip() != "---"
+        and len(text) > 3
+        and text[3] not in ("\n", "\r")
+    ):
+        raise ValueError(
+            "SKILL.md frontmatter is malformed: opening `---` is not followed by a newline"
+        )
     # Locate the closing `---` line. Look for `\n---` first (standard case
     # with a trailing newline after the closing marker). If absent, also
     # tolerate end-of-file: a SKILL.md whose last bytes are `---` with no

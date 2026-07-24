@@ -183,7 +183,7 @@ def _panel_title(da, sdim, step_value, all_steps):
             end = time_val + np.asarray(step_value)
             start = end - dt
         return f"{str(start)[:16]} until {str(end)[:16]}"
-    except Exception:
+    except Exception:  # noqa: BLE001 -- best-effort time-range label; fall back on any failure
         return fallback
 
 
