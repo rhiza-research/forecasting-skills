@@ -1,10 +1,10 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
-#   "zarr",
 #   "numpy",
 #   "pandas",
 # ]
@@ -16,16 +16,13 @@ For `time`, uses xarray.resample. For `step`, rolls fixed-length windows
 expressed as timedelta64 and aggregates each.
 """
 
-import argparse
 import datetime as _dt
-import hashlib
-import json
-import shutil
 import sys
-from pathlib import Path
+
+from weather_skills_core import UsageError, WroteSummary, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.12"
+_SKILL_VERSION = "0.1.13"
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
@@ -33,71 +30,6 @@ RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS
 # (`--anchor-end`). "monthly" uses a 30-day approximation rather than
 # calendar months; see SKILL.md for the caveat.
 ANCHOR_PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10, "monthly": 30}
-
-
-def _hash_zarr(zarr_path: Path) -> str:
-    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
-    deterministically and hashes relative-path bytes + each file's
-    content. Returns sha256 hex digest."""
-    h = hashlib.sha256()
-    for p in sorted(zarr_path.rglob("*")):
-        if p.is_file():
-            h.update(str(p.relative_to(zarr_path)).encode())
-            h.update(p.read_bytes())
-    return h.hexdigest()
-
-
-def _load_history(zarr_path: Path) -> list:
-    try:
-        import xarray as xr
-
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except FileNotFoundError:
-        # A not-yet-existing output read during a cache check is a silent miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
-
-
-def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
-    """Cache check that compares everything except input.hash.
-
-    The hash over the upstream zarr is expensive; the basename + upstream
-    history chain is sufficient to identify whether a recompute is needed.
-    """
-    if not out.exists():
-        return False
-    history = _load_history(out)
-    if len(history) != len(upstream) + 1:
-        return False
-    if history[:-1] != upstream:
-        return False
-    last = history[-1]
-    last_input = last.get("input") or {}
-    entry_input = entry.get("input") or {}
-    return (
-        last.get("skill") == entry["skill"]
-        and last.get("version") == entry["version"]
-        and last.get("args") == entry["args"]
-        and last_input.get("basename") == entry_input.get("basename")
-    )
-
 
 # Units that, on their own, mark a temperature (an intensive quantity that
 # cannot be summed). Compared case-insensitively against the stripped units
@@ -329,12 +261,10 @@ def _aggregate_time_anchored(ds, dim, period, method, anchor_end):
                 calendar=calendar,
             )
         except ValueError:
-            print(
-                f"Error: --anchor-end {ae.date().isoformat()} is not a valid "
-                f"date in calendar {calendar!r}.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            raise UsageError(
+                f"--anchor-end {ae.date().isoformat()} is not a valid "
+                f"date in calendar {calendar!r}."
+            ) from None
 
         # Right-edge label kept as the native cftime object so the output coord
         # stays on the input's calendar.
@@ -384,17 +314,12 @@ def _aggregate_step(ds, period, method):
     import pandas as pd
 
     if period == "monthly":
-        print(
-            "Error: monthly aggregation is not defined for a forecast step dim.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+        raise UsageError("monthly aggregation is not defined for a forecast step dim.")
     days = PERIOD_DAYS[period]
     window = pd.Timedelta(days=days).to_timedelta64()
     steps = ds["step"].values
     if steps.dtype.kind != "m":
-        print(f"Error: 'step' dim must be timedelta64, got {steps.dtype}", file=sys.stderr)
-        sys.exit(2)
+        raise UsageError(f"'step' dim must be timedelta64, got {steps.dtype}")
     max_step = steps.max()
     # Emit a bucket (left, right] only if it covers a full `window` of the
     # input step axis, i.e. right <= max_step. Trailing partial buckets are
@@ -422,83 +347,55 @@ def _aggregate_step(ds, period, method):
     return xr.concat(chunks, dim="step").assign_coords(step=labels)
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__.splitlines()[0],
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument("--input", "-i", required=True)
-    p.add_argument("--output", "-o", required=True)
-    p.add_argument("--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"])
-    p.add_argument("--method", default="sum", choices=["sum", "mean", "max", "min"])
-    p.add_argument(
-        "--variable",
-        "-v",
-        action="append",
-        default=None,
-        help="Restrict aggregation to this data variable. Repeat once per "
-        "variable to select several. The selected data variables are "
-        "aggregated and relabeled as usual; other DATA variables are dropped "
-        "from the output (coordinates pass through). Default (unset) "
-        "aggregates all data variables.",
-    )
-    p.add_argument("--time-dim")
-    p.add_argument(
-        "--anchor-end",
-        default=None,
-        help="ISO date (YYYY-MM-DD). When set, anchors the obs/time "
-        "resample so the LAST bin ends at this date and previous bins "
-        "are synthesized backward in `period`-day windows. Partial bins "
-        "whose start falls before the input's first timestamp are "
-        "dropped. Has no effect on the forecast `step` path.",
-    )
-    args = p.parse_args()
-
+def _validate_args(args):
     if args.anchor_end is not None:
         try:
             _dt.date.fromisoformat(args.anchor_end)
         except ValueError as exc:
-            print(
-                f"Error: --anchor-end '{args.anchor_end}' is not a valid "
-                f"ISO date (YYYY-MM-DD): {exc}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            raise UsageError(
+                f"--anchor-end '{args.anchor_end}' is not a valid ISO date (YYYY-MM-DD): {exc}"
+            ) from None
 
-    # Build the cheap fields first; defer _hash_zarr until after the
-    # cache-hit check so we don't hash hundreds of MB of zarr on hits.
-    partial_entry = {
-        "skill": "aggregate-temporal",
-        "version": _SKILL_VERSION,
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
-        "input": {"basename": Path(args.input).name},
-    }
-    upstream = _load_history(Path(args.input))
-    out = Path(args.output)
-    if _cache_hit(out, upstream, partial_entry):
-        print(
-            f"Cache hit: {args.output} already matches requested params; skipping aggregate.",
-            file=sys.stderr,
-        )
-        return
 
-    # Cache miss: now compute the upstream hash and build the final entry.
-    entry = {
-        **partial_entry,
-        "input": {
-            "basename": Path(args.input).name,
-            "hash": _hash_zarr(Path(args.input)),
+@weather_skill(
+    "aggregate-temporal",
+    _SKILL_VERSION,
+    input_type="any",
+    output_type="same",
+    input_paths=True,
+    variable={
+        "mode": "repeat",
+        "help": "Restrict aggregation to this data variable. Repeat once per "
+        "variable to select several. The selected data variables are "
+        "aggregated and relabeled as usual; other DATA variables are dropped "
+        "from the output (coordinates pass through). Default (unset) "
+        "aggregates all data variables.",
+    },
+    time_dim=True,
+    extra_args={
+        "period": {
+            "required": True,
+            "choices": ["daily", "weekly", "dekadal", "monthly"],
         },
-    }
-
+        "method": {"default": "sum", "choices": ["sum", "mean", "max", "min"]},
+        "anchor_end": {
+            "default": None,
+            "help": "ISO date (YYYY-MM-DD). When set, anchors the obs/time "
+            "resample so the LAST bin ends at this date and previous bins "
+            "are synthesized backward in `period`-day windows. Partial bins "
+            "whose start falls before the input's first timestamp are "
+            "dropped. Has no effect on the forecast `step` path.",
+        },
+    },
+    validate_args=_validate_args,
+    hash_input=False,
+    cache_hit_label="aggregate",
+)
+def aggregate(ds, input_paths, variable, time_dim, period, method, anchor_end):
+    """Temporal aggregation for weather-skills envelope Zarr stores."""
     import cf_xarray  # noqa: F401 — registers the .cf accessor
-    import xarray as xr
 
-    src = Path(args.input)
-    if not src.exists():
-        print(f"Error: {src} not found.", file=sys.stderr)
-        sys.exit(2)
-    ds = xr.open_zarr(src, consolidated=False)
+    src = input_paths[0]
 
     # Variable selection. When --variable is given, restrict the dataset to the
     # named DATA variable(s) BEFORE aggregating, so that selecting only an
@@ -507,19 +404,17 @@ def main() -> None:
     # Indexing with a list of data-var names keeps all coordinates; the
     # unselected data variables are dropped. Each name must be an actual data
     # variable (not a coordinate or a missing name).
-    if args.variable is not None:
+    if variable is not None:
         data_vars = list(ds.data_vars)
-        invalid = [v for v in args.variable if v not in ds.data_vars]
+        invalid = [v for v in variable if v not in ds.data_vars]
         if invalid:
-            print(
-                f"Error: --variable {invalid} not data variable(s) of {src}. "
-                f"Valid data variables: {data_vars}",
-                file=sys.stderr,
+            raise UsageError(
+                f"--variable {invalid} not data variable(s) of {src}. "
+                f"Valid data variables: {data_vars}"
             )
-            sys.exit(2)
         # De-duplicate while preserving first-seen order so a repeated name
         # doesn't duplicate a column.
-        selected = list(dict.fromkeys(args.variable))
+        selected = list(dict.fromkeys(variable))
         dropped = [v for v in data_vars if v not in selected]
         if dropped:
             print(
@@ -529,14 +424,10 @@ def main() -> None:
             )
         ds = ds[selected]
 
-    if args.time_dim:
-        dim = args.time_dim
+    if time_dim:
+        dim = time_dim
         if dim not in ds.dims:
-            print(
-                f"Error: --time-dim '{dim}' not in dims {list(ds.dims)}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            raise UsageError(f"--time-dim '{dim}' not in dims {list(ds.dims)}")
     else:
         # CF "T" axis first (finds wall-clock time even when named unusually),
         # then `step` (forecast lead time — timedelta64, not CF T). Only accept
@@ -580,23 +471,18 @@ def main() -> None:
             if non_dim_time is None and "time" in ds.coords:
                 non_dim_time = "time"
             if non_dim_time is not None:
-                print(
-                    f"Error: found a '{non_dim_time}' coordinate, but it is "
+                raise UsageError(
+                    f"found a '{non_dim_time}' coordinate, but it is "
                     f"not a dimension of the data (a scalar coordinate has no "
                     f"axis to aggregate over) and no 'step' dim is present. "
-                    f"Dims: {list(ds.dims)}. Pass --time-dim to override.",
-                    file=sys.stderr,
+                    f"Dims: {list(ds.dims)}. Pass --time-dim to override."
                 )
-            else:
-                print(
-                    f"Error: no time/step dim identified in {list(ds.dims)}. "
-                    f"Pass --time-dim to override.",
-                    file=sys.stderr,
-                )
-            sys.exit(2)
+            raise UsageError(
+                f"no time/step dim identified in {list(ds.dims)}. Pass --time-dim to override."
+            )
 
     print(
-        f"Aggregating dim={dim} period={args.period} method={args.method}",
+        f"Aggregating dim={dim} period={period} method={method}",
         file=sys.stderr,
     )
 
@@ -608,33 +494,30 @@ def main() -> None:
     # high-confidence intensive cases when the method is `sum`; the other
     # reducers (`mean`/`max`/`min`) are always valid and ambiguous metadata is
     # left to proceed.
-    if args.method == "sum":
+    if method == "sum":
         for var in ds.data_vars:
             reason = _intensive_reason(
                 ds[var].attrs.get("units"),
                 ds[var].attrs.get("standard_name"),
             )
             if reason is not None:
-                print(
-                    f"Error: variable '{var}' is an intensive quantity "
+                raise UsageError(
+                    f"variable '{var}' is an intensive quantity "
                     f"({reason}); '--method sum' adds its values within each "
                     f"window into a period total, but the sum of an intensive "
                     f"quantity is not a physical total and has no meaningful "
-                    f"interpretation.",
-                    file=sys.stderr,
+                    f"interpretation."
                 )
-                sys.exit(2)
 
     if dim == "step":
-        out_ds = _aggregate_step(ds, args.period, args.method)
-    elif args.anchor_end is not None:
+        out_ds = _aggregate_step(ds, period, method)
+    elif anchor_end is not None:
         import pandas as pd
 
-        anchor_end = pd.Timestamp(args.anchor_end)
-        out_ds = _aggregate_time_anchored(ds, dim, args.period, args.method, anchor_end)
+        out_ds = _aggregate_time_anchored(ds, dim, period, method, pd.Timestamp(anchor_end))
     else:
-        resampled = ds.resample({dim: RESAMPLE_FREQ[args.period]})
-        out_ds = _reduce(resampled, args.method)
+        resampled = ds.resample({dim: RESAMPLE_FREQ[period]})
+        out_ds = _reduce(resampled, method)
 
     # Units after sum: `_reduce` keeps the input attrs (keep_attrs=True), so a
     # summed precipitation RATE (e.g. mm/day) would otherwise keep its rate
@@ -642,7 +525,7 @@ def main() -> None:
     # depth. Relabel recognized per-day depth rates to the extensive depth and
     # remap the precipitation-rate standard_name. Only `sum` accumulates into a
     # total; mean/max/min keep the rate units. See SKILL.md "Units after sum".
-    if args.method == "sum":
+    if method == "sum":
         for var in out_ds.data_vars:
             attrs = out_ds[var].attrs
             old_units = attrs.get("units")
@@ -668,29 +551,8 @@ def main() -> None:
             else:
                 attrs["standard_name"] = new_name
 
-    if not upstream:
-        print(
-            "Warning: no upstream weather_skills_history on input; treating input as opaque.",
-            file=sys.stderr,
-        )
-    out_ds.attrs = {
-        **ds.attrs,
-        "weather_skills_history": json.dumps(upstream + [entry], sort_keys=True),
-    }
-    # compatibility migration for the rhiza_ attr prefix; scheduled for removal
-    for _old in ("rhiza_history", "rhiza_source", "rhiza_forecast_init"):
-        if _old in out_ds.attrs:
-            _new = "weather_skills_" + _old.removeprefix("rhiza_")
-            out_ds.attrs.setdefault(_new, out_ds.attrs.pop(_old))
-    for v in out_ds.variables:
-        out_ds[v].encoding = {}
-
-    if out.exists():
-        shutil.rmtree(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out_ds.to_zarr(out, mode="w", consolidated=True)
-    print(f"Wrote: {args.output} ({out_ds.sizes})", file=sys.stderr)
+    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
 
 
 if __name__ == "__main__":
-    main()
+    aggregate()

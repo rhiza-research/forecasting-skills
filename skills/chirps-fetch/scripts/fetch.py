@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cftime",
 #   "requests",
 #   "xarray",
@@ -11,11 +12,7 @@
 # ///
 """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
 
-import argparse
-import json
 import os
-import re
-import shutil
 import sys
 import tempfile
 import threading
@@ -23,10 +20,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-import numpy as np
-import requests
-import rioxarray  # noqa: F401 — registers .rio accessor
-import xarray as xr
+from weather_skills_core import EntryOverride, UsageError, WroteSummary, weather_skill
+from weather_skills_core.envelope import stamp_cf_attrs
 
 # Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
 # validated archive (per-year folders, 1998-to-present); the PRELIM product is
@@ -49,151 +44,6 @@ HTTP_TIMEOUT = 60
 # non-zero.
 _LATEST_LOOKBACK_DAYS = 30
 
-# --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
-#
-# A --start/--end value is one of:
-#   YYYY-MM-DD                  absolute date
-#   now | today                 current UTC date
-#   latest                      newest date with available data (per-source)
-#   now-<int>{d|w}              now minus N days   (w = 7 days)
-#   latest-<int>{d|w}           latest minus N days
-# Anything else (months/years, future "+", junk) is rejected pre-network.
-_REL_OFFSET_RE = re.compile(r"^(?P<base>now|latest)-(?P<n>\d+)(?P<unit>[dw])$")
-
-# Strict absolute-date shape. date.fromisoformat on 3.12 also accepts compact
-# (20260501) and ISO-week (2026-W18-1) forms; the documented grammar is exactly
-# YYYY-MM-DD, so we gate on this regex first and reject the looser forms.
-_ABS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-# Upper bound on a relative offset's resolved day count. 36525 days (~100 years)
-# is far beyond any real window yet small enough that the date arithmetic cannot
-# raise OverflowError. Rejecting above this cap keeps the failure pre-network.
-_MAX_OFFSET_DAYS = 36525
-
-
-def _parse_token(value: str) -> tuple:
-    """Parse a --start/--end value into a structured token.
-
-    Returns one of:
-      ("abs", date)                              absolute YYYY-MM-DD
-      ("base", "now")                            current UTC date
-      ("base", "latest")                         newest available date (resolved later)
-      ("offset", "now", n_days, unit_phrase)     now minus n_days
-      ("offset", "latest", n_days, unit_phrase)  latest minus n_days
-
-    `unit_phrase` describes the offset in its requested units for the log line
-    (e.g. "3-week", "7-day"). Raises ValueError for anything else (months/years,
-    future "+", malformed), so the failure happens before any network call.
-    "today" is accepted as an alias for "now".
-    """
-    if value in ("now", "today"):
-        return ("base", "now")
-    if value == "latest":
-        return ("base", "latest")
-    m = _REL_OFFSET_RE.match(value)
-    if m is not None:
-        n = int(m.group("n"))
-        if n < 1:
-            raise ValueError(
-                f"invalid date value {value!r}: offset must be >= 1 (e.g. now-1d, latest-3w)"
-            )
-        unit = m.group("unit")
-        n_days = n * 7 if unit == "w" else n
-        if n_days > _MAX_OFFSET_DAYS:
-            raise ValueError(
-                f"invalid date value {value!r}: offset resolves to {n_days} days, "
-                f"above the maximum of {_MAX_OFFSET_DAYS} days (~100 years)"
-            )
-        unit_phrase = f"{n}-{'week' if unit == 'w' else 'day'}"
-        return ("offset", m.group("base"), n_days, unit_phrase)
-    if _ABS_DATE_RE.match(value):
-        try:
-            return ("abs", date.fromisoformat(value))
-        except ValueError:
-            pass
-    raise ValueError(
-        f"invalid date value {value!r}: expected an absolute date YYYY-MM-DD, "
-        "'now'/'today', 'latest', or an offset 'now-<int>{d|w}' / "
-        "'latest-<int>{d|w}'"
-    )
-
-
-def _token_base_date(tok: tuple, now: date, latest_fn) -> date:
-    """Resolve a parsed token's base date.
-
-    `now` is the current UTC date. `latest_fn` is a zero-arg callable that
-    discovers the newest available date for this source; it is invoked at most
-    once per process (the caller memoizes) and only when a token references
-    `latest`.
-    """
-    kind = tok[0]
-    if kind == "abs":
-        return tok[1]
-    base = tok[1]
-    base_date = now if base == "now" else latest_fn()
-    if kind == "base":
-        return base_date
-    return base_date - timedelta(days=tok[2])
-
-
-def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
-    """Resolve --start/--end values to concrete inclusive (start, end) dates.
-
-    Applies the value grammar and the boundary rules:
-      - absolute endpoints and ordinary relative ranges are inclusive both ends;
-      - the DURATION IDIOM (start is `B-<int>{d|w}` and end is exactly the same
-        base token `B`, both `now` or both `latest`) yields an N-day window
-        inclusive of the base, with the far edge shifted in by one.
-
-    Returns (start_date, end_date, log_line) where log_line is a stderr message
-    to print before fetching when any relative token is present, else None.
-    Exits 2 (pre-network) on a malformed token or a reversed range. `latest_fn`
-    is called only if a token references `latest`, and at most once.
-    """
-    try:
-        start_tok = _parse_token(start_value)
-        end_tok = _parse_token(end_value)
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(2)
-
-    relative_used = start_tok[0] != "abs" or end_tok[0] != "abs"
-    now = datetime.now(UTC).date()
-
-    # Duration idiom: start is an offset off base B, end is exactly base B.
-    duration = start_tok[0] == "offset" and end_tok[0] == "base" and start_tok[1] == end_tok[1]
-
-    start_date = _token_base_date(start_tok, now, latest_fn)
-    end_date = _token_base_date(end_tok, now, latest_fn)
-
-    if duration:
-        # Window is exactly N days, inclusive of the base end, far edge shifted
-        # in by one: start moves forward one day so [end-(N-1), end] spans N days.
-        n_days = start_tok[2]
-        start_date = end_date - timedelta(days=n_days - 1)
-        reason = f"duration mode: {start_tok[3]} window inclusive of {start_tok[1]}"
-    else:
-        reason = "inclusive both ends"
-
-    if start_date > end_date:
-        print(
-            f"Error: resolved --start {start_date.isoformat()} is after resolved "
-            f"--end {end_date.isoformat()}; the range is reversed.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-    log_line = None
-    if relative_used:
-        span = (end_date - start_date).days + 1
-        log_line = (
-            f'resolved "{start_value}".."{end_value}" -> '
-            f"{start_date.isoformat()}..{end_date.isoformat()} "
-            f"({span} days; {reason})"
-        )
-    return start_date, end_date, log_line
-
-
 # Default size of the per-day download thread pool. The work is
 # network-I/O-bound (one independent HTTPS GET per day), so threads overlap
 # request latency without contending on the GIL. CHC's data server publishes
@@ -203,6 +53,9 @@ def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
 # 2 keeps the request pattern gentle while still overlapping request latency;
 # --workers 1 is the fully serial fallback.
 DEFAULT_WORKERS = 2
+
+# Auto-populated by the version-bump CI workflow. Do not edit manually.
+_SKILL_VERSION = "0.1.18"
 
 
 class DayUnavailable(Exception):
@@ -221,61 +74,6 @@ class DayUnavailable(Exception):
         self.status = status
 
 
-# Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.17"
-
-
-def _load_history(zarr_path: Path) -> list:
-    try:
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except FileNotFoundError:
-        # A not-yet-existing output read during a cache check is a silent miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
-
-
-def _cache_hit(out: Path, entry: dict) -> bool:
-    """Return True if the zarr at `out` was produced by this same entry."""
-    if not out.exists():
-        return False
-    history = _load_history(out)
-    if not history:
-        return False
-    existing_entry = history[0]
-    return (
-        existing_entry.get("skill") == entry["skill"]
-        and existing_entry.get("version") == entry["version"]
-        and existing_entry.get("args") == entry["args"]
-        and existing_entry.get("input") == entry["input"]
-    )
-
-
-def _daterange(start: str, end: str):
-    s = date.fromisoformat(start)
-    e = date.fromisoformat(end)
-    d = s
-    while d <= e:
-        yield d
-        d += timedelta(days=1)
-
-
 class _SessionPool:
     """Per-thread requests.Session holder.
 
@@ -292,7 +90,9 @@ class _SessionPool:
         self._all = []
         self._lock = threading.Lock()
 
-    def session(self) -> requests.Session:
+    def session(self):
+        import requests
+
         s = getattr(self._local, "session", None)
         if s is None:
             s = requests.Session()
@@ -314,7 +114,7 @@ class _SessionPool:
 _NOT_FOUND = object()
 
 
-def _get_tif_body(session: requests.Session, url: str):
+def _get_tif_body(session, url: str):
     """Fetch one CHIRPS day TIF URL and return its validated bytes.
 
     Returns ``_NOT_FOUND`` on HTTP 404 (the day is not published at this
@@ -324,6 +124,8 @@ def _get_tif_body(session: requests.Session, url: str):
     handles a missing day. Re-raises for other 4xx (auth/bad request), which
     indicate a real config problem rather than a not-yet-published day.
     """
+    import requests
+
     try:
         resp = session.get(url, timeout=HTTP_TIMEOUT)
     except requests.RequestException as exc:
@@ -368,7 +170,7 @@ def _get_tif_body(session: requests.Session, url: str):
     return body
 
 
-def _http_refusal_message(exc: requests.HTTPError, workers: int) -> str:
+def _http_refusal_message(exc, workers: int) -> str:
     """Build the abort message for an HTTPError escaping a download worker.
 
     Always includes status, reason, and URL when a response is attached. The
@@ -401,7 +203,7 @@ def _http_refusal_message(exc: requests.HTTPError, workers: int) -> str:
     )
 
 
-def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> Path:
+def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
     """Fetch one day, preferring the validated final product over prelim.
 
     Try the final `sat` URL first. ANY final-side failure — a 404 (not finalized
@@ -412,6 +214,8 @@ def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> P
     after whichever product served it; the post-loop classifier decides
     tail-vs-mid-gap from the days that ultimately had no data anywhere.
     """
+    import requests
+
     final_name = f"chirps-v3.0.sat.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
     final_url = f"{CHIRPS_FINAL_BASE_URL}/{day.year:04d}/{final_name}"
     prelim_name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
@@ -441,7 +245,7 @@ def _download_day_tif(session: requests.Session, day: date, dest_dir: Path) -> P
     return out
 
 
-def _discover_latest() -> date:
+def _discover_latest(args) -> date:
     """Find the newest available CHIRPS prelim day on or before today (UTC) — the
     `latest` resolver for CHIRPS.
 
@@ -466,6 +270,8 @@ def _discover_latest() -> date:
     margin). Exits 2 if no day is available, distinguishing a genuine
     not-yet-published lookback from a persistent transport/server failure.
     """
+    import requests
+
     today = datetime.now(UTC).date()
     session = requests.Session()
     transient_only = True  # cleared as soon as any probe gets a definitive 200/404
@@ -518,32 +324,29 @@ def _discover_latest() -> date:
             # 4xx other than 404 (403/401/bad request, etc.) confirmed by GET is
             # a real config or auth problem, not a not-yet-published day; surface
             # it immediately.
-            print(
-                f"Error: CHIRPS 'latest' probe got HTTP {status} for {url}; "
-                "this is a config/auth problem, not a not-yet-published day.",
-                file=sys.stderr,
+            raise UsageError(
+                f"CHIRPS 'latest' probe got HTTP {status} for {url}; "
+                "this is a config/auth problem, not a not-yet-published day."
             )
-            sys.exit(2)
     finally:
         session.close()
     if transient_only and last_transient is not None:
-        print(
-            f"Error: CHIRPS 'latest' probe never reached the data server over the "
+        raise UsageError(
+            f"CHIRPS 'latest' probe never reached the data server over the "
             f"last {_LATEST_LOOKBACK_DAYS} days (last failure: {last_transient}); "
-            "this is a connectivity/server problem, not a not-yet-published day.",
-            file=sys.stderr,
+            "this is a connectivity/server problem, not a not-yet-published day."
         )
-        sys.exit(2)
-    print(
-        f"Error: no CHIRPS prelim day available in the last {_LATEST_LOOKBACK_DAYS} "
+    raise UsageError(
+        f"no CHIRPS prelim day available in the last {_LATEST_LOOKBACK_DAYS} "
         f"days (probed back to {(today - timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()}); "
-        "cannot resolve 'latest'.",
-        file=sys.stderr,
+        "cannot resolve 'latest'."
     )
-    sys.exit(2)
 
 
-def _open_day(tif: Path, day: date) -> xr.DataArray:
+def _open_day(tif: Path, day: date):
+    import numpy as np
+    import rioxarray
+
     da = rioxarray.open_rasterio(tif, masked=False).squeeze("band", drop=True)
     da = da.where(da != CHIRPS_NODATA)
     da = da.rename({"y": "latitude", "x": "longitude"})
@@ -554,93 +357,47 @@ def _open_day(tif: Path, day: date) -> xr.DataArray:
     return da
 
 
-def _stamp_cf_attrs(ds: xr.Dataset) -> xr.Dataset:
-    if "latitude" in ds.coords:
-        ds["latitude"].attrs.setdefault("standard_name", "latitude")
-        ds["latitude"].attrs.setdefault("units", "degrees_north")
-        ds["latitude"].attrs.setdefault("axis", "Y")
-    if "longitude" in ds.coords:
-        ds["longitude"].attrs.setdefault("standard_name", "longitude")
-        ds["longitude"].attrs.setdefault("units", "degrees_east")
-        ds["longitude"].attrs.setdefault("axis", "X")
-    if "time" in ds.coords:
-        ds["time"].attrs.setdefault("standard_name", "time")
-        ds["time"].attrs.setdefault("axis", "T")
-    return ds
-
-
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument(
-        "--start",
-        required=True,
-        help=(
+@weather_skill(
+    "chirps-fetch",
+    _SKILL_VERSION,
+    output_type="gridded",
+    source="chirps",
+    start_time={
+        "help": (
             "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
             "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        ),
-    )
-    p.add_argument(
-        "--end",
-        required=True,
-        help=(
+        )
+    },
+    end_time={
+        "help": (
             "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
             "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        ),
-    )
-    p.add_argument("--output", "-o", required=True)
-    p.add_argument(
-        "--workers",
-        type=int,
-        default=DEFAULT_WORKERS,
-        help=(
+        )
+    },
+    workers={
+        "default": DEFAULT_WORKERS,
+        "help": (
             f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
             "Deliberately conservative: CHC's data server can throttle and "
             "temporarily block IPs under higher concurrency."
         ),
-    )
-    args = p.parse_args()
+    },
+    latest_resolver=_discover_latest,
+    streaming=True,
+    cache_hit_label="fetch",
+)
+def fetch(start_time, end_time, workers):
+    """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
+    import requests
 
-    if args.workers < 1:
-        print("Error: --workers must be >= 1.", file=sys.stderr)
-        sys.exit(2)
-
-    # Resolve --start/--end to concrete inclusive dates. Malformed tokens and
-    # post-resolution reversed ranges exit 2 before any fetch. `latest` triggers
-    # a backward HTTPS probe (the resolution itself, run at most once); an
-    # all-absolute or now-only window performs no discovery. An absolute
-    # YYYY-MM-DD endpoint normalizes through date.fromisoformat, so the resolved
-    # isoformat is byte-identical to the raw input — absolute behavior unchanged.
-    start_date, end_date, log_line = _resolve_window(args.start, args.end, _discover_latest)
-    start = start_date.isoformat()
-    end = end_date.isoformat()
-    if log_line is not None:
-        print(log_line, file=sys.stderr)
-
-    # --workers is a concurrency knob, not a data parameter, so it is excluded
-    # from the cache key: the same {start, end} request at any worker count
-    # produces the same data. The key records the RESOLVED concrete window, never
-    # the relative token.
-    requested_entry = {
-        "skill": "chirps-fetch",
-        "version": _SKILL_VERSION,
-        "args": {"start": start, "end": end},
-        "input": None,
-    }
-    out = Path(args.output)
-    if _cache_hit(out, requested_entry):
-        print(
-            f"Cache hit: {args.output} already matches requested params; skipping fetch.",
-            file=sys.stderr,
-        )
-        return
-
+    start = start_time.isoformat()
+    end = end_time.isoformat()
     print(f"Fetching CHIRPS {start} -> {end} (final product, prelim fallback)", file=sys.stderr)
 
-    expected_days = list(_daterange(start, end))
-    succeeded: list[tuple[date, xr.DataArray]] = []
+    expected_days = [
+        start_time + timedelta(days=i) for i in range((end_time - start_time).days + 1)
+    ]
+    succeeded = []
     missing_days: list[date] = []
     # HTTP status (or None) of each missing day's DayUnavailable, keyed by day;
     # lets the all-missing classifier recognize an all-5xx site-wide refusal.
@@ -662,7 +419,7 @@ def main() -> None:
 
         downloaded: list[tuple[date, Path]] = []
         try:
-            with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {pool.submit(_download, day): day for day in expected_days}
                 for fut in as_completed(futures):
                     day = futures[fut]
@@ -691,7 +448,7 @@ def main() -> None:
                         # Cancel not-yet-started downloads so no new request
                         # starts while the abort message is built and printed.
                         pool.shutdown(wait=False, cancel_futures=True)
-                        print(_http_refusal_message(e, args.workers), file=sys.stderr)
+                        print(_http_refusal_message(e, workers), file=sys.stderr)
                         sys.stderr.flush()
                         # os._exit avoids the ThreadPoolExecutor __exit__ /
                         # shutdown(wait=True) that a SystemExit would trigger,
@@ -699,7 +456,11 @@ def main() -> None:
                         # is that it also skips the TemporaryDirectory context
                         # manager's cleanup, so the temp dir is left on disk for
                         # the OS's normal temp-cleanup (tmp reaper / reboot) to
-                        # reclaim later, not reclaimed at exit.
+                        # reclaim later, not reclaimed at exit. It equally skips
+                        # every decorator-owned tail: the streaming rollback (a
+                        # no-op here — nothing has been yielded, so no store
+                        # exists yet) and the SkillError-to-stderr mapping. The
+                        # process ends here with exit code 2.
                         os._exit(2)
                     print(f"  {result_day.isoformat()}", file=sys.stderr)
                     downloaded.append((result_day, tif))
@@ -719,22 +480,19 @@ def main() -> None:
         if not succeeded:
             # When EVERY missing day failed with a 5xx, the server refused the
             # whole run (likely throttling) — not a data gap, so say so instead
-            # of the genuinely-absent-data diagnostic below. This branch runs
-            # after the pool has fully drained, so a normal sys.exit is fine.
+            # of the genuinely-absent-data diagnostic below.
             statuses = [missing_status.get(d) for d in missing_days]
             if statuses and all(s is not None and s >= 500 for s in statuses):
                 codes = ", ".join(str(c) for c in sorted(set(statuses)))
-                print(
-                    f"Error: the CHIRPS data server refused every request in "
+                raise UsageError(
+                    f"the CHIRPS data server refused every request in "
                     f"range {start}..{end} (HTTP {codes} on all days). This "
                     "usually means rate limiting / a temporary server-side "
                     "block from too many requests — wait and retry later, and "
-                    f"consider lowering --workers (current: {args.workers}).",
-                    file=sys.stderr,
+                    f"consider lowering --workers (current: {workers})."
                 )
-                sys.exit(2)
-            print(
-                f"Error: no days available in range {start}..{end} from the "
+            raise UsageError(
+                f"no days available in range {start}..{end} from the "
                 f"CHIRPS data server (final or prelim sat product). CHIRPS v3.0 "
                 f"sat coverage runs {CHIRPS_FINAL_START_YEAR}-to-present, so a "
                 "date before that range yields nothing; otherwise this is a "
@@ -742,23 +500,22 @@ def main() -> None:
                 "very recent days come from the preliminary product (published 2 "
                 "days after each pentad closes — pentads end on days 5, 10, 15, "
                 "20, 25, and last of month, worst-case lag ~7 days); for a very "
-                "recent --end, try an earlier one.",
-                file=sys.stderr,
+                "recent --end, try an earlier one."
             )
-            sys.exit(2)
 
         succeeded_days = [d for d, _ in succeeded]
         last_succeeded = succeeded_days[-1]
         expected_tail = [d for d in expected_days if d > last_succeeded]
         if missing_days and missing_days != expected_tail:
-            # Mid-range gap: some missing day precedes a succeeded day.
-            print(
+            # Mid-range gap: some missing day precedes a succeeded day. The
+            # message is consumed as printed, so it carries no "Error: "
+            # prefix (prefix=False).
+            raise UsageError(
                 f"Non-tail missing day(s) {', '.join(d.isoformat() for d in missing_days)} "
                 f"— server-side data gap, not a lag issue. "
                 "Refusing to write a partial zarr with a hole in the middle.",
-                file=sys.stderr,
+                prefix=False,
             )
-            sys.exit(2)
 
         # At this point: either no missing days (full success) or
         # missing_days is exactly the contiguous tail past last_succeeded.
@@ -774,15 +531,15 @@ def main() -> None:
                 "worst-case lag ~7 days).",
                 file=sys.stderr,
             )
+            # The recorded entry reflects the EFFECTIVE end actually written, so
+            # a re-run against the same --end re-attempts the missing tail days
+            # instead of short-circuiting on a cache hit. Yielded before the
+            # first dataset because the first day's provenance stamp needs the
+            # effective entry.
+            yield EntryOverride({"end": effective_end})
 
-        # Cache stamp reflects the EFFECTIVE end actually written, so a re-run
-        # against the same --end re-attempts the missing tail days instead of
-        # short-circuiting on a cache hit. Built before the write loop because
-        # the first day's provenance stamp needs the effective entry.
-        effective_entry = {
-            **requested_entry,
-            "args": {"start": start, "end": effective_end},
-        }
+        # Keep the "Wrote:" line detail-free.
+        yield WroteSummary("", replace=True)
 
         # Stream each day to zarr one at a time so peak resident memory is
         # bounded to ~one day regardless of window length, instead of holding
@@ -790,7 +547,15 @@ def main() -> None:
         # day-sorted (built sorted above), so the appended time axis stays
         # ascending. Per-day latitude-sort is equivalent to a single global
         # sort because every CHIRPS day shares the identical latitude grid.
-        for i, (_, da) in enumerate(succeeded):
+        # The decorator re-stamps weather_skills_source/weather_skills_history
+        # (and clears per-variable encoding) on EVERY yield: a
+        # to_zarr(mode="a", append_dim="time") call rewrites the root group
+        # attrs from the dataset being appended, so a first-write-only stamp
+        # would be clobbered on the first append. The entry is identical for
+        # every day, so the final stamp is stable regardless of how many days
+        # are written. The yields happen inside the TemporaryDirectory block so
+        # the source tifs outlive each day's write.
+        for _, da in succeeded:
             da = da.sortby("latitude", ascending=True)
             da.name = "precip"
             da.attrs["units"] = "mm day-1"
@@ -798,30 +563,10 @@ def main() -> None:
             da.attrs["long_name"] = "CHIRPS daily precipitation"
 
             ds = da.to_dataset()
-            # Stamp the root provenance/source + CF attrs on EVERY write. A
-            # to_zarr(mode="a", append_dim="time") call rewrites the root group
-            # attrs from the dataset being appended, so stamping only the first
-            # write would clobber weather_skills_source/weather_skills_history to empty on the
-            # first append. The effective entry is identical for every day, so
-            # the final stamp is stable regardless of how many days are written.
-            ds.attrs["weather_skills_source"] = "chirps"
-            ds.attrs["weather_skills_history"] = json.dumps([effective_entry], sort_keys=True)
             ds.attrs["Conventions"] = "CF-1.13"
-            _stamp_cf_attrs(ds)
-            for v in ds.variables:
-                ds[v].encoding = {}
-
-            if i == 0:
-                # Only the store creation is first-iteration work; the attrs
-                # above are re-stamped on every append.
-                if out.exists():
-                    shutil.rmtree(out)
-                out.parent.mkdir(parents=True, exist_ok=True)
-                ds.to_zarr(out, mode="w", consolidated=True)
-            else:
-                ds.to_zarr(out, mode="a", append_dim="time", consolidated=True)
-        print(f"Wrote: {args.output}", file=sys.stderr)
+            stamp_cf_attrs(ds)
+            yield ds
 
 
 if __name__ == "__main__":
-    main()
+    fetch()

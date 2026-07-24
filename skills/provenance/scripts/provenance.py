@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cftime",
 #   "xarray",
 #   "zarr",
@@ -16,54 +17,21 @@ or a runnable bash script that reproduces the artifact. All output goes to
 stdout; diagnostics and errors go to stderr. Never writes or modifies any file.
 """
 
-import argparse
 import json
 import shlex
-import sys
 from pathlib import Path
 
+from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.provenance import (
+    HISTORY_ATTR,
+    SOURCE_ATTR,
+    coerce_chain,
+    parse_chain,
+    validate_chain,
+)
+
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.9"
-
-
-def _parse_chain(raw: str) -> list:
-    """Parse a JSON weather_skills_history value into a list of step dicts.
-
-    Strict: raises ``ValueError`` when the value is not valid JSON or does not
-    decode to an array. Used by ``--check``, which records the raised message as
-    a violation rather than aborting. Non-check readers use ``_coerce_chain``.
-    """
-    try:
-        chain = json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
-        raise ValueError("value is not valid JSON") from None
-    if not isinstance(chain, list):
-        raise ValueError("value is not a JSON array")
-    return chain
-
-
-def _coerce_chain(raw: str, label: str) -> list | None:
-    """Lenient parse of a weather_skills_history value for the non-check render paths.
-
-    A value that is absent has already been filtered out by the caller. A value
-    that is present but not a JSON array (non-JSON, or a JSON object/scalar) is
-    malformed under the weather_skills_history array contract; return ``None`` and emit a
-    one-line stderr warning pointing at ``--check``, so the caller omits the
-    branch. A valid array (including an empty one) passes through unchanged,
-    even when its entries are imperfect.
-    """
-    try:
-        chain = json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
-        chain = None
-    if not isinstance(chain, list):
-        print(
-            f"ignoring malformed weather_skills_history on {label}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return None
-    return chain
+_SKILL_VERSION = "0.1.10"
 
 
 def _load_zarr(path: Path) -> dict:
@@ -74,19 +42,15 @@ def _load_zarr(path: Path) -> dict:
         with xr.open_zarr(path, consolidated=False) as ds:
             attrs = dict(ds.attrs)
     except Exception as exc:  # noqa: BLE001 -- any open failure becomes a clean exit 2
-        print(f"Error: could not open {path} as a zarr store: {exc}", file=sys.stderr)
-        sys.exit(2)
+        raise UsageError(
+            f"Error: could not open {path} as a zarr store: {exc}", prefix=False
+        ) from None
     chains = {}
-    raw = attrs.get("weather_skills_history")
-    coerced = _coerce_chain(raw, path.name) if raw else None
-    # compatibility read for the rhiza_ attr prefix; scheduled for removal
-    if coerced is None and attrs.get("rhiza_history"):
-        coerced = _coerce_chain(attrs["rhiza_history"], path.name)
+    raw = attrs.get(HISTORY_ATTR)
+    coerced = coerce_chain(raw, path.name) if raw else None
     if coerced is not None:
         chains[path.name] = coerced
-    # compatibility read for the rhiza_ attr prefix; scheduled for removal
-    source = attrs.get("weather_skills_source") or attrs.get("rhiza_source")
-    return {"chains": chains, "source": source, "name": path.name}
+    return {"chains": chains, "source": attrs.get(SOURCE_ATTR), "name": path.name}
 
 
 def _load_png(path: Path) -> dict:
@@ -104,48 +68,35 @@ def _load_png(path: Path) -> dict:
         with Image.open(path) as img:
             info = dict(img.info)
     except Exception as exc:  # noqa: BLE001 -- any open failure becomes a clean exit 2
-        print(f"Error: could not open {path} as a PNG: {exc}", file=sys.stderr)
-        sys.exit(2)
+        raise UsageError(f"Error: could not open {path} as a PNG: {exc}", prefix=False) from None
     chains = {}
 
-    def _add(slot: str, key: str, display: str | None = None) -> None:
+    def _add(slot: str, key: str) -> None:
         if info[key] and slot not in chains:
-            coerced = _coerce_chain(info[key], f"{path.name} ({display or key})")
+            coerced = coerce_chain(info[key], f"{path.name} ({key})")
             if coerced is not None:
                 chains[slot] = coerced
 
     for key in sorted(info):
-        if key == "weather_skills_history":
+        if key == HISTORY_ATTR:
             _add(path.name, key)
-        elif key.startswith("weather_skills_history_"):
-            _add(key[len("weather_skills_history_") :], key)
-    # compatibility read for the rhiza_ attr prefix; scheduled for removal
-    for key in sorted(info):
-        if key == "rhiza_history":
-            _add(path.name, key, display="weather_skills_history")
-        elif key.startswith("rhiza_history_"):
-            _add(
-                key[len("rhiza_history_") :],
-                key,
-                display="weather_skills_" + key[len("rhiza_") :],
-            )
+        elif key.startswith(f"{HISTORY_ATTR}_"):
+            _add(key[len(f"{HISTORY_ATTR}_") :], key)
     return {"chains": chains, "source": None, "name": path.name}
 
 
 def _read_artifact(path: Path) -> dict:
     """Detect zarr (directory) vs PNG (.png file) and read it; else exit 2."""
     if not path.exists():
-        print(f"Error: {path} not found.", file=sys.stderr)
-        sys.exit(2)
+        raise UsageError(f"Error: {path} not found.", prefix=False)
     if path.is_dir():
         return _load_zarr(path)
     if path.is_file() and path.suffix.lower() == ".png":
         return _load_png(path)
-    print(
+    raise UsageError(
         f"Error: {path} is neither a zarr directory nor a .png file; cannot inspect provenance.",
-        file=sys.stderr,
+        prefix=False,
     )
-    sys.exit(2)
 
 
 # --------------------------------------------------------------------------- #
@@ -162,8 +113,7 @@ def _read_raw_histories(path: Path) -> dict:
     is missing, unopenable, or neither a zarr directory nor a .png file.
     """
     if not path.exists():
-        print(f"Error: {path} not found.", file=sys.stderr)
-        sys.exit(2)
+        raise UsageError(f"Error: {path} not found.", prefix=False)
     if path.is_dir():
         import xarray as xr
 
@@ -171,18 +121,16 @@ def _read_raw_histories(path: Path) -> dict:
             with xr.open_zarr(path, consolidated=False) as ds:
                 attrs = dict(ds.attrs)
         except Exception as exc:  # noqa: BLE001 -- any open failure becomes a clean exit 2
-            print(f"Error: could not open {path} as a zarr store: {exc}", file=sys.stderr)
-            sys.exit(2)
+            raise UsageError(
+                f"Error: could not open {path} as a zarr store: {exc}", prefix=False
+            ) from None
         raw = {}
         # Only register a truthy value: an empty-string weather_skills_history
         # is treated as absent (consistent with how consumers read it), so
         # --check reports "no provenance found" (exit 1) rather than
         # "invalid" (exit 2).
-        if attrs.get("weather_skills_history"):
-            raw["weather_skills_history"] = attrs["weather_skills_history"]
-        # compatibility read for the rhiza_ attr prefix; scheduled for removal
-        elif attrs.get("rhiza_history"):
-            raw["weather_skills_history"] = attrs["rhiza_history"]
+        if attrs.get(HISTORY_ATTR):
+            raw[HISTORY_ATTR] = attrs[HISTORY_ATTR]
         return raw
     if path.is_file() and path.suffix.lower() == ".png":
         from PIL import Image
@@ -191,149 +139,65 @@ def _read_raw_histories(path: Path) -> dict:
             with Image.open(path) as img:
                 info = dict(img.info)
         except Exception as exc:  # noqa: BLE001 -- any open failure becomes a clean exit 2
-            print(f"Error: could not open {path} as a PNG: {exc}", file=sys.stderr)
-            sys.exit(2)
+            raise UsageError(
+                f"Error: could not open {path} as a PNG: {exc}", prefix=False
+            ) from None
         raw = {}
         for key in sorted(info):
             # Only register a truthy value: an empty-string tEXt value is treated
             # as absent (consistent with how consumers read it), so --check reports
             # "no provenance found" (exit 1) rather than "invalid" (exit 2).
-            is_new = key == "weather_skills_history" or key.startswith("weather_skills_history_")
+            is_new = key == HISTORY_ATTR or key.startswith(f"{HISTORY_ATTR}_")
             if is_new and info[key]:
                 raw[key] = info[key]
-                continue
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            is_old = key == "rhiza_history" or key.startswith("rhiza_history_")
-            if is_old and info[key]:
-                mapped = "weather_skills_" + key[len("rhiza_") :]
-                if not info.get(mapped):
-                    raw[mapped] = info[key]
         return raw
-    print(
+    raise UsageError(
         f"Error: {path} is neither a zarr directory nor a .png file; cannot inspect provenance.",
-        file=sys.stderr,
+        prefix=False,
     )
-    sys.exit(2)
 
 
-_ENTRY_KNOWN_KEYS = {"skill", "version", "args", "input"}
-_INPUT_ITEM_KNOWN_KEYS = {"basename", "hash", "history"}
-
-
-def _validate_input(value, loc: str, violations: list, notes: list) -> None:
-    """Validate an entry's `input` field against the array contract.
-
-    `input` is one of: `null`; a `{basename, hash}` dict; or an array of
-    `{basename, hash}` dicts, each of which may also carry a nested `history`
-    chain (recursively validated). Appends violations and notes in place.
-    """
-    if value is None:
-        return
-
-    def _check_item(item, item_loc: str) -> None:
-        if not isinstance(item, dict):
-            violations.append(f"{item_loc}: input entry is not an object")
-            return
-        if "basename" not in item:
-            violations.append(f"{item_loc}: missing required key 'basename'")
-        elif not isinstance(item["basename"], str):
-            violations.append(f"{item_loc}.basename: must be a string")
-        if "hash" not in item:
-            violations.append(f"{item_loc}: missing required key 'hash'")
-        elif not isinstance(item["hash"], str):
-            violations.append(f"{item_loc}.hash: must be a string")
-        if "history" in item:
-            _validate_chain(item["history"], f"{item_loc}.history", violations, notes)
-        for key in item:
-            if key not in _INPUT_ITEM_KNOWN_KEYS:
-                notes.append(f"{item_loc}: unknown key {key!r}")
-
-    if isinstance(value, list):
-        for j, item in enumerate(value):
-            _check_item(item, f"{loc}[{j}]")
-        return
-    if isinstance(value, dict):
-        _check_item(value, loc)
-        return
-    violations.append(f"{loc}: must be null, an object, or an array of objects")
-
-
-def _validate_chain(chain, loc: str, violations: list, notes: list) -> None:
-    """Validate one weather_skills_history chain (an array of entries) against the schema.
-
-    Records every violation with its location into `violations`; records
-    unknown/extra keys (which do not fail validation) into `notes`. Recurses
-    into a concat entry's `input[*].history`.
-    """
-    if not isinstance(chain, list):
-        violations.append(f"{loc}: value is not a JSON array")
-        return
-    for i, entry in enumerate(chain):
-        eloc = f"{loc}[{i}]"
-        if not isinstance(entry, dict):
-            violations.append(f"{eloc}: entry is not an object")
-            continue
-        if "skill" not in entry:
-            violations.append(f"{eloc}: missing required key 'skill'")
-        elif not isinstance(entry["skill"], str):
-            violations.append(f"{eloc}.skill: must be a string")
-        elif not entry["skill"]:
-            violations.append(f"{eloc}.skill: must be a non-empty string")
-        if "version" not in entry:
-            violations.append(f"{eloc}: missing required key 'version'")
-        elif not isinstance(entry["version"], str):
-            violations.append(f"{eloc}.version: must be a string")
-        if "args" not in entry:
-            violations.append(f"{eloc}: missing required key 'args'")
-        elif not isinstance(entry["args"], dict):
-            violations.append(f"{eloc}.args: must be an object")
-        if "input" not in entry:
-            violations.append(f"{eloc}: missing required key 'input'")
-        else:
-            _validate_input(entry["input"], f"{eloc}.input", violations, notes)
-        for key in entry:
-            if key not in _ENTRY_KNOWN_KEYS:
-                notes.append(f"{eloc}: unknown key {key!r}")
-
-
-def _run_check(path: Path) -> int:
-    """Validate the weather_skills_history schema on `path` and return the exit code.
+def _run_check(path: Path) -> tuple[int, str]:
+    """Validate the weather_skills_history schema on `path`; return (exit_code, report).
 
     `0` = valid provenance present; `1` = no provenance found; `2` = present
-    but invalid (every violation is printed with its location). Never raises a
+    but invalid (every violation is listed with its location). The report is
+    the multi-line text describing the outcome; the caller prints it (exit 0)
+    or raises it as the typed exception's message (exit 1/2). Never raises a
     traceback on malformed input -- reporting that input is the point.
     """
     raw_histories = _read_raw_histories(path)
     if not raw_histories:
-        print(f"no provenance found on {path}")
-        return 1
+        return 1, f"no provenance found on {path}"
 
     violations: list = []
     notes: list = []
     for key, raw in raw_histories.items():
         try:
-            chain = _parse_chain(raw)
+            chain = parse_chain(raw)
         except ValueError as exc:
             violations.append(f"{key}: {exc}")
             continue
-        _validate_chain(chain, key, violations, notes)
+        chain_violations, chain_notes = validate_chain(chain, key)
+        violations.extend(chain_violations)
+        notes.extend(chain_notes)
 
     if violations:
-        print(f"invalid weather_skills_history on {path}:")
+        lines = [f"invalid weather_skills_history on {path}:"]
         for v in violations:
-            print(f"  - {v}")
+            lines.append(f"  - {v}")
         if notes:
-            print("notes (not failures):")
+            lines.append("notes (not failures):")
             for n in notes:
-                print(f"  - {n}")
-        return 2
+                lines.append(f"  - {n}")
+        return 2, "\n".join(lines)
 
-    print(f"valid weather_skills_history on {path}")
+    lines = [f"valid weather_skills_history on {path}"]
     if notes:
-        print("notes (not failures):")
+        lines.append("notes (not failures):")
         for n in notes:
-            print(f"  - {n}")
-    return 0
+            lines.append(f"  - {n}")
+    return 0, "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- #
@@ -606,46 +470,60 @@ def _render_script(data: dict) -> None:
     print("\n".join(lines))
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument(
-        "--input", "-i", required=True, help="Artifact to inspect: a zarr dir or a .png file."
-    )
-    p.add_argument(
-        "--format",
-        choices=["human", "json", "script"],
-        default="human",
-        help="Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
-    )
-    p.add_argument(
-        "--check",
-        action="store_true",
-        help=(
-            "Validate the weather_skills_history schema instead of rendering it. "
-            "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
-        ),
-    )
-    args = p.parse_args()
+@weather_skill(
+    "provenance",
+    _SKILL_VERSION,
+    extra_args={
+        "input": {
+            "required": True,
+            "aliases": ("-i",),
+            "help": "Artifact to inspect: a zarr dir or a .png file.",
+        },
+        "format": {
+            "choices": ["human", "json", "script"],
+            "default": "human",
+            "help": "Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
+        },
+        "check": {
+            "action": "store_true",
+            "help": (
+                "Validate the weather_skills_history schema instead of rendering it. "
+                "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
+            ),
+        },
+    },
+)
+def provenance(input, format, check):
+    """Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact.
 
-    if args.check:
-        sys.exit(_run_check(Path(args.input)))
+    Read-only. Takes one artifact -- a weather-skills envelope Zarr (a directory) or a
+    plot PNG (a file ending .png) -- extracts its weather_skills_history chain(s), and
+    renders one of three views: a human-readable lineage, the raw JSON chain,
+    or a runnable bash script that reproduces the artifact. All output goes to
+    stdout; diagnostics and errors go to stderr. Never writes or modifies any file.
+    """
+    if check:
+        code, report = _run_check(Path(input))
+        if code == 0:
+            print(report)
+            return
+        if code == 1:
+            raise DataError(report, prefix=False)
+        raise UsageError(report, prefix=False)
 
-    data = _read_artifact(Path(args.input))
+    data = _read_artifact(Path(input))
 
     if not data["chains"]:
-        print(f"no provenance recorded on {args.input}")
-        sys.exit(0)
+        print(f"no provenance recorded on {input}")
+        return
 
-    if args.format == "human":
+    if format == "human":
         _render_human(data)
-    elif args.format == "json":
+    elif format == "json":
         _render_json(data)
     else:
         _render_script(data)
 
 
 if __name__ == "__main__":
-    main()
+    provenance()

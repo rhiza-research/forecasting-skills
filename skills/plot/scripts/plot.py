@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
@@ -20,92 +21,16 @@ The heatmap mode produces a CartoPy panel layout: one subplot per step
 horizontal colorbar at the bottom spanning all panels.
 """
 
-import argparse
-import hashlib
 import json
 import re
 import sys
 from pathlib import Path
 
+from weather_skills_core import UsageError, weather_skill
+from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.14"
-
-
-def _lat_slice(lat_vals, north, south):
-    """Return a ``slice`` for ``ds.sel`` that works for ascending or descending lat."""
-    if lat_vals.size and lat_vals[0] > lat_vals[-1]:
-        return slice(north, south)
-    return slice(south, north)
-
-
-def _auto_variable(ds):
-    """First real data var, skipping CF grid-mapping (CRS) containers.
-
-    A CF grid-mapping variable (e.g. ``latitude_longitude``) is a zero-data
-    CRS container: it carries a ``grid_mapping_name`` attr and is named by
-    another var's ``grid_mapping`` attr. Skip those so a no-flag auto-pick
-    lands on a real data var. Prefer a var with >= 2 dims (spatial/data),
-    falling back to the first remaining candidate.
-    """
-    mapping_targets = {
-        ds[d].attrs.get("grid_mapping") for d in ds.data_vars if ds[d].attrs.get("grid_mapping")
-    }
-    candidates = [
-        v
-        for v in ds.data_vars
-        if "grid_mapping_name" not in ds[v].attrs and v not in mapping_targets
-    ]
-    if not candidates:
-        return None
-    multidim = [v for v in candidates if len(ds[v].dims) >= 2]
-    return (multidim or candidates)[0]
-
-
-def _hash_zarr(zarr_path: Path) -> str:
-    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
-    deterministically and hashes relative-path bytes + each file's
-    content. Returns sha256 hex digest."""
-    h = hashlib.sha256()
-    for p in sorted(zarr_path.rglob("*")):
-        if p.is_file():
-            h.update(str(p.relative_to(zarr_path)).encode())
-            h.update(p.read_bytes())
-    return h.hexdigest()
-
-
-def _load_history(zarr_path: Path) -> list:
-    try:
-        import xarray as xr
-
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except FileNotFoundError:
-        # A not-yet-existing output read during a cache check is a silent miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
-
-
-def _cf_dim(obj, cf_name):
-    try:
-        return obj.cf[cf_name].name
-    except KeyError:
-        return None
+_SKILL_VERSION = "0.1.15"
 
 
 # Strict decimal integer: optional single sign, then ASCII digits only.
@@ -199,42 +124,6 @@ def _parse_cities(spec):
     return out
 
 
-def _polygon_from_geojson(path):
-    """Return the unioned shapely polygon from a GeoJSON file.
-
-    Used to polygon-mask the gridded heatmap: cells whose centers fall
-    outside the boundary are NaN'd before plotting. Unions every feature's
-    geometry in the file. Exits non-zero if the file is missing, unreadable,
-    or has no usable geometry.
-    """
-    p = Path(path)
-    if not p.exists():
-        print(f"Error: --mask-geojson file not found: {path}", file=sys.stderr)
-        sys.exit(2)
-    try:
-        data = json.loads(p.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"Error: could not read --mask-geojson {path}: {exc}", file=sys.stderr)
-        sys.exit(2)
-
-    if data.get("type") == "FeatureCollection":
-        geoms = [f["geometry"] for f in data.get("features", []) if f.get("geometry")]
-    elif data.get("type") == "Feature":
-        geoms = [data["geometry"]] if data.get("geometry") else []
-    else:
-        # A bare geometry object.
-        geoms = [data]
-
-    if not geoms:
-        print(f"Error: --mask-geojson {path} has no usable geometry.", file=sys.stderr)
-        sys.exit(2)
-
-    from shapely.geometry import shape
-    from shapely.ops import unary_union
-
-    return unary_union([shape(g) for g in geoms])
-
-
 def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
     lat_range = abs(lat_max - lat_min)
     lon_range = abs(lon_max - lon_min)
@@ -249,7 +138,7 @@ def _step_dim(da):
     for cand in ("step", "time", "valid_time"):
         if cand in da.dims:
             return cand
-    cf = _cf_dim(da, "time")
+    cf = cf_dim(da, "time")
     return cf if cf and cf in da.dims else None
 
 
@@ -460,63 +349,71 @@ def _heatmap(
     return fig
 
 
-def _attach_bbox_value(argv):
-    # argparse rejects a space-separated --bbox value that starts with '-'
-    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
-    # `--bbox=VAL` so both the space and equals forms parse.
-    out, i = [], 0
-    while i < len(argv):
-        if argv[i] == "--bbox" and i + 1 < len(argv):
-            out.append(f"--bbox={argv[i + 1]}")
-            i += 2
-        else:
-            out.append(argv[i])
-            i += 1
-    return out
+def _normalize_entry_args(raw):
+    # The timeseries style ignores --index, --extent, and --cities; those
+    # three record as None, keeping the args schema stable across styles
+    # while showing they had no effect (--bbox and --mask-geojson record
+    # verbatim). A whitespace-only --index parses to no selection and
+    # records None too. A malformed --index is left as-is: the run fails
+    # before anything is written.
+    try:
+        overrides = _parse_index(raw["index"])
+    except ValueError:
+        return raw
+    if not overrides or raw["style"] != "heatmap":
+        raw["index"] = None
+    if raw["style"] != "heatmap":
+        raw["extent"] = None
+        raw["cities"] = None
+    return raw
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument("--input", "-i", required=True)
-    p.add_argument("--output", "-o", required=True)
-    p.add_argument("--variable", "-v")
-    p.add_argument("--style", choices=["heatmap", "timeseries"], default="heatmap")
-    p.add_argument("--colormap", default="viridis")
-    p.add_argument("--title")
-    p.add_argument(
-        "--index",
-        help="Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
-        "several comma-separated positions ('step=0,1,2'), which keeps the dim "
-        "and, for --style heatmap, yields one panel per selected position. "
-        "Negative positions count from the end (Python-style). "
-        "Syntax-checked, then ignored with a warning for --style timeseries.",
-    )
-    p.add_argument(
-        "--extent",
-        help="Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
-    )
-    p.add_argument(
-        "--cities",
-        help='City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
-    )
-    p.add_argument("--fontsize", type=int, default=16)
-    p.add_argument(
-        "--bbox",
-        help="N/W/S/E decimal degrees (heatmap only). Slices the gridded input "
+@weather_skill(
+    "plot",
+    _SKILL_VERSION,
+    input_type="any",
+    output_type="png",
+    variable="single",
+    title=True,
+    bbox={
+        "mode": "optional",
+        "help": "N/W/S/E decimal degrees (heatmap only). Slices the gridded input "
         "to the bbox and sets the axes extent to it (an explicit --extent still "
         "overrides). Use the resolve-region skill to get a country's bbox.",
-    )
-    p.add_argument(
-        "--mask-geojson",
-        help="Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
-        "outside the polygon are set to NaN before plotting. Use resolve-region's "
-        "--geojson output to produce a country polygon.",
-    )
-    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
+    },
+    extra_args={
+        "style": {"choices": ["heatmap", "timeseries"], "default": "heatmap"},
+        "colormap": {"default": "viridis"},
+        "index": {
+            "help": "Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
+            "several comma-separated positions ('step=0,1,2'), which keeps the dim "
+            "and, for --style heatmap, yields one panel per selected position. "
+            "Negative positions count from the end (Python-style). "
+            "Syntax-checked, then ignored with a warning for --style timeseries.",
+        },
+        "extent": {
+            "help": "Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
+        },
+        "cities": {
+            "help": 'City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
+        },
+        "fontsize": {"type": int, "default": 16},
+        "mask_geojson": {
+            "help": "Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
+            "outside the polygon are set to NaN before plotting. Use resolve-region's "
+            "--geojson output to produce a country polygon.",
+        },
+    },
+    normalize_args=_normalize_entry_args,
+    savefig_kwargs={"bbox_inches": "tight"},
+)
+def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, bbox, mask_geojson):
+    """Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
 
+    The heatmap mode produces a CartoPy panel layout: one subplot per step
+    (up to 4 columns), shared color scale, country/coastline boundaries, and a
+    horizontal colorbar at the bottom spanning all panels.
+    """
     import matplotlib
 
     matplotlib.use("Agg")
@@ -525,90 +422,64 @@ def main() -> None:
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
     import xarray as xr
 
-    src = Path(args.input)
-    if not src.exists():
-        print(f"Error: {src} not found.", file=sys.stderr)
-        sys.exit(2)
-    ds = xr.open_zarr(src, consolidated=False)
-
-    variable = args.variable or _auto_variable(ds)
+    variable = variable or auto_variable(ds)
     if not variable or variable not in ds:
-        print(
-            f"Error: no usable variable. Available: {list(ds.data_vars)}",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+        raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
     da = ds[variable]
     try:
-        overrides = _parse_index(args.index)
+        overrides = _parse_index(index)
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(2)
+        raise UsageError(str(exc)) from None
 
-    bbox = None
-    if args.bbox:
-        try:
-            bbox = tuple(float(x) for x in args.bbox.split("/"))
-            if len(bbox) != 4:
-                raise ValueError
-        except ValueError:
-            print("Error: --bbox must be N/W/S/E (decimal degrees).", file=sys.stderr)
-            sys.exit(2)
+    # The decorator parses --bbox to an (N, W, S, E) float tuple (or None).
+    bbox_nwse = bbox
 
-    if bbox is not None and args.style != "heatmap":
+    if bbox_nwse is not None and style != "heatmap":
+        r_n, r_w, r_s, r_e = bbox_nwse
         print(
-            f"Warning: --bbox {args.bbox} is a heatmap-only option; "
-            f"ignored for --style {args.style}.",
+            f"Warning: --bbox {r_n}/{r_w}/{r_s}/{r_e} is a heatmap-only option; "
+            f"ignored for --style {style}.",
             file=sys.stderr,
         )
 
-    if args.mask_geojson and args.style != "heatmap":
+    if mask_geojson and style != "heatmap":
         print(
-            f"Warning: --mask-geojson is a heatmap-only option; ignored for --style {args.style}.",
+            f"Warning: --mask-geojson is a heatmap-only option; ignored for --style {style}.",
             file=sys.stderr,
         )
 
-    if args.extent and args.style != "heatmap":
+    if extent and style != "heatmap":
         print(
-            f"Warning: --extent {args.extent!r} is a heatmap-only option; "
-            f"ignored for --style {args.style}.",
+            f"Warning: --extent {extent!r} is a heatmap-only option; ignored for --style {style}.",
             file=sys.stderr,
         )
 
-    if args.cities and args.style != "heatmap":
+    if cities and style != "heatmap":
         print(
-            f"Warning: --cities is a heatmap-only option; ignored for --style {args.style}.",
+            f"Warning: --cities is a heatmap-only option; ignored for --style {style}.",
             file=sys.stderr,
         )
 
-    index_ignored = bool(overrides) and args.style != "heatmap"
-    if index_ignored:
+    if overrides and style != "heatmap":
         print(
-            f"Warning: --index {args.index!r} is a heatmap-only option; "
-            f"ignored for --style {args.style}.",
+            f"Warning: --index {index!r} is a heatmap-only option; ignored for --style {style}.",
             file=sys.stderr,
         )
 
-    if args.style == "heatmap":
-        lat_dim = _cf_dim(da, "latitude")
-        lon_dim = _cf_dim(da, "longitude")
+    if style == "heatmap":
+        lat_dim = cf_dim(da, "latitude")
+        lon_dim = cf_dim(da, "longitude")
         if lat_dim is None or lon_dim is None:
-            print(
-                f"Error: heatmap requires lat/lon coords; got {list(da.dims)}.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            raise UsageError(f"heatmap requires lat/lon coords; got {list(da.dims)}.")
         # Station-schema data carries lat/lon as per-point coordinates on a
         # station dimension rather than as dimensions of their own, so there
         # is no 2D grid for pcolormesh to draw.
         if lat_dim not in da.dims or lon_dim not in da.dims:
-            print(
-                f"Error: heatmap needs lat/lon as dimensions, but {lat_dim!r}/"
+            raise UsageError(
+                f"heatmap needs lat/lon as dimensions, but {lat_dim!r}/"
                 f"{lon_dim!r} are non-dimension coordinates here (dims: "
-                f"{list(da.dims)}); station data has no 2D grid to plot.",
-                file=sys.stderr,
+                f"{list(da.dims)}); station data has no 2D grid to plot."
             )
-            sys.exit(2)
         # Capture the native step-axis values before any --index selection so
         # panel titles can use the axis's own spacing.
         native_step_dim = _step_dim(da)
@@ -618,19 +489,15 @@ def main() -> None:
         # validation of the same spec.
         for dim, idx in overrides.items():
             if dim not in da.dims:
-                print(
-                    f"Error: --index dimension {dim!r} is not in the data (dims: {list(da.dims)})",
-                    file=sys.stderr,
+                raise UsageError(
+                    f"--index dimension {dim!r} is not in the data (dims: {list(da.dims)})"
                 )
-                sys.exit(2)
             if isinstance(idx, list) and dim != native_step_dim:
                 panel_desc = repr(native_step_dim) if native_step_dim else "step/time"
-                print(
-                    f"Error: --index list selection on {dim!r} is only supported "
-                    f"on the panel dimension ({panel_desc}); give a single position",
-                    file=sys.stderr,
+                raise UsageError(
+                    f"--index list selection on {dim!r} is only supported "
+                    f"on the panel dimension ({panel_desc}); give a single position"
                 )
-                sys.exit(2)
         for dim, idx in overrides.items():
             size = da.sizes[dim]
             positions = idx if isinstance(idx, list) else [idx]
@@ -640,20 +507,16 @@ def main() -> None:
             seen = {}
             for pos in positions:
                 if not -size <= pos < size:
-                    print(
-                        f"Error: --index position {pos} is out of range for "
-                        f"dimension {dim!r} (size {size})",
-                        file=sys.stderr,
+                    raise UsageError(
+                        f"--index position {pos} is out of range for "
+                        f"dimension {dim!r} (size {size})"
                     )
-                    sys.exit(2)
                 norm = pos % size
                 if norm in seen:
-                    print(
-                        f"Error: --index positions {seen[norm]} and {pos} address "
-                        f"the same element of dimension {dim!r} (size {size})",
-                        file=sys.stderr,
+                    raise UsageError(
+                        f"--index positions {seen[norm]} and {pos} address "
+                        f"the same element of dimension {dim!r} (size {size})"
                     )
-                    sys.exit(2)
                 seen[norm] = pos
             da = da.isel({dim: idx}, drop=True)
         # After the overrides the array must be (panel?, lat, lon) — plus an
@@ -662,12 +525,9 @@ def main() -> None:
         # on the spatial dims by name.
         for spatial in (lat_dim, lon_dim):
             if spatial in overrides and spatial not in da.dims:
-                print(
-                    f"Error: --index removed the {spatial!r} dimension; "
-                    "heatmap needs a 2D lat/lon grid",
-                    file=sys.stderr,
+                raise UsageError(
+                    f"--index removed the {spatial!r} dimension; heatmap needs a 2D lat/lon grid"
                 )
-                sys.exit(2)
         panel_dim = _step_dim(da)
         # Any dim still present beyond the panel dim, the ensemble 'number'
         # dim, and lat/lon would reach the per-panel transpose with too many
@@ -675,25 +535,19 @@ def main() -> None:
         for dim in da.dims:
             if dim not in (panel_dim, "number", lat_dim, lon_dim):
                 panel_desc = repr(panel_dim) if panel_dim else "step/time"
-                print(
-                    f"Error: dimension {dim!r} remains after selection; heatmap "
+                raise UsageError(
+                    f"dimension {dim!r} remains after selection; heatmap "
                     f"panels only the {panel_desc} dimension — select a position "
-                    f"from {dim!r} with --index",
-                    file=sys.stderr,
+                    f"from {dim!r} with --index"
                 )
-                sys.exit(2)
         if panel_dim is not None and da.sizes[panel_dim] == 0:
-            print(
-                f"Error: dimension {panel_dim!r} has size 0; nothing to plot.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-        extent = _parse_extent(args.extent)
-        cities = _parse_cities(args.cities)
-        cmap = _parse_colormap(args.colormap)
-        region_polygon = _polygon_from_geojson(args.mask_geojson) if args.mask_geojson else None
-        wrapped_bbox = bbox is not None and bbox[1] > bbox[3]
-        if bbox is not None or region_polygon is not None:
+            raise UsageError(f"dimension {panel_dim!r} has size 0; nothing to plot.")
+        extent_vals = _parse_extent(extent)
+        cities_map = _parse_cities(cities)
+        cmap = _parse_colormap(colormap)
+        region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
+        wrapped_bbox = bbox_nwse is not None and bbox_nwse[1] > bbox_nwse[3]
+        if bbox_nwse is not None or region_polygon is not None:
             import numpy as _np_local
 
             # Wrap 0..360 lons to [-180, 180] before slicing/masking so a global
@@ -703,10 +557,10 @@ def main() -> None:
             lon_vals_pre = _np_local.asarray(da[lon_dim].values)
             if lon_vals_pre.size and float(_np_local.nanmax(lon_vals_pre)) > 180.0:
                 da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
-            if bbox is not None:
-                r_n, r_w, r_s, r_e = bbox
+            if bbox_nwse is not None:
+                r_n, r_w, r_s, r_e = bbox_nwse
                 lat_vals_pre = da[lat_dim].values
-                da = da.sel({lat_dim: _lat_slice(lat_vals_pre, r_n, r_s)})
+                da = da.sel({lat_dim: lat_slice(lat_vals_pre, r_n, r_s)})
                 # A bbox with west > east is an RFC 7946 antimeridian-crossing
                 # box (e.g. Russia from resolve-region): select the two lon bands
                 # lon >= r_w OR lon <= r_e rather than the empty slice(r_w, r_e).
@@ -734,7 +588,7 @@ def main() -> None:
                     )
                 mask_da = xr.DataArray(mask, dims=(lat_dim, lon_dim))
                 da = da.where(mask_da)
-            if bbox is not None:
+            if bbox_nwse is not None:
                 if r_w > r_e:
                     # The selected data now lives in two disjoint bands (lon >= r_w
                     # and lon <= r_e). Remap longitudes so the two bands form one
@@ -745,91 +599,48 @@ def main() -> None:
                     # crossing region.
                     shifted = ((da[lon_dim] - r_w) % 360.0) + r_w
                     da = da.assign_coords({lon_dim: shifted}).sortby(lon_dim)
-                if extent is None:
+                if extent_vals is None:
                     # Frame the country. For a wrapped bbox the x-range spans
                     # [r_w, r_e + 360] (a valid x0 < x1) so the contiguous shifted
                     # block is framed, not the empty complementary band.
                     if r_w > r_e:
-                        extent = [float(r_w), float(r_e) + 360.0, float(r_s), float(r_n)]
+                        extent_vals = [float(r_w), float(r_e) + 360.0, float(r_s), float(r_n)]
                     else:
-                        extent = [float(r_w), float(r_e), float(r_s), float(r_n)]
+                        extent_vals = [float(r_w), float(r_e), float(r_s), float(r_n)]
         # Guard at the first point where a zero-size grid is knowable (after
         # --index/--bbox selection, before any min/max reduction): disjoint
         # selections would otherwise hit reductions of an empty array.
         if da.sizes[lat_dim] == 0 or da.sizes[lon_dim] == 0:
-            print(
-                "Error: selection produced an empty grid (no cells remain after "
-                "--index/--bbox selection); nothing to plot.",
-                file=sys.stderr,
+            raise UsageError(
+                "selection produced an empty grid (no cells remain after "
+                "--index/--bbox selection); nothing to plot."
             )
-            sys.exit(2)
         fig = _heatmap(
             da,
             lat_dim,
             lon_dim,
             cmap,
-            extent,
-            cities,
-            args.title,
-            args.fontsize,
+            extent_vals,
+            cities_map,
+            title,
+            fontsize,
             wrap_lon=not wrapped_bbox,
             native_step_dim=native_step_dim,
             native_steps=native_steps,
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))
-        sdim = "step" if "step" in da.dims else _cf_dim(da, "time")
+        sdim = "step" if "step" in da.dims else cf_dim(da, "time")
         if sdim is None:
-            print(
-                f"Error: timeseries needs 'step' or 'time'; got {list(da.dims)}.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            raise UsageError(f"timeseries needs 'step' or 'time'; got {list(da.dims)}.")
         reduce_dims = [d for d in da.dims if d != sdim]
         da.mean(reduce_dims).plot(ax=ax)
         ax.set_xlabel(sdim)
-        ax.set_title(args.title or f"{variable} ({args.style})")
+        ax.set_title(title or f"{variable} ({style})")
         fig.tight_layout()
 
-    out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    upstream = _load_history(src)
-    prov_skip = {"input", "output"}
-    entry_args = {k: v for k, v in vars(args).items() if k not in prov_skip}
-    # The timeseries style ignores --index, --extent, and --cities; those
-    # three record as None, keeping the args schema stable across styles
-    # while showing they had no effect (--bbox and --mask-geojson record
-    # verbatim). A whitespace-only --index parses to no selection and
-    # records None too.
-    if index_ignored or not overrides:
-        entry_args["index"] = None
-    if args.style != "heatmap":
-        entry_args["extent"] = None
-        entry_args["cities"] = None
-    plot_entry = {
-        "skill": "plot",
-        "version": _SKILL_VERSION,
-        "args": entry_args,
-        "input": {"basename": src.name, "hash": _hash_zarr(src)},
-    }
-    if not upstream:
-        print(
-            f"Warning: no upstream weather_skills_history on {src.name}; embedding plot step alone.",
-            file=sys.stderr,
-        )
-    fig.savefig(
-        out,
-        dpi=150,
-        bbox_inches="tight",
-        metadata={
-            "weather_skills_history": json.dumps(upstream + [plot_entry], sort_keys=True),
-            "Software": "forecasting-skills",
-        },
-    )
-    plt.close(fig)
-    print(f"Wrote: {args.output}", file=sys.stderr)
+    return fig
 
 
 if __name__ == "__main__":
-    main()
+    plot()

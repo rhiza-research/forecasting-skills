@@ -1,13 +1,13 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
 #   "geopandas>=1",
 #   # matplotlib<3.10: cartopy gridliner crash
 #   "matplotlib>=3.8,<3.10",
-#   "nc-time-axis",
 #   "numpy",
 #   "pandas",
 #   "shapely>=2.1",
@@ -25,14 +25,13 @@ rows when they are the same variable with matching units, and per-row
 independent otherwise (--shared-scale / --independent-scale override).
 """
 
-import argparse
-import hashlib
-import json
 import sys
-from pathlib import Path
+
+from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.14"
+_SKILL_VERSION = "0.1.15"
 
 # Shared categorical colormap and BoundaryNorm for precipitation (mm).
 PRECIP_COLORS = [
@@ -48,80 +47,6 @@ PRECIP_COLORS = [
     "purple",
 ]
 PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
-
-
-def _cf_dim(obj, cf_name):
-    try:
-        return obj.cf[cf_name].name
-    except KeyError:
-        return None
-
-
-def _real_data_vars(ds):
-    """Data vars that hold actual data, not a CF grid-mapping container.
-
-    A CF grid-mapping variable (e.g. ``latitude_longitude``) is a
-    zero-data CRS container: it carries a ``grid_mapping_name`` attr and is
-    named by another var's ``grid_mapping`` attr. Such vars are skipped so a
-    no-flag auto-pick lands on a real data var instead of the CRS container.
-    """
-    mapping_targets = {
-        ds[d].attrs.get("grid_mapping") for d in ds.data_vars if ds[d].attrs.get("grid_mapping")
-    }
-    return [
-        v
-        for v in ds.data_vars
-        if "grid_mapping_name" not in ds[v].attrs and v not in mapping_targets
-    ]
-
-
-def _auto_variable(ds):
-    """First real (non-CRS) data var, preferring one with >= 2 dims."""
-    candidates = _real_data_vars(ds)
-    if not candidates:
-        return None
-    multidim = [v for v in candidates if len(ds[v].dims) >= 2]
-    return (multidim or candidates)[0]
-
-
-def _hash_zarr(zarr_path: Path) -> str:
-    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
-    deterministically and hashes relative-path bytes + each file's
-    content. Returns sha256 hex digest."""
-    h = hashlib.sha256()
-    for p in sorted(zarr_path.rglob("*")):
-        if p.is_file():
-            h.update(str(p.relative_to(zarr_path)).encode())
-            h.update(p.read_bytes())
-    return h.hexdigest()
-
-
-def _load_history(zarr_path: Path) -> list:
-    try:
-        import xarray as xr
-
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except FileNotFoundError:
-        # A not-yet-existing output read during a cache check is a silent miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
 
 
 def _pick_time_dim(ds, override):
@@ -235,49 +160,6 @@ def _load_admin_boundaries(bbox=None):
     return gdf
 
 
-def _lat_slice(lat_vals, north, south):
-    """Return a ``slice`` for ``ds.sel`` that works for ascending or descending lat."""
-    if lat_vals.size and lat_vals[0] > lat_vals[-1]:
-        return slice(north, south)
-    return slice(south, north)
-
-
-def _polygon_from_geojson(path):
-    """Return the unioned shapely polygon from a GeoJSON file.
-
-    Used to polygon-clip gridded satellite data so cells outside the
-    boundary are NaN'd before plotting (matching upstream's country-shaped
-    sat rendering). Unions every feature's geometry in the file. Exits
-    non-zero if the file is missing or has no usable geometry.
-    """
-    p = Path(path)
-    if not p.exists():
-        print(f"Error: --mask-geojson file not found: {path}", file=sys.stderr)
-        sys.exit(2)
-    try:
-        data = json.loads(p.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"Error: could not read --mask-geojson {path}: {exc}", file=sys.stderr)
-        sys.exit(2)
-
-    if data.get("type") == "FeatureCollection":
-        geoms = [f["geometry"] for f in data.get("features", []) if f.get("geometry")]
-    elif data.get("type") == "Feature":
-        geoms = [data["geometry"]] if data.get("geometry") else []
-    else:
-        # A bare geometry object.
-        geoms = [data]
-
-    if not geoms:
-        print(f"Error: --mask-geojson {path} has no usable geometry.", file=sys.stderr)
-        sys.exit(2)
-
-    from shapely.geometry import shape
-    from shapely.ops import unary_union
-
-    return unary_union([shape(g) for g in geoms])
-
-
 def _median_bin_width(time_values):
     """Return median spacing of a 1-D time coord.
 
@@ -331,8 +213,8 @@ def _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax):
 
 
 def _grid_panel(ax, sel, cmap, norm, vmin, vmax):
-    lat_dim = _cf_dim(sel, "latitude")
-    lon_dim = _cf_dim(sel, "longitude")
+    lat_dim = cf_dim(sel, "latitude")
+    lon_dim = cf_dim(sel, "longitude")
     return sel.transpose(lat_dim, lon_dim).plot.pcolormesh(
         ax=ax,
         x=lon_dim,
@@ -350,8 +232,8 @@ def _ax_bounds(ds, variable):
         lons = ds["longitude"].values
         lats = ds["latitude"].values
     else:
-        lat_dim = _cf_dim(ds[variable], "latitude")
-        lon_dim = _cf_dim(ds[variable], "longitude")
+        lat_dim = cf_dim(ds[variable], "latitude")
+        lon_dim = cf_dim(ds[variable], "longitude")
         lons = ds[lon_dim].values
         lats = ds[lat_dim].values
     import numpy as np
@@ -364,110 +246,103 @@ def _ax_bounds(ds, variable):
     )
 
 
-def _attach_bbox_value(argv):
-    # argparse rejects a space-separated --bbox value that starts with '-'
-    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
-    # `--bbox=VAL` so both the space and equals forms parse.
-    out, i = [], 0
-    while i < len(argv):
-        if argv[i] == "--bbox" and i + 1 < len(argv):
-            out.append(f"--bbox={argv[i + 1]}")
-            i += 2
-        else:
-            out.append(argv[i])
-            i += 1
-    return out
-
-
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument(
-        "--input",
-        "-i",
-        action="append",
-        required=True,
-        help="Input Zarr; pass exactly twice (first = A, second = B)",
-    )
-    p.add_argument("--output", "-o", required=True)
-    p.add_argument(
-        "--variable",
-        "-v",
-        help="Variable for both rows. Per-row --variable-a/-b take precedence.",
-    )
-    p.add_argument(
-        "--variable-a",
-        help="Variable for row A. Overrides --variable for that row. "
-        "Default: --variable, else first real data var of input A.",
-    )
-    p.add_argument(
-        "--variable-b",
-        help="Variable for row B. Overrides --variable for that row. "
-        "Default: --variable, else first real data var of input B.",
-    )
-    p.add_argument(
-        "--colormap",
-        default=None,
-        help="matplotlib colormap name. In shared-scale mode, when omitted the "
-        "categorical precipitation colormap with BoundaryNorm is used. In "
-        "independent-scale mode it is the per-row default (falls back to "
-        "'viridis'); --colormap-a/-b override it per row.",
-    )
-    p.add_argument(
-        "--colormap-a",
-        default=None,
-        help="matplotlib colormap for row A in independent-scale mode "
-        "(precedence: --colormap-a, then --colormap, then 'viridis').",
-    )
-    p.add_argument(
-        "--colormap-b",
-        default=None,
-        help="matplotlib colormap for row B in independent-scale mode "
-        "(precedence: --colormap-b, then --colormap, then 'viridis').",
-    )
-    scale_grp = p.add_mutually_exclusive_group()
-    scale_grp.add_argument(
-        "--shared-scale",
-        action="store_true",
-        help="Force one shared color scale across both rows. Default: shared "
-        "when both rows resolve to the same variable AND matching units, else "
-        "independent per-row scales.",
-    )
-    scale_grp.add_argument(
-        "--independent-scale",
-        action="store_true",
-        help="Force per-row color scales (each row its own vmin/vmax/colorbar). "
-        "Default: independent unless both rows are the same variable + units.",
-    )
-    p.add_argument("--title")
-    p.add_argument("--panels", type=int, default=3)
-    p.add_argument("--time-dim")
-    p.add_argument(
-        "--bbox",
-        help="N/W/S/E decimal degrees. Slices gridded inputs to the bbox, drops "
+@weather_skill(
+    "plot-compare",
+    _SKILL_VERSION,
+    input_type=["any", "any"],
+    output_type="png",
+    input_help="Input Zarr; pass exactly twice (first = A, second = B)",
+    history_labels=["a", "b"],
+    input_paths=True,
+    variable={
+        "mode": "single",
+        "help": "Variable for both rows. Per-row --variable-a/-b take precedence.",
+    },
+    title=True,
+    time_dim=True,
+    bbox={
+        "mode": "optional",
+        "help": "N/W/S/E decimal degrees. Slices gridded inputs to the bbox, drops "
         "stations outside the bbox, and sets axes to the bbox. Cells inside the "
         "bbox but outside any --mask-geojson polygon are kept (rectangular "
         "slice). Use the resolve-region skill to get a country's bbox.",
-    )
-    p.add_argument(
-        "--mask-geojson",
-        help="Path to a GeoJSON boundary polygon. Gridded cells outside the "
-        "polygon are set to NaN before plotting. Use resolve-region's --geojson "
-        "output to produce a country polygon.",
-    )
-    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
+    },
+    extra_args={
+        "variable_a": {
+            "help": "Variable for row A. Overrides --variable for that row. "
+            "Default: --variable, else first real data var of input A.",
+        },
+        "variable_b": {
+            "help": "Variable for row B. Overrides --variable for that row. "
+            "Default: --variable, else first real data var of input B.",
+        },
+        "colormap": {
+            "default": None,
+            "help": "matplotlib colormap name. In shared-scale mode, when omitted the "
+            "categorical precipitation colormap with BoundaryNorm is used. In "
+            "independent-scale mode it is the per-row default (falls back to "
+            "'viridis'); --colormap-a/-b override it per row.",
+        },
+        "colormap_a": {
+            "default": None,
+            "help": "matplotlib colormap for row A in independent-scale mode "
+            "(precedence: --colormap-a, then --colormap, then 'viridis').",
+        },
+        "colormap_b": {
+            "default": None,
+            "help": "matplotlib colormap for row B in independent-scale mode "
+            "(precedence: --colormap-b, then --colormap, then 'viridis').",
+        },
+        "shared_scale": {
+            "action": "store_true",
+            "help": "Force one shared color scale across both rows. Default: shared "
+            "when both rows resolve to the same variable AND matching units, else "
+            "independent per-row scales.",
+        },
+        "independent_scale": {
+            "action": "store_true",
+            "help": "Force per-row color scales (each row its own vmin/vmax/colorbar). "
+            "Default: independent unless both rows are the same variable + units.",
+        },
+        "panels": {"type": int, "default": 3},
+        "mask_geojson": {
+            "help": "Path to a GeoJSON boundary polygon. Gridded cells outside the "
+            "polygon are set to NaN before plotting. Use resolve-region's --geojson "
+            "output to produce a country polygon.",
+        },
+    },
+    mutex_groups={"scale": ("shared_scale", "independent_scale")},
+    savefig_kwargs={"bbox_inches": "tight"},
+)
+def plot_compare(
+    ds_a,
+    ds_b,
+    variable,
+    variable_a,
+    variable_b,
+    colormap,
+    colormap_a,
+    colormap_b,
+    shared_scale,
+    independent_scale,
+    title,
+    panels,
+    time_dim,
+    bbox,
+    mask_geojson,
+    input_paths,
+):
+    """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
 
-    if len(args.input) != 2:
-        print(
-            f"Error: --input must be passed exactly twice; got {len(args.input)}.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    path_a, path_b = args.input
-    label_a = Path(path_a).name
-    label_b = Path(path_b).name
+    Top row is dataset A, bottom row is dataset B. When exactly one of A/B
+    is a station-schema Zarr, it is placed on the top row to match the
+    canonical "stations vs. satellite" presentation. Each row can draw its
+    own variable (--variable-a/-b). The color scale is shared across both
+    rows when they are the same variable with matching units, and per-row
+    independent otherwise (--shared-scale / --independent-scale override).
+    """
+    label_a = input_paths[0].name
+    label_b = input_paths[1].name
 
     import matplotlib
 
@@ -475,39 +350,37 @@ def main() -> None:
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import numpy as np
-    import xarray as xr
     from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap
     from matplotlib.gridspec import GridSpec
 
-    for pth in (path_a, path_b):
-        if not Path(pth).exists():
-            print(f"Error: {pth} not found.", file=sys.stderr)
-            sys.exit(2)
-
-    ds_a = xr.open_zarr(path_a, consolidated=False)
-    ds_b = xr.open_zarr(path_b, consolidated=False)
-
     # Per-row variable resolution: explicit per-row flag, then the shared
     # --variable, then that input's own first real (non-CRS) data var.
-    var_a = args.variable_a or args.variable or _auto_variable(ds_a)
-    var_b = args.variable_b or args.variable or _auto_variable(ds_b)
+    var_a = variable_a or variable or auto_variable(ds_a)
+    var_b = variable_b or variable or auto_variable(ds_b)
     for side, var, ds in (("A", var_a, ds_a), ("B", var_b, ds_b)):
         if var is None or var not in ds:
-            print(
-                f"Error: variable '{var}' must exist in input {side}. "
-                f"{side} real data vars: {_real_data_vars(ds)}",
-                file=sys.stderr,
+            # Same real-data-var criterion core's auto_variable uses: skip CF
+            # grid-mapping (CRS) container vars so the hint lists only real vars.
+            mapping_targets = {
+                ds[d].attrs.get("grid_mapping")
+                for d in ds.data_vars
+                if ds[d].attrs.get("grid_mapping")
+            }
+            real_vars = [
+                v
+                for v in ds.data_vars
+                if "grid_mapping_name" not in ds[v].attrs and v not in mapping_targets
+            ]
+            raise UsageError(
+                f"variable '{var}' must exist in input {side}. {side} real data vars: {real_vars}"
             )
-            sys.exit(2)
 
-    td_a = _pick_time_dim(ds_a, args.time_dim)
-    td_b = _pick_time_dim(ds_b, args.time_dim)
+    td_a = _pick_time_dim(ds_a, time_dim)
+    td_b = _pick_time_dim(ds_b, time_dim)
     if td_a is None or td_b is None:
-        print(
-            f"Error: both inputs need a time/step dim. A: {list(ds_a.dims)}  B: {list(ds_b.dims)}",
-            file=sys.stderr,
+        raise UsageError(
+            f"both inputs need a time/step dim. A: {list(ds_a.dims)}  B: {list(ds_b.dims)}"
         )
-        sys.exit(2)
 
     # Shared-bin panel selection. The two rows share one colormap and render the
     # same time window per panel, so the inputs must be at the same time
@@ -556,14 +429,12 @@ def main() -> None:
     kind_a = _axis_kind(raw_a)
     kind_b = _axis_kind(raw_b)
     if kind_a is None or kind_b is None or kind_a != kind_b:
-        print(
-            "Error: the two inputs have different time resolutions "
+        raise DataError(
+            "the two inputs have different time resolutions "
             f"('{td_a}' dtype={raw_a.dtype}, '{td_b}' dtype={raw_b.dtype}); "
             "aggregate both inputs to a common resolution first, e.g. with the "
-            "aggregate-temporal skill.",
-            file=sys.stderr,
+            "aggregate-temporal skill."
         )
-        sys.exit(1)
 
     # Calendar-compatibility guards, before any cross-axis encoding. A cftime
     # (model-calendar) axis and a datetime64 (standard-calendar) axis cannot be
@@ -576,26 +447,22 @@ def main() -> None:
     if a_is_cftime != b_is_cftime:
         cf_td = td_a if a_is_cftime else td_b
         std_td = td_b if a_is_cftime else td_a
-        print(
-            "Error: cannot compare a model-calendar (cftime) time axis "
+        raise DataError(
+            "cannot compare a model-calendar (cftime) time axis "
             f"('{cf_td}') against a standard-calendar (datetime64) time axis "
             f"('{std_td}'); convert both to a common calendar first with the "
-            "convert-calendar skill.",
-            file=sys.stderr,
+            "convert-calendar skill."
         )
-        sys.exit(1)
     if a_is_cftime and b_is_cftime:
         cal_a = raw_a.flat[0].calendar
         cal_b = raw_b.flat[0].calendar
         if cal_a != cal_b:
-            print(
-                "Error: the two inputs use different model calendars "
+            raise DataError(
+                "the two inputs use different model calendars "
                 f"('{td_a}' calendar={cal_a!r} vs '{td_b}' calendar={cal_b!r}); "
                 "convert both to a common calendar first with the "
-                "convert-calendar skill.",
-                file=sys.stderr,
+                "convert-calendar skill."
             )
-            sys.exit(1)
 
     # Encode each axis to a 1-D numeric array in a single consistent unit, never
     # cross-casting between the datetime and timedelta kinds. For a cftime
@@ -655,14 +522,12 @@ def main() -> None:
             else:
                 wa_str = f"{width_a:.0f} ns"
                 wb_str = f"{width_b:.0f} ns"
-            print(
-                "Error: the two inputs have different time resolutions "
+            raise DataError(
+                "the two inputs have different time resolutions "
                 f"(median bin width '{td_a}'≈{wa_str} vs "
                 f"'{td_b}'≈{wb_str}); aggregate both inputs to a common "
-                "resolution first, e.g. with the aggregate-temporal skill.",
-                file=sys.stderr,
+                "resolution first, e.g. with the aggregate-temporal skill."
             )
-            sys.exit(1)
 
     # Overlap: intersect the two axes' labels, matched within a 1-second
     # tolerance to absorb storage/rounding; bins on a shared anchor are exactly
@@ -689,13 +554,9 @@ def main() -> None:
             common_src.append(int(pos))
 
     if not common_enc:
-        print(
-            f"Error: no overlapping time bins between the two inputs on '{td_a}'/'{td_b}'.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise DataError(f"no overlapping time bins between the two inputs on '{td_a}'/'{td_b}'.")
 
-    n = min(args.panels, len(common_enc))
+    n = min(panels, len(common_enc))
     # Take the last `n` common labels (chronological). Map each back to a native
     # axis label drawn from input A's coord so per-row `.sel` is exact for A; for
     # B we select with method="nearest" within the same tolerance.
@@ -724,12 +585,12 @@ def main() -> None:
     units_match = (
         isinstance(units_a, str) and isinstance(units_b, str) and units_a.strip() == units_b.strip()
     )
-    if args.shared_scale:
-        shared_scale = True
-    elif args.independent_scale:
-        shared_scale = False
+    if shared_scale:
+        use_shared_scale = True
+    elif independent_scale:
+        use_shared_scale = False
     else:
-        shared_scale = var_a == var_b and units_match
+        use_shared_scale = var_a == var_b and units_match
 
     # Input-units check (SHARED mode only). When both rows share one colormap and
     # normalization but hold their variable in different units, the panels are
@@ -740,7 +601,12 @@ def main() -> None:
     # are compared after stripping surrounding whitespace so a trailing space is
     # not read as a real difference. In INDEPENDENT mode each row has its own
     # scale and colorbar, so there is no cross-row units mismatch to warn about.
-    if shared_scale and not units_match and isinstance(units_a, str) and isinstance(units_b, str):
+    if (
+        use_shared_scale
+        and not units_match
+        and isinstance(units_a, str)
+        and isinstance(units_b, str)
+    ):
         print(
             f"Warning: the two rows have differing units "
             f"({label_a} {var_a!r} units={units_a!r}, "
@@ -750,10 +616,10 @@ def main() -> None:
             file=sys.stderr,
         )
 
-    a_lat = _cf_dim(da_a, "latitude")
-    a_lon = _cf_dim(da_a, "longitude")
-    b_lat = _cf_dim(da_b, "latitude")
-    b_lon = _cf_dim(da_b, "longitude")
+    a_lat = cf_dim(da_a, "latitude")
+    a_lon = cf_dim(da_a, "longitude")
+    b_lat = cf_dim(da_b, "latitude")
+    b_lon = cf_dim(da_b, "longitude")
     spatial_dims = {a_lat, a_lon, b_lat, b_lon} - {None}
 
     def _flatten(da, time_dim):
@@ -770,19 +636,12 @@ def main() -> None:
     # drop station inputs whose (lon, lat) is outside the bbox. This matches
     # upstream's ``ds.sel(longitude=slice, latitude=slice)`` rendering — the
     # bbox alone is a rectangle, not a country shape.
-    region_bbox = None
-    if args.bbox:
-        try:
-            region_bbox = tuple(float(x) for x in args.bbox.split("/"))
-            if len(region_bbox) != 4:
-                raise ValueError
-        except ValueError:
-            print("Error: --bbox must be N/W/S/E (decimal degrees).", file=sys.stderr)
-            sys.exit(2)
+    # The decorator parses --bbox to an (N, W, S, E) float tuple (or None).
+    region_bbox = bbox
     # When ``--mask-geojson`` is set: polygon-clip gridded inputs (cells outside
     # the polygon render as NaN/white), matching upstream sheerwater's
     # clip_region which polygon-clips IMERG/CHIRPS before plotting.
-    region_polygon = _polygon_from_geojson(args.mask_geojson) if args.mask_geojson else None
+    region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
 
     if region_bbox is not None or region_polygon is not None:
         r_n, r_w, r_s, r_e = region_bbox if region_bbox is not None else (None, None, None, None)
@@ -803,7 +662,7 @@ def main() -> None:
                     keep_ids = ds["station_id"].values[keep]
                     if len(keep_ids) == 0:
                         print(
-                            f"Warning: 0 stations inside --bbox {args.bbox} "
+                            f"Warning: 0 stations inside --bbox {r_n}/{r_w}/{r_s}/{r_e} "
                             f"on input '{ds_label}'; scatter will render empty.",
                             file=sys.stderr,
                         )
@@ -817,8 +676,8 @@ def main() -> None:
                         shifted_lon = ((ds["longitude"].values - r_w) % 360.0) + r_w
                         ds = ds.assign_coords(longitude=("station_id", shifted_lon))
             else:
-                lat_dim = _cf_dim(da, "latitude")
-                lon_dim = _cf_dim(da, "longitude")
+                lat_dim = cf_dim(da, "latitude")
+                lon_dim = cf_dim(da, "longitude")
                 if lat_dim is not None and lon_dim is not None:
                     # Wrap lon to [-180, 180] before the slice so a 0..360
                     # grid still intersects the bbox. Applied to both ds and
@@ -834,7 +693,7 @@ def main() -> None:
                         )
                     if region_bbox is not None:
                         lat_vals = da[lat_dim].values
-                        lat_sl = _lat_slice(lat_vals, r_n, r_s)
+                        lat_sl = lat_slice(lat_vals, r_n, r_s)
                         ds = ds.sel({lat_dim: lat_sl})
                         da = da.sel({lat_dim: lat_sl})
                         # west > east is an RFC 7946 antimeridian-crossing bbox:
@@ -883,7 +742,7 @@ def main() -> None:
                 elif region_bbox is not None:
                     print(
                         f"Warning: input '{ds_label}' has no CF lat/lon "
-                        f"dims; --bbox {args.bbox} slice not applied.",
+                        f"dims; --bbox {r_n}/{r_w}/{r_s}/{r_e} slice not applied.",
                         file=sys.stderr,
                     )
                 elif region_polygon is not None:
@@ -909,21 +768,21 @@ def main() -> None:
         u = da.attrs.get("units")
         return u if isinstance(u, str) else None
 
-    if shared_scale:
-        if args.colormap is None:
+    if use_shared_scale:
+        if colormap is None:
             shared_cmap = LinearSegmentedColormap.from_list("wgbrp", PRECIP_COLORS)
             shared_norm = BoundaryNorm(PRECIP_BOUNDS, shared_cmap.N)
             shared_vmin = shared_vmax = None
         else:
-            shared_cmap = args.colormap
+            shared_cmap = colormap
             shared_norm = None
             shared_vmax = float(np.nanmax([da_a.max().values, da_b.max().values]))
             shared_vmin = float(np.nanmin([da_a.min().values, da_b.min().values]))
         scale_a = (shared_cmap, shared_norm, shared_vmin, shared_vmax)
         scale_b = (shared_cmap, shared_norm, shared_vmin, shared_vmax)
     else:
-        cmap_a = args.colormap_a or args.colormap or "viridis"
-        cmap_b = args.colormap_b or args.colormap or "viridis"
+        cmap_a = colormap_a or colormap or "viridis"
+        cmap_b = colormap_b or colormap or "viridis"
         scale_a = (
             cmap_a,
             None,
@@ -953,8 +812,8 @@ def main() -> None:
     gs = GridSpec(2, n, figure=fig, wspace=0.08, hspace=0.15)
     top_axes = [fig.add_subplot(gs[0, i]) for i in range(n)]
     bottom_axes = [fig.add_subplot(gs[1, i]) for i in range(n)]
-    if args.title:
-        fig.suptitle(args.title)
+    if title:
+        fig.suptitle(title)
 
     # The "gridded base" determines both the admin-polygon clip bbox and
     # the shared spatial extent across both rows. Pick whichever of A/B
@@ -1056,7 +915,7 @@ def main() -> None:
         # also carries that row's own units as "{file} {var} [{units}]" so each
         # colorbar identifies its own quantity.
         _ds, _da, _td, label, var, units, _scale = row
-        if not shared_scale and units:
+        if not use_shared_scale and units:
             return f"{label} {var} [{units}]"
         return f"{label} {var}"
 
@@ -1077,54 +936,8 @@ def main() -> None:
         pad=0.02,
     )
 
-    out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    src_a = Path(path_a)
-    src_b = Path(path_b)
-    upstream_a = _load_history(src_a)
-    upstream_b = _load_history(src_b)
-    shared_args = {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
-    version = _SKILL_VERSION
-    plot_compare_entry_a = {
-        "skill": "plot-compare",
-        "version": version,
-        "args": shared_args,
-        "input": {"basename": src_a.name, "hash": _hash_zarr(src_a)},
-    }
-    plot_compare_entry_b = {
-        "skill": "plot-compare",
-        "version": version,
-        "args": shared_args,
-        "input": {"basename": src_b.name, "hash": _hash_zarr(src_b)},
-    }
-    if not upstream_a:
-        print(
-            f"Warning: no upstream weather_skills_history on {src_a.name}; embedding plot-compare step alone.",
-            file=sys.stderr,
-        )
-    if not upstream_b:
-        print(
-            f"Warning: no upstream weather_skills_history on {src_b.name}; embedding plot-compare step alone.",
-            file=sys.stderr,
-        )
-    fig.savefig(
-        out,
-        dpi=150,
-        bbox_inches="tight",
-        metadata={
-            "weather_skills_history_a": json.dumps(
-                upstream_a + [plot_compare_entry_a], sort_keys=True
-            ),
-            "weather_skills_history_b": json.dumps(
-                upstream_b + [plot_compare_entry_b], sort_keys=True
-            ),
-            "Software": "forecasting-skills",
-        },
-    )
-    plt.close(fig)
-    print(f"Wrote: {args.output}", file=sys.stderr)
+    return fig
 
 
 if __name__ == "__main__":
-    main()
+    plot_compare()

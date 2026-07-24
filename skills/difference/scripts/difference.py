@@ -1,10 +1,10 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 #   "xarray>=2026.4",
-#   "zarr>=3.2",
 # ]
 # ///
 """Subtract one weather-skills envelope Zarr from another (A - B).
@@ -17,27 +17,12 @@ time-mean from ``reduce``) yields per-time anomalies. The output keeps the
 first input's attrs.
 """
 
-import argparse
-import hashlib
-import json
-import shutil
 import sys
-from pathlib import Path
+
+from weather_skills_core import UsageError, WroteSummary, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
-
-
-def _hash_zarr(zarr_path: Path) -> str:
-    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
-    deterministically and hashes relative-path bytes + each file's
-    content. Returns sha256 hex digest."""
-    h = hashlib.sha256()
-    for p in sorted(zarr_path.rglob("*")):
-        if p.is_file():
-            h.update(str(p.relative_to(zarr_path)).encode())
-            h.update(p.read_bytes())
-    return h.hexdigest()
+_SKILL_VERSION = "0.1.7"
 
 
 def _to_signed(da, np):
@@ -57,186 +42,35 @@ def _to_signed(da, np):
     return da
 
 
-def _load_history(zarr_path: Path) -> list:
-    try:
-        import xarray as xr
-
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except FileNotFoundError:
-        # A not-yet-existing output read during a cache check is a silent miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
-
-
-def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
-    """Cache check that compares skill version, flags, each input's name,
-    each input's content hash, and upstream history.
-
-    Each recorded input's `hash` (a sha256 over that input's stored bytes) is
-    compared too, so any modification to either input forces a recompute even
-    when the basename is unchanged, and a renamed-but-unchanged input misses
-    on the differing basename. The caller passes a fully-populated `entry`
-    (each input carrying its `hash`) so this comparison is exact.
-    """
-    if not out.exists():
-        return False
-    history = _load_history(out)
-    if len(history) != len(upstream) + 1:
-        return False
-    if history[:-1] != upstream:
-        return False
-    last = history[-1]
-    last_inputs = last.get("input")
-    entry_inputs = entry["input"]
-    if not isinstance(last_inputs, list) or len(last_inputs) != len(entry_inputs):
-        return False
-    inputs_match = all(
-        isinstance(li, dict)
-        and li.get("basename") == ei["basename"]
-        and li.get("hash") == ei["hash"]
-        and li.get("history") == ei["history"]
-        for li, ei in zip(last_inputs, entry_inputs, strict=True)
-    )
-    return (
-        last.get("skill") == entry["skill"]
-        and last.get("version") == entry["version"]
-        and last.get("args") == entry["args"]
-        and inputs_match
-    )
-
-
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__.splitlines()[0],
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument(
-        "--input",
-        "-i",
-        action="append",
-        required=True,
-        help="Input Zarr; pass exactly twice (first = A, the minuend; second = B, the subtrahend)",
-    )
-    p.add_argument("--output", "-o", required=True)
-    p.add_argument(
-        "--variable",
-        "-v",
-        action="append",
-        default=None,
-        help="Data variable to difference. Repeat once per variable to select "
-        "several; each must be a data variable of BOTH inputs. Default (unset) "
-        "differences every data variable present in both inputs.",
-    )
-    args = p.parse_args()
-
-    if len(args.input) != 2:
-        print(
-            f"Error: --input must be passed exactly twice; got {len(args.input)}.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-    paths = [Path(s) for s in args.input]
-    out = Path(args.output)
-
-    # Validate input existence before any hashing or cache check: a missing
-    # input is a clean user error, not something to discover partway through.
-    missing = [str(ip) for ip in paths if not ip.exists()]
-    if missing:
-        for m in missing:
-            print(f"Error: {m} not found.", file=sys.stderr)
-        sys.exit(2)
-
-    # Reject an in-place run: the write path below deletes the output store
-    # before the dataset's values (still lazily backed by the inputs) are
-    # read, so differencing onto an input would destroy it. The guard also
-    # rejects an output nested inside an input store (or an input nested
-    # inside the output): rmtree of either would corrupt the other before the
-    # lazily-backed values are read.
-    out_r = out.resolve()
-    for ip in paths:
-        ip_r = ip.resolve()
-        if ip_r == out_r or out_r.is_relative_to(ip_r) or ip_r.is_relative_to(out_r):
-            print(
-                f"Error: --output ({args.output}) overlaps with an --input ({ip}) "
-                "as the same store or one nested inside the other; "
-                "difference writes to a distinct output path.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-
+def _normalize_args(args):
     # Normalize provenance args before stamping so reordered or duplicated
     # --variable flags don't cause spurious cache misses: dedupe and sort.
-    norm_args = {k: v for k, v in vars(args).items() if k not in {"input", "output"}}
-    if args.variable is not None:
-        norm_args["variable"] = sorted(set(args.variable))
+    if args.get("variable") is not None:
+        args["variable"] = sorted(set(args["variable"]))
+    return args
 
-    # Multi-input entry: `input` is a list of per-input dicts in CLI order
-    # (concat's schema), each carrying its content hash and full history
-    # chain. The recorded per-input hash (sha256 over the input's stored
-    # bytes) is part of the cache key, so build the full entry up front: a
-    # renamed-but-unchanged input misses on basename and a modified
-    # same-named input misses on hash.
-    input_histories = [_load_history(ip) for ip in paths]
-    upstream = input_histories[0]
-    entry = {
-        "skill": "difference",
-        "version": _SKILL_VERSION,
-        "args": norm_args,
-        "input": [
-            {"basename": ip.name, "hash": _hash_zarr(ip), "history": hist}
-            for ip, hist in zip(paths, input_histories, strict=True)
-        ],
-    }
-    if _cache_hit(out, upstream, entry):
-        print(
-            f"Cache hit: {args.output} already matches requested params; skipping difference.",
-            file=sys.stderr,
-        )
-        return
 
+@weather_skill(
+    "difference",
+    _SKILL_VERSION,
+    input_type=["any", "any"],
+    output_type="same",
+    input_help="Input Zarr; pass exactly twice (first = A, the minuend; second = B, the subtrahend)",
+    input_paths=True,
+    variable={
+        "mode": "repeat",
+        "help": "Data variable to difference. Repeat once per variable to select "
+        "several; each must be a data variable of BOTH inputs. Default (unset) "
+        "differences every data variable present in both inputs.",
+    },
+    normalize_args=_normalize_args,
+)
+def difference(ds_a, ds_b, input_paths, variable):
+    """Subtract one weather-skills envelope Zarr from another (A - B)."""
+    import numpy as np
     import xarray as xr
 
-    # Wrap each input open so an existing-but-not-a-Zarr path exits cleanly
-    # instead of surfacing a backend traceback.
-    opened = []
-    for ip in paths:
-        try:
-            opened.append(xr.open_zarr(ip, consolidated=False))
-        except Exception as exc:  # noqa: BLE001 - normalize any backend error
-            print(
-                f"Error: {ip} is not a readable Zarr store ({type(exc).__name__}: {exc}).",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-    ds_a, ds_b = opened
-
-    # Flag each input that carries no upstream weather_skills_history as opaque (same
-    # note reduce prints for its single input), so a non-reproducible input
-    # branch is surfaced per input rather than silently recorded as `[]`.
-    for ip, hist in zip(paths, input_histories, strict=True):
-        if not hist:
-            print(
-                f"Warning: no upstream weather_skills_history on input {ip.name}; treating input as opaque.",
-                file=sys.stderr,
-            )
+    names = [p.name for p in input_paths]
 
     # Variable selection. Explicit --variable names must be data variables of
     # BOTH inputs. Default selection takes every data variable present in
@@ -244,33 +78,29 @@ def main() -> None:
     # Data variables present in only one input are not differenced and are
     # dropped from the output.
     shared = [v for v in ds_a.data_vars if v in ds_b.data_vars]
-    if args.variable is not None:
+    if variable is not None:
         # De-duplicate while preserving first-seen order so a repeated name
         # doesn't difference a variable twice.
-        selected = list(dict.fromkeys(args.variable))
+        selected = list(dict.fromkeys(variable))
         for var in selected:
             absent = [
-                ip.name
-                for ip, ds in zip(paths, (ds_a, ds_b), strict=True)
+                name
+                for name, ds in zip(names, (ds_a, ds_b), strict=True)
                 if var not in ds.data_vars
             ]
             if absent:
-                print(
-                    f"Error: --variable '{var}' is not a data variable of {absent}. "
-                    f"{paths[0].name} has {list(ds_a.data_vars)}; "
-                    f"{paths[1].name} has {list(ds_b.data_vars)}.",
-                    file=sys.stderr,
+                raise UsageError(
+                    f"--variable '{var}' is not a data variable of {absent}. "
+                    f"{names[0]} has {list(ds_a.data_vars)}; "
+                    f"{names[1]} has {list(ds_b.data_vars)}."
                 )
-                sys.exit(2)
     else:
         if not shared:
-            print(
-                f"Error: the inputs share no data variables "
-                f"({paths[0].name} has {list(ds_a.data_vars)}; "
-                f"{paths[1].name} has {list(ds_b.data_vars)}).",
-                file=sys.stderr,
+            raise UsageError(
+                f"the inputs share no data variables "
+                f"({names[0]} has {list(ds_a.data_vars)}; "
+                f"{names[1]} has {list(ds_b.data_vars)})."
             )
-            sys.exit(2)
         selected = shared
     dropped = sorted({v for ds in (ds_a, ds_b) for v in ds.data_vars if v not in selected})
     if dropped:
@@ -288,14 +118,11 @@ def main() -> None:
     # surrounding whitespace so a trailing space is not read as a real
     # difference.
     for var in selected:
-        # Key by full input path (not basename) so two inputs that share a
-        # filename in different directories are still compared as distinct
-        # inputs rather than collapsing onto one key.
         seen_units = {}
-        for ip, ds in zip(paths, (ds_a, ds_b), strict=True):
+        for name, ds in zip(names, (ds_a, ds_b), strict=True):
             u = ds[var].attrs.get("units")
             if isinstance(u, str):
-                seen_units[str(ip)] = u.strip()
+                seen_units[name] = u.strip()
         if len(set(seen_units.values())) > 1:
             detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
             print(
@@ -324,27 +151,23 @@ def main() -> None:
         size_a = ds_a.sizes[d]
         size_b = ds_b.sizes[d]
         if size_a != size_b:
-            print(
-                f"Error: shared dim '{d}' has no index coordinate, so it is "
+            raise UsageError(
+                f"shared dim '{d}' has no index coordinate, so it is "
                 f"paired positionally, but the inputs disagree on its size "
-                f"({paths[0].name}={size_a}, {paths[1].name}={size_b}); "
-                "there is no way to align unlabeled rows of different length.",
-                file=sys.stderr,
+                f"({names[0]}={size_a}, {names[1]}={size_b}); "
+                "there is no way to align unlabeled rows of different length."
             )
-            sys.exit(2)
         print(
             f"Warning: shared dim '{d}' has no index coordinate; pairing it "
-            f"positionally (element i of {paths[0].name} minus element i of "
-            f"{paths[1].name}). Verify the rows correspond.",
+            f"positionally (element i of {names[0]} minus element i of "
+            f"{names[1]}). Verify the rows correspond.",
             file=sys.stderr,
         )
 
     print(
-        f"Differencing {paths[0].name} - {paths[1].name} variables={selected}",
+        f"Differencing {names[0]} - {names[1]} variables={selected}",
         file=sys.stderr,
     )
-
-    import numpy as np
 
     # A - B per variable. xarray arithmetic inner-joins the shared dims and
     # broadcasts over dims present on only one side, so a (time, latitude,
@@ -375,47 +198,21 @@ def main() -> None:
         empty = [d for d, s in diff.sizes.items() if s == 0]
         if empty:
             if set(empty) & set(pre_empty):
-                print(
-                    f"Error: variable '{var}' is already empty along dim(s) "
+                raise UsageError(
+                    f"variable '{var}' is already empty along dim(s) "
                     f"{sorted(set(empty) & set(pre_empty))} in an input before "
-                    "alignment: there is nothing to subtract.",
-                    file=sys.stderr,
+                    "alignment: there is nothing to subtract."
                 )
-            else:
-                print(
-                    f"Error: aligning the inputs left variable '{var}' empty "
-                    f"along dim(s) {empty}: the inputs have no overlapping "
-                    "coordinate values there, so there is nothing to subtract.",
-                    file=sys.stderr,
-                )
-            sys.exit(2)
+            raise UsageError(
+                f"aligning the inputs left variable '{var}' empty "
+                f"along dim(s) {empty}: the inputs have no overlapping "
+                "coordinate values there, so there is nothing to subtract."
+            )
         diff.attrs = dict(ds_a[var].attrs)
         data_vars[var] = diff
     out_ds = xr.Dataset(data_vars)
-
-    # `entry` (with per-input hashes) was built above for the cache check and
-    # is reused verbatim for the stamp.
-    # Top-level chain stays a single linear array — the first input's chain
-    # plus this entry — so single-attr readers keep working; the entry's
-    # `input` list records every input branch in full.
-    out_ds.attrs = {
-        **ds_a.attrs,
-        "weather_skills_history": json.dumps(upstream + [entry], sort_keys=True),
-    }
-    # compatibility migration for the rhiza_ attr prefix; scheduled for removal
-    for _old in ("rhiza_history", "rhiza_source", "rhiza_forecast_init"):
-        if _old in out_ds.attrs:
-            _new = "weather_skills_" + _old.removeprefix("rhiza_")
-            out_ds.attrs.setdefault(_new, out_ds.attrs.pop(_old))
-    for v in out_ds.variables:
-        out_ds[v].encoding = {}
-
-    if out.exists():
-        shutil.rmtree(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out_ds.to_zarr(out, mode="w", consolidated=True)
-    print(f"Wrote: {args.output} ({out_ds.sizes})", file=sys.stderr)
+    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
 
 
 if __name__ == "__main__":
-    main()
+    difference()

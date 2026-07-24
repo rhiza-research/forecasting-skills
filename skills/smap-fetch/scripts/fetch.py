@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "earthaccess",
 #   "h5py",
 #   "xarray",
@@ -13,25 +14,25 @@
 # ///
 """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
 
-import argparse
-import json
 import re
-import shutil
 import sys
 import tempfile
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
 
-import cf_units
-import cf_xarray  # noqa: F401  -- registers the `.cf` accessor used in the write-side decode check
-import earthaccess
-import h5py
-import numpy as np
-import xarray as xr
-from earthaccess.exceptions import LoginAttemptFailure, LoginStrategyUnavailable
+# cf_units and cf_xarray are used only inside weather-skills-core, which imports
+# them lazily at write time (udunits_error / cf_axes_missing) — the final step,
+# after every granule download. Importing them eagerly at module top turns that
+# late import into a startup fail-fast probe: a missing dependency errors before
+# any network work rather than only after every download has run. The F401 noqa
+# marks these probe-only imports; removing either would drop the fail-fast
+# guarantee.
+import cf_units  # noqa: F401  (loaded lazily by core's udunits_error at write time)
+import cf_xarray  # noqa: F401  (loaded lazily by core's cf_axes_missing at write time)
+from weather_skills_core import DataError, SkillError, UsageError, weather_skill
+from weather_skills_core.envelope import cf_axes_missing, stamp_cf_coords, udunits_error
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.1.8"
 
 _SHORT_NAME = "SPL3SMP_E"
 _FILL = -9999.0
@@ -80,12 +81,10 @@ _CF_SOURCE = "SMAP SPL3SMP_E (Enhanced L3 Radiometer 9 km EASE-Grid 2.0 soil moi
 _CF_INSTITUTION = "NASA National Snow and Ice Data Center DAAC"
 _CF_REFERENCES = "https://nsidc.org/data/spl3smp_e"
 
-# Single actionable, credential-free message emitted on any Earthdata auth
-# failure. Shared by `_auth_fail` (paths with no store on disk) and `_fail`
-# (mid-stream paths that must clean up a partial store first) so the wording
-# stays identical regardless of which path emits it.
+# Single actionable, credential-free message raised on any Earthdata auth
+# failure, so the wording stays identical regardless of which path raises it.
 _AUTH_FAIL_MSG = (
-    "Error: Earthdata authentication failed; configure EARTHDATA_USERNAME/"
+    "Earthdata authentication failed; configure EARTHDATA_USERNAME/"
     "EARTHDATA_PASSWORD or a urs.earthdata.nasa.gov entry in ~/.netrc, then retry."
 )
 
@@ -100,213 +99,21 @@ _TIME_CALENDAR = "proleptic_gregorian"
 # CRS is a plain geographic latitude_longitude.
 _GRID_MAPPING_NAME = "latitude_longitude"
 
-# Upper bound on a relative offset's resolved day count. 36525 days (~100 years)
-# is far beyond any real window yet small enough that the date arithmetic cannot
-# raise OverflowError. Rejecting above this cap keeps the failure pre-network.
-_MAX_OFFSET_DAYS = 36525
 
-# --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
-#
-# A --start/--end value is one of:
-#   YYYY-MM-DD                  absolute date
-#   now | today                 current UTC date
-#   latest                      newest date with available data (per-source)
-#   now-<int>{d|w}              now minus N days   (w = 7 days)
-#   latest-<int>{d|w}           latest minus N days
-# Anything else (months/years, future "+", junk) is rejected pre-network.
-_REL_OFFSET_RE = re.compile(r"^(?P<base>now|latest)-(?P<n>\d+)(?P<unit>[dw])$")
-
-# Strict absolute-date shape. date.fromisoformat on 3.11+ also accepts compact
-# (20260501) and ISO-week (2026-W18-1) forms; the documented grammar is exactly
-# YYYY-MM-DD, so we gate on this regex first and reject the looser forms.
-_ABS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
-def _parse_token(value: str) -> tuple:
-    """Parse a --start/--end value into a structured token.
-
-    Returns one of:
-      ("abs", date)                              absolute YYYY-MM-DD
-      ("base", "now")                            current UTC date
-      ("base", "latest")                         newest available date (resolved later)
-      ("offset", "now", n_days, unit_phrase)     now minus n_days
-      ("offset", "latest", n_days, unit_phrase)  latest minus n_days
-
-    `unit_phrase` describes the offset in its requested units for the log line
-    (e.g. "3-week", "7-day"). Raises ValueError for anything else (months/years,
-    future "+", malformed), so the failure happens before any network call.
-    "today" is accepted as an alias for "now".
-    """
-    if value in ("now", "today"):
-        return ("base", "now")
-    if value == "latest":
-        return ("base", "latest")
-    m = _REL_OFFSET_RE.match(value)
-    if m is not None:
-        n = int(m.group("n"))
-        if n < 1:
-            raise ValueError(
-                f"invalid date value {value!r}: offset must be >= 1 (e.g. now-1d, latest-3w)"
-            )
-        unit = m.group("unit")
-        n_days = n * 7 if unit == "w" else n
-        if n_days > _MAX_OFFSET_DAYS:
-            raise ValueError(
-                f"invalid date value {value!r}: offset resolves to {n_days} days, "
-                f"above the maximum of {_MAX_OFFSET_DAYS} days (~100 years)"
-            )
-        unit_phrase = f"{n}-{'week' if unit == 'w' else 'day'}"
-        return ("offset", m.group("base"), n_days, unit_phrase)
-    if _ABS_DATE_RE.match(value):
-        try:
-            return ("abs", date.fromisoformat(value))
-        except ValueError:
-            pass
-    raise ValueError(
-        f"invalid date value {value!r}: expected an absolute date YYYY-MM-DD, "
-        "'now'/'today', 'latest', or an offset 'now-<int>{d|w}' / "
-        "'latest-<int>{d|w}'"
-    )
-
-
-def _token_base_date(tok: tuple, now: date, latest_fn) -> date:
-    """Resolve a parsed token's base date.
-
-    `now` is the current UTC date. `latest_fn` is a zero-arg callable returning
-    the newest available date; invoked only when a token references `latest`.
-    """
-    kind = tok[0]
-    if kind == "abs":
-        return tok[1]
-    base = tok[1]
-    base_date = now if base == "now" else latest_fn()
-    if kind == "base":
-        return base_date
-    return base_date - timedelta(days=tok[2])
-
-
-def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
-    """Resolve --start/--end values to concrete inclusive (start, end) dates.
-
-    Applies the value grammar and the boundary rules:
-      - absolute endpoints and ordinary relative ranges are inclusive both ends;
-      - the DURATION IDIOM (start is `B-<int>{d|w}` and end is exactly the same
-        base token `B`, both `now` or both `latest`) yields an N-day window
-        inclusive of the base, with the far edge shifted in by one.
-
-    Returns (start_date, end_date, log_line) where log_line is a stderr message
-    to print before fetching when any relative token is present, else None.
-    Exits 2 (pre-network) on a malformed token or a reversed range.
-    """
-    try:
-        start_tok = _parse_token(start_value)
-        end_tok = _parse_token(end_value)
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(2)
-
-    relative_used = start_tok[0] != "abs" or end_tok[0] != "abs"
-    now = datetime.now(UTC).date()
-
-    # Duration idiom: start is an offset off base B, end is exactly base B.
-    duration = start_tok[0] == "offset" and end_tok[0] == "base" and start_tok[1] == end_tok[1]
-
-    start_date = _token_base_date(start_tok, now, latest_fn)
-    end_date = _token_base_date(end_tok, now, latest_fn)
-
-    if duration:
-        # Window is exactly N days, inclusive of the base end, far edge shifted
-        # in by one: start moves forward one day so [end-(N-1), end] spans N days.
-        n_days = start_tok[2]
-        start_date = end_date - timedelta(days=n_days - 1)
-        reason = f"duration mode: {start_tok[3]} window inclusive of {start_tok[1]}"
-    else:
-        reason = "inclusive both ends"
-
-    if start_date > end_date:
-        print(
-            f"Error: resolved --start {start_date.isoformat()} is after resolved "
-            f"--end {end_date.isoformat()}; the range is reversed.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-    log_line = None
-    if relative_used:
-        span = (end_date - start_date).days + 1
-        log_line = (
-            f'resolved "{start_value}".."{end_value}" -> '
-            f"{start_date.isoformat()}..{end_date.isoformat()} "
-            f"({span} days; {reason})"
-        )
-    return start_date, end_date, log_line
-
-
-def _load_history(zarr_path: Path) -> list:
-    try:
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except (FileNotFoundError, KeyError, ValueError):
-        # A not-yet-existing or unreadable output during a cache check is a miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
-
-
-def _cache_hit(out: Path, entry: dict) -> bool:
-    """Return True if the zarr at `out` was produced by this same entry."""
-    if not out.exists():
-        return False
-    history = _load_history(out)
-    if not history:
-        return False
-    existing_entry = history[0]
-    return (
-        existing_entry.get("skill") == entry["skill"]
-        and existing_entry.get("version") == entry["version"]
-        and existing_entry.get("args") == entry["args"]
-        and existing_entry.get("input") == entry["input"]
-    )
-
-
-def _parse_bbox(bbox: str) -> tuple:
-    """Parse an N/W/S/E bbox string into four floats, exiting 2 on a bad shape."""
-    try:
-        north, west, south, east = (float(x) for x in bbox.split("/"))
-    except ValueError:
-        print("Error: --bbox must be four decimal degrees N/W/S/E.", file=sys.stderr)
-        sys.exit(2)
-    return north, west, south, east
-
-
-def _bbox_subset(ds, bbox: str):
+def _bbox_subset(ds, bbox, bbox_raw: str):
     """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox.
 
-    Latitude follows its own monotonic order (SMAP latitude is descending), sliced
-    north..south or south..north accordingly. For longitude (ascending in
-    [-180, 180)):
+    ``bbox`` is the parsed (north, west, south, east) tuple; ``bbox_raw`` is the
+    CLI string, used verbatim in the empty-selection message. Latitude follows
+    its own monotonic order (SMAP latitude is descending), sliced north..south
+    or south..north accordingly. For longitude (ascending in [-180, 180)):
       - an ordinary box (west <= east) is a plain slice(west, east);
       - an antimeridian-crossing box (west > east, e.g. 12/170/-6/-170) selects the
         union of the two bands lon >= west OR lon <= east via a boolean
         .where(..., drop=True), so the native ascending longitude order is
         preserved and the interior band between east and west is dropped.
     """
-    north, west, south, east = _parse_bbox(bbox)
+    north, west, south, east = bbox
     lat = ds["latitude"].values
     lat_slice = slice(north, south) if lat[0] > lat[-1] else slice(south, north)
     ds = ds.sel(latitude=lat_slice)
@@ -315,10 +122,10 @@ def _bbox_subset(ds, bbox: str):
     else:
         ds = ds.sel(longitude=slice(west, east))
     if ds.sizes.get("latitude", 0) == 0 or ds.sizes.get("longitude", 0) == 0:
-        # Raise rather than sys.exit: this runs inside the per-day loop, so the
-        # caller routes it through `_fail` to clean up any partial store first.
+        # Raise rather than exit: this runs inside the per-day loop, so the
+        # streaming rollback can clean up any partial store first.
         raise RuntimeError(
-            f"--bbox {bbox} selects no grid cells; check the extent and N/W/S/E order."
+            f"--bbox {bbox_raw} selects no grid cells; check the extent and N/W/S/E order."
         )
     return ds
 
@@ -343,6 +150,8 @@ def _reduce_geolocation(lat2d, lon2d, day_iso: str) -> tuple:
     fail with a clear message rather than silently averaging across genuinely
     different coordinates.
     """
+    import numpy as np
+
     # Per-row latitude spread and per-column longitude spread over finite cells.
     with np.errstate(invalid="ignore"):
         lat_row_spread = np.nanmax(lat2d, axis=1) - np.nanmin(lat2d, axis=1)
@@ -353,9 +162,9 @@ def _reduce_geolocation(lat2d, lon2d, day_iso: str) -> tuple:
     max_lat_spread = float(np.nanmax(lat_row_spread)) if lat_row_spread.size else 0.0
     max_lon_spread = float(np.nanmax(lon_col_spread)) if lon_col_spread.size else 0.0
     if max_lat_spread > tol or max_lon_spread > tol:
-        # Raise rather than sys.exit: this runs (via _slice_from_file) inside the
-        # per-day loop, so the caller routes it through `_fail` to clean up any
-        # partial store first.
+        # Raise rather than exit: this runs (via _slice_from_file) inside the
+        # per-day loop, so the streaming rollback can clean up any partial
+        # store first.
         raise RuntimeError(
             f"granule for {day_iso} is not row-constant-lat / col-constant-lon "
             f"within {tol} deg (max per-row lat spread {max_lat_spread:.5f}, max "
@@ -371,9 +180,9 @@ def _reduce_geolocation(lat2d, lon2d, day_iso: str) -> tuple:
     # fine for nanmean. Reject any non-finite reduced coordinate outright so a
     # store with a NaN lat/lon coordinate is never written.
     if not (np.isfinite(lat1d).all() and np.isfinite(lon1d).all()):
-        # Raise rather than sys.exit: this runs (via _slice_from_file) inside the
-        # per-day loop, so the caller routes it through `_fail` to clean up any
-        # partial store first.
+        # Raise rather than exit: this runs (via _slice_from_file) inside the
+        # per-day loop, so the streaming rollback can clean up any partial
+        # store first.
         raise RuntimeError(
             f"granule for {day_iso} has an all-fill geolocation row/column; "
             "the reduced 1-D latitude/longitude contains non-finite values and "
@@ -395,9 +204,9 @@ def _read_source_units(grp, day_iso: str) -> str:
     """
     raw = grp["soil_moisture"].attrs.get("units")
     if raw is None:
-        # Raise rather than sys.exit: this runs (via _slice_from_file) inside the
-        # per-day loop, so the caller routes it through `_fail` to clean up any
-        # partial store first.
+        # Raise rather than exit: this runs (via _slice_from_file) inside the
+        # per-day loop, so the streaming rollback can clean up any partial
+        # store first.
         raise RuntimeError(
             f"granule for {day_iso} has no units attribute on soil_moisture; "
             "cannot pass source units through verbatim and will not fabricate one."
@@ -414,6 +223,10 @@ def _slice_from_file(path: str, group: str, day_iso: str):
     cannot be opened or the expected overpass group / soil_moisture / latitude /
     longitude dataset is missing.
     """
+    import h5py
+    import numpy as np
+    import xarray as xr
+
     try:
         with h5py.File(path, "r") as h:
             grp_name = f"Soil_Moisture_Retrieval_Data_{group}"
@@ -486,15 +299,13 @@ def _is_auth_error(exc: Exception) -> bool:
 
 
 def _auth_fail() -> None:
-    """Emit the single actionable, credential-free auth message and exit non-zero.
+    """Raise the single actionable, credential-free auth failure (exit 1).
 
-    Used by the pre-write paths (`_login`, `_search`, the initial `_download`)
-    where no output store exists yet, so there is nothing to clean up. Mid-stream
-    auth failures in the per-day loop instead go through `_fail(..., auth=True)`,
-    which removes the partial store before emitting this same message.
+    Raised before any write (`_login`, `_search`) and from the per-day loop
+    alike; a mid-stream raise additionally triggers the streaming rollback,
+    which removes the partial store before the message is printed.
     """
-    print(_AUTH_FAIL_MSG, file=sys.stderr)
-    sys.exit(1)
+    raise DataError(_AUTH_FAIL_MSG)
 
 
 def _login() -> None:
@@ -505,8 +316,11 @@ def _login() -> None:
     in order — `environment` (EARTHDATA_USERNAME/PASSWORD or EARTHDATA_TOKEN) then
     `netrc` (~/.netrc) — and deliberately never falls through to `interactive`,
     which would block on a tty prompt. If neither strategy authenticates (creds
-    absent or rejected), emit the one-line actionable message and exit non-zero.
+    absent or rejected), raise the one-line actionable message (exit 1).
     """
+    import earthaccess
+    from earthaccess.exceptions import LoginAttemptFailure, LoginStrategyUnavailable
+
     for strategy in ("environment", "netrc"):
         try:
             auth = earthaccess.login(strategy=strategy)
@@ -529,11 +343,15 @@ def _login() -> None:
 
 def _search(start_iso: str, end_iso: str):
     """Search CMR for SPL3SMP_E granules, mapping a 401/403 to the auth message."""
+    import earthaccess
+
     try:
         return earthaccess.search_data(
             short_name=_SHORT_NAME,
             temporal=(start_iso, end_iso),
         )
+    except SkillError:
+        raise
     except Exception as exc:
         if _is_auth_error(exc):
             _auth_fail()
@@ -542,8 +360,12 @@ def _search(start_iso: str, end_iso: str):
 
 def _download(granules, local_path: str):
     """Download granules, mapping a 401/403 to the auth message."""
+    import earthaccess
+
     try:
         return earthaccess.download(granules, local_path=local_path)
+    except SkillError:
+        raise
     except Exception as exc:
         if _is_auth_error(exc):
             _auth_fail()
@@ -551,50 +373,45 @@ def _download(granules, local_path: str):
 
 
 def _discover_latest(lookback_days: int) -> date:
-    """`latest` resolver: newest SPL3SMP_E granule date on or before today."""
+    """Newest SPL3SMP_E granule date on or before today."""
     today = datetime.now(UTC).date()
     lookback_start = today - timedelta(days=lookback_days)
     results = _search(lookback_start.isoformat(), today.isoformat())
     dates = [d for d in (_granule_date(r) for r in results) if d <= today]
     if not dates:
-        print(
-            f"Error: no SMAP {_SHORT_NAME} granules in lookback window "
-            f"{lookback_start.isoformat()}..{today.isoformat()}; cannot resolve 'latest'.",
-            file=sys.stderr,
+        raise UsageError(
+            f"no SMAP {_SHORT_NAME} granules in lookback window "
+            f"{lookback_start.isoformat()}..{today.isoformat()}; cannot resolve 'latest'."
         )
-        sys.exit(2)
     return max(dates)
 
 
-def _validate_units(units: str) -> None:
-    """Real udunits validation of the data-var units; fail loudly if invalid.
+def _latest(args) -> date:
+    """`latest` resolver hook: log in, then discover the newest granule.
 
-    Uses cf_units to parse the units string the way a CF-aware reader would. If
-    the canonical units cannot be constructed, refuse to write rather than emit a
-    false CF claim.
+    The decorator memoizes the resolver (a window referencing `latest` at both
+    ends discovers once) and invokes it lazily on first use, so an all-absolute
+    or now-only window performs no discovery login.
     """
-    try:
-        cf_units.Unit(units)
-    except Exception as exc:  # cf_units raises ValueError on an unparseable units string
-        print(
-            f"Error: soil_moisture units {units!r} are not udunits-valid "
-            f"({exc}); refusing to write a CF-noncompliant store.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    _login()
+    return _discover_latest(_LATEST_LOOKBACK_DAYS)
 
 
-def _stamp_cf(ds, entry: dict) -> None:
+def _stamp_cf(ds) -> None:
     """Stamp full CF-1.13 metadata onto the dataset in place.
 
     Global Conventions/title/source/institution/references/history; coordinate
     standard_name/units/axis on lat/lon/time; soil_moisture standard_name +
     verbatim source units + long_name + grid_mapping; a latitude_longitude
     grid_mapping container variable. Validates the data-var units against udunits.
-    The time udunits/calendar and the soil_moisture _FillValue are NOT set here —
-    they live in the WRITE ENCODING so the per-variable .encoding clear cannot
-    drop them.
+    The provenance attrs (weather_skills_source/weather_skills_history) are
+    stamped by the decorator on every write, after this runs. The time
+    udunits/calendar and the soil_moisture _FillValue are NOT set here — they
+    live in the WRITE ENCODING so the per-variable .encoding clear cannot drop
+    them.
     """
+    import xarray as xr
+
     # Source units carried through from _slice_from_file; passed through verbatim.
     source_units = ds["soil_moisture"].attrs["units"]
     now_iso = datetime.now(UTC).isoformat(timespec="seconds")
@@ -606,15 +423,18 @@ def _stamp_cf(ds, entry: dict) -> None:
         institution=_CF_INSTITUTION,
         references=_CF_REFERENCES,
         history=f"{now_iso}: fetched via smap-fetch v{_SKILL_VERSION}",
-        weather_skills_source="smap",
-        weather_skills_history=json.dumps([entry], sort_keys=True),
     )
 
-    ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
-    ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
-    ds["time"].attrs.update(standard_name="time", axis="T")
+    stamp_cf_coords(ds)
 
-    _validate_units(source_units)
+    # Real udunits validation of the data-var units the way a CF-aware reader
+    # would parse them; refuse to write rather than emit a false CF claim.
+    units_exc = udunits_error(source_units, catch=(Exception,))
+    if units_exc is not None:
+        raise DataError(
+            f"soil_moisture units {source_units!r} are not udunits-valid "
+            f"({units_exc}); refusing to write a CF-noncompliant store."
+        ) from units_exc
     ds["soil_moisture"].attrs.update(
         standard_name=_SM_STANDARD_NAME,
         units=source_units,
@@ -644,111 +464,68 @@ def _cf_decode_check(ds) -> None:
     the CF attrs, so a stamping regression cannot silently ship a store that
     downstream cf-xarray-based skills can't read.
     """
-    missing = []
-    for axis in ("X", "Y", "T"):
-        try:
-            resolved = ds.cf.axes.get(axis)
-        except Exception:
-            resolved = None
-        if not resolved:
-            missing.append(axis)
+    missing = cf_axes_missing(ds)
     if missing:
-        print(
-            f"Error: cf-xarray could not resolve axes {missing} from the stamped "
-            "CF attrs; refusing to write a store downstream skills cannot decode.",
-            file=sys.stderr,
+        raise DataError(
+            f"cf-xarray could not resolve axes {missing} from the stamped "
+            "CF attrs; refusing to write a store downstream skills cannot decode."
         )
-        sys.exit(1)
 
 
-def _attach_bbox_value(argv):
-    # argparse rejects a space-separated --bbox value that starts with '-'
-    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
-    # `--bbox=VAL` so both the space and equals forms parse.
-    out, i = [], 0
-    while i < len(argv):
-        if argv[i] == "--bbox" and i + 1 < len(argv):
-            out.append(f"--bbox={argv[i + 1]}")
-            i += 2
-        else:
-            out.append(argv[i])
-            i += 1
-    return out
+def _set_write_encoding(ds) -> None:
+    """Controlled write encoding, applied after the decorator's encoding clear:
+    the time units/calendar and the soil_moisture _FillValue."""
+    import numpy as np
+
+    ds["time"].encoding["units"] = _TIME_UNITS
+    ds["time"].encoding["calendar"] = _TIME_CALENDAR
+    ds["soil_moisture"].encoding["_FillValue"] = np.float64(np.nan)
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument(
-        "--start",
-        required=True,
-        help=(
+@weather_skill(
+    "smap-fetch",
+    _SKILL_VERSION,
+    output_type="gridded",
+    source="smap",
+    start_time={
+        "help": (
             "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
             "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        ),
-    )
-    p.add_argument(
-        "--end", required=True, help="End date (inclusive). Same date grammar as --start."
-    )
-    p.add_argument(
-        "--bbox",
-        help=(
+        )
+    },
+    end_time={"help": "End date (inclusive). Same date grammar as --start."},
+    bbox={
+        "mode": "optional",
+        "help": (
             "Spatial subset N/W/S/E decimal degrees (optional). A box with "
             "west > east crosses the antimeridian. Resolve a country's bbox with "
             "resolve-region."
         ),
-    )
-    p.add_argument(
-        "--overpass",
-        choices=["AM", "PM"],
-        default="AM",
-        help="Half-orbit overpass group to read (AM = 6am descending, PM = 6pm ascending). Default AM.",
-    )
-    p.add_argument("--output", "-o", required=True)
-    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
-
-    out = Path(args.output)
-
-    # `latest` discovery needs an earthaccess.login() before the CMR search.
-    # Memoized so a window referencing `latest` at both ends discovers once; an
-    # all-absolute or now-only window performs no discovery login.
-    _latest_cache: dict = {}
-
-    def _latest() -> date:
-        if "v" not in _latest_cache:
-            _login()
-            _latest_cache["v"] = _discover_latest(_LATEST_LOOKBACK_DAYS)
-        return _latest_cache["v"]
-
-    start_date, end_date, log_line = _resolve_window(args.start, args.end, _latest)
-    start_iso = start_date.isoformat()
-    end_iso = end_date.isoformat()
-    if log_line is not None:
-        print(log_line, file=sys.stderr)
-
-    entry = {
-        "skill": "smap-fetch",
-        "version": _SKILL_VERSION,
-        "args": {
-            "bbox": args.bbox,
-            "overpass": args.overpass,
-            "start": start_iso,
-            "end": end_iso,
+    },
+    extra_args={
+        "overpass": {
+            "choices": ["AM", "PM"],
+            "default": "AM",
+            "help": (
+                "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm "
+                "ascending). Default AM."
+            ),
         },
-        "input": None,
-    }
-    if _cache_hit(out, entry):
-        print(
-            f"Cache hit: {args.output} already matches requested params; skipping fetch.",
-            file=sys.stderr,
-        )
-        return
+    },
+    latest_resolver=_latest,
+    write_encoding=_set_write_encoding,
+    streaming=True,
+    cache_hit_label="fetch",
+)
+def fetch(start_time, end_time, bbox, overpass, context):
+    """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
+    import numpy as np
 
-    requested_span = (end_date - start_date).days + 1
+    start_iso = start_time.isoformat()
+    end_iso = end_time.isoformat()
+    requested_span = (end_time - start_time).days + 1
 
-    print(f"Fetching SMAP {_SHORT_NAME} ({args.overpass}) {start_iso}..{end_iso}", file=sys.stderr)
+    print(f"Fetching SMAP {_SHORT_NAME} ({overpass}) {start_iso}..{end_iso}", file=sys.stderr)
     _login()
     results = _search(start_iso, end_iso)
     # CMR's temporal filter is overlap-based; keep only granules whose own date is
@@ -756,11 +533,10 @@ def main() -> None:
     in_window = {}
     for r in results:
         d = _granule_date(r)
-        if start_date <= d <= end_date:
+        if start_time <= d <= end_time:
             in_window.setdefault(d, r)
     if not in_window:
-        print(f"Error: no SMAP granule day within {start_iso}..{end_iso}.", file=sys.stderr)
-        sys.exit(1)
+        raise DataError(f"no SMAP granule day within {start_iso}..{end_iso}.")
     print(f"Found {len(in_window)} granule day(s)", file=sys.stderr)
 
     # Missing-day visibility: name any requested day that has no granule, then
@@ -770,7 +546,7 @@ def main() -> None:
     # gaps (missing days with a later present day) so the message does not assert a
     # false "not yet published" cause for a genuine interior gap.
     present_days = sorted(in_window)
-    requested_days = [start_date + timedelta(days=i) for i in range(requested_span)]
+    requested_days = [start_time + timedelta(days=i) for i in range(requested_span)]
     missing_days = [d for d in requested_days if d not in in_window]
     if missing_days:
         last_present = present_days[-1]
@@ -795,109 +571,64 @@ def main() -> None:
         )
 
     # Stream one day at a time: download a granule, read its (latitude, longitude)
-    # slice, then write/append it to Zarr as a single time step before moving to the
-    # next day. Peak resident memory is bounded to one day's grid rather than the
-    # whole window. Full CF metadata + weather_skills_source/history are stamped on every
-    # write because a to_zarr append rewrites the root group attrs from the
+    # slice, then yield it for the decorator to write/append as a single time step
+    # before moving to the next day. Peak resident memory is bounded to one day's
+    # grid rather than the whole window. Full CF metadata is stamped on every
+    # yield — and the decorator re-stamps weather_skills_source/history on every
+    # write — because a to_zarr append rewrites the root group attrs from the
     # appended dataset; the entry is identical each time, so the final stamp is
     # stable. xarray appends only the time-varying soil_moisture along `time`; the
     # non-time latitude_longitude grid_mapping scalar and the static lat/lon coords
     # are written once on the first mode="w" write and left untouched by each
     # append (verified: no duplication, no error).
     #
-    # Partial-store safety: the first day is written with mode="w" and subsequent
-    # days append. If a write fails mid-stream the store is left truncated, and a
-    # subsequent identical run would see a matching weather_skills_history and treat the
-    # truncated store as a complete cache hit. To prevent that, `store_created` is
-    # flipped to True the moment this run starts writing (just before the first
-    # mode="w" call, after any pre-existing store has been removed), and `_fail`
-    # removes the store whenever that flag is set, so a partial store — including
-    # one a failed first write may already have created — is never left behind to be
-    # mistaken for a complete cache.
-    store_created = False
-
-    def _fail(msg: str, *, auth: bool = False) -> None:
-        # Every mid-stream failure (auth, non-auth download error, h5py read
-        # error, write error) converges here so the partial-store cleanup runs
-        # exactly once regardless of failure kind. Pass auth=True for an auth
-        # failure: the cleanup runs first, then the shared credential-free auth
-        # message is emitted instead of `msg`.
-        if store_created and out.exists():
-            shutil.rmtree(out)
-            print(
-                f"Removed partial store {args.output} after a mid-stream failure "
-                "so it is not mistaken for a complete cache on a later run.",
-                file=sys.stderr,
-            )
-        print(_AUTH_FAIL_MSG if auth else msg, file=sys.stderr)
-        sys.exit(1)
-
-    total_time = 0
+    # Partial-store safety is decorator-owned: the first day is written with
+    # mode="w" and subsequent days append; any pre-existing store is removed
+    # immediately before that first write, and a raise from this generator after
+    # the first write removes the partial store (with a stderr note) so a later
+    # identical run cannot falsely accept it as a complete cache hit. Every
+    # mid-stream failure below (auth, download error, h5py read error) therefore
+    # raises a DataError rather than exiting directly.
+    first = True
     with tempfile.TemporaryDirectory(prefix="smap-fetch-") as td:
         for d in present_days:
             day_iso = d.isoformat()
             try:
                 files = _download([in_window[d]], local_path=td)
+            except SkillError:
+                # The auth failure already carries its actionable message.
+                raise
             except Exception as exc:
                 if _is_auth_error(exc):
-                    _fail(
-                        f"Error: failed to download the SMAP granule for {day_iso}: {exc}",
-                        auth=True,
-                    )
-                _fail(f"Error: failed to download the SMAP granule for {day_iso}: {exc}")
+                    raise DataError(_AUTH_FAIL_MSG) from exc
+                raise DataError(
+                    f"failed to download the SMAP granule for {day_iso}: {exc}"
+                ) from exc
             if not files:
-                _fail(f"Error: download returned no local file for the {day_iso} granule.")
+                raise DataError(f"download returned no local file for the {day_iso} granule.")
             try:
-                da = _slice_from_file(files[0], args.overpass, day_iso)
-                if args.bbox:
-                    da = _bbox_subset(da.to_dataset(name="soil_moisture"), args.bbox)[
+                da = _slice_from_file(files[0], overpass, day_iso)
+                if bbox is not None:
+                    da = _bbox_subset(da.to_dataset(name="soil_moisture"), bbox, context.args.bbox)[
                         "soil_moisture"
                     ]
             except RuntimeError as exc:
                 # _slice_from_file, _read_source_units, _reduce_geolocation, and
-                # _bbox_subset all raise RuntimeError; route them through _fail so a
-                # mid-loop failure removes any partial store before exiting.
-                _fail(f"Error: {exc}")
+                # _bbox_subset all raise RuntimeError; convert to a DataError so
+                # a mid-loop failure removes any partial store before exiting.
+                raise DataError(str(exc)) from exc
             ds_day = da.expand_dims(time=[np.datetime64(day_iso)]).to_dataset()
 
-            _stamp_cf(ds_day, entry)
+            _stamp_cf(ds_day)
 
-            # Clear per-variable encoding (codecs/chunks/dtype not part of the
-            # envelope contract), then set the WRITE ENCODING for time
-            # units/calendar and the soil_moisture _FillValue AFTER the clear so
-            # the clear cannot drop them.
-            for v in ds_day.variables:
-                ds_day[v].encoding = {}
-            ds_day["time"].encoding["units"] = _TIME_UNITS
-            ds_day["time"].encoding["calendar"] = _TIME_CALENDAR
-            ds_day["soil_moisture"].encoding["_FillValue"] = np.float64(np.nan)
-
-            try:
+            if first:
                 # Write-side CF decode check on the first slice (the schema is
-                # identical for every appended day).
-                if not store_created:
-                    _cf_decode_check(ds_day)
-                    if out.exists():
-                        shutil.rmtree(out)
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    # Mark the store as this run's BEFORE the write. Any
-                    # pre-existing store was just removed above, so from here on
-                    # `out` can only exist as this run's (possibly partial) output.
-                    # Setting the flag first means a failure during the first
-                    # mode="w" write — which may already have created a partial
-                    # directory — is cleaned up by _fail, while a valid store from a
-                    # previous successful run cannot be deleted (it is gone before
-                    # the flag flips).
-                    store_created = True
-                    ds_day.to_zarr(out, mode="w", consolidated=True)
-                else:
-                    ds_day.to_zarr(out, mode="a", append_dim="time", consolidated=True)
-            except Exception as exc:
-                _fail(f"Error: failed to write the {day_iso} time step to {args.output}: {exc}")
-            total_time += 1
-
-    print(f"Wrote: {args.output} (time={total_time})", file=sys.stderr)
+                # identical for every appended day), before anything touches the
+                # output path.
+                _cf_decode_check(ds_day)
+                first = False
+            yield ds_day
 
 
 if __name__ == "__main__":
-    main()
+    fetch()

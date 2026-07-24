@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/rename.py *)
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   catalog-group: transforms
 ---
 
