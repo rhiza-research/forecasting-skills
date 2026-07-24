@@ -97,7 +97,7 @@ def _parse_frontmatter(skill_md: Path) -> dict:
     except yaml.YAMLError as exc:
         raise ValueError(f"{skill_md}: invalid YAML frontmatter: {exc}") from exc
     if not isinstance(data, dict):
-        raise ValueError(f"{skill_md}: frontmatter is not a mapping")
+        raise ValueError(f"{skill_md}: frontmatter is not a mapping")  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
     return data
 
 
@@ -118,17 +118,17 @@ def _requires_credentials(skill_md: Path, metadata: dict) -> bool:
         return False
     openclaw = metadata["openclaw"]
     if not isinstance(openclaw, dict):
-        raise ValueError(f"{skill_md}: `metadata.openclaw` is not a mapping: {openclaw!r}")
+        raise ValueError(f"{skill_md}: `metadata.openclaw` is not a mapping: {openclaw!r}")  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
     if "requires" not in openclaw:
         return False
     requires = openclaw["requires"]
     if not isinstance(requires, dict):
-        raise ValueError(f"{skill_md}: `metadata.openclaw.requires` is not a mapping: {requires!r}")
+        raise ValueError(f"{skill_md}: `metadata.openclaw.requires` is not a mapping: {requires!r}")  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
     if "env" not in requires:
         return False
     env = requires["env"]
     if not isinstance(env, list):
-        raise ValueError(f"{skill_md}: `metadata.openclaw.requires.env` is not a list: {env!r}")
+        raise ValueError(f"{skill_md}: `metadata.openclaw.requires.env` is not a list: {env!r}")  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
     return len(env) > 0
 
 
@@ -164,7 +164,7 @@ def _collect_skills(skills_dir: Path) -> dict[str, list[tuple[str, str, bool]]]:
             raise ValueError(f"{skill_md}: description has an unpaired backtick")
         metadata = front.get("metadata")
         if not isinstance(metadata, dict):
-            raise ValueError(f"{skill_md}: frontmatter has no `metadata:` map")
+            raise ValueError(f"{skill_md}: frontmatter has no `metadata:` map")  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
         group = metadata.get("catalog-group")
         if group not in known:
             raise ValueError(

@@ -62,9 +62,8 @@ def _imports(tree: ast.AST) -> set[str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 names.add(alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            if node.level == 0 and node.module:
-                names.add(node.module.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            names.add(node.module.split(".")[0])
     return names
 
 
@@ -125,7 +124,7 @@ def main() -> None:
     for f in files:
         try:
             missing = check(f)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- report the parse error and continue scanning other files
             print(f"{f}: parse error: {e}", file=sys.stderr)
             any_missing = True
             continue

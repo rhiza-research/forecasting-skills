@@ -101,9 +101,7 @@ def _is_same_site(url: str) -> bool:
     parts = urlsplit(url)
     if not parts.scheme and not parts.netloc:
         return True
-    if parts.scheme.lower() in ("", "http", "https") and parts.netloc.lower() == SITE_HOST:
-        return True
-    return False
+    return parts.scheme.lower() in ("", "http", "https") and parts.netloc.lower() == SITE_HOST
 
 
 def _is_allowed_link(url: str) -> bool:

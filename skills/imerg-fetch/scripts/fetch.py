@@ -224,8 +224,7 @@ def fetch(start_time, end_time, version):
                 if start_time + timedelta(days=i) > last_present
             ]
             missing_days = sorted(
-                set(start_time + timedelta(days=i) for i in range(requested_span))
-                - set(present_days)
+                {start_time + timedelta(days=i) for i in range(requested_span)} - set(present_days)
             )
             if missing_days != expected_tail:
                 # Interior hole: a missing day precedes a later present day. This
