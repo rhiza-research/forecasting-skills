@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -16,28 +17,31 @@
 Uses the OpenAQ v3 REST API. The API key comes from the environment: OPENAQ_API_KEY.
 """
 
-import argparse
-import json
 import math
 import os
-import re
-import shutil
 import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
+from datetime import UTC, datetime
 
-# Imported at module top (not deferred into functions) so a missing dependency
-# fails fast at startup — before any per-sensor network work — rather than only
-# at the final write after every download has already run.
+# cf_xarray is used only inside weather-skills-core, which imports it lazily at
+# write time (verify_cf_dsg) — the final step, after every per-sensor download.
+# Importing it eagerly at module top turns that late import into a startup
+# fail-fast probe: a missing dependency errors before any network work rather than
+# only after every download has run. The F401 noqa marks the probe-only import;
+# removing it would drop the fail-fast guarantee. (cf_units is imported for direct
+# use in the module-level unit constants below, so it is not a probe.)
 import cf_units
-import cf_xarray  # noqa: F401 -- registers the `.cf` accessor
+import cf_xarray  # noqa: F401  (loaded lazily by core's verify_cf_dsg at write time)
 import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
+from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.dates import today_utc
+from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
+from weather_skills_core.util import is_transient
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -184,206 +188,14 @@ _MASS_CONCENTRATION_REF = cf_units.Unit("kg m-3")
 #   transform set (location id -> station_id); the lat/lon/name values are
 #   carried through unchanged.
 
-# --- Relative-date value grammar (duplicated per CONVENTIONS.md; no shared module) ---
-#
-# A --start/--end value is one of:
-#   YYYY-MM-DD                  absolute date
-#   now | today                 current UTC date
-#   latest                      newest date with available data (per-source)
-#   now-<int>{d|w}              now minus N days   (w = 7 days)
-#   latest-<int>{d|w}           latest minus N days
-# Anything else (months/years, future "+", junk) is rejected pre-network.
-_REL_OFFSET_RE = re.compile(r"^(?P<base>now|latest)-(?P<n>\d+)(?P<unit>[dw])$")
-
-# Strict absolute-date shape. date.fromisoformat on 3.11+ also accepts compact
-# (20260501) and ISO-week (2026-W18-1) forms; the documented grammar is exactly
-# YYYY-MM-DD, so we gate on this regex first and reject the looser forms.
-_ABS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-# Upper bound on a relative offset's resolved day count. 36525 days (~100 years)
-# is far beyond any real window yet small enough that the date arithmetic cannot
-# raise OverflowError. Rejecting above this cap keeps the failure pre-network.
-_MAX_OFFSET_DAYS = 36525
-
-
-def _parse_token(value: str) -> tuple:
-    """Parse a --start/--end value into a structured token.
-
-    Returns one of:
-      ("abs", date)                              absolute YYYY-MM-DD
-      ("base", "now")                            current UTC date
-      ("base", "latest")                         newest available date (resolved later)
-      ("offset", "now", n_days, unit_phrase)     now minus n_days
-      ("offset", "latest", n_days, unit_phrase)  latest minus n_days
-
-    `unit_phrase` describes the offset in its requested units for the log line
-    (e.g. "3-week", "7-day"). Raises ValueError for anything else (months/years,
-    future "+", malformed), so the failure happens before any network call.
-    "today" is accepted as an alias for "now".
-    """
-    if value in ("now", "today"):
-        return ("base", "now")
-    if value == "latest":
-        return ("base", "latest")
-    m = _REL_OFFSET_RE.match(value)
-    if m is not None:
-        n = int(m.group("n"))
-        if n < 1:
-            raise ValueError(
-                f"invalid date value {value!r}: offset must be >= 1 (e.g. now-1d, latest-3w)"
-            )
-        unit = m.group("unit")
-        n_days = n * 7 if unit == "w" else n
-        if n_days > _MAX_OFFSET_DAYS:
-            raise ValueError(
-                f"invalid date value {value!r}: offset resolves to {n_days} days, "
-                f"above the maximum of {_MAX_OFFSET_DAYS} days (~100 years)"
-            )
-        unit_phrase = f"{n}-{'week' if unit == 'w' else 'day'}"
-        return ("offset", m.group("base"), n_days, unit_phrase)
-    if _ABS_DATE_RE.match(value):
-        try:
-            return ("abs", date.fromisoformat(value))
-        except ValueError:
-            pass
-    raise ValueError(
-        f"invalid date value {value!r}: expected an absolute date YYYY-MM-DD, "
-        "'now'/'today', 'latest', or an offset 'now-<int>{d|w}' / "
-        "'latest-<int>{d|w}'"
-    )
-
-
-def _token_base_date(tok: tuple, now: date, latest_fn) -> date:
-    """Resolve a parsed token's base date.
-
-    `now` is the current UTC date. `latest_fn` is a zero-arg callable returning
-    the newest available date; invoked only when a token references `latest`.
-    """
-    kind = tok[0]
-    if kind == "abs":
-        return tok[1]
-    base = tok[1]
-    base_date = now if base == "now" else latest_fn()
-    if kind == "base":
-        return base_date
-    return base_date - timedelta(days=tok[2])
-
-
-def _resolve_window(start_value: str, end_value: str, latest_fn) -> tuple:
-    """Resolve --start/--end values to concrete inclusive (start, end) dates.
-
-    Applies the value grammar and the boundary rules:
-      - absolute endpoints and ordinary relative ranges are inclusive both ends;
-      - the DURATION IDIOM (start is `B-<int>{d|w}` and end is exactly the same
-        base token `B`, both `now` or both `latest`) yields an N-day window
-        inclusive of the base, with the far edge shifted in by one.
-
-    Returns (start_date, end_date, log_line) where log_line is a stderr message
-    to print before fetching when any relative token is present, else None.
-    Exits 2 (pre-network) on a malformed token or a reversed range.
-    """
-    try:
-        start_tok = _parse_token(start_value)
-        end_tok = _parse_token(end_value)
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(2)
-
-    relative_used = start_tok[0] != "abs" or end_tok[0] != "abs"
-    now = datetime.now(UTC).date()
-
-    # Duration idiom: start is an offset off base B, end is exactly base B.
-    duration = start_tok[0] == "offset" and end_tok[0] == "base" and start_tok[1] == end_tok[1]
-
-    start_date = _token_base_date(start_tok, now, latest_fn)
-    end_date = _token_base_date(end_tok, now, latest_fn)
-
-    if duration:
-        # Window is exactly N days, inclusive of the base end, far edge shifted
-        # in by one: start moves forward one day so [end-(N-1), end] spans N days.
-        n_days = start_tok[2]
-        start_date = end_date - timedelta(days=n_days - 1)
-        reason = f"duration mode: {start_tok[3]} window inclusive of {start_tok[1]}"
-    else:
-        reason = "inclusive both ends"
-
-    if start_date > end_date:
-        print(
-            f"Error: resolved --start {start_date.isoformat()} is after resolved "
-            f"--end {end_date.isoformat()}; the range is reversed.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-    log_line = None
-    if relative_used:
-        span = (end_date - start_date).days + 1
-        log_line = (
-            f'resolved "{start_value}".."{end_value}" -> '
-            f"{start_date.isoformat()}..{end_date.isoformat()} "
-            f"({span} days; {reason})"
-        )
-    return start_date, end_date, log_line
-
-
-def _load_history(zarr_path: Path) -> list:
-    try:
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except (FileNotFoundError, KeyError, ValueError):
-        # A not-yet-existing or unreadable output during a cache check is a miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
-
-
-def _cache_hit(out: Path, entry: dict) -> bool:
-    """Return True if the zarr at `out` was produced by this same entry."""
-    if not out.exists():
-        return False
-    history = _load_history(out)
-    if not history:
-        return False
-    existing_entry = history[0]
-    return (
-        existing_entry.get("skill") == entry["skill"]
-        and existing_entry.get("version") == entry["version"]
-        and existing_entry.get("args") == entry["args"]
-        and existing_entry.get("input") == entry["input"]
-    )
-
 
 def _require_key() -> str:
     key = os.environ.get("OPENAQ_API_KEY")
     if not key:
-        print(
-            "Error: OPENAQ_API_KEY must be set (free key from https://explore.openaq.org/register).",
-            file=sys.stderr,
+        raise UsageError(
+            "OPENAQ_API_KEY must be set (free key from https://explore.openaq.org/register)."
         )
-        sys.exit(2)
     return key
-
-
-def _is_transient(exc: Exception) -> bool:
-    """Heuristic: does this error look like a retryable transient/rate-limit?"""
-    text = str(exc).lower()
-    markers = ("429", "500", "502", "503", "504", "timed out", "timeout", "connection")
-    return any(m in text for m in markers)
 
 
 def _retry_backoff(exc: Exception) -> float:
@@ -484,7 +296,7 @@ def _get_pages(session, url: str, params: dict):
                 resp.raise_for_status()
                 break
             except requests.RequestException as exc:
-                if attempt == 0 and _is_transient(exc):
+                if attempt == 0 and is_transient(exc):
                     time.sleep(_retry_backoff(exc))
                     continue
                 raise
@@ -532,10 +344,7 @@ def _find_sensors(session, bbox: tuple, wanted: set) -> list:
                     }
                 )
     except requests.RequestException as exc:
-        print(
-            f"Error: {_classify_api_error(exc, 'listing locations in the bbox')}", file=sys.stderr
-        )
-        sys.exit(1)
+        raise DataError(_classify_api_error(exc, "listing locations in the bbox")) from None
     return sensors
 
 
@@ -585,8 +394,10 @@ def _unit_family(units: str):
     return None
 
 
-def _validate_udunits(units: str, variable: str) -> None:
-    """Raise SystemExit with an actionable message if `units` is not udunits-valid.
+def _var_attrs(ds, units_by_param: dict) -> dict:
+    """Per-variable CF attr dicts: verbatim OpenAQ units (validated), long_name,
+    cell_methods, and a CF standard_name only where one cleanly applies to the
+    reported unit family.
 
     A CF data variable's `units` must parse under udunits; emitting an
     unparseable string while claiming CF compliance is a false claim. cf_units
@@ -598,59 +409,29 @@ def _validate_udunits(units: str, variable: str) -> None:
     A missing/empty units value is rejected up front: `cf_units.Unit(None)` and
     `cf_units.Unit("")` return an "unknown" unit instead of raising, so without
     this guard a `units=None`/empty variable would slip through under a CF-1.13
-    claim. Such sensors are dropped earlier (in reconciliation), so reaching here
-    with a blank unit is a stamping bug — fail loudly rather than write it.
+    claim. Such sensors are dropped earlier (in reconciliation), so reaching
+    here with a blank unit is a stamping bug — fail loudly rather than write
+    it. The ragged station-time cells that are NaN where a sensor did not
+    report on a given day are handled via the `_FillValue` write encoding set
+    by the write-encoding hook.
     """
-    if _is_blank_units(units):
-        print(
-            f"Error: parameter {variable!r} has a missing/empty units value; a CF "
-            "data variable must carry udunits-valid units, and writing `units=None` "
-            "under a CF-1.13 claim is invalid.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    try:
-        cf_units.Unit(units)
-    except ValueError as exc:
-        print(
-            f"Error: OpenAQ unit {units!r} for parameter {variable!r} is not "
-            f"udunits-valid ({exc}); refusing to write a non-CF store under a "
-            "CF-1.13 claim and refusing to fabricate a conversion.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-
-def _stamp_cf_dsg(ds, units_by_param: dict) -> None:
-    """Stamp full CF-1.13 timeSeries DSG attributes onto a station dataset.
-
-    Sets the auxiliary-coordinate attrs (lat/lon/time + the timeseries_id role),
-    and on every data variable the load-bearing `coordinates` attr, the verbatim
-    OpenAQ `units` (validated here), `long_name`, `cell_methods`, and a CF
-    `standard_name` only where one cleanly applies to the reported unit family.
-    The ragged station-time cells that are NaN where a sensor did not report on a
-    given day are handled via the `_FillValue` write encoding set by the caller.
-    The global attrs (Conventions/featureType/title/source/...) are set by the
-    caller.
-    """
-    ds["latitude"].attrs.update(
-        standard_name="latitude", long_name="station latitude", units="degrees_north", axis="Y"
-    )
-    ds["longitude"].attrs.update(
-        standard_name="longitude", long_name="station longitude", units="degrees_east", axis="X"
-    )
-    ds["time"].attrs.update(standard_name="time", long_name="time", axis="T")
-    ds["station_id"].attrs.update(cf_role="timeseries_id", long_name="OpenAQ location identifier")
-    if "name" in ds.coords or "name" in ds.variables:
-        ds["name"].attrs.update(long_name="location name")
-
+    attrs_by_var = {}
     for param in ds.data_vars:
         units = units_by_param[param]
-        _validate_udunits(units, param)
+        if _is_blank_units(units):
+            raise DataError(
+                f"parameter {param!r} has a missing/empty units value; a CF "
+                "data variable must carry udunits-valid units, and writing `units=None` "
+                "under a CF-1.13 claim is invalid."
+            )
+        exc = udunits_error(units)
+        if exc is not None:
+            raise DataError(
+                f"OpenAQ unit {units!r} for parameter {param!r} is not "
+                f"udunits-valid ({exc}); refusing to write a non-CF store under a "
+                "CF-1.13 claim and refusing to fabricate a conversion."
+            )
         attrs = {
-            # `coordinates` is the load-bearing DSG attr: it ties each data
-            # variable to its auxiliary lat/lon coords and the time coord.
-            "coordinates": "latitude longitude time",
             "units": units,
             "long_name": _LONG_NAME.get(param, param),
             # Each OpenAQ daily value is the within-day mean of the sub-daily
@@ -667,138 +448,83 @@ def _stamp_cf_dsg(ds, units_by_param: dict) -> None:
             std_name = _STD_NAME_MOLE.get(param)
         if std_name:
             attrs["standard_name"] = std_name
-        ds[param].attrs.update(attrs)
+        attrs_by_var[param] = attrs
+    return attrs_by_var
 
 
-def _verify_cf_dsg(ds) -> None:
-    """Confirm cf-xarray resolves the timeSeries geometry before writing.
+def _normalize_entry_args(raw: dict) -> dict:
+    """Canonicalize the recorded cache-key args.
 
-    cf-xarray identifies the DSG off `cf_role="timeseries_id"` and resolves the
-    spatiotemporal axes off the coord attrs. If any of those do not resolve, the
-    stamping is wrong and the store would falsely claim CF-1.13 compliance, so
-    fail loudly rather than write it.
+    Variables are sorted (with the full supported list applied when --variable
+    is omitted) so flag order does not change the key. --workers (concurrency,
+    not data) is already excluded by the decorator.
     """
-    problems = []
-    cf_roles = ds.cf.cf_roles
-    # Membership, not exact list-equality: cf-xarray returns the resolved role as
-    # a list, and a correctly-stamped store must not be rejected over that list's
-    # shape or order — only over station_id being absent from it.
-    if "station_id" not in cf_roles.get("timeseries_id", []):
-        problems.append(f"cf_role timeseries_id did not resolve to station_id (got {cf_roles})")
-    for name in ("latitude", "longitude", "time"):
-        try:
-            ds.cf[name]
-        except KeyError:
-            problems.append(f"cf-xarray could not resolve the {name} coordinate")
-    if problems:
-        print(
-            "Error: CF-1.13 DSG verification failed before write:\n  - " + "\n  - ".join(problems),
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    raw["variable"] = sorted(raw.get("variable") or SUPPORTED_PARAMETERS)
+    return raw
 
 
-def _attach_bbox_value(argv):
-    # argparse rejects a space-separated --bbox value that starts with '-'
-    # (a bbox whose North latitude is negative). Rewrite `--bbox VAL` to
-    # `--bbox=VAL` so both the space and equals forms parse.
-    out, i = [], 0
-    while i < len(argv):
-        if argv[i] == "--bbox" and i + 1 < len(argv):
-            out.append(f"--bbox={argv[i + 1]}")
-            i += 2
-        else:
-            out.append(argv[i])
-            i += 1
-    return out
+def _set_write_encoding(ds) -> None:
+    """Controlled write encodings, applied after the decorator's encoding clear.
+
+    Carry udunits-valid reference-time units + a calendar in the time encoding
+    so the on-disk time axis is fully CF. `_FillValue` is an encoding key, not
+    a CF attribute: set here so the on-disk store represents missing
+    station-time cells with a real fill (and reopens with the NaNs intact).
+    """
+    ds["time"].encoding["units"] = _TIME_UNITS
+    ds["time"].encoding["calendar"] = _TIME_CALENDAR
+    for param in ds.data_vars:
+        ds[param].encoding["_FillValue"] = np.float64(np.nan)
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__.splitlines()[0],
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument(
-        "--start",
-        required=True,
-        help=(
+@weather_skill(
+    "openaq-fetch",
+    _SKILL_VERSION,
+    output_type="station",
+    source="openaq",
+    start_time={
+        "help": (
             "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
             "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
             "'latest' resolves to the current UTC date for this source."
-        ),
-    )
-    p.add_argument(
-        "--end", required=True, help="End date (inclusive). Same date grammar as --start."
-    )
-    p.add_argument(
-        "--bbox",
-        required=True,
-        help="Spatial subset N/W/S/E decimal degrees (required — selects stations).",
-    )
-    p.add_argument(
-        "--variable",
-        "-v",
-        action="append",
-        choices=SUPPORTED_PARAMETERS,
-        help=f"Restrict to this pollutant; repeat once per variable. Omit for all {SUPPORTED_PARAMETERS}.",
-    )
-    p.add_argument("--output", "-o", required=True)
-    p.add_argument(
-        "--workers",
-        type=int,
-        default=DEFAULT_WORKERS,
-        help=(
+        )
+    },
+    end_time={"help": "End date (inclusive). Same date grammar as --start."},
+    bbox={
+        "mode": "required",
+        "help": "Spatial subset N/W/S/E decimal degrees (required — selects stations).",
+    },
+    workers={
+        "default": DEFAULT_WORKERS,
+        "help": (
             f"Max concurrent per-sensor fetch threads (default {DEFAULT_WORKERS}). "
             "Threads overlap response waits only; request starts are rate-limited "
             "globally under OpenAQ's published limits (60/minute, 2,000/hour), so "
             "raising this does not raise the request rate."
         ),
-    )
-    args = p.parse_args(_attach_bbox_value(sys.argv[1:]))
+    },
+    variable={
+        "mode": "repeat",
+        "choices": SUPPORTED_PARAMETERS,
+        "help": (
+            "Restrict to this pollutant; repeat once per variable. "
+            f"Omit for all {SUPPORTED_PARAMETERS}."
+        ),
+    },
+    latest_resolver=today_utc,
+    normalize_args=_normalize_entry_args,
+    write_encoding=_set_write_encoding,
+    cache_hit_label="fetch",
+)
+def fetch(start_time, end_time, bbox, workers, variable, context):
+    """Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr."""
+    start_iso = start_time.isoformat()
+    end_iso = end_time.isoformat()
+    # Error messages echo the bbox exactly as given on the CLI.
+    bbox_raw = context.args.bbox
+    north, west, south, east = bbox
 
-    if args.workers < 1:
-        print("Error: --workers must be >= 1.", file=sys.stderr)
-        sys.exit(2)
-
-    try:
-        north, west, south, east = (float(x) for x in args.bbox.split("/"))
-    except ValueError:
-        print("Error: --bbox must be four decimal degrees N/W/S/E.", file=sys.stderr)
-        sys.exit(2)
-
-    variables = args.variable or list(SUPPORTED_PARAMETERS)
-
-    # `latest` resolves to today (UTC): OpenAQ has no cheap global day-precise
-    # discovery, and a thin trailing tail of not-yet-reported days is normal.
-    def _latest() -> date:
-        return datetime.now(UTC).date()
-
-    start_date, end_date, log_line = _resolve_window(args.start, args.end, _latest)
-    start_iso = start_date.isoformat()
-    end_iso = end_date.isoformat()
-    if log_line is not None:
-        print(log_line, file=sys.stderr)
-
-    entry = {
-        "skill": "openaq-fetch",
-        "version": _SKILL_VERSION,
-        # --workers excluded (concurrency, not data); variables sorted so flag
-        # order does not change the key; start/end are the resolved dates.
-        "args": {
-            "bbox": args.bbox,
-            "variable": sorted(variables),
-            "start": start_iso,
-            "end": end_iso,
-        },
-        "input": None,
-    }
-    out = Path(args.output)
-    if _cache_hit(out, entry):
-        print(
-            f"Cache hit: {args.output} already matches requested params; skipping fetch.",
-            file=sys.stderr,
-        )
-        return
+    variables = variable or list(SUPPORTED_PARAMETERS)
 
     key = _require_key()
     session = requests.Session()
@@ -807,11 +533,7 @@ def main() -> None:
     wanted = set(variables)
     sensors = _find_sensors(session, (north, west, south, east), wanted)
     if not sensors:
-        print(
-            f"Error: no OpenAQ sensors for {sorted(variables)} in bbox {args.bbox}.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise DataError(f"no OpenAQ sensors for {sorted(variables)} in bbox {bbox_raw}.")
 
     # Per-parameter unit reconciliation. OpenAQ reports a unit per sensor; for a
     # given pollutant they are normally identical, but a provider that reports a
@@ -849,12 +571,10 @@ def main() -> None:
     sensors = kept_sensors
 
     if not sensors:
-        print(
-            f"Error: no OpenAQ sensors for {sorted(variables)} in bbox {args.bbox} "
-            "survived unit reconciliation.",
-            file=sys.stderr,
+        raise DataError(
+            f"no OpenAQ sensors for {sorted(variables)} in bbox {bbox_raw} "
+            "survived unit reconciliation."
         )
-        sys.exit(1)
 
     candidate_count = len(sensors)
     print(f"Fetching {candidate_count} sensors for {start_iso}..{end_iso}", file=sys.stderr)
@@ -871,7 +591,7 @@ def main() -> None:
 
     frames = []
     meta_rows = []
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_fetch_one, d): d for d in sensors}
         for fut in as_completed(futures):
             d = futures[fut]
@@ -886,11 +606,9 @@ def main() -> None:
                 # status is inspected — the key is never read or echoed.
                 status = _auth_status(exc)
                 if status is not None:
-                    print(
-                        f"Error: {_classify_api_error(exc, 'fetching daily sensor values')}",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
+                    raise DataError(
+                        _classify_api_error(exc, "fetching daily sensor values")
+                    ) from None
                 # A genuine transient (timeout/5xx/429) that survived the single
                 # in-flight retry drops the sensor (not silently lost): logged
                 # per-line here and rolled into the aggregate count below.
@@ -923,11 +641,9 @@ def main() -> None:
         )
 
     if not frames:
-        print(
-            f"Error: no OpenAQ observations for {sorted(variables)} in {start_iso}..{end_iso}.",
-            file=sys.stderr,
+        raise DataError(
+            f"no OpenAQ observations for {sorted(variables)} in {start_iso}..{end_iso}."
         )
-        sys.exit(1)
 
     # A station may contribute several frames (one per parameter/sensor); group by
     # (time, station_id) and take the mean so duplicate sensors collapse cleanly.
@@ -962,7 +678,12 @@ def main() -> None:
     # units restricted to the parameters that actually produced a column.
     units_present = {param: units_by_param[param] for param in ds.data_vars}
 
-    _stamp_cf_dsg(ds, units_present)
+    stamp_cf_dsg(
+        ds,
+        _var_attrs(ds, units_present),
+        station_id_long_name="OpenAQ location identifier",
+        name_long_name="location name",
+    )
     ds.attrs.update(
         Conventions="CF-1.13",
         featureType="timeSeries",
@@ -971,36 +692,16 @@ def main() -> None:
         institution="OpenAQ",
         references="https://docs.openaq.org/",
         history=f"{datetime.now(UTC).isoformat()} openaq-fetch {start_iso}..{end_iso}",
-        weather_skills_source="openaq",
-        weather_skills_history=json.dumps([entry], sort_keys=True),
     )
-
-    # Clear per-variable encoding (not part of the envelope contract), then carry
-    # udunits-valid reference-time units + a calendar in the time encoding so the
-    # on-disk time axis is fully CF. Encoding is reset BEFORE setting time units
-    # so the clear cannot drop them.
-    for v in ds.variables:
-        ds[v].encoding = {}
-    ds["time"].encoding["units"] = _TIME_UNITS
-    ds["time"].encoding["calendar"] = _TIME_CALENDAR
-    # `_FillValue` is an encoding key, not a CF attribute: set it here, after the
-    # per-variable encoding clear, so the on-disk store represents missing
-    # station-time cells with a real fill (and reopens with the NaNs intact).
-    for param in ds.data_vars:
-        ds[param].encoding["_FillValue"] = np.float64(np.nan)
 
     # Write-side decode check: confirm cf-xarray resolves the DSG geometry
     # (timeseries_id) and the lat/lon/time axes BEFORE writing. A failure here
     # means the stamping is wrong, so fail loudly rather than emit a store that
     # falsely claims CF compliance.
-    _verify_cf_dsg(ds)
+    verify_cf_dsg(ds)
 
-    if out.exists():
-        shutil.rmtree(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    ds.to_zarr(out, mode="w", consolidated=True)
-    print(f"Wrote: {args.output} ({dict(ds.sizes)})", file=sys.stderr)
+    return ds
 
 
 if __name__ == "__main__":
-    main()
+    fetch()
