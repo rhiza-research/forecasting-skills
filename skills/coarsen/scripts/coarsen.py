@@ -1,11 +1,10 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "cf-xarray",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cftime",
 #   "xarray",
 #   "xarray-regrid",
-#   "zarr",
 #   "numpy",
 # ]
 # ///
@@ -19,80 +18,13 @@ aligns with sheerwater's ``global0_25``; ``(0.1, 0.05)`` with ``global0_1``;
 ``(0.05, 0.025)`` with ``global0_05``.
 """
 
-import argparse
-import hashlib
-import json
 import math
-import shutil
 import sys
-from pathlib import Path
+
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.9"
-
-
-def _hash_zarr(zarr_path: Path) -> str:
-    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
-    deterministically and hashes relative-path bytes + each file's
-    content. Returns sha256 hex digest."""
-    h = hashlib.sha256()
-    for p in sorted(zarr_path.rglob("*")):
-        if p.is_file():
-            h.update(str(p.relative_to(zarr_path)).encode())
-            h.update(p.read_bytes())
-    return h.hexdigest()
-
-
-def _load_history(zarr_path: Path) -> list:
-    try:
-        import xarray as xr
-
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except FileNotFoundError:
-        # A not-yet-existing output read during a cache check is a silent miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
-
-
-def _cache_hit(out: Path, upstream: list, entry: dict) -> bool:
-    """Cache check that compares everything except input.hash.
-
-    The hash over the upstream zarr is expensive; the basename + upstream
-    history chain is sufficient to identify whether a recompute is needed.
-    """
-    if not out.exists():
-        return False
-    history = _load_history(out)
-    if len(history) != len(upstream) + 1:
-        return False
-    if history[:-1] != upstream:
-        return False
-    last = history[-1]
-    last_input = last.get("input") or {}
-    entry_input = entry.get("input") or {}
-    return (
-        last.get("skill") == entry["skill"]
-        and last.get("version") == entry["version"]
-        and last.get("args") == entry["args"]
-        and last_input.get("basename") == entry_input.get("basename")
-    )
 
 
 def _grid_spacing(coord_vals) -> float:
@@ -125,98 +57,46 @@ def _target_axis(coord_vals, resolution: float, offset: float):
     return target
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__.splitlines()[0],
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument("--input", "-i", required=True)
-    p.add_argument("--output", "-o", required=True)
-    p.add_argument(
-        "--target-resolution",
-        type=float,
-        required=True,
-        help="Target grid spacing in degrees.",
-    )
-    p.add_argument(
-        "--offset",
-        type=float,
-        required=True,
-        help="Grid offset in degrees; target points fall at offset + k*resolution.",
-    )
-    p.add_argument("--variable", "-v", help="Restrict to a single data variable.")
-    p.add_argument("--dims", help="Override as LAT,LON dim names.")
-    args = p.parse_args()
-
+def _validate_args(args):
     if args.target_resolution <= 0:
-        print("Error: --target-resolution must be > 0.", file=sys.stderr)
-        sys.exit(2)
+        raise UsageError("--target-resolution must be > 0.")
 
-    # Build the cheap fields first; defer _hash_zarr until after the
-    # cache-hit check so we don't hash hundreds of MB of zarr on hits.
-    partial_entry = {
-        "skill": "coarsen",
-        "version": _SKILL_VERSION,
-        "args": {k: v for k, v in vars(args).items() if k not in {"input", "output"}},
-        "input": {"basename": Path(args.input).name},
-    }
-    upstream = _load_history(Path(args.input))
-    out = Path(args.output)
-    if _cache_hit(out, upstream, partial_entry):
-        print(
-            f"Cache hit: {args.output} already matches requested params; skipping coarsen.",
-            file=sys.stderr,
-        )
-        return
 
-    # Cache miss: now compute the upstream hash and build the final entry.
-    entry = {
-        **partial_entry,
-        "input": {
-            "basename": Path(args.input).name,
-            "hash": _hash_zarr(Path(args.input)),
+@weather_skill(
+    "coarsen",
+    _SKILL_VERSION,
+    input_type="any",
+    output_type="same",
+    variable={"mode": "single", "help": "Restrict to a single data variable."},
+    dims=True,
+    extra_args={
+        "target_resolution": {
+            "type": float,
+            "required": True,
+            "help": "Target grid spacing in degrees.",
         },
-    }
-
-    import cf_xarray  # noqa: F401 — registers the .cf accessor
+        "offset": {
+            "type": float,
+            "required": True,
+            "help": "Grid offset in degrees; target points fall at offset + k*resolution.",
+        },
+    },
+    validate_args=_validate_args,
+    hash_input=False,
+)
+def coarsen(ds, variable, dims, target_resolution, offset):
+    """Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only)."""
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
+    from weather_skills_core.envelope import detect_spatial_dims
 
-    src = Path(args.input)
-    if not src.exists():
-        print(f"Error: input {src} not found.", file=sys.stderr)
-        sys.exit(2)
-    ds = xr.open_zarr(src, consolidated=False)
+    lat_dim, lon_dim = detect_spatial_dims(ds, dims)
 
-    if args.dims:
-        lat_dim, lon_dim = [s.strip() for s in args.dims.split(",")]
-        if lat_dim not in ds.dims or lon_dim not in ds.dims:
-            print(
-                f"Error: --dims names not in dataset dims {list(ds.dims)}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-    else:
-        try:
-            lat_dim = ds.cf["latitude"].name
-            lon_dim = ds.cf["longitude"].name
-        except KeyError:
-            print(
-                f"Error: could not identify lat/lon coords via CF metadata in "
-                f"{list(ds.coords)}. Pass --dims to override.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-
-    if args.variable:
-        if args.variable not in ds.data_vars:
-            print(
-                f"Error: variable '{args.variable}' not in {list(ds.data_vars)}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-        ds = ds[[args.variable]]
+    if variable:
+        if variable not in ds.data_vars:
+            raise UsageError(f"variable '{variable}' not in {list(ds.data_vars)}")
+        ds = ds[[variable]]
 
     # Wrap lon to [-180, 180] before building the target axis so a 0..360 input
     # grid doesn't produce a target axis spanning ~the whole globe. Mirrors plot.py.
@@ -229,19 +109,17 @@ def main() -> None:
     # downscale skill's job. Coarser-or-equal passes (equal = no-op/realign).
     in_lat_res = _grid_spacing(ds[lat_dim].values)
     in_lon_res = _grid_spacing(ds[lon_dim].values)
-    if args.target_resolution < in_lat_res or args.target_resolution < in_lon_res:
-        print(
-            f"Error: --target-resolution {args.target_resolution}° is finer "
+    if target_resolution < in_lat_res or target_resolution < in_lon_res:
+        raise UsageError(
+            f"--target-resolution {target_resolution}° is finer "
             f"than the input on at least one axis "
             f"(~{in_lat_res:.4f}°x{in_lon_res:.4f}°). "
             f"Coarsening goes coarser-or-equal; to make a grid finer and add "
-            f"information use the downscale skill.",
-            file=sys.stderr,
+            f"information use the downscale skill."
         )
-        sys.exit(2)
 
-    new_lat = _target_axis(ds[lat_dim].values, args.target_resolution, args.offset)
-    new_lon = _target_axis(ds[lon_dim].values, args.target_resolution, args.offset)
+    new_lat = _target_axis(ds[lat_dim].values, target_resolution, offset)
+    new_lon = _target_axis(ds[lon_dim].values, target_resolution, offset)
     target = xr.Dataset(
         coords={
             lat_dim: (lat_dim, new_lat, dict(ds[lat_dim].attrs)),
@@ -251,35 +129,12 @@ def main() -> None:
 
     print(
         f"Coarsening/aligning {lat_dim},{lon_dim} (linear) to "
-        f"resolution={args.target_resolution} offset={args.offset}: "
+        f"resolution={target_resolution} offset={offset}: "
         f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
-    out_ds = ds.regrid.linear(target)
-
-    if not upstream:
-        print(
-            "Warning: no upstream weather_skills_history on input; treating input as opaque.",
-            file=sys.stderr,
-        )
-    out_ds.attrs = {
-        **ds.attrs,
-        "weather_skills_history": json.dumps(upstream + [entry], sort_keys=True),
-    }
-    # compatibility migration for the rhiza_ attr prefix; scheduled for removal
-    for _old in ("rhiza_history", "rhiza_source", "rhiza_forecast_init"):
-        if _old in out_ds.attrs:
-            _new = "weather_skills_" + _old.removeprefix("rhiza_")
-            out_ds.attrs.setdefault(_new, out_ds.attrs.pop(_old))
-    for v in out_ds.variables:
-        out_ds[v].encoding = {}
-
-    if out.exists():
-        shutil.rmtree(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out_ds.to_zarr(out, mode="w", consolidated=True)
-    print(f"Wrote: {args.output} ({dict(out_ds.sizes)})", file=sys.stderr)
+    return ds.regrid.linear(target)
 
 
 if __name__ == "__main__":
-    main()
+    coarsen()

@@ -236,9 +236,9 @@ produce an envelope; consumers only rely on dims, coords, data variables and
 
 ## CLI flag conventions
 
-Each skill ships its own argparse CLI, but they share canonical flag names so
-common parameters (`--input` / `-o`, `--bbox`, `--start` / `--end`,
-etc.) mean the same thing wherever they appear. See
+Each skill declares its CLI through the `@weather_skill` decorator from
+`weather_skills_core`, so common parameters (`--input` / `-o`, `--bbox`,
+`--start` / `--end`, etc.) mean the same thing wherever they appear. See
 [`CONVENTIONS.md`](CONVENTIONS.md) for the full mapping of concept → canonical
 flag.
 

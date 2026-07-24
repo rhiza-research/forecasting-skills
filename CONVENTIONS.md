@@ -1,16 +1,20 @@
 # CLI flag conventions
 
-Skills in this repo are independent single-file scripts, but they often expose
-the same conceptual parameter under their own argparse CLI. To make skills easy
-to compose and easy to work on, **a flag that does the same thing on different
-skills must have the same name**.
+Skills in this repo are independent single-file scripts that declare their CLI
+through the `@weather_skill` decorator from `weather_skills_core`, and they
+often expose the same conceptual parameter. To make skills easy to compose and
+easy to work on, **a flag that does the same thing on different skills must
+have the same name**.
 
-This document is the canonical mapping. When you add or change a CLI, match
-these names. New concepts that aren't covered here should be added to this file
-in the same PR that introduces them.
+This document is the canonical mapping. Standard flags (`--input`/`--output`,
+`--start`/`--end`/`--date`, `--bbox`, `--variable`, `--workers`, `--title`,
+`--dims`, `--time-dim`) come from the declaration's toggles; every other flag
+is declared under `extra_args`, and this table is normative for those names.
+When you add or change a CLI, match these names. New concepts that aren't
+covered here should be added to this file in the same PR that introduces them.
 
-There are no shared helpers and no lint enforcing this — skills must remain
-standalone single-file scripts. The convention is enforced by review.
+No lint enforces the `extra_args` naming — that part of the convention is
+enforced by review.
 
 ## Canonical names
 
@@ -68,11 +72,13 @@ Tokens stay literal — `latest-3w` always means `latest − 21d`; only the
 `B-N .. B` shape moves the far edge. After resolution, `start <= end` or the run
 exits non-zero (pre-network).
 
-There is no shared parser: each script carries its own copy of the value
-grammar and the per-source `latest` resolver (the standalone-single-file rule
-below). `latest` discovery runs at most once per invocation and only when a
-token references `latest`; an all-absolute or `now`-only window performs no
-discovery call. The cache key / `weather_skills_history` args record the **resolved
+This section is the grammar's normative definition; its implementation lives
+in `weather_skills_core` (the decorator's `start_time`/`end_time`/`date`
+toggles), whose test suite enforces it. Each script supplies only its
+per-source `latest` resolver. `latest` discovery runs at most once per
+invocation and only when a token references `latest`; an all-absolute or
+`now`-only window performs no discovery call. The cache key /
+`weather_skills_history` args record the **resolved
 absolute dates**, never the relative token. For any invocation containing a
 relative token, the script prints a stderr line before fetching with the
 resolved concrete dates, the day count, and the boundary mode and its reason.
@@ -152,7 +158,9 @@ selects that variable facet (and is the output variable).
   the same form.
 - **No backwards-compat aliasing.** If a flag name changes, change every caller
   in the same PR. There are no external callers to preserve.
-- **No shared helper module.** Each skill declares its own `ArgumentParser`.
-  Don't introduce `_args.py` or any cross-skill import.
+- **Cross-skill behavior lives in `weather-skills-core`.** CLI construction,
+  envelope validation, the date grammar, provenance, caching, and output
+  writing come from the `@weather_skill` decorator and its modules. Skills
+  never import from each other; per-skill code is domain logic only.
 - **Don't reuse a canonical name for a different concept.** If you need a new
   concept, pick a new name and add it here.

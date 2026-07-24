@@ -10,9 +10,9 @@ single-file copies) read from `main`, so every merge to `main` is a release.
 Each `skills/<name>/SKILL.md` carries a `metadata.version` field in its YAML
 frontmatter (nested under the top-level `metadata:` key per the Agent Skills
 specification). That field is the authoritative identity of a published
-skill and the value that downstream cache invalidation keys on. Scripts that
-emit `weather_skills_history` carry a `_SKILL_VERSION` constant near the top of
-the file; the version-bump workflow rewrites both the SKILL.md
+skill and the value that downstream cache invalidation keys on. Each script
+carries a `_SKILL_VERSION` constant near the top of the file; the
+version-bump workflow rewrites both the SKILL.md
 `metadata.version` and the `_SKILL_VERSION` literal in lockstep, so
 contributors never edit either by hand.
 

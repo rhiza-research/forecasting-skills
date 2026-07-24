@@ -1,13 +1,16 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
-# dependencies = []
+# dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+# ]
 # ///
 """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
 
-import argparse
 import json
 import sys
 from pathlib import Path
+
+from weather_skills_core import DataError, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -105,25 +108,26 @@ def _bbox_from_geometry(geometry):
     return max_lat, w, min_lat, e
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument("code", help="ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN")
-    p.add_argument(
-        "--geojson", help="Optional path: write the country's boundary polygon as GeoJSON"
-    )
-    args = p.parse_args()
-
-    code = args.code
+@weather_skill(
+    "resolve-region",
+    _SKILL_VERSION,
+    extra_args={
+        "code": {
+            "positional": True,
+            "help": "ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN",
+        },
+        "geojson": {
+            "help": "Optional path: write the country's boundary polygon as GeoJSON",
+        },
+    },
+)
+def resolve_region(code, geojson):
+    """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
     if len(code) != 3 or not code.isalpha() or code != code.upper():
-        print(
-            f"Error: {code!r} is not an ISO 3166-1 alpha-3 (iso3) code. "
-            "Pass a three-letter uppercase code (e.g. KEN), not a name or alpha-2 code.",
-            file=sys.stderr,
+        raise UsageError(
+            f"{code!r} is not an ISO 3166-1 alpha-3 (iso3) code. "
+            "Pass a three-letter uppercase code (e.g. KEN), not a name or alpha-2 code."
         )
-        sys.exit(2)
 
     asset = Path(__file__).resolve().parent.parent / "assets" / "countries.geojson"
     fc = json.loads(asset.read_text())
@@ -135,32 +139,26 @@ def main() -> None:
             break
 
     if match is None:
-        print(
-            f"Error: {code!r} is not a known iso3 in the bundled Natural Earth 1:110m "
+        raise DataError(
+            f"{code!r} is not a known iso3 in the bundled Natural Earth 1:110m "
             "admin-0 dataset (177 countries; country-level only). Check the code or pick "
-            "a different country.",
-            file=sys.stderr,
+            "a different country."
         )
-        sys.exit(1)
 
     n, w, s, e = _bbox_from_geometry(match["geometry"])
 
     # Write the polygon (guarded) BEFORE printing the bbox, so a failed write
     # never emits a valid-looking bbox to stdout that a caller might consume.
-    if args.geojson:
+    if geojson:
         out_fc = {"type": "FeatureCollection", "features": [match]}
         try:
-            Path(args.geojson).write_text(json.dumps(out_fc, separators=(",", ":")))
+            Path(geojson).write_text(json.dumps(out_fc, separators=(",", ":")))
         except OSError as exc:
-            print(
-                f"Error: could not write boundary polygon to {args.geojson}: {exc}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        print(f"Wrote boundary polygon: {args.geojson}", file=sys.stderr)
+            raise DataError(f"could not write boundary polygon to {geojson}: {exc}") from None
+        print(f"Wrote boundary polygon: {geojson}", file=sys.stderr)
 
     print(f"{n}/{w}/{s}/{e}")
 
 
 if __name__ == "__main__":
-    main()
+    resolve_region()

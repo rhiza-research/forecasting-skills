@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -12,66 +13,16 @@
 # ///
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
 
-import argparse
-import hashlib
-import json
-import sys
-from pathlib import Path
+from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.envelope import cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.9"
 
 
-def _cf_dim(obj, cf_name):
-    try:
-        return obj.cf[cf_name].name
-    except KeyError:
-        return None
-
-
-def _hash_zarr(zarr_path: Path) -> str:
-    """Stable content hash of a zarr's stored bytes. Walks the zarr dir
-    deterministically and hashes relative-path bytes + each file's
-    content. Returns sha256 hex digest."""
-    h = hashlib.sha256()
-    for p in sorted(zarr_path.rglob("*")):
-        if p.is_file():
-            h.update(str(p.relative_to(zarr_path)).encode())
-            h.update(p.read_bytes())
-    return h.hexdigest()
-
-
-def _load_history(zarr_path: Path) -> list:
-    try:
-        import xarray as xr
-
-        with xr.open_zarr(zarr_path, consolidated=False) as ds:
-            # compatibility read for the rhiza_ attr prefix; scheduled for removal
-            raw = ds.attrs.get("weather_skills_history") or ds.attrs.get("rhiza_history")
-    except FileNotFoundError:
-        # A not-yet-existing output read during a cache check is a silent miss.
-        return []
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, list):
-        # A present-but-non-array value is malformed under the weather_skills_history
-        # contract; treat it as no history and flag it on stderr.
-        print(
-            f"ignoring malformed weather_skills_history on {zarr_path}; "
-            "run `provenance --check` for details",
-            file=sys.stderr,
-        )
-        return []
-    return parsed
-
-
 def _select_point(da, lat, lon):
-    lat_dim = _cf_dim(da, "latitude")
-    lon_dim = _cf_dim(da, "longitude")
+    lat_dim = cf_dim(da, "latitude")
+    lon_dim = cf_dim(da, "longitude")
     if lat_dim is None or lon_dim is None:
         raise ValueError(f"Could not identify latitude/longitude in dims {list(da.dims)}.")
     return da.sel({lat_dim: lat, lon_dim: lon}, method="nearest")
@@ -103,74 +54,62 @@ def _inner_stats(values):
     }
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        epilog=f"skill version: {_SKILL_VERSION}",
-    )
-    p.add_argument("--forecast", required=True, help="Forecast Zarr (number × step × spatial)")
-    p.add_argument("--mclimate", required=True, help="M-climate Zarr (same schema)")
-    p.add_argument("--lat", type=float, required=True)
-    p.add_argument("--lon", type=float, required=True)
-    p.add_argument("--output", "-o", required=True)
-    p.add_argument("--variable", "-v")
-    p.add_argument("--title")
-    args = p.parse_args()
-
+@weather_skill(
+    "plot-mediogram",
+    _SKILL_VERSION,
+    input_type=["any", "any"],
+    input_names=["forecast", "mclimate"],
+    input_help=["Forecast Zarr (number × step × spatial)", "M-climate Zarr (same schema)"],
+    output_type="png",
+    variable="single",
+    title=True,
+    extra_args={
+        "lat": {"type": float, "required": True},
+        "lon": {"type": float, "required": True},
+    },
+)
+def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
+    """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
     import matplotlib
 
     matplotlib.use("Agg")
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import numpy as np
-    import xarray as xr
     from matplotlib.patches import Patch
 
-    for pth in (args.forecast, args.mclimate):
-        if not Path(pth).exists():
-            print(f"Error: {pth} not found.", file=sys.stderr)
-            sys.exit(2)
-
-    ds_fc = xr.open_zarr(args.forecast, consolidated=False)
-    ds_mc = xr.open_zarr(args.mclimate, consolidated=False)
-
-    variable = args.variable or (list(ds_fc.data_vars)[0] if ds_fc.data_vars else None)
+    variable = variable or (list(ds_fc.data_vars)[0] if ds_fc.data_vars else None)
     if variable is None or variable not in ds_fc or variable not in ds_mc:
-        print(
-            f"Error: variable '{variable}' must exist in both inputs. "
-            f"forecast: {list(ds_fc.data_vars)}  mclimate: {list(ds_mc.data_vars)}",
-            file=sys.stderr,
+        raise UsageError(
+            f"variable '{variable}' must exist in both inputs. "
+            f"forecast: {list(ds_fc.data_vars)}  mclimate: {list(ds_mc.data_vars)}"
         )
-        sys.exit(2)
 
     da_fc = ds_fc[variable]
     da_mc = ds_mc[variable]
 
     for label, da in (("forecast", da_fc), ("mclimate", da_mc)):
         if "number" not in da.dims or "step" not in da.dims:
-            print(
-                f"Error: {label} input requires 'number' and 'step' dims; got {list(da.dims)}.",
-                file=sys.stderr,
+            raise UsageError(
+                f"{label} input requires 'number' and 'step' dims; got {list(da.dims)}."
             )
-            sys.exit(2)
 
-    pt_fc = _select_point(da_fc, args.lat, args.lon)
-    pt_mc = _select_point(da_mc, args.lat, args.lon)
+    pt_fc = _select_point(da_fc, lat, lon)
+    pt_mc = _select_point(da_mc, lat, lon)
 
     n_steps = min(pt_fc.sizes["step"], pt_mc.sizes["step"], 6)
     if n_steps < 1:
-        print("Error: no overlapping steps to plot.", file=sys.stderr)
-        sys.exit(1)
+        raise DataError("no overlapping steps to plot.")
 
     pt_fc = pt_fc.isel(step=slice(0, n_steps)).transpose("number", "step")
     pt_mc = pt_mc.isel(step=slice(0, n_steps)).transpose("number", "step")
     fc = pt_fc.values
     mc = pt_mc.values
 
-    lat_dim = _cf_dim(pt_fc, "latitude")
-    lon_dim = _cf_dim(pt_fc, "longitude")
-    snapped_lat = float(pt_fc[lat_dim].values) if lat_dim else args.lat
-    snapped_lon = float(pt_fc[lon_dim].values) if lon_dim else args.lon
+    lat_dim = cf_dim(pt_fc, "latitude")
+    lon_dim = cf_dim(pt_fc, "longitude")
+    snapped_lat = float(pt_fc[lat_dim].values) if lat_dim else lat
+    snapped_lon = float(pt_fc[lon_dim].values) if lon_dim else lon
 
     time_steps = np.arange(n_steps)
     ensemble_mean = np.mean(fc, axis=0)
@@ -240,7 +179,7 @@ def main() -> None:
     ax.set_xticklabels([f"T+{t + 1}" for t in time_steps])
     ax.set_xlabel("Forecast step")
     ax.set_ylabel(variable)
-    ax.set_title(args.title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
+    ax.set_title(title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
     ax.grid(True, linestyle="--", alpha=0.6)
 
     handles = [
@@ -250,57 +189,8 @@ def main() -> None:
     ax.legend(handles=handles)
 
     fig.tight_layout()
-    out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    src_forecast = Path(args.forecast)
-    src_mclimate = Path(args.mclimate)
-    upstream_forecast = _load_history(src_forecast)
-    upstream_mclimate = _load_history(src_mclimate)
-    shared_args = {
-        k: v for k, v in vars(args).items() if k not in {"forecast", "mclimate", "output"}
-    }
-    version = _SKILL_VERSION
-    mediogram_entry_forecast = {
-        "skill": "plot-mediogram",
-        "version": version,
-        "args": shared_args,
-        "input": {"basename": src_forecast.name, "hash": _hash_zarr(src_forecast)},
-    }
-    mediogram_entry_mclimate = {
-        "skill": "plot-mediogram",
-        "version": version,
-        "args": shared_args,
-        "input": {"basename": src_mclimate.name, "hash": _hash_zarr(src_mclimate)},
-    }
-    if not upstream_forecast:
-        print(
-            f"Warning: no upstream weather_skills_history on {src_forecast.name}; "
-            "embedding plot-mediogram step alone.",
-            file=sys.stderr,
-        )
-    if not upstream_mclimate:
-        print(
-            f"Warning: no upstream weather_skills_history on {src_mclimate.name}; "
-            "embedding plot-mediogram step alone.",
-            file=sys.stderr,
-        )
-    fig.savefig(
-        out,
-        dpi=150,
-        metadata={
-            "weather_skills_history_forecast": json.dumps(
-                upstream_forecast + [mediogram_entry_forecast], sort_keys=True
-            ),
-            "weather_skills_history_mclimate": json.dumps(
-                upstream_mclimate + [mediogram_entry_mclimate], sort_keys=True
-            ),
-            "Software": "forecasting-skills",
-        },
-    )
-    plt.close(fig)
-    print(f"Wrote: {args.output}", file=sys.stderr)
+    return fig
 
 
 if __name__ == "__main__":
-    main()
+    plot_mediogram()
