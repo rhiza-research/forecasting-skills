@@ -18,8 +18,9 @@ Checks, per the site's stated constraints:
      in any scheme form — absolute, scheme-relative, or non-HTTP schemes
      all fail;
    - `<a href>` absolute URLs (including scheme-relative) must match the
-     allowlist: the skills repository plus the two references the page
-     makes by design (the Agent Skills site and skillkit);
+     allowlist: the skills repository, the weather-skills-core references
+     repository, and the two references the page makes by design (the
+     Agent Skills site and skillkit);
    - plain-text URL mentions outside attributes are permitted.
    Attributes are read with the HTML parser, not regex; scheme and host
    matching is case-insensitive.
@@ -73,6 +74,7 @@ RESOURCE_ATTRS: dict[str, tuple[str, ...]] = {
 # is a third-party link target and fails the check.
 ALLOWED_LINK_PREFIXES = (
     "https://github.com/rhiza-research/forecasting-skills",
+    "https://github.com/rhiza-research/weather-skills-core",
     "https://agentskills.io",
     "https://github.com/rohitg00/skillkit",
 )

@@ -12,7 +12,7 @@
 A set of composable [Agent Skills](https://agentskills.io) for building
 weather/climate data pipelines from an LLM-driven agent. Skills are
 source-specific fetchers (ingress), generic operators that work on a shared
-Zarr-based container (see [`ENVELOPE.md`](ENVELOPE.md)), or capabilities the
+Zarr-based container (see [`ENVELOPE.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/ENVELOPE.md)), or capabilities the
 agent uses alongside pipelines.
 
 Initiated by Rhiza Research.
@@ -230,7 +230,7 @@ picks and composes skills from this set.
 
 The generic middle skills rely on a shared Zarr shape — gridded
 `(number?, step|time, latitude, longitude)` or station
-`(time, station_id)` — documented in [`ENVELOPE.md`](ENVELOPE.md). Fetchers
+`(time, station_id)` — documented in [`ENVELOPE.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/ENVELOPE.md). Fetchers
 produce an envelope; consumers only rely on dims, coords, data variables and
 `weather_skills_*` attrs, never on per-variable codec encoding.
 
@@ -239,7 +239,7 @@ produce an envelope; consumers only rely on dims, coords, data variables and
 Each skill declares its CLI through the `@weather_skill` decorator from
 `weather_skills_core`, so common parameters (`--input` / `-o`, `--bbox`,
 `--start` / `--end`, etc.) mean the same thing wherever they appear. See
-[`CONVENTIONS.md`](CONVENTIONS.md) for the full mapping of concept → canonical
+[`CONVENTIONS.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/CONVENTIONS.md) for the full mapping of concept → canonical
 flag.
 
 ## Credentials
