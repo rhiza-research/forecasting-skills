@@ -8,7 +8,7 @@
 #   "numpy",
 # ]
 # ///
-"""Downscale a weather-skills envelope Zarr onto a finer grid via a chosen method."""
+"""Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
 
 import sys
 
@@ -86,12 +86,12 @@ def _validate_args(args):
         raise UsageError("--factor must be >= 1.")
     if args.target_resolution is not None and args.target_resolution <= 0:
         raise UsageError("--target-resolution must be > 0.")
-    if args.method == "q-q" and not args.qq_reference:
+    if args.algorithm == "q-q" and not args.qq_reference:
         raise UsageError(
-            "--method q-q requires --qq-reference (the distribution reference to map onto)."
+            "--algorithm q-q requires --qq-reference (the distribution reference to map onto)."
         )
-    if args.qq_reference and args.method != "q-q":
-        raise UsageError("--qq-reference is only valid with --method q-q.")
+    if args.qq_reference and args.algorithm != "q-q":
+        raise UsageError("--qq-reference is only valid with --algorithm q-q.")
 
 
 @weather_skill(
@@ -103,13 +103,14 @@ def _validate_args(args):
     dims=True,
     time_dim="time",
     extra_args={
-        "method": {
+        "algorithm": {
             "required": True,
             "choices": ["linear-interpolation", "q-q"],
             "help": (
-                "How to add information when going finer. 'linear-interpolation' "
-                "linearly interpolates onto the finer grid; 'q-q' interpolates and "
-                "then empirically quantile-maps onto a distribution reference."
+                "Which downscaling algorithm adds information when going finer. "
+                "'linear-interpolation' linearly interpolates onto the finer grid; "
+                "'q-q' interpolates and then empirically quantile-maps onto a "
+                "distribution reference."
             ),
         },
         "factor": {
@@ -132,7 +133,7 @@ def _validate_args(args):
                 "Reference Zarr whose distribution the q-q method maps the output "
                 "onto. Empirical quantile mapping per grid cell along --time-dim. "
                 "The reference must already be on the post-downscale lat/lon grid. "
-                "Required for --method q-q."
+                "Required for --algorithm q-q."
             ),
         },
     },
@@ -144,9 +145,9 @@ def _validate_args(args):
     hash_input=False,
 )
 def downscale(
-    ds, variable, dims, time_dim, method, factor, target_resolution, reference_grid, qq_reference
+    ds, variable, dims, time_dim, algorithm, factor, target_resolution, reference_grid, qq_reference
 ):
-    """Downscale a weather-skills envelope Zarr onto a finer grid via a chosen method."""
+    """Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
     from pathlib import Path
 
     import numpy as np
@@ -225,14 +226,14 @@ def downscale(
     )
 
     print(
-        f"Downscaling {lat_dim},{lon_dim} (method={method}, "
+        f"Downscaling {lat_dim},{lon_dim} (algorithm={algorithm}, "
         f"{target_desc}): {ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> "
         f"{len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
     out_ds = ds.regrid.linear(target)
 
-    if method == "q-q":
+    if algorithm == "q-q":
         ref_path = Path(qq_reference)
         ref_ds = xr.open_zarr(ref_path, consolidated=False)
         if time_dim not in out_ds.dims:
