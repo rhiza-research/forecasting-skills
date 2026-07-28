@@ -25,7 +25,7 @@ import cf_xarray  # noqa: F401  (registers the .cf accessor used below)
 import gcsfs
 import pandas as pd
 import xarray as xr
-from weather_skills_core import DataError, UsageError, types, weather_skill
+from weather_skills_core import DataError, UsageError, set_source, types, weather_skill
 from weather_skills_core.envelope import normalize_longitude, udunits_error
 from weather_skills_core.provenance import make_completeness_probe
 
@@ -511,11 +511,9 @@ def fetch(args, context):
     )
 
     # Global attrs: preserve the source CMIP6 globals, overwrite Conventions to
-    # the current CF release, append a history line, and add the
-    # `weather_skills_source` key (its grid_label component is
-    # catalog-discovered, so it is set here; the decorator stamps
-    # `weather_skills_history`). The appended CF history line records the
-    # bbox exactly as given on the CLI.
+    # the current CF release, and append a history line recording the bbox
+    # exactly as given on the CLI. The decorator stamps
+    # `weather_skills_history`.
     bbox_raw = context.args.bbox
     history_line = (
         f"{datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')} cmip6-fetch: "
@@ -529,10 +527,10 @@ def fetch(args, context):
     new_globals["history"] = (
         (prior_history + "\n" + history_line) if prior_history else history_line
     )
-    new_globals["weather_skills_source"] = (
-        f"cmip6:{model}/{experiment}/{member}/{table}/{variable}/{grid_label}"
-    )
     ds.attrs = new_globals
+    # The grid_label component is catalog-discovered, so the value only exists
+    # at run time.
+    set_source(ds, f"cmip6:{model}/{experiment}/{member}/{table}/{variable}/{grid_label}")
 
     _ensure_coord_cf_attrs(ds)
 

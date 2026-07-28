@@ -14,7 +14,14 @@
 import sys
 from datetime import date
 
-from weather_skills_core import DATE_GRAMMAR, DataError, UsageError, types, weather_skill
+from weather_skills_core import (
+    DATE_GRAMMAR,
+    DataError,
+    UsageError,
+    set_source,
+    types,
+    weather_skill,
+)
 from weather_skills_core.dates import np_to_date, parse_token, resolve_date, resolve_window
 from weather_skills_core.envelope import stamp_cf_attrs
 
@@ -281,13 +288,11 @@ def fetch(args, context):
     # Write lazily: to_zarr streams the selection chunk-by-chunk, so a no-bbox
     # full-grid fetch does not pull the whole archive slice into memory at once.
     # Source variable units are forwarded verbatim (dynamical stamps them); this
-    # fetcher does not convert or relabel them. `weather_skills_source` embeds
-    # the dataset id, so it is set here; the decorator stamps
+    # fetcher does not convert or relabel them. The source embeds the dataset
+    # id, which is only known at run time; the decorator stamps
     # `weather_skills_history`.
-    ds.attrs.update(
-        weather_skills_source=f"dynamical:{dataset}",
-        Conventions="CF-1.13",
-    )
+    ds.attrs["Conventions"] = "CF-1.13"
+    set_source(ds, f"dynamical:{dataset}")
     stamp_cf_attrs(ds)
 
     return ds

@@ -28,7 +28,7 @@ from datetime import UTC, date, datetime, timedelta
 # guarantee.
 import cf_units  # noqa: F401  (loaded lazily by core's udunits_error at write time)
 import cf_xarray  # noqa: F401  (loaded lazily by core's cf_axes_missing at write time)
-from weather_skills_core import DataError, SkillError, UsageError, types, weather_skill
+from weather_skills_core import DataError, SkillError, UsageError, set_source, types, weather_skill
 from weather_skills_core.envelope import cf_axes_missing, stamp_cf_coords, udunits_error
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -486,7 +486,6 @@ def _set_write_encoding(ds) -> None:
     "smap-fetch",
     _SKILL_VERSION,
     output_type=types.GRIDDED,
-    source="smap",
     start_time=True,
     end_time=True,
     bbox={
@@ -628,6 +627,7 @@ def fetch(args, context):
                 # output path.
                 _cf_decode_check(ds_day)
                 first = False
+            set_source(ds_day, "smap")
             yield ds_day
 
 

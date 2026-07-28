@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
-from weather_skills_core import DataError, UsageError, types, weather_skill
+from weather_skills_core import DataError, UsageError, set_source, types, weather_skill
 from weather_skills_core.dates import today_utc
 from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
@@ -481,7 +481,6 @@ def _set_write_encoding(ds) -> None:
     "openaq-fetch",
     _SKILL_VERSION,
     output_type=types.STATION,
-    source="openaq",
     start_time={
         "help": (
             "Start date (inclusive). 'latest' resolves to the current UTC date for this source."
@@ -692,7 +691,6 @@ def fetch(args, context):
         Conventions="CF-1.13",
         featureType="timeSeries",
         title="OpenAQ air-quality station observations",
-        source="OpenAQ v3 API (https://api.openaq.org/v3)",
         institution="OpenAQ",
         references="https://docs.openaq.org/",
         history=f"{datetime.now(UTC).isoformat()} openaq-fetch {start_iso}..{end_iso}",
@@ -704,6 +702,7 @@ def fetch(args, context):
     # falsely claims CF compliance.
     verify_cf_dsg(ds)
 
+    set_source(ds, "openaq")
     return ds
 
 

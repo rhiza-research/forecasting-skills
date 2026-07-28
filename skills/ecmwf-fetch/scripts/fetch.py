@@ -23,7 +23,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from weather_skills_core import DataError, UsageError, types, weather_skill
+from weather_skills_core import DataError, UsageError, set_source, types, weather_skill
 from weather_skills_core.envelope import parse_bbox, stamp_cf_attrs
 from weather_skills_core.util import require_env
 
@@ -414,7 +414,6 @@ def _latest(args, context) -> dt.date:
     "ecmwf-fetch",
     _SKILL_VERSION,
     output_type=types.FORECAST,
-    source="ecmwf-s2s",
     bbox=types.REQUIRED,
     date={
         "required": True,
@@ -593,6 +592,7 @@ def fetch(args, context):
         # values while the files are still alive.
         ds = ds.load()
 
+    set_source(ds, "ecmwf-s2s")
     return ds
 
 

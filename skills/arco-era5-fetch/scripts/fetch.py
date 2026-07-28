@@ -17,7 +17,7 @@ import re
 import sys
 from datetime import UTC, date, datetime
 
-from weather_skills_core import DataError, UsageError, types, weather_skill
+from weather_skills_core import DataError, UsageError, set_source, types, weather_skill
 from weather_skills_core.dates import np_to_date
 from weather_skills_core.envelope import normalize_longitude
 from weather_skills_core.provenance import make_completeness_probe
@@ -303,7 +303,6 @@ def _set_time_encoding(ds, context) -> None:
     "arco-era5-fetch",
     _SKILL_VERSION,
     output_type=types.GRIDDED,
-    source="arco-era5",
     start_time=True,
     end_time=True,
     bbox=types.OPTIONAL,
@@ -411,6 +410,7 @@ def fetch(args, context):
             f"failed while reading from the ARCO-ERA5 store ({type(exc).__name__}: {exc})."
         ) from None
 
+    set_source(ds, "arco-era5")
     return ds
 
 

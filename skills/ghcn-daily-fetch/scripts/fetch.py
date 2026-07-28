@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
-from weather_skills_core import DataError, types, weather_skill
+from weather_skills_core import DataError, set_source, types, weather_skill
 from weather_skills_core.dates import today_utc
 from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
@@ -303,7 +303,6 @@ def _set_write_encoding(ds) -> None:
     "ghcn-daily-fetch",
     _SKILL_VERSION,
     output_type=types.STATION,
-    source="ghcn-daily",
     start_time={
         "help": (
             "Start date (inclusive). For GHCN-Daily 'latest' resolves to the current "
@@ -463,7 +462,6 @@ def fetch(args, context):
         Conventions="CF-1.13",
         featureType="timeSeries",
         title="NOAA GHCN-Daily station observations",
-        source="NOAA Global Historical Climatology Network - Daily (GHCN-Daily)",
         institution="NOAA National Centers for Environmental Information",
         references="https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-daily",
         history=f"{datetime.now(UTC).isoformat()} ghcn-daily-fetch {start_iso}..{end_iso}",
@@ -475,6 +473,7 @@ def fetch(args, context):
     # falsely claims CF compliance.
     verify_cf_dsg(ds)
 
+    set_source(ds, "ghcn-daily")
     return ds
 
 

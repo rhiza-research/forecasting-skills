@@ -18,7 +18,7 @@ import sys
 import tempfile
 from datetime import UTC, date, datetime, timedelta
 
-from weather_skills_core import EntryOverride, UsageError, types, weather_skill
+from weather_skills_core import EntryOverride, UsageError, set_source, types, weather_skill
 from weather_skills_core.envelope import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -125,7 +125,6 @@ def _latest(args) -> date:
     "imerg-fetch",
     _SKILL_VERSION,
     output_type=types.GRIDDED,
-    source="imerg",
     start_time=True,
     end_time=True,
     extra_args=[("--version", {"default": "late", "choices": list(SHORTNAMES)})],
@@ -255,6 +254,7 @@ def fetch(args):
         # window. The dataset is yielded (and therefore written) inside the
         # with-block so the downloaded source netCDFs are still on disk while
         # the streamed write pulls each chunk.
+        set_source(ds, "imerg")
         yield ds
 
 

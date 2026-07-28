@@ -24,7 +24,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 
-from weather_skills_core import DataError, UsageError, types, weather_skill
+from weather_skills_core import DataError, UsageError, set_source, types, weather_skill
 from weather_skills_core.util import is_transient, require_env
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -281,7 +281,6 @@ def _discover_latest(args, context) -> date:
     "tahmo-fetch",
     _SKILL_VERSION,
     output_type=types.STATION,
-    source="tahmo",
     start_time=True,
     end_time=True,
     workers={
@@ -421,6 +420,7 @@ def fetch(args, context):
         Conventions="CF-1.13",
     )
 
+    set_source(ds, "tahmo")
     return ds
 
 

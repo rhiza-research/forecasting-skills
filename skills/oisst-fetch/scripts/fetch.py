@@ -25,7 +25,7 @@ from datetime import UTC, date, datetime
 # fail-fast guarantee. (cf_units is imported where it is used directly, in
 # _stamp_cf.)
 import cf_xarray  # noqa: F401  (loaded lazily by core's cf_axes_missing at write time)
-from weather_skills_core import DataError, SkillError, UsageError, types, weather_skill
+from weather_skills_core import DataError, SkillError, UsageError, set_source, types, weather_skill
 from weather_skills_core.dates import np_to_date
 from weather_skills_core.envelope import cf_axes_missing, normalize_longitude, stamp_cf_coords
 from weather_skills_core.provenance import make_completeness_probe
@@ -322,7 +322,6 @@ def _set_write_encoding(ds) -> None:
     "oisst-fetch",
     _SKILL_VERSION,
     output_type=types.GRIDDED,
-    source="oisst",
     start_time=True,
     end_time=True,
     bbox=types.OPTIONAL,
@@ -401,6 +400,7 @@ def fetch(args, context):
             continue
         _stamp_cf(piece)
         wrote_any = True
+        set_source(piece, "oisst")
         yield piece
 
     if not wrote_any:

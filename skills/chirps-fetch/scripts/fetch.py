@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from weather_skills_core import EntryOverride, UsageError, types, weather_skill
+from weather_skills_core import EntryOverride, UsageError, set_source, types, weather_skill
 from weather_skills_core.envelope import stamp_cf_attrs
 
 # Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
@@ -361,7 +361,6 @@ def _open_day(tif: Path, day: date):
     "chirps-fetch",
     _SKILL_VERSION,
     output_type=types.GRIDDED,
-    source="chirps",
     start_time=True,
     end_time=True,
     workers={
@@ -552,6 +551,7 @@ def fetch(args):
             ds = da.to_dataset()
             ds.attrs["Conventions"] = "CF-1.13"
             stamp_cf_attrs(ds)
+            set_source(ds, "chirps")
             yield ds
 
 
