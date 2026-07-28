@@ -1,6 +1,6 @@
 ---
 name: dynamical-fetch
-description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, and their analyses) and write a weather-skills envelope Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
+description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills envelope Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -21,8 +21,8 @@ selected with `--dataset` and validated at runtime against
 ## When to use
 
 - A task needs a forecast ensemble, deterministic forecast, or gridded analysis
-  that the source-specific fetchers (ECMWF S2S, CHIRPS, IMERG, TAHMO) don't
-  provide, with no credentials and no API queue.
+  that the source-specific fetchers (ECMWF S2S, CHIRPS, TAHMO) don't provide,
+  with no credentials and no API queue.
 - A downstream skill will clip, aggregate, compare, or plot the result as a
   weather-skills envelope Zarr.
 
@@ -51,6 +51,8 @@ The dataset shape determines which time flags apply and the output dims.
 | `noaa-gfs-analysis` | analysis | global | `(time, latitude, longitude)` |
 | `noaa-gefs-analysis` | analysis | global | `(time, latitude, longitude)` |
 | `noaa-mrms-conus-analysis-hourly` | analysis | CONUS | `(time, latitude, longitude)` |
+| `nasa-imerg-analysis-early` | analysis | global | `(time, latitude, longitude)` |
+| `nasa-imerg-analysis-late` | analysis | global | `(time, latitude, longitude)` |
 
 See <https://dynamical.org/catalog/> for each dataset's variables, resolution,
 and update cadence. `--variable`/`-v` lists the exact variable names per dataset
