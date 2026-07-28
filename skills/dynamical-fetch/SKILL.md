@@ -58,16 +58,6 @@ See <https://dynamical.org/catalog/> for each dataset's variables, resolution,
 and update cadence. `--variable`/`-v` lists the exact variable names per dataset
 if you pass an unknown one.
 
-The two IMERG analyses (`nasa-imerg-analysis-early`, `nasa-imerg-analysis-late`)
-are **half-hourly**: each `time` step covers one half hour, unlike the 1-hour
-cadence of `noaa-gfs-analysis` and `noaa-mrms-conus-analysis-hourly`. Both are on
-a global 0.1° grid (latitude descending from 89.95, longitude ascending from
--179.95) and their record starts 1998-01-01, so a long window needs `--bbox` —
-the fetcher applies no size cap. Both carry `precipitation_surface`, units
-`kg m-2 s-1`, the mean rate over the half hour, and
-`precipitation_quality_index_surface`, units `1`. `early` and `late` differ in
-production latency.
-
 The two HRRR datasets (`noaa-hrrr-forecast-48-hour`, `noaa-hrrr-analysis`) are
 **not supported**: they are on a projected Lambert Conformal Conic grid (1-D
 `y`/`x` in meters with 2-D `latitude(y,x)`/`longitude(y,x)`), which the 1-D
@@ -149,11 +139,6 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast
 # GFS analysis over a 3-week window ending at the newest available time
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start latest-3w --end latest \
   --bbox 12/-4/4/2 -o /tmp/gfs_analysis.zarr
-
-# IMERG late analysis, Kenya bbox, precipitation only — 49 half-hourly steps:
-# all 48 of 2026-07-20 plus the 00:00 step of 2026-07-21
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset nasa-imerg-analysis-late \
-  --start 2026-07-20 --end 2026-07-21 --bbox 7/32/-6/43 -v precipitation_surface -o /tmp/imerg.zarr
 ```
 
 See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the full per-dataset
