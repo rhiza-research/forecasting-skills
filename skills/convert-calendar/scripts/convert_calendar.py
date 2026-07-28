@@ -19,7 +19,7 @@ are dropped. ``--align-on`` is required whenever the source or target calendar i
 
 import sys
 
-from weather_skills_core import UsageError, types, weather_skill
+from weather_skills_core import UsageError, types, validate_type, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -46,7 +46,7 @@ def _source_calendar(time_coord) -> str:
     "convert-calendar",
     _SKILL_VERSION,
     input_type=types.ALL,
-    output_type="same",
+    output_type=types.ALL,
     time_dim=True,
     extra_args={
         "calendar": {
@@ -133,6 +133,8 @@ def convert_calendar(ds, time_dim, calendar, align_on):
             "nothing to write."
         )
 
+    # Re-encoding the time axis keeps the envelope shape.
+    validate_type(out_ds, ds)
     return out_ds
 
 

@@ -18,7 +18,7 @@ resulting axis labels each value with the end of the period it covers.
 import re
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, validate_type, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.12"
@@ -92,7 +92,7 @@ def _units_look_like_rate(units: str) -> bool:
     "deaccumulate",
     _SKILL_VERSION,
     input_type=types.ALL,
-    output_type="same",
+    output_type=types.ALL,
     variable={
         "mode": types.SINGLE,
         "help": "Variable to deaccumulate. Required if the input has multiple data vars.",
@@ -160,6 +160,8 @@ def deaccumulate(ds, variable):
 
     out_ds = ds.drop_vars(variable).isel(step=slice(1, None))
     out_ds[variable] = diffed
+    # Dropping the first step shortens the lead axis but keeps the envelope shape.
+    validate_type(out_ds, ds)
     return out_ds, WroteSummary(
         f"variable={variable}, step length {da.sizes['step']} -> {out_ds.sizes['step']}",
         replace=True,

@@ -31,7 +31,7 @@ def _coerce(values):
     "concat",
     _SKILL_VERSION,
     input_type=types.ALL,
-    output_type="same",
+    output_type=types.ALL,
     variadic_input=True,
     input_paths=True,
     extra_args={

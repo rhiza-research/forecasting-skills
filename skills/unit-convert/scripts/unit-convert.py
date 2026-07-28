@@ -145,7 +145,7 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
     "unit-convert",
     _SKILL_VERSION,
     input_type=types.ALL,
-    output_type="same",
+    output_type=types.ALL,
     variable={
         "mode": types.SINGLE,
         "help": "Variable to convert. Required if the input has multiple data vars.",

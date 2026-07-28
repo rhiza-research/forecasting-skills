@@ -54,7 +54,7 @@ def _normalize_args(args):
     "difference",
     _SKILL_VERSION,
     input_type=[types.ALL, types.ALL],
-    output_type="same",
+    output_type=types.ALL,
     input_help="Input Zarr; pass exactly twice (first = A, the minuend; second = B, the subtrahend)",
     input_paths=True,
     variable={

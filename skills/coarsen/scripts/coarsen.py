@@ -21,7 +21,7 @@ aligns with sheerwater's ``global0_25``; ``(0.1, 0.05)`` with ``global0_1``;
 import math
 import sys
 
-from weather_skills_core import UsageError, types, weather_skill
+from weather_skills_core import UsageError, types, validate_type, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -66,7 +66,7 @@ def _validate_args(args):
     "coarsen",
     _SKILL_VERSION,
     input_type=types.ALL,
-    output_type="same",
+    output_type=types.ALL,
     variable={"mode": types.SINGLE, "help": "Restrict to a single data variable."},
     dims=True,
     extra_args={
@@ -133,7 +133,10 @@ def coarsen(ds, variable, dims, target_resolution, offset):
         f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
-    return ds.regrid.linear(target)
+    out_ds = ds.regrid.linear(target)
+    # Regridding replaces the spatial axes but keeps the envelope shape.
+    validate_type(out_ds, ds)
+    return out_ds
 
 
 if __name__ == "__main__":

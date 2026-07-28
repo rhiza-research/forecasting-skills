@@ -19,7 +19,7 @@ expressed as timedelta64 and aggregates each.
 import datetime as _dt
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, validate_type, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.13"
@@ -361,7 +361,7 @@ def _validate_args(args):
     "aggregate-temporal",
     _SKILL_VERSION,
     input_type=types.ALL,
-    output_type="same",
+    output_type=types.ALL,
     input_paths=True,
     variable={
         "mode": types.REPEAT,
@@ -551,6 +551,9 @@ def aggregate(ds, input_paths, variable, time_dim, period, method, anchor_end):
             else:
                 attrs["standard_name"] = new_name
 
+    # Resampling rebuilds the aggregated axis but keeps the envelope shape: a
+    # forecast aggregated over step is still a forecast.
+    validate_type(out_ds, ds)
     return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
 
 

@@ -12,7 +12,7 @@
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, validate_type, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -98,7 +98,7 @@ def _validate_args(args):
     "downscale",
     _SKILL_VERSION,
     input_type=types.ALL,
-    output_type="same",
+    output_type=types.ALL,
     variable={"mode": types.SINGLE, "help": "Restrict to a single data variable"},
     dims=True,
     time_dim="time",
@@ -276,6 +276,9 @@ def downscale(
             mapped.attrs = dict(out_ds[v].attrs)
             out_ds[v] = mapped
 
+    # Interpolating onto a finer grid replaces the spatial axes but keeps the
+    # envelope shape.
+    validate_type(out_ds, ds)
     return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
 
 

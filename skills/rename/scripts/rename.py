@@ -43,7 +43,7 @@ def _validate_args(args):
     "rename",
     _SKILL_VERSION,
     input_type=types.ALL,
-    output_type="same",
+    output_type=types.ALL,
     variable={
         "mode": types.SINGLE,
         "help": "Source data variable to rename. Required if the input has multiple data vars.",
