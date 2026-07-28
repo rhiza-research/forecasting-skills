@@ -136,20 +136,6 @@ The `args` dict stores argparse dest names (underscored), not the hyphenated
 CLI flag names. A consumer reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
 invocation must translate underscore → hyphen.
 
-## Composition with aggregate-temporal and unit-convert
-
-`precipitation_surface` on the IMERG analyses is a rate in `kg m-2 s-1` averaged
-over each half hour, so daily `mm/day` takes two steps: `aggregate-temporal
---period daily --method mean` to average the half-hourly rates within each day,
-then `unit-convert --to-units mm/day`. Restrict the fetch itself with
-`-v precipitation_surface`: a store that keeps both variables leaves every later
-step free to choose one, and `plot` chooses the dimensionless
-`precipitation_quality_index_surface`, rendering quality flags as if they were
-rainfall, while `unit-convert` stops and asks which variable to convert. Use
-`mean`, not `sum`: `--method sum` totals the half-hourly samples instead of
-averaging them, overstating the result by the number of samples in the window —
-48 for a full day.
-
 ## Examples
 
 ```bash

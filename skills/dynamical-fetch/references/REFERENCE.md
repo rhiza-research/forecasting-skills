@@ -18,8 +18,8 @@ variable subsetting all happen before any array bytes are pulled.
 ## Catalog datasets and native dimensions
 
 `dynamical_catalog.list()` returns the available dataset ids. Those on regular
-1-D lat/lon grids are handled by this skill; the two HRRR datasets are on a
-projected grid and are rejected (see below).
+1-D lat/lon grids are handled by this skill; the HRRR datasets are on a projected
+grid and are rejected (see below).
 
 | Dataset id | Shape | Native dims | Members |
 |---|---|---|---|
