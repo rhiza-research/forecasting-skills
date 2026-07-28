@@ -146,7 +146,9 @@ def _validate_args(args):
 def _normalize_args(args):
     # The canonical int forms (not the raw strings) are what provenance
     # records — "0" and "00" name the same selection, so they must share one
-    # cache identity. Given order is preserved.
+    # cache identity. Order is preserved: preserve_order exempts --index and
+    # --value from the decorator's sort because the output keeps the order
+    # given on the command line.
     if args.get("index") is not None:
         args["index"] = [int(raw) for raw in args["index"]]
     return args
@@ -167,16 +169,17 @@ def _normalize_args(args):
             "--index",
             {
                 "action": "append",
-                "help": "Integer position to select (repeat once per position; negative positions "
-                "count from the end). Mutually exclusive with --value.",
+                "help": "Integer position to select (repeat once per position; negative "
+                "positions count from the end). Order is preserved. Mutually exclusive "
+                "with --value.",
             },
         ),
         (
             "--value",
             {
                 "action": "append",
-                "help": "Coordinate value to select, parsed against the coord's dtype (repeat once "
-                "per value). Mutually exclusive with --index.",
+                "help": "Coordinate value to select, parsed against the coord's dtype (repeat "
+                "once per value). Order is preserved. Mutually exclusive with --index.",
             },
         ),
     ],
@@ -185,6 +188,9 @@ def _normalize_args(args):
     },
     validate_args=_validate_args,
     normalize_args=_normalize_args,
+    # The output keeps the order the selectors were given in, so the decorator
+    # must not sort them into one cache key with a differently ordered request.
+    preserve_order=("index", "value"),
 )
 def select(ds, args):
     """Select entries along one named dimension of a weather-skills envelope Zarr."""

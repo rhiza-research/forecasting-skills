@@ -277,36 +277,13 @@ def _discover_latest(args, context) -> date:
     )
 
 
-def _normalize_entry_args(raw: dict) -> dict:
-    """Canonicalize the recorded cache-key args.
-
-    Sort --country so that `--country Ghana --country Kenya` and
-    `--country Kenya --country Ghana` produce identical cache keys.
-    --workers is a concurrency knob, not a data parameter; the decorator
-    already excludes it: the same request at any worker count produces the
-    same data.
-    """
-    raw["country"] = sorted(raw["country"])
-    return raw
-
-
 @weather_skill(
     "tahmo-fetch",
     _SKILL_VERSION,
     output_type=types.STATION,
     source="tahmo",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={
-        "help": (
-            "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
+    start_time=True,
+    end_time=True,
     workers={
         "default": DEFAULT_WORKERS,
         "help": (
@@ -321,7 +298,6 @@ def _normalize_entry_args(raw: dict) -> dict:
         )
     ],
     latest_resolver=_discover_latest,
-    normalize_args=_normalize_entry_args,
 )
 def fetch(args, context):
     """Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr."""

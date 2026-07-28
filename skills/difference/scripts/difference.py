@@ -42,14 +42,6 @@ def _to_signed(da, np):
     return da
 
 
-def _normalize_args(args):
-    # Normalize provenance args before stamping so reordered or duplicated
-    # --variable flags don't cause spurious cache misses: dedupe and sort.
-    if args.get("variable") is not None:
-        args["variable"] = sorted(set(args["variable"]))
-    return args
-
-
 @weather_skill(
     "difference",
     _SKILL_VERSION,
@@ -62,7 +54,6 @@ def _normalize_args(args):
         "several; each must be a data variable of BOTH inputs. Default (unset) "
         "differences every data variable present in both inputs.",
     },
-    normalize_args=_normalize_args,
 )
 def difference(ds_a, ds_b, args):
     """Subtract one weather-skills envelope Zarr from another (A - B)."""

@@ -22,17 +22,6 @@ from weather_skills_core import UsageError, input_path, types, weather_skill
 _SKILL_VERSION = "0.1.7"
 
 
-def _normalize_args(args):
-    # Normalize provenance args before stamping so reordered or duplicated
-    # flags don't cause spurious cache misses: dedupe + sort --dim, dedupe
-    # --variable (order-insensitive selection, but keep them as a sorted list
-    # so the recorded args are canonical).
-    args["dim"] = sorted(set(args["dim"]))
-    if args.get("variable") is not None:
-        args["variable"] = sorted(set(args["variable"]))
-    return args
-
-
 @weather_skill(
     "reduce",
     _SKILL_VERSION,
@@ -68,7 +57,6 @@ def _normalize_args(args):
             },
         ),
     ],
-    normalize_args=_normalize_args,
 )
 def reduce(ds, args):
     """Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic."""
