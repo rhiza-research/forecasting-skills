@@ -514,7 +514,6 @@ def _set_write_encoding(ds) -> None:
     latest_resolver=today_utc,
     normalize_args=_normalize_entry_args,
     write_encoding=_set_write_encoding,
-    cache_hit_label="fetch",
 )
 def fetch(args, context):
     """Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr."""

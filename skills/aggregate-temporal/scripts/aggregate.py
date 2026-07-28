@@ -395,7 +395,6 @@ def _validate_args(args):
     ],
     validate_args=_validate_args,
     hash_input=False,
-    cache_hit_label="aggregate",
 )
 def aggregate(ds, args):
     """Temporal aggregation for weather-skills envelope Zarr stores."""

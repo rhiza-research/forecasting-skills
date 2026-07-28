@@ -516,7 +516,6 @@ def _set_write_encoding(ds) -> None:
     latest_resolver=_latest,
     write_encoding=_set_write_encoding,
     streaming=True,
-    cache_hit_label="fetch",
 )
 def fetch(args, context):
     """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""

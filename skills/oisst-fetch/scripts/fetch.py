@@ -331,7 +331,6 @@ def _set_write_encoding(ds) -> None:
     write_encoding=_set_write_encoding,
     post_write=_cf_decode_check,
     streaming=True,
-    cache_hit_label="fetch",
 )
 def fetch(args, context):
     """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""

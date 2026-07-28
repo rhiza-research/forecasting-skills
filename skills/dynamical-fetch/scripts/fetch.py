@@ -198,7 +198,6 @@ def _bbox_subset(ds, bbox, bbox_raw) -> object:
         ),
     ],
     validate_args=_validate_and_resolve,
-    cache_hit_label="fetch",
 )
 def fetch(args, context):
     """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""

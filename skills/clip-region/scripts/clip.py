@@ -21,7 +21,6 @@ _SKILL_VERSION = "0.1.11"
     bbox=types.REQUIRED,
     dims=True,
     hash_input=False,
-    cache_hit_label="clip",
 )
 def clip_region(ds, args):
     """Spatially subset a gridded weather-skills envelope Zarr."""

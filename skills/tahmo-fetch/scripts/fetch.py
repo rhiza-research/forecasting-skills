@@ -322,7 +322,6 @@ def _normalize_entry_args(raw: dict) -> dict:
     ],
     latest_resolver=_discover_latest,
     normalize_args=_normalize_entry_args,
-    cache_hit_label="fetch",
 )
 def fetch(args, context):
     """Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr."""

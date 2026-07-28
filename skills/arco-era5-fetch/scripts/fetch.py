@@ -314,7 +314,6 @@ def _set_time_encoding(ds, context) -> None:
     latest_resolver=_latest,
     completeness_probe=_store_is_complete,
     write_encoding=_set_time_encoding,
-    cache_hit_label="fetch",
 )
 def fetch(args, context):
     """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""

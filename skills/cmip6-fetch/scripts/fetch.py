@@ -456,7 +456,6 @@ def _verify_calendar(out, context) -> None:
     normalize_args=_canonicalize_entry,
     write_encoding=_set_write_encoding,
     post_write=_verify_calendar,
-    cache_hit_label="fetch",
 )
 def fetch(args, context):
     """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""

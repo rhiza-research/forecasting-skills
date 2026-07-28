@@ -426,7 +426,6 @@ def _latest(args, context) -> dt.date:
         ),
     },
     latest_resolver=_latest,
-    cache_hit_label="fetch",
 )
 def fetch(args, context):
     """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""

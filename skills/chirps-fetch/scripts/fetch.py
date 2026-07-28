@@ -384,7 +384,6 @@ def _open_day(tif: Path, day: date):
     },
     latest_resolver=_discover_latest,
     streaming=True,
-    cache_hit_label="fetch",
 )
 def fetch(args):
     """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""

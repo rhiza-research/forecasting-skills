@@ -141,7 +141,6 @@ def _latest(args) -> date:
     extra_args=[("--version", {"default": "late", "choices": list(SHORTNAMES)})],
     latest_resolver=_latest,
     streaming=True,
-    cache_hit_label="fetch",
 )
 def fetch(args):
     """Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
