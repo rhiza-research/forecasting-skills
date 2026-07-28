@@ -8,7 +8,7 @@
 # ///
 """Concatenate weather-skills envelope Zarr stores along a named dim."""
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, WroteSummary, input_path, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.10"
@@ -33,17 +33,16 @@ def _coerce(values):
     input_type=types.ALL,
     output_type=types.ALL,
     variadic_input=True,
-    input_paths=True,
     extra_args={
         "dim": {"required": True},
         "coords": {"help": "Comma-separated coord values for the new dim"},
     },
 )
-def concat(dss, input_paths, dim, coords):
+def concat(dss, dim, coords):
     """Concatenate weather-skills envelope Zarr stores along a named dim."""
     import xarray as xr
 
-    names = [p.name for p in input_paths]
+    names = [input_path(ds).name for ds in dss]
 
     # Input-units guard. Concatenation places the inputs' values into a single
     # array under one set of attrs (the first input's, stamped below). If the

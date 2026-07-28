@@ -19,7 +19,7 @@ first input's attrs.
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, WroteSummary, input_path, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -56,7 +56,6 @@ def _normalize_args(args):
     input_type=[types.ALL, types.ALL],
     output_type=types.ALL,
     input_help="Input Zarr; pass exactly twice (first = A, the minuend; second = B, the subtrahend)",
-    input_paths=True,
     variable={
         "mode": types.REPEAT,
         "help": "Data variable to difference. Repeat once per variable to select "
@@ -65,12 +64,12 @@ def _normalize_args(args):
     },
     normalize_args=_normalize_args,
 )
-def difference(ds_a, ds_b, input_paths, variable):
+def difference(ds_a, ds_b, variable):
     """Subtract one weather-skills envelope Zarr from another (A - B)."""
     import numpy as np
     import xarray as xr
 
-    names = [p.name for p in input_paths]
+    names = [input_path(ds).name for ds in (ds_a, ds_b)]
 
     # Variable selection. Explicit --variable names must be data variables of
     # BOTH inputs. Default selection takes every data variable present in

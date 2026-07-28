@@ -16,7 +16,7 @@ Data variables that carry none of the requested dims pass through untouched.
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, WroteSummary, input_path, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -41,7 +41,6 @@ def _normalize_args(args):
     # so the union allows every envelope shape; the returned dataset's
     # detected shape is validated against it before the write.
     output_type=types.ALL,
-    input_paths=True,
     variable={
         "mode": types.REPEAT,
         "help": "Restrict the reduction to this data variable. Repeat once per "
@@ -65,9 +64,9 @@ def _normalize_args(args):
     },
     normalize_args=_normalize_args,
 )
-def reduce(ds, input_paths, variable, dim, method):
+def reduce(ds, variable, dim, method):
     """Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic."""
-    src = input_paths[0]
+    src = input_path(ds)
 
     # De-duplicate the requested dims preserving first-seen order so a
     # repeated name doesn't reduce twice; each must be an actual dim.

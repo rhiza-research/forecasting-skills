@@ -27,7 +27,7 @@ independent otherwise (--shared-scale / --independent-scale override).
 
 import sys
 
-from weather_skills_core import DataError, UsageError, types, weather_skill
+from weather_skills_core import DataError, UsageError, input_path, types, weather_skill
 from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -253,7 +253,6 @@ def _ax_bounds(ds, variable):
     output_type=types.PNG,
     input_help="Input Zarr; pass exactly twice (first = A, second = B)",
     history_labels=["a", "b"],
-    input_paths=True,
     variable={
         "mode": types.SINGLE,
         "help": "Variable for both rows. Per-row --variable-a/-b take precedence.",
@@ -330,7 +329,6 @@ def plot_compare(
     time_dim,
     bbox,
     mask_geojson,
-    input_paths,
 ):
     """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
 
@@ -341,8 +339,8 @@ def plot_compare(
     rows when they are the same variable with matching units, and per-row
     independent otherwise (--shared-scale / --independent-scale override).
     """
-    label_a = input_paths[0].name
-    label_b = input_paths[1].name
+    label_a = input_path(ds_a).name
+    label_b = input_path(ds_b).name
 
     import matplotlib
 

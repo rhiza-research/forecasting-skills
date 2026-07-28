@@ -19,7 +19,14 @@ expressed as timedelta64 and aggregates each.
 import datetime as _dt
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, types, validate_type, weather_skill
+from weather_skills_core import (
+    UsageError,
+    WroteSummary,
+    input_path,
+    types,
+    validate_type,
+    weather_skill,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.13"
@@ -362,7 +369,6 @@ def _validate_args(args):
     _SKILL_VERSION,
     input_type=types.ALL,
     output_type=types.ALL,
-    input_paths=True,
     variable={
         "mode": types.REPEAT,
         "help": "Restrict aggregation to this data variable. Repeat once per "
@@ -391,11 +397,11 @@ def _validate_args(args):
     hash_input=False,
     cache_hit_label="aggregate",
 )
-def aggregate(ds, input_paths, variable, time_dim, period, method, anchor_end):
+def aggregate(ds, variable, time_dim, period, method, anchor_end):
     """Temporal aggregation for weather-skills envelope Zarr stores."""
     import cf_xarray  # noqa: F401 — registers the .cf accessor
 
-    src = input_paths[0]
+    src = input_path(ds)
 
     # Variable selection. When --variable is given, restrict the dataset to the
     # named DATA variable(s) BEFORE aggregating, so that selecting only an
