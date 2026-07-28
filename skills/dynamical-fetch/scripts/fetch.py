@@ -14,7 +14,7 @@
 import sys
 from datetime import date
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
+from weather_skills_core import DataError, UsageError, WroteSummary, types, weather_skill
 from weather_skills_core.dates import np_to_date, parse_token, resolve_date, resolve_window
 from weather_skills_core.envelope import stamp_cf_attrs
 
@@ -166,10 +166,10 @@ def _bbox_subset(ds, bbox, bbox_raw) -> object:
 @weather_skill(
     "dynamical-fetch",
     _SKILL_VERSION,
-    output_type=("gridded", "forecast"),
-    bbox="optional",
+    output_type=(types.GRIDDED, types.FORECAST),
+    bbox=types.OPTIONAL,
     variable={
-        "mode": "repeat",
+        "mode": types.REPEAT,
         "help": "Restrict to this data variable. Repeat once per variable; omit for all.",
     },
     extra_args={

@@ -19,7 +19,7 @@ first input's attrs.
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -53,12 +53,12 @@ def _normalize_args(args):
 @weather_skill(
     "difference",
     _SKILL_VERSION,
-    input_type=["any", "any"],
+    input_type=[types.ALL, types.ALL],
     output_type="same",
     input_help="Input Zarr; pass exactly twice (first = A, the minuend; second = B, the subtrahend)",
     input_paths=True,
     variable={
-        "mode": "repeat",
+        "mode": types.REPEAT,
         "help": "Data variable to difference. Repeat once per variable to select "
         "several; each must be a data variable of BOTH inputs. Default (unset) "
         "differences every data variable present in both inputs.",

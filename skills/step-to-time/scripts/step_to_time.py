@@ -17,7 +17,7 @@ variables and other dims (``number``, lat/lon) pass through unchanged; the init
 date stays discoverable via the ``weather_skills_forecast_init`` dataset attr.
 """
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -26,8 +26,8 @@ _SKILL_VERSION = "0.1.8"
 @weather_skill(
     "step-to-time",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="gridded",
+    input_type=types.ALL,
+    output_type=types.GRIDDED,
 )
 def step_to_time(ds):
     """Realize a forecast's step axis as wall-clock valid times (time = init + step)."""

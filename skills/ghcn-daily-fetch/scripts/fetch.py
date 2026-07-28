@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
-from weather_skills_core import DataError, weather_skill
+from weather_skills_core import DataError, types, weather_skill
 from weather_skills_core.dates import today_utc
 from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
@@ -302,7 +302,7 @@ def _set_write_encoding(ds) -> None:
 @weather_skill(
     "ghcn-daily-fetch",
     _SKILL_VERSION,
-    output_type="station",
+    output_type=types.STATION,
     source="ghcn-daily",
     start_time={
         "help": (
@@ -314,7 +314,7 @@ def _set_write_encoding(ds) -> None:
     },
     end_time={"help": "End date (inclusive). Same date grammar as --start."},
     bbox={
-        "mode": "optional",
+        "mode": types.OPTIONAL,
         "help": (
             "Spatial subset N/W/S/E decimal degrees, filtering stations. Omitting it "
             "(or giving an over-wide box) selects many stations, each a separate "
@@ -330,7 +330,7 @@ def _set_write_encoding(ds) -> None:
         ),
     },
     variable={
-        "mode": "repeat",
+        "mode": types.REPEAT,
         "choices": sorted(VAR_MAP.keys()),
         "help": (
             "Restrict to this variable; repeat once per variable. "

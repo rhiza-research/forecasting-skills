@@ -26,7 +26,7 @@ import re
 import sys
 from pathlib import Path
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import UsageError, types, weather_skill
 from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -371,12 +371,12 @@ def _normalize_entry_args(raw):
 @weather_skill(
     "plot",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="png",
-    variable="single",
+    input_type=types.ALL,
+    output_type=types.PNG,
+    variable=types.SINGLE,
     title=True,
     bbox={
-        "mode": "optional",
+        "mode": types.OPTIONAL,
         "help": "N/W/S/E decimal degrees (heatmap only). Slices the gridded input "
         "to the bbox and sets the axes extent to it (an explicit --extent still "
         "overrides). Use the resolve-region skill to get a country's bbox.",

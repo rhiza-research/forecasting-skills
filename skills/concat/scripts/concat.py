@@ -8,7 +8,7 @@
 # ///
 """Concatenate weather-skills envelope Zarr stores along a named dim."""
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.10"
@@ -30,7 +30,7 @@ def _coerce(values):
 @weather_skill(
     "concat",
     _SKILL_VERSION,
-    input_type="any",
+    input_type=types.ALL,
     output_type="same",
     variadic_input=True,
     input_paths=True,

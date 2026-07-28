@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from weather_skills_core import EntryOverride, UsageError, WroteSummary, weather_skill
+from weather_skills_core import EntryOverride, UsageError, WroteSummary, types, weather_skill
 from weather_skills_core.envelope import stamp_cf_attrs
 
 # Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
@@ -360,7 +360,7 @@ def _open_day(tif: Path, day: date):
 @weather_skill(
     "chirps-fetch",
     _SKILL_VERSION,
-    output_type="gridded",
+    output_type=types.GRIDDED,
     source="chirps",
     start_time={
         "help": (

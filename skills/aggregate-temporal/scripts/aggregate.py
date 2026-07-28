@@ -19,7 +19,7 @@ expressed as timedelta64 and aggregates each.
 import datetime as _dt
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.13"
@@ -360,11 +360,11 @@ def _validate_args(args):
 @weather_skill(
     "aggregate-temporal",
     _SKILL_VERSION,
-    input_type="any",
+    input_type=types.ALL,
     output_type="same",
     input_paths=True,
     variable={
-        "mode": "repeat",
+        "mode": types.REPEAT,
         "help": "Restrict aggregation to this data variable. Repeat once per "
         "variable to select several. The selected data variables are "
         "aggregated and relabeled as usual; other DATA variables are dropped "

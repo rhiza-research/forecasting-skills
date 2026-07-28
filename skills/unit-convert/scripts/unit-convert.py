@@ -24,7 +24,7 @@ precipitation flux such as ``kg m-2 s-1`` into a depth rate such as ``mm/day``.
 import re
 import tokenize
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -144,10 +144,10 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
 @weather_skill(
     "unit-convert",
     _SKILL_VERSION,
-    input_type="any",
+    input_type=types.ALL,
     output_type="same",
     variable={
-        "mode": "single",
+        "mode": types.SINGLE,
         "help": "Variable to convert. Required if the input has multiple data vars.",
     },
     extra_args={

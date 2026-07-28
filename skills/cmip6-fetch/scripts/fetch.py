@@ -25,7 +25,7 @@ import cf_xarray  # noqa: F401  (registers the .cf accessor used below)
 import gcsfs
 import pandas as pd
 import xarray as xr
-from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core import DataError, UsageError, types, weather_skill
 from weather_skills_core.envelope import normalize_longitude, udunits_error
 from weather_skills_core.provenance import make_completeness_probe
 
@@ -421,7 +421,7 @@ def _verify_calendar(out, context) -> None:
 @weather_skill(
     "cmip6-fetch",
     _SKILL_VERSION,
-    output_type="gridded",
+    output_type=types.GRIDDED,
     start_time={
         "help": (
             "Range start, inclusive. Either YYYY-MM-DD, 'now'/'today', 'latest', "
@@ -430,9 +430,9 @@ def _verify_calendar(out, context) -> None:
         )
     },
     end_time=True,
-    bbox="optional",
+    bbox=types.OPTIONAL,
     variable={
-        "mode": "single",
+        "mode": types.SINGLE,
         "required": True,
         "help": "CMIP6 variable_id (one variable per dataset, e.g. tas, pr).",
     },

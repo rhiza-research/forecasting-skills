@@ -24,7 +24,7 @@ variables, and attrs pass through unchanged.
 import re
 from pathlib import Path
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.6"
@@ -155,12 +155,12 @@ def _normalize_args(args):
 @weather_skill(
     "select",
     _SKILL_VERSION,
-    input_type="any",
+    input_type=types.ALL,
     # The output shape depends on the input's shape and the selection (a
-    # single selection collapses the dim), so the union declares every zarr
-    # envelope shape; the returned dataset's detected shape is validated
-    # against it before the write.
-    output_type=("gridded", "forecast", "station"),
+    # single selection collapses the dim), so the union allows every envelope
+    # shape; the returned dataset's detected shape is validated against it
+    # before the write.
+    output_type=types.ALL,
     extra_args={
         "dim": {"required": True, "help": "Dimension to select along (exactly one)."},
         "index": {

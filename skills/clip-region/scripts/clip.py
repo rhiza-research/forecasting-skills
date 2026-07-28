@@ -7,7 +7,7 @@
 # ///
 """Spatially subset a gridded weather-skills envelope Zarr."""
 
-from weather_skills_core import WroteSummary, weather_skill
+from weather_skills_core import WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -16,9 +16,9 @@ _SKILL_VERSION = "0.1.11"
 @weather_skill(
     "clip-region",
     _SKILL_VERSION,
-    input_type="any",
+    input_type=types.ALL,
     output_type="same",
-    bbox="required",
+    bbox=types.REQUIRED,
     dims=True,
     hash_input=False,
     cache_hit_label="clip",

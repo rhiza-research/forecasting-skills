@@ -16,7 +16,7 @@ Data variables that carry none of the requested dims pass through untouched.
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -36,14 +36,14 @@ def _normalize_args(args):
 @weather_skill(
     "reduce",
     _SKILL_VERSION,
-    input_type="any",
+    input_type=types.ALL,
     # The output shape depends on the input's shape and the collapsed dims,
-    # so the union declares every zarr envelope shape; the returned dataset's
+    # so the union allows every envelope shape; the returned dataset's
     # detected shape is validated against it before the write.
-    output_type=("gridded", "forecast", "station"),
+    output_type=types.ALL,
     input_paths=True,
     variable={
-        "mode": "repeat",
+        "mode": types.REPEAT,
         "help": "Restrict the reduction to this data variable. Repeat once per "
         "variable to select several; each selected variable must carry every "
         "requested --dim. Default (unset) reduces every data variable that "

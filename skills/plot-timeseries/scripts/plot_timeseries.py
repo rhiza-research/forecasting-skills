@@ -24,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import UsageError, types, weather_skill
 from weather_skills_core import provenance as _provenance
 from weather_skills_core.envelope import auto_variable, cf_dim
 
@@ -52,7 +52,7 @@ def _pick_time_dim(da, override):
 @weather_skill(
     "plot-timeseries",
     _SKILL_VERSION,
-    variable="single",
+    variable=types.SINGLE,
     title=True,
     time_dim=True,
     extra_args={

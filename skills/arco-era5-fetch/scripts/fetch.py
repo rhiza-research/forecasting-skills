@@ -17,7 +17,7 @@ import re
 import sys
 from datetime import UTC, date, datetime
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
+from weather_skills_core import DataError, UsageError, WroteSummary, types, weather_skill
 from weather_skills_core.dates import np_to_date
 from weather_skills_core.envelope import normalize_longitude
 from weather_skills_core.provenance import make_completeness_probe
@@ -302,13 +302,13 @@ def _set_time_encoding(ds, context) -> None:
 @weather_skill(
     "arco-era5-fetch",
     _SKILL_VERSION,
-    output_type="gridded",
+    output_type=types.GRIDDED,
     source="arco-era5",
     start_time=True,
     end_time=True,
-    bbox="optional",
+    bbox=types.OPTIONAL,
     variable={
-        "mode": "repeat",
+        "mode": types.REPEAT,
         "help": "Restrict to this data variable. Repeat once per variable; omit for all (large).",
     },
     latest_resolver=_latest,

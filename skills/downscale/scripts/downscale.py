@@ -12,7 +12,7 @@
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -97,9 +97,9 @@ def _validate_args(args):
 @weather_skill(
     "downscale",
     _SKILL_VERSION,
-    input_type="any",
+    input_type=types.ALL,
     output_type="same",
-    variable={"mode": "single", "help": "Restrict to a single data variable"},
+    variable={"mode": types.SINGLE, "help": "Restrict to a single data variable"},
     dims=True,
     time_dim="time",
     extra_args={

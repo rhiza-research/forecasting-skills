@@ -23,7 +23,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
+from weather_skills_core import DataError, UsageError, WroteSummary, types, weather_skill
 from weather_skills_core.envelope import parse_bbox, stamp_cf_attrs
 from weather_skills_core.util import require_env
 
@@ -413,9 +413,9 @@ def _latest(args, context) -> dt.date:
 @weather_skill(
     "ecmwf-fetch",
     _SKILL_VERSION,
-    output_type="forecast",
+    output_type=types.FORECAST,
     source="ecmwf-s2s",
-    bbox="required",
+    bbox=types.REQUIRED,
     date={
         "required": True,
         "context": "single forecast init date",

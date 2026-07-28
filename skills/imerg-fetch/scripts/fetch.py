@@ -18,7 +18,7 @@ import sys
 import tempfile
 from datetime import UTC, date, datetime, timedelta
 
-from weather_skills_core import EntryOverride, UsageError, WroteSummary, weather_skill
+from weather_skills_core import EntryOverride, UsageError, WroteSummary, types, weather_skill
 from weather_skills_core.envelope import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -124,7 +124,7 @@ def _latest(args) -> date:
 @weather_skill(
     "imerg-fetch",
     _SKILL_VERSION,
-    output_type="gridded",
+    output_type=types.GRIDDED,
     source="imerg",
     start_time={
         "help": (

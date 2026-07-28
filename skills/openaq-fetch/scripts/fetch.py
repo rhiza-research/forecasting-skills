@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
-from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core import DataError, UsageError, types, weather_skill
 from weather_skills_core.dates import today_utc
 from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
@@ -480,7 +480,7 @@ def _set_write_encoding(ds) -> None:
 @weather_skill(
     "openaq-fetch",
     _SKILL_VERSION,
-    output_type="station",
+    output_type=types.STATION,
     source="openaq",
     start_time={
         "help": (
@@ -491,7 +491,7 @@ def _set_write_encoding(ds) -> None:
     },
     end_time={"help": "End date (inclusive). Same date grammar as --start."},
     bbox={
-        "mode": "required",
+        "mode": types.REQUIRED,
         "help": "Spatial subset N/W/S/E decimal degrees (required — selects stations).",
     },
     workers={
@@ -504,7 +504,7 @@ def _set_write_encoding(ds) -> None:
         ),
     },
     variable={
-        "mode": "repeat",
+        "mode": types.REPEAT,
         "choices": SUPPORTED_PARAMETERS,
         "help": (
             "Restrict to this pollutant; repeat once per variable. "

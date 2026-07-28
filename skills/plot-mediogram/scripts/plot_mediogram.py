@@ -13,7 +13,7 @@
 # ///
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
 
-from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core import DataError, UsageError, types, weather_skill
 from weather_skills_core.envelope import cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -57,11 +57,11 @@ def _inner_stats(values):
 @weather_skill(
     "plot-mediogram",
     _SKILL_VERSION,
-    input_type=["any", "any"],
+    input_type=[types.ALL, types.ALL],
     input_names=["forecast", "mclimate"],
     input_help=["Forecast Zarr (number × step × spatial)", "M-climate Zarr (same schema)"],
-    output_type="png",
-    variable="single",
+    output_type=types.PNG,
+    variable=types.SINGLE,
     title=True,
     extra_args={
         "lat": {"type": float, "required": True},

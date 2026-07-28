@@ -27,7 +27,7 @@ independent otherwise (--shared-scale / --independent-scale override).
 
 import sys
 
-from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core import DataError, UsageError, types, weather_skill
 from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -249,19 +249,19 @@ def _ax_bounds(ds, variable):
 @weather_skill(
     "plot-compare",
     _SKILL_VERSION,
-    input_type=["any", "any"],
-    output_type="png",
+    input_type=[types.ALL, types.ALL],
+    output_type=types.PNG,
     input_help="Input Zarr; pass exactly twice (first = A, second = B)",
     history_labels=["a", "b"],
     input_paths=True,
     variable={
-        "mode": "single",
+        "mode": types.SINGLE,
         "help": "Variable for both rows. Per-row --variable-a/-b take precedence.",
     },
     title=True,
     time_dim=True,
     bbox={
-        "mode": "optional",
+        "mode": types.OPTIONAL,
         "help": "N/W/S/E decimal degrees. Slices gridded inputs to the bbox, drops "
         "stations outside the bbox, and sets axes to the bbox. Cells inside the "
         "bbox but outside any --mask-geojson polygon are kept (rectangular "

@@ -18,7 +18,7 @@ resulting axis labels each value with the end of the period it covers.
 import re
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, WroteSummary, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.12"
@@ -91,10 +91,10 @@ def _units_look_like_rate(units: str) -> bool:
 @weather_skill(
     "deaccumulate",
     _SKILL_VERSION,
-    input_type="any",
+    input_type=types.ALL,
     output_type="same",
     variable={
-        "mode": "single",
+        "mode": types.SINGLE,
         "help": "Variable to deaccumulate. Required if the input has multiple data vars.",
     },
     hash_input=False,
