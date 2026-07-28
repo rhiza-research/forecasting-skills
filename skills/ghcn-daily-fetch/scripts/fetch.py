@@ -306,13 +306,12 @@ def _set_write_encoding(ds) -> None:
     source="ghcn-daily",
     start_time={
         "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). For "
-            "GHCN-Daily 'latest' resolves to the current UTC date (no cheap "
-            "day-precise discovery); a missing trailing tail near today is normal."
+            "Start date (inclusive). For GHCN-Daily 'latest' resolves to the current "
+            "UTC date (no cheap day-precise discovery); a missing trailing tail near "
+            "today is normal."
         )
     },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
+    end_time=True,
     bbox={
         "mode": types.OPTIONAL,
         "help": (

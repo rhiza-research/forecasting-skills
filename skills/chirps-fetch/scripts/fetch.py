@@ -362,18 +362,8 @@ def _open_day(tif: Path, day: date):
     _SKILL_VERSION,
     output_type=types.GRIDDED,
     source="chirps",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={
-        "help": (
-            "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
+    start_time=True,
+    end_time=True,
     workers={
         "default": DEFAULT_WORKERS,
         "help": (

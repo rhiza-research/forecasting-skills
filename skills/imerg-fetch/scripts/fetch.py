@@ -126,18 +126,8 @@ def _latest(args) -> date:
     _SKILL_VERSION,
     output_type=types.GRIDDED,
     source="imerg",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={
-        "help": (
-            "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
+    start_time=True,
+    end_time=True,
     extra_args=[("--version", {"default": "late", "choices": list(SHORTNAMES)})],
     latest_resolver=_latest,
     streaming=True,

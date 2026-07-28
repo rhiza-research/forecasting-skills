@@ -487,13 +487,8 @@ def _set_write_encoding(ds) -> None:
     _SKILL_VERSION,
     output_type=types.GRIDDED,
     source="smap",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
+    start_time=True,
+    end_time=True,
     bbox={
         "mode": types.OPTIONAL,
         "help": (

@@ -424,9 +424,8 @@ def _verify_calendar(out, context) -> None:
     output_type=types.GRIDDED,
     start_time={
         "help": (
-            "Range start, inclusive. Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-            "Absolute future dates are allowed (scenario experiments run to 2100)."
+            "Range start, inclusive. Absolute future dates are allowed (scenario "
+            "experiments run to 2100)."
         )
     },
     end_time=True,

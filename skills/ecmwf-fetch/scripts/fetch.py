@@ -420,9 +420,7 @@ def _latest(args, context) -> dt.date:
         "required": True,
         "context": "single forecast init date",
         "help": (
-            "Forecast init date. Either YYYY-MM-DD, 'now'/'today', 'latest', or "
-            "an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-            "'latest' probes init dates backward via ECDS submits (slow)."
+            "Forecast init date. 'latest' probes init dates backward via ECDS submits (slow)."
         ),
     },
     latest_resolver=_latest,

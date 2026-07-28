@@ -14,7 +14,7 @@
 import sys
 from datetime import date
 
-from weather_skills_core import DataError, UsageError, types, weather_skill
+from weather_skills_core import DATE_GRAMMAR, DataError, UsageError, types, weather_skill
 from weather_skills_core.dates import np_to_date, parse_token, resolve_date, resolve_window
 from weather_skills_core.envelope import stamp_cf_attrs
 
@@ -183,9 +183,8 @@ def _bbox_subset(ds, bbox, bbox_raw) -> object:
         (
             "--date",
             {
-                "help": "Forecast init date (forecast datasets). Either YYYY-MM-DD, 'now'/'today', "
-                "'latest', or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-                "Selects the 00 UTC initialization of the resolved date."
+                "help": "Forecast init date (forecast datasets). "
+                f"{DATE_GRAMMAR} Selects the 00 UTC initialization of the resolved date."
             },
         ),
         (

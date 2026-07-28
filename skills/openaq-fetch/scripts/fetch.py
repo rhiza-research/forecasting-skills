@@ -484,12 +484,10 @@ def _set_write_encoding(ds) -> None:
     source="openaq",
     start_time={
         "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-            "'latest' resolves to the current UTC date for this source."
+            "Start date (inclusive). 'latest' resolves to the current UTC date for this source."
         )
     },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
+    end_time=True,
     bbox={
         "mode": types.REQUIRED,
         "help": "Spatial subset N/W/S/E decimal degrees (required — selects stations).",
