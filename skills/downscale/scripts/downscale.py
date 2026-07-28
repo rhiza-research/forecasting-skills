@@ -101,7 +101,7 @@ def _validate_args(args):
     output_type=types.ALL,
     variable={"mode": types.SINGLE, "help": "Restrict to a single data variable"},
     dims=True,
-    time_dim="time",
+    time_dim=True,
     extra_args={
         "algorithm": {
             "required": True,
@@ -153,7 +153,7 @@ def downscale(
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
-    from weather_skills_core.envelope import detect_spatial_dims
+    from weather_skills_core.envelope import detect_spatial_dims, detect_time_dim
 
     lat_dim, lon_dim = detect_spatial_dims(ds, dims)
 
@@ -236,11 +236,9 @@ def downscale(
     if algorithm == "q-q":
         ref_path = Path(qq_reference)
         ref_ds = xr.open_zarr(ref_path, consolidated=False)
-        if time_dim not in out_ds.dims:
-            raise UsageError(
-                f"downscaled output has no '{time_dim}' dim "
-                f"(have {list(out_ds.dims)}); pass --time-dim."
-            )
+        # Resolve the axis the mapping runs along: an explicit --time-dim wins,
+        # else CF/heuristic detection. Raises naming --time-dim as the remedy.
+        time_dim = detect_time_dim(out_ds, time_dim)
         if time_dim not in ref_ds.dims:
             raise UsageError(
                 f"--qq-reference has no '{time_dim}' dim (have {list(ref_ds.dims)}); pass --time-dim."
