@@ -69,23 +69,31 @@ def _validate_args(args):
     output_type=types.ALL,
     variable={"mode": types.SINGLE, "help": "Restrict to a single data variable."},
     dims=True,
-    extra_args={
-        "target_resolution": {
-            "type": float,
-            "required": True,
-            "help": "Target grid spacing in degrees.",
-        },
-        "offset": {
-            "type": float,
-            "required": True,
-            "help": "Grid offset in degrees; target points fall at offset + k*resolution.",
-        },
-    },
+    extra_args=[
+        (
+            "--target-resolution",
+            {"type": float, "required": True, "help": "Target grid spacing in degrees."},
+        ),
+        (
+            "--offset",
+            {
+                "type": float,
+                "required": True,
+                "help": "Grid offset in degrees; target points fall at offset + k*resolution.",
+            },
+        ),
+    ],
     validate_args=_validate_args,
     hash_input=False,
 )
-def coarsen(ds, variable, dims, target_resolution, offset):
+def coarsen(ds, args):
     """Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only)."""
+    variable, dims, target_resolution, offset = (
+        args["variable"],
+        args["dims"],
+        args["target_resolution"],
+        args["offset"],
+    )
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor

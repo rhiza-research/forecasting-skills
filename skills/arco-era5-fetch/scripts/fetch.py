@@ -316,8 +316,14 @@ def _set_time_encoding(ds, context) -> None:
     write_encoding=_set_time_encoding,
     cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, variable, context):
+def fetch(args, context):
     """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
+    start_time, end_time, bbox, variable = (
+        args["start_time"],
+        args["end_time"],
+        args["bbox"],
+        args["variable"],
+    )
     import numpy as np
     from weather_skills_core.envelope import bbox_subset
 

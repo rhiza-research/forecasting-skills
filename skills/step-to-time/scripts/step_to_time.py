@@ -29,7 +29,7 @@ _SKILL_VERSION = "0.1.8"
     input_type=types.ALL,
     output_type=types.GRIDDED,
 )
-def step_to_time(ds):
+def step_to_time(ds, args):
     """Realize a forecast's step axis as wall-clock valid times (time = init + step)."""
     import cftime
     import numpy as np

@@ -150,25 +150,30 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
         "mode": types.SINGLE,
         "help": "Variable to convert. Required if the input has multiple data vars.",
     },
-    extra_args={
-        "to_units": {
-            "required": True,
-            "help": "Target units string (e.g. 'mm/day'); becomes the output variable's "
-            "units attribute.",
-        },
-        "standard_name": {
-            "help": (
-                "CF standard_name to write on the output variable. Overrides the "
+    extra_args=[
+        (
+            "--to-units",
+            {
+                "required": True,
+                "help": "Target units string (e.g. 'mm/day'); becomes the output variable's "
+                "units attribute.",
+            },
+        ),
+        (
+            "--standard-name",
+            {
+                "help": "CF standard_name to write on the output variable. Overrides the "
                 "built-in target-units lookup. When omitted, a known target unit sets "
                 "the matching name, a dimensionality-changing conversion drops the "
                 "now-inconsistent source name, and a same-dimension conversion keeps it."
-            ),
-        },
-    },
+            },
+        ),
+    ],
     hash_input=False,
 )
-def unit_convert(ds, variable, to_units, standard_name):
+def unit_convert(ds, args):
     """Convert one data variable in a weather-skills envelope Zarr to a target units string."""
+    variable, to_units, standard_name = args["variable"], args["to_units"], args["standard_name"]
     import pint
 
     data_vars = list(ds.data_vars)

@@ -436,15 +436,21 @@ def _verify_calendar(out, context) -> None:
         "required": True,
         "help": "CMIP6 variable_id (one variable per dataset, e.g. tas, pr).",
     },
-    extra_args={
-        "model": {"required": True, "help": "CMIP6 source_id (e.g. GFDL-CM4)."},
-        "experiment": {"required": True, "help": "CMIP6 experiment_id (e.g. historical, ssp245)."},
-        "member": {"default": "r1i1p1f1", "help": "CMIP6 member_id (default r1i1p1f1)."},
-        "table": {"default": "Amon", "help": "CMIP6 table_id (default Amon)."},
-        "grid": {
-            "help": "CMIP6 grid_label; required only when more than one matches the other facets."
-        },
-    },
+    extra_args=[
+        ("--model", {"required": True, "help": "CMIP6 source_id (e.g. GFDL-CM4)."}),
+        (
+            "--experiment",
+            {"required": True, "help": "CMIP6 experiment_id (e.g. historical, ssp245)."},
+        ),
+        ("--member", {"default": "r1i1p1f1", "help": "CMIP6 member_id (default r1i1p1f1)."}),
+        ("--table", {"default": "Amon", "help": "CMIP6 table_id (default Amon)."}),
+        (
+            "--grid",
+            {
+                "help": "CMIP6 grid_label; required only when more than one matches the other facets."
+            },
+        ),
+    ],
     latest_resolver=_latest,
     completeness_probe=_store_is_complete,
     normalize_args=_canonicalize_entry,
@@ -452,8 +458,19 @@ def _verify_calendar(out, context) -> None:
     post_write=_verify_calendar,
     cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, model, experiment, variable, member, table, grid, context):
+def fetch(args, context):
     """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
+    start_time, end_time, bbox, model, experiment, variable, member, table, grid = (
+        args["start_time"],
+        args["end_time"],
+        args["bbox"],
+        args["model"],
+        args["experiment"],
+        args["variable"],
+        args["member"],
+        args["table"],
+        args["grid"],
+    )
     from weather_skills_core.envelope import bbox_subset
 
     state = _open_remote(context.state, model, experiment, variable, member, table, grid)

@@ -49,23 +49,30 @@ def _normalize_args(args):
         "carries at least one of the requested dims. Unselected or "
         "untouched data variables pass through unchanged.",
     },
-    extra_args={
-        "dim": {
-            "repeat": True,
-            "required": True,
-            "help": "Dimension to collapse. Repeat once per dimension to collapse "
-            "several in one run.",
-        },
-        "method": {
-            "required": True,
-            "choices": ["mean", "std", "min", "max", "sum", "median"],
-            "help": "Statistic applied along the collapsed dimension(s).",
-        },
-    },
+    extra_args=[
+        (
+            "--dim",
+            {
+                "action": "append",
+                "required": True,
+                "help": "Dimension to collapse. Repeat once per dimension to collapse "
+                "several in one run.",
+            },
+        ),
+        (
+            "--method",
+            {
+                "required": True,
+                "choices": ["mean", "std", "min", "max", "sum", "median"],
+                "help": "Statistic applied along the collapsed dimension(s).",
+            },
+        ),
+    ],
     normalize_args=_normalize_args,
 )
-def reduce(ds, variable, dim, method):
+def reduce(ds, args):
     """Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic."""
+    variable, dim, method = args["variable"], args["dim"], args["method"]
     src = input_path(ds)
 
     # De-duplicate the requested dims preserving first-seen order so a

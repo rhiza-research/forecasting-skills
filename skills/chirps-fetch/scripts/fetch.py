@@ -386,8 +386,9 @@ def _open_day(tif: Path, day: date):
     streaming=True,
     cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, workers):
+def fetch(args):
     """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
+    start_time, end_time, workers = args["start_time"], args["end_time"], args["workers"]
     import requests
 
     start = start_time.isoformat()

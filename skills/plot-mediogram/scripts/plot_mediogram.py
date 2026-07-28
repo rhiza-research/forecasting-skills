@@ -63,13 +63,14 @@ def _inner_stats(values):
     output_type=types.PNG,
     variable=types.SINGLE,
     title=True,
-    extra_args={
-        "lat": {"type": float, "required": True},
-        "lon": {"type": float, "required": True},
-    },
+    extra_args=[
+        ("--lat", {"type": float, "required": True}),
+        ("--lon", {"type": float, "required": True}),
+    ],
 )
-def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
+def plot_mediogram(ds_fc, ds_mc, args):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
+    variable, lat, lon, title = args["variable"], args["lat"], args["lon"], args["title"]
     import matplotlib
 
     matplotlib.use("Agg")

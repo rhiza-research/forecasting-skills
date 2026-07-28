@@ -161,27 +161,34 @@ def _normalize_args(args):
     # shape; the returned dataset's detected shape is validated against it
     # before the write.
     output_type=types.ALL,
-    extra_args={
-        "dim": {"required": True, "help": "Dimension to select along (exactly one)."},
-        "index": {
-            "repeat": True,
-            "help": "Integer position to select (repeat once per position; negative positions "
-            "count from the end). Mutually exclusive with --value.",
-        },
-        "value": {
-            "repeat": True,
-            "help": "Coordinate value to select, parsed against the coord's dtype (repeat once "
-            "per value). Mutually exclusive with --index.",
-        },
-    },
+    extra_args=[
+        ("--dim", {"required": True, "help": "Dimension to select along (exactly one)."}),
+        (
+            "--index",
+            {
+                "action": "append",
+                "help": "Integer position to select (repeat once per position; negative positions "
+                "count from the end). Mutually exclusive with --value.",
+            },
+        ),
+        (
+            "--value",
+            {
+                "action": "append",
+                "help": "Coordinate value to select, parsed against the coord's dtype (repeat once "
+                "per value). Mutually exclusive with --index.",
+            },
+        ),
+    ],
     mutex_groups={
         "selector": {"args": ("index", "value"), "required": True},
     },
     validate_args=_validate_args,
     normalize_args=_normalize_args,
 )
-def select(ds, dim, index, value):
+def select(ds, args):
     """Select entries along one named dimension of a weather-skills envelope Zarr."""
+    dim, index, value = args["dim"], args["index"], args["value"]
     import numpy as np
 
     if dim not in ds.dims:

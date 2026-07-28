@@ -48,16 +48,17 @@ def _validate_args(args):
         "mode": types.SINGLE,
         "help": "Source data variable to rename. Required if the input has multiple data vars.",
     },
-    extra_args={
-        "to_name": {
-            "required": True,
-            "help": "New variable name; becomes the output variable's name.",
-        },
-    },
+    extra_args=[
+        (
+            "--to-name",
+            {"required": True, "help": "New variable name; becomes the output variable's name."},
+        )
+    ],
     validate_args=_validate_args,
 )
-def rename(ds, variable, to_name):
+def rename(ds, args):
     """Rename one data variable in a weather-skills envelope Zarr to a new name."""
+    variable, to_name = args["variable"], args["to_name"]
     data_vars = list(ds.data_vars)
     if variable:
         if variable not in ds.data_vars:

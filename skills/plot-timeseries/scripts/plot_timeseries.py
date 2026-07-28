@@ -55,32 +55,38 @@ def _pick_time_dim(da, override):
     variable=types.SINGLE,
     title=True,
     time_dim=True,
-    extra_args={
-        "input": {
-            "flag": "--input",
-            "aliases": ["-i"],
-            "repeat": True,
-            "required": True,
-            "help": "Input Zarr; repeat for each input. Order is preserved in the legend.",
-        },
-        "output": {"flag": "--output", "aliases": ["-o"], "required": True},
-        "reduce": {
-            "repeat": True,
-            "default": [],
-            "help": "Name of a non-time dim to mean-reduce before plotting. Repeatable.",
-        },
-        "align_day_of_year": {
-            "action": "store_true",
-            "help": (
-                "Plot each trace against day-of-year (1-366) instead of its absolute "
+    extra_args=[
+        (
+            "--input",
+            "-i",
+            {
+                "action": "append",
+                "required": True,
+                "help": "Input Zarr; repeat for each input. Order is preserved in the legend.",
+            },
+        ),
+        ("--output", "-o", {"required": True}),
+        (
+            "--reduce",
+            {
+                "action": "append",
+                "default": [],
+                "help": "Name of a non-time dim to mean-reduce before plotting. Repeatable.",
+            },
+        ),
+        (
+            "--align-day-of-year",
+            {
+                "action": "store_true",
+                "help": "Plot each trace against day-of-year (1-366) instead of its absolute "
                 "date, so inputs from different years overlay on a shared x-axis. "
                 "Requires a calendar-date time axis (errors on a non-date axis such "
-                "as a forecast 'step' timedelta)."
-            ),
-        },
-    },
+                "as a forecast 'step' timedelta).",
+            },
+        ),
+    ],
 )
-def plot_timeseries(input, output, variable, time_dim, reduce, title, align_day_of_year):
+def plot_timeseries(args):
     """Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
 
     Each input contributes one 1D line trace on a shared set of axes, plotted
@@ -91,6 +97,15 @@ def plot_timeseries(input, output, variable, time_dim, reduce, title, align_day_
     # PNG metadata keys are lettered by CLI position (weather_skills_history_a,
     # _b, ..., _z). The scheme stops at z; reject more inputs early so
     # users see a clear error rather than a KeyError later.
+    input, output, variable, time_dim, reduce, title, align_day_of_year = (
+        args["input"],
+        args["output"],
+        args["variable"],
+        args["time_dim"],
+        args["reduce"],
+        args["title"],
+        args["align_day_of_year"],
+    )
     if len(input) > 26:
         raise UsageError(f"--input must be passed at most 26 times; got {len(input)}.")
 

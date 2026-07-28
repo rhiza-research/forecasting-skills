@@ -378,27 +378,34 @@ def _validate_args(args):
         "aggregates all data variables.",
     },
     time_dim=True,
-    extra_args={
-        "period": {
-            "required": True,
-            "choices": ["daily", "weekly", "dekadal", "monthly"],
-        },
-        "method": {"default": "sum", "choices": ["sum", "mean", "max", "min"]},
-        "anchor_end": {
-            "default": None,
-            "help": "ISO date (YYYY-MM-DD). When set, anchors the obs/time "
-            "resample so the LAST bin ends at this date and previous bins "
-            "are synthesized backward in `period`-day windows. Partial bins "
-            "whose start falls before the input's first timestamp are "
-            "dropped. Has no effect on the forecast `step` path.",
-        },
-    },
+    extra_args=[
+        ("--period", {"required": True, "choices": ["daily", "weekly", "dekadal", "monthly"]}),
+        ("--method", {"default": "sum", "choices": ["sum", "mean", "max", "min"]}),
+        (
+            "--anchor-end",
+            {
+                "default": None,
+                "help": "ISO date (YYYY-MM-DD). When set, anchors the obs/time "
+                "resample so the LAST bin ends at this date and previous bins "
+                "are synthesized backward in `period`-day windows. Partial bins "
+                "whose start falls before the input's first timestamp are "
+                "dropped. Has no effect on the forecast `step` path.",
+            },
+        ),
+    ],
     validate_args=_validate_args,
     hash_input=False,
     cache_hit_label="aggregate",
 )
-def aggregate(ds, variable, time_dim, period, method, anchor_end):
+def aggregate(ds, args):
     """Temporal aggregation for weather-skills envelope Zarr stores."""
+    variable, time_dim, period, method, anchor_end = (
+        args["variable"],
+        args["time_dim"],
+        args["period"],
+        args["method"],
+        args["anchor_end"],
+    )
     import cf_xarray  # noqa: F401 — registers the .cf accessor
 
     src = input_path(ds)

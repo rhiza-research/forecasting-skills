@@ -36,14 +36,14 @@ def build_url(title: str, body: str) -> str:
 @weather_skill(
     "submit-feedback",
     _SKILL_VERSION,
-    extra_args={
-        "title": {"required": True, "help": "Issue title; must not be empty."},
-        "body": {"help": "Issue body as a markdown string."},
-        "body_file": {"help": "Path to a file holding the issue body."},
-    },
+    extra_args=[
+        ("--title", {"required": True, "help": "Issue title; must not be empty."}),
+        ("--body", {"help": "Issue body as a markdown string."}),
+        ("--body-file", {"help": "Path to a file holding the issue body."}),
+    ],
     mutex_groups={"body_source": {"args": ("body", "body_file"), "required": True}},
 )
-def submit_feedback(title, body, body_file):
+def submit_feedback(args):
     """Build a length-checked prefilled GitHub "new issue" URL for filing feedback.
 
     Stateless formatter and validator. The caller authors the title and body; this
@@ -56,6 +56,7 @@ def submit_feedback(title, body, body_file):
     clicking the link and pressing Submit on github.com, which posts under their own
     GitHub account.
     """
+    title, body, body_file = args["title"], args["body"], args["body_file"]
     if not title.strip():
         raise UsageError("--title must not be empty.")
 

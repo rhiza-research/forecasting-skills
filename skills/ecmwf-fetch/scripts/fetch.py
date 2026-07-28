@@ -428,8 +428,9 @@ def _latest(args, context) -> dt.date:
     latest_resolver=_latest,
     cache_hit_label="fetch",
 )
-def fetch(bbox, date, context):
+def fetch(args, context):
     """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
+    bbox, date = args["bbox"], args["date"]
     resolved_date = date
     date_iso = resolved_date.isoformat()
     area = list(bbox)

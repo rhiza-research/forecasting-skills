@@ -21,21 +21,32 @@ _SKILL_VERSION = "0.1.8"
 @weather_skill(
     "email-report",
     _SKILL_VERSION,
-    extra_args={
-        "sender": {"flag": "--from", "required": True, "help": "From: header"},
-        "to": {"required": True, "help": "Comma-separated recipients"},
-        "cc": {},
-        "reply_to": {},
-        "subject": {"required": True},
-        "body": {},
-        "body_file": {},
-        "attach": {"nargs": "*", "default": []},
-        "output": {"flag": "--output", "aliases": ["-o"], "required": True},
-    },
+    extra_args=[
+        ("--from", {"dest": "sender", "required": True, "help": "From: header"}),
+        ("--to", {"required": True, "help": "Comma-separated recipients"}),
+        ("--cc",),
+        ("--reply-to",),
+        ("--subject", {"required": True}),
+        ("--body",),
+        ("--body-file",),
+        ("--attach", {"nargs": "*", "default": []}),
+        ("--output", "-o", {"required": True}),
+    ],
     mutex_groups={"body_source": {"args": ("body", "body_file"), "required": True}},
 )
-def compose(sender, to, cc, reply_to, subject, body, body_file, attach, output):
+def compose(args):
     """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""
+    sender, to, cc, reply_to, subject, body, body_file, attach, output = (
+        args["sender"],
+        args["to"],
+        args["cc"],
+        args["reply_to"],
+        args["subject"],
+        args["body"],
+        args["body_file"],
+        args["attach"],
+        args["output"],
+    )
     if body is None:
         body_path = Path(body_file)
         if not body_path.exists():

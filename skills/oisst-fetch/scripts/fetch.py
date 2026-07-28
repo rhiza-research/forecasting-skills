@@ -333,8 +333,9 @@ def _set_write_encoding(ds) -> None:
     streaming=True,
     cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, context):
+def fetch(args, context):
     """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""
+    start_time, end_time, bbox = args["start_time"], args["end_time"], args["bbox"]
     import numpy as np
 
     start_iso = start_time.isoformat()

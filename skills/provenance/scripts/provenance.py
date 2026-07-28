@@ -473,27 +473,31 @@ def _render_script(data: dict) -> None:
 @weather_skill(
     "provenance",
     _SKILL_VERSION,
-    extra_args={
-        "input": {
-            "required": True,
-            "aliases": ("-i",),
-            "help": "Artifact to inspect: a zarr dir or a .png file.",
-        },
-        "format": {
-            "choices": ["human", "json", "script"],
-            "default": "human",
-            "help": "Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
-        },
-        "check": {
-            "action": "store_true",
-            "help": (
-                "Validate the weather_skills_history schema instead of rendering it. "
-                "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
-            ),
-        },
-    },
+    extra_args=[
+        (
+            "--input",
+            "-i",
+            {"required": True, "help": "Artifact to inspect: a zarr dir or a .png file."},
+        ),
+        (
+            "--format",
+            {
+                "choices": ["human", "json", "script"],
+                "default": "human",
+                "help": "Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
+            },
+        ),
+        (
+            "--check",
+            {
+                "action": "store_true",
+                "help": "Validate the weather_skills_history schema instead of rendering it. "
+                "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid.",
+            },
+        ),
+    ],
 )
-def provenance(input, format, check):
+def provenance(args):
     """Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact.
 
     Read-only. Takes one artifact -- a weather-skills envelope Zarr (a directory) or a
@@ -502,6 +506,7 @@ def provenance(input, format, check):
     or a runnable bash script that reproduces the artifact. All output goes to
     stdout; diagnostics and errors go to stderr. Never writes or modifies any file.
     """
+    input, format, check = args["input"], args["format"], args["check"]
     if check:
         code, report = _run_check(Path(input))
         if code == 0:

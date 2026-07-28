@@ -109,18 +109,14 @@ def _bbox_from_geometry(geometry):
 @weather_skill(
     "resolve-region",
     _SKILL_VERSION,
-    extra_args={
-        "code": {
-            "positional": True,
-            "help": "ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN",
-        },
-        "geojson": {
-            "help": "Optional path: write the country's boundary polygon as GeoJSON",
-        },
-    },
+    extra_args=[
+        ("code", {"help": "ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN"}),
+        ("--geojson", {"help": "Optional path: write the country's boundary polygon as GeoJSON"}),
+    ],
 )
-def resolve_region(code, geojson):
+def resolve_region(args):
     """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
+    code, geojson = args["code"], args["geojson"]
     if len(code) != 3 or not code.isalpha() or code != code.upper():
         raise UsageError(
             f"{code!r} is not an ISO 3166-1 alpha-3 (iso3) code. "

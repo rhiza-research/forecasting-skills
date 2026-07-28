@@ -381,39 +381,58 @@ def _normalize_entry_args(raw):
         "to the bbox and sets the axes extent to it (an explicit --extent still "
         "overrides). Use the resolve-region skill to get a country's bbox.",
     },
-    extra_args={
-        "style": {"choices": ["heatmap", "timeseries"], "default": "heatmap"},
-        "colormap": {"default": "viridis"},
-        "index": {
-            "help": "Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
-            "several comma-separated positions ('step=0,1,2'), which keeps the dim "
-            "and, for --style heatmap, yields one panel per selected position. "
-            "Negative positions count from the end (Python-style). "
-            "Syntax-checked, then ignored with a warning for --style timeseries.",
-        },
-        "extent": {
-            "help": "Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
-        },
-        "cities": {
-            "help": 'City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
-        },
-        "fontsize": {"type": int, "default": 16},
-        "mask_geojson": {
-            "help": "Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
-            "outside the polygon are set to NaN before plotting. Use resolve-region's "
-            "--geojson output to produce a country polygon.",
-        },
-    },
+    extra_args=[
+        ("--style", {"choices": ["heatmap", "timeseries"], "default": "heatmap"}),
+        ("--colormap", {"default": "viridis"}),
+        (
+            "--index",
+            {
+                "help": "Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
+                "several comma-separated positions ('step=0,1,2'), which keeps the dim "
+                "and, for --style heatmap, yields one panel per selected position. "
+                "Negative positions count from the end (Python-style). "
+                "Syntax-checked, then ignored with a warning for --style timeseries."
+            },
+        ),
+        ("--extent", {"help": "Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only)."}),
+        (
+            "--cities",
+            {
+                "help": 'City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.'
+            },
+        ),
+        ("--fontsize", {"type": int, "default": 16}),
+        (
+            "--mask-geojson",
+            {
+                "help": "Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
+                "outside the polygon are set to NaN before plotting. Use resolve-region's "
+                "--geojson output to produce a country polygon."
+            },
+        ),
+    ],
     normalize_args=_normalize_entry_args,
     savefig_kwargs={"bbox_inches": "tight"},
 )
-def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, bbox, mask_geojson):
+def plot(ds, args):
     """Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
 
     The heatmap mode produces a CartoPy panel layout: one subplot per step
     (up to 4 columns), shared color scale, country/coastline boundaries, and a
     horizontal colorbar at the bottom spanning all panels.
     """
+    variable, style, colormap, title, index, extent, cities, fontsize, bbox, mask_geojson = (
+        args["variable"],
+        args["style"],
+        args["colormap"],
+        args["title"],
+        args["index"],
+        args["extent"],
+        args["cities"],
+        args["fontsize"],
+        args["bbox"],
+        args["mask_geojson"],
+    )
     import matplotlib
 
     matplotlib.use("Agg")

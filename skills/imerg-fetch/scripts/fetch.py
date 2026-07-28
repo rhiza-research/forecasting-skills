@@ -138,13 +138,14 @@ def _latest(args) -> date:
             "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
         )
     },
-    extra_args={"version": {"default": "late", "choices": list(SHORTNAMES)}},
+    extra_args=[("--version", {"default": "late", "choices": list(SHORTNAMES)})],
     latest_resolver=_latest,
     streaming=True,
     cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, version):
+def fetch(args):
     """Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
+    start_time, end_time, version = args["start_time"], args["end_time"], args["version"]
     import earthaccess
     import xarray as xr
 

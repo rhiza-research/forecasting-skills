@@ -314,19 +314,24 @@ def _normalize_entry_args(raw: dict) -> dict:
             "Lower this if TAHMO returns 429/throttling errors."
         ),
     },
-    extra_args={
-        "country": {
-            "action": "append",
-            "required": True,
-            "help": "Country name (pass once per country)",
-        },
-    },
+    extra_args=[
+        (
+            "--country",
+            {"action": "append", "required": True, "help": "Country name (pass once per country)"},
+        )
+    ],
     latest_resolver=_discover_latest,
     normalize_args=_normalize_entry_args,
     cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, workers, country, context):
+def fetch(args, context):
     """Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr."""
+    start_time, end_time, workers, country = (
+        args["start_time"],
+        args["end_time"],
+        args["workers"],
+        args["country"],
+    )
     import pandas as pd
     import xarray as xr
 

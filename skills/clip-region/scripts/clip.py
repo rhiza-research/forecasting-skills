@@ -23,8 +23,9 @@ _SKILL_VERSION = "0.1.11"
     hash_input=False,
     cache_hit_label="clip",
 )
-def clip_region(ds, bbox, dims):
+def clip_region(ds, args):
     """Spatially subset a gridded weather-skills envelope Zarr."""
+    bbox, dims = args["bbox"], args["dims"]
     from weather_skills_core.envelope import bbox_subset, detect_spatial_dims
 
     lat_dim, lon_dim = detect_spatial_dims(ds, dims)

@@ -33,13 +33,14 @@ def _coerce(values):
     input_type=types.ALL,
     output_type=types.ALL,
     variadic_input=True,
-    extra_args={
-        "dim": {"required": True},
-        "coords": {"help": "Comma-separated coord values for the new dim"},
-    },
+    extra_args=[
+        ("--dim", {"required": True}),
+        ("--coords", {"help": "Comma-separated coord values for the new dim"}),
+    ],
 )
-def concat(dss, dim, coords):
+def concat(dss, args):
     """Concatenate weather-skills envelope Zarr stores along a named dim."""
+    dim, coords = args["dim"], args["coords"]
     import xarray as xr
 
     names = [input_path(ds).name for ds in dss]

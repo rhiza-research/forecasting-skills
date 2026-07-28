@@ -102,41 +102,50 @@ def _validate_args(args):
     variable={"mode": types.SINGLE, "help": "Restrict to a single data variable"},
     dims=True,
     time_dim=True,
-    extra_args={
-        "algorithm": {
-            "required": True,
-            "choices": ["linear-interpolation", "q-q"],
-            "help": (
-                "Which downscaling algorithm adds information when going finer. "
+    extra_args=[
+        (
+            "--algorithm",
+            {
+                "required": True,
+                "choices": ["linear-interpolation", "q-q"],
+                "help": "Which downscaling algorithm adds information when going finer. "
                 "'linear-interpolation' linearly interpolates onto the finer grid; "
                 "'q-q' interpolates and then empirically quantile-maps onto a "
-                "distribution reference."
-            ),
-        },
-        "factor": {
-            "aliases": ["-f"],
-            "type": int,
-            "help": "Integer refinement factor (>= 1). New spacing = input spacing / factor.",
-        },
-        "target_resolution": {
-            "type": float,
-            "help": "Target grid spacing in degrees. Must be finer-or-equal (<=) to the input.",
-        },
-        "reference_grid": {
-            "help": (
-                "Path to a reference Zarr whose lat/lon grid defines the finer "
+                "distribution reference.",
+            },
+        ),
+        (
+            "--factor",
+            "-f",
+            {
+                "type": int,
+                "help": "Integer refinement factor (>= 1). New spacing = input spacing / factor.",
+            },
+        ),
+        (
+            "--target-resolution",
+            {
+                "type": float,
+                "help": "Target grid spacing in degrees. Must be finer-or-equal (<=) to the input.",
+            },
+        ),
+        (
+            "--reference-grid",
+            {
+                "help": "Path to a reference Zarr whose lat/lon grid defines the finer "
                 "target. The reference grid must be finer-or-equal to the input."
-            ),
-        },
-        "qq_reference": {
-            "help": (
-                "Reference Zarr whose distribution the q-q method maps the output "
+            },
+        ),
+        (
+            "--qq-reference",
+            {
+                "help": "Reference Zarr whose distribution the q-q method maps the output "
                 "onto. Empirical quantile mapping per grid cell along --time-dim. "
                 "The reference must already be on the post-downscale lat/lon grid. "
                 "Required for --algorithm q-q."
-            ),
-        },
-    },
+            },
+        ),
+    ],
     mutex_groups={
         "target": {"args": ("factor", "target_resolution", "reference_grid"), "required": True},
     },
@@ -144,10 +153,18 @@ def _validate_args(args):
     reference_args=("reference_grid", "qq_reference"),
     hash_input=False,
 )
-def downscale(
-    ds, variable, dims, time_dim, algorithm, factor, target_resolution, reference_grid, qq_reference
-):
+def downscale(ds, args):
     """Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
+    variable, dims, time_dim, algorithm, factor, target_resolution, reference_grid, qq_reference = (
+        args["variable"],
+        args["dims"],
+        args["time_dim"],
+        args["algorithm"],
+        args["factor"],
+        args["target_resolution"],
+        args["reference_grid"],
+        args["qq_reference"],
+    )
     from pathlib import Path
 
     import numpy as np

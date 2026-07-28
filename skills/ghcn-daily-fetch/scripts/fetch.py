@@ -342,8 +342,15 @@ def _set_write_encoding(ds) -> None:
     write_encoding=_set_write_encoding,
     cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, workers, variable, context):
+def fetch(args, context):
     """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
+    start_time, end_time, bbox, workers, variable = (
+        args["start_time"],
+        args["end_time"],
+        args["bbox"],
+        args["workers"],
+        args["variable"],
+    )
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     start_int = int(start_time.strftime("%Y%m%d"))

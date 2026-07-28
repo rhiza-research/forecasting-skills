@@ -48,35 +48,42 @@ def _source_calendar(time_coord) -> str:
     input_type=types.ALL,
     output_type=types.ALL,
     time_dim=True,
-    extra_args={
-        "calendar": {
-            "required": True,
-            "choices": [
-                "standard",
-                "gregorian",
-                "proleptic_gregorian",
-                "noleap",
-                "365_day",
-                "360_day",
-                "all_leap",
-                "366_day",
-                "julian",
-            ],
-            "help": "Target CF calendar name (e.g. standard, proleptic_gregorian, "
-            "noleap, 360_day, all_leap, julian).",
-        },
-        "align_on": {
-            "choices": ["date", "year"],
-            "help": "How to map dates across calendars. Required whenever the source "
-            "or target calendar is 360_day. 'year' translates dates by relative "
-            "position in the year (best for daily/sub-daily); 'date' conserves "
-            "month/day and drops invalid dates (best for coarser-than-daily).",
-        },
-    },
+    extra_args=[
+        (
+            "--calendar",
+            {
+                "required": True,
+                "choices": [
+                    "standard",
+                    "gregorian",
+                    "proleptic_gregorian",
+                    "noleap",
+                    "365_day",
+                    "360_day",
+                    "all_leap",
+                    "366_day",
+                    "julian",
+                ],
+                "help": "Target CF calendar name (e.g. standard, proleptic_gregorian, "
+                "noleap, 360_day, all_leap, julian).",
+            },
+        ),
+        (
+            "--align-on",
+            {
+                "choices": ["date", "year"],
+                "help": "How to map dates across calendars. Required whenever the source "
+                "or target calendar is 360_day. 'year' translates dates by relative "
+                "position in the year (best for daily/sub-daily); 'date' conserves "
+                "month/day and drops invalid dates (best for coarser-than-daily).",
+            },
+        ),
+    ],
     hash_input=False,
 )
-def convert_calendar(ds, time_dim, calendar, align_on):
+def convert_calendar(ds, args):
     """Convert a weather-skills envelope Zarr's time axis to a target CF calendar."""
+    time_dim, calendar, align_on = args["time_dim"], args["calendar"], args["align_on"]
     import numpy as np
     from weather_skills_core.envelope import detect_time_dim
 

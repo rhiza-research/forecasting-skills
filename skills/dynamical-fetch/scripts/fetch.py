@@ -172,30 +172,44 @@ def _bbox_subset(ds, bbox, bbox_raw) -> object:
         "mode": types.REPEAT,
         "help": "Restrict to this data variable. Repeat once per variable; omit for all.",
     },
-    extra_args={
-        "dataset": {
-            "required": True,
-            "help": "Catalog dataset id (validated against dynamical_catalog.list()).",
-        },
-        "date": {
-            "help": (
-                "Forecast init date (forecast datasets). Either YYYY-MM-DD, 'now'/'today', "
+    extra_args=[
+        (
+            "--dataset",
+            {
+                "required": True,
+                "help": "Catalog dataset id (validated against dynamical_catalog.list()).",
+            },
+        ),
+        (
+            "--date",
+            {
+                "help": "Forecast init date (forecast datasets). Either YYYY-MM-DD, 'now'/'today', "
                 "'latest', or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
                 "Selects the 00 UTC initialization of the resolved date."
-            ),
-        },
-        "start": {
-            "help": "Range start, inclusive (analysis datasets). Same date grammar as --date.",
-        },
-        "end": {
-            "help": "Range end, inclusive (analysis datasets). Same date grammar as --date.",
-        },
-    },
+            },
+        ),
+        (
+            "--start",
+            {"help": "Range start, inclusive (analysis datasets). Same date grammar as --date."},
+        ),
+        (
+            "--end",
+            {"help": "Range end, inclusive (analysis datasets). Same date grammar as --date."},
+        ),
+    ],
     validate_args=_validate_and_resolve,
     cache_hit_label="fetch",
 )
-def fetch(bbox, dataset, date, start, end, variable, context):
+def fetch(args, context):
     """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
+    bbox, dataset, date, start, end, variable = (
+        args["bbox"],
+        args["dataset"],
+        args["date"],
+        args["start"],
+        args["end"],
+        args["variable"],
+    )
     import numpy as np
 
     state = _open_dataset(context.state, dataset)

@@ -64,8 +64,9 @@ def _normalize_args(args):
     },
     normalize_args=_normalize_args,
 )
-def difference(ds_a, ds_b, variable):
+def difference(ds_a, ds_b, args):
     """Subtract one weather-skills envelope Zarr from another (A - B)."""
+    variable = args["variable"]
     import numpy as np
     import xarray as xr
 

@@ -266,69 +266,81 @@ def _ax_bounds(ds, variable):
         "bbox but outside any --mask-geojson polygon are kept (rectangular "
         "slice). Use the resolve-region skill to get a country's bbox.",
     },
-    extra_args={
-        "variable_a": {
-            "help": "Variable for row A. Overrides --variable for that row. "
-            "Default: --variable, else first real data var of input A.",
-        },
-        "variable_b": {
-            "help": "Variable for row B. Overrides --variable for that row. "
-            "Default: --variable, else first real data var of input B.",
-        },
-        "colormap": {
-            "default": None,
-            "help": "matplotlib colormap name. In shared-scale mode, when omitted the "
-            "categorical precipitation colormap with BoundaryNorm is used. In "
-            "independent-scale mode it is the per-row default (falls back to "
-            "'viridis'); --colormap-a/-b override it per row.",
-        },
-        "colormap_a": {
-            "default": None,
-            "help": "matplotlib colormap for row A in independent-scale mode "
-            "(precedence: --colormap-a, then --colormap, then 'viridis').",
-        },
-        "colormap_b": {
-            "default": None,
-            "help": "matplotlib colormap for row B in independent-scale mode "
-            "(precedence: --colormap-b, then --colormap, then 'viridis').",
-        },
-        "shared_scale": {
-            "action": "store_true",
-            "help": "Force one shared color scale across both rows. Default: shared "
-            "when both rows resolve to the same variable AND matching units, else "
-            "independent per-row scales.",
-        },
-        "independent_scale": {
-            "action": "store_true",
-            "help": "Force per-row color scales (each row its own vmin/vmax/colorbar). "
-            "Default: independent unless both rows are the same variable + units.",
-        },
-        "panels": {"type": int, "default": 3},
-        "mask_geojson": {
-            "help": "Path to a GeoJSON boundary polygon. Gridded cells outside the "
-            "polygon are set to NaN before plotting. Use resolve-region's --geojson "
-            "output to produce a country polygon.",
-        },
-    },
+    extra_args=[
+        (
+            "--variable-a",
+            {
+                "help": "Variable for row A. Overrides --variable for that row. "
+                "Default: --variable, else first real data var of input A."
+            },
+        ),
+        (
+            "--variable-b",
+            {
+                "help": "Variable for row B. Overrides --variable for that row. "
+                "Default: --variable, else first real data var of input B."
+            },
+        ),
+        (
+            "--colormap",
+            {
+                "default": None,
+                "help": "matplotlib colormap name. In shared-scale mode, when omitted the "
+                "categorical precipitation colormap with BoundaryNorm is used. In "
+                "independent-scale mode it is the per-row default (falls back to "
+                "'viridis'); --colormap-a/-b override it per row.",
+            },
+        ),
+        (
+            "--colormap-a",
+            {
+                "default": None,
+                "help": "matplotlib colormap for row A in independent-scale mode "
+                "(precedence: --colormap-a, then --colormap, then 'viridis').",
+            },
+        ),
+        (
+            "--colormap-b",
+            {
+                "default": None,
+                "help": "matplotlib colormap for row B in independent-scale mode "
+                "(precedence: --colormap-b, then --colormap, then 'viridis').",
+            },
+        ),
+        (
+            "--shared-scale",
+            {
+                "action": "store_true",
+                "help": "Force one shared color scale across both rows. Default: shared "
+                "when both rows resolve to the same variable AND matching units, else "
+                "independent per-row scales.",
+            },
+        ),
+        (
+            "--independent-scale",
+            {
+                "action": "store_true",
+                "help": "Force per-row color scales (each row its own vmin/vmax/colorbar). "
+                "Default: independent unless both rows are the same variable + units.",
+            },
+        ),
+        ("--panels", {"type": int, "default": 3}),
+        (
+            "--mask-geojson",
+            {
+                "help": "Path to a GeoJSON boundary polygon. Gridded cells outside the "
+                "polygon are set to NaN before plotting. Use resolve-region's --geojson "
+                "output to produce a country polygon."
+            },
+        ),
+    ],
     mutex_groups={"scale": ("shared_scale", "independent_scale")},
     savefig_kwargs={"bbox_inches": "tight"},
 )
 def plot_compare(
     ds_a,
     ds_b,
-    variable,
-    variable_a,
-    variable_b,
-    colormap,
-    colormap_a,
-    colormap_b,
-    shared_scale,
-    independent_scale,
-    title,
-    panels,
-    time_dim,
-    bbox,
-    mask_geojson,
+    args,
 ):
     """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
 
@@ -339,6 +351,35 @@ def plot_compare(
     rows when they are the same variable with matching units, and per-row
     independent otherwise (--shared-scale / --independent-scale override).
     """
+    (
+        variable,
+        variable_a,
+        variable_b,
+        colormap,
+        colormap_a,
+        colormap_b,
+        shared_scale,
+        independent_scale,
+        title,
+        panels,
+        time_dim,
+        bbox,
+        mask_geojson,
+    ) = (
+        args["variable"],
+        args["variable_a"],
+        args["variable_b"],
+        args["colormap"],
+        args["colormap_a"],
+        args["colormap_b"],
+        args["shared_scale"],
+        args["independent_scale"],
+        args["title"],
+        args["panels"],
+        args["time_dim"],
+        args["bbox"],
+        args["mask_geojson"],
+    )
     label_a = input_path(ds_a).name
     label_b = input_path(ds_b).name
 

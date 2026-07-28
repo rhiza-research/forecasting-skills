@@ -502,23 +502,30 @@ def _set_write_encoding(ds) -> None:
             "resolve-region."
         ),
     },
-    extra_args={
-        "overpass": {
-            "choices": ["AM", "PM"],
-            "default": "AM",
-            "help": (
-                "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm "
-                "ascending). Default AM."
-            ),
-        },
-    },
+    extra_args=[
+        (
+            "--overpass",
+            {
+                "choices": ["AM", "PM"],
+                "default": "AM",
+                "help": "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm "
+                "ascending). Default AM.",
+            },
+        )
+    ],
     latest_resolver=_latest,
     write_encoding=_set_write_encoding,
     streaming=True,
     cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, overpass, context):
+def fetch(args, context):
     """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
+    start_time, end_time, bbox, overpass = (
+        args["start_time"],
+        args["end_time"],
+        args["bbox"],
+        args["overpass"],
+    )
     import numpy as np
 
     start_iso = start_time.isoformat()
