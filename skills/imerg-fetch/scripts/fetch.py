@@ -18,7 +18,7 @@ import sys
 import tempfile
 from datetime import UTC, date, datetime, timedelta
 
-from weather_skills_core import EntryOverride, UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import EntryOverride, UsageError, types, weather_skill
 from weather_skills_core.envelope import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -258,9 +258,6 @@ def fetch(args):
             long_name="IMERG daily precipitation",
         )
         stamp_cf_attrs(ds)
-
-        # Keep the "Wrote:" line detail-free.
-        yield WroteSummary("", replace=True)
 
         # The decorator's to_zarr streams the lazy open_mfdataset one
         # granule-chunk at a time (open_mfdataset chunks per file = per day), so

@@ -24,7 +24,7 @@ variables, and attrs pass through unchanged.
 import re
 from pathlib import Path
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.6"
@@ -270,7 +270,7 @@ def select(ds, args):
         # order given on the command line.
         out_ds = ds.isel({dim: positions})
 
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

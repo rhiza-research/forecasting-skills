@@ -12,7 +12,7 @@
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, types, validate_type, weather_skill
+from weather_skills_core import UsageError, types, validate_type, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -294,7 +294,7 @@ def downscale(ds, args):
     # Interpolating onto a finer grid replaces the spatial axes but keeps the
     # envelope shape.
     validate_type(out_ds, ds)
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

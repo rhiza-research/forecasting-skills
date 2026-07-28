@@ -22,9 +22,10 @@ precipitation flux such as ``kg m-2 s-1`` into a depth rate such as ``mm/day``.
 """
 
 import re
+import sys
 import tokenize
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -228,9 +229,11 @@ def unit_convert(ds, args):
 
     out_ds = ds.copy()
     out_ds[variable] = out_da
-    return out_ds, WroteSummary(
-        f"variable={variable}, units {src_units!r} -> {to_units!r}", replace=True
+    print(
+        f"Converting variable={variable}, units {src_units!r} -> {to_units!r}",
+        file=sys.stderr,
     )
+    return out_ds
 
 
 if __name__ == "__main__":

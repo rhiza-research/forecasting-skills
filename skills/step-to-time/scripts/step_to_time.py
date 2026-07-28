@@ -17,7 +17,9 @@ variables and other dims (``number``, lat/lon) pass through unchanged; the init
 date stays discoverable via the ``weather_skills_forecast_init`` dataset attr.
 """
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+import sys
+
+from weather_skills_core import UsageError, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -132,10 +134,11 @@ def step_to_time(ds, args):
     out_ds["time"].attrs.setdefault("axis", "T")
 
     out_ds.attrs["weather_skills_forecast_init"] = init_iso
-    return out_ds, WroteSummary(
-        f"step axis realized as {out_ds.sizes['time']} valid times, init {init_iso}",
-        replace=True,
+    print(
+        f"Realized the step axis as {out_ds.sizes['time']} valid times, init {init_iso}",
+        file=sys.stderr,
     )
+    return out_ds
 
 
 if __name__ == "__main__":

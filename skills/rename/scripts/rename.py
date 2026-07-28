@@ -19,9 +19,10 @@ physical quantity differently (IMERG writes ``precip``; IFS writes
 across inputs. Rename each input's variable to a shared name, then concatenate.
 """
 
+import sys
 from pathlib import Path
 
-from weather_skills_core import UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import UsageError, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.3"
@@ -87,10 +88,8 @@ def rename(ds, args):
                 f"{kind}; renaming '{variable}' to it would clash."
             )
 
-    return (
-        ds.rename({variable: to_name}),
-        WroteSummary(f"variable {variable!r} -> {to_name!r}", replace=True),
-    )
+    print(f"Renaming variable {variable!r} -> {to_name!r}", file=sys.stderr)
+    return ds.rename({variable: to_name})
 
 
 if __name__ == "__main__":

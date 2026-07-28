@@ -17,7 +17,7 @@ import re
 import sys
 from datetime import UTC, date, datetime
 
-from weather_skills_core import DataError, UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import DataError, UsageError, types, weather_skill
 from weather_skills_core.dates import np_to_date
 from weather_skills_core.envelope import normalize_longitude
 from weather_skills_core.provenance import make_completeness_probe
@@ -411,7 +411,7 @@ def fetch(args, context):
             f"failed while reading from the ARCO-ERA5 store ({type(exc).__name__}: {exc})."
         ) from None
 
-    return ds, WroteSummary("", replace=True)
+    return ds
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ Data variables that carry none of the requested dims pass through untouched.
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, input_path, types, weather_skill
+from weather_skills_core import UsageError, input_path, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -181,7 +181,7 @@ def reduce(ds, args):
         if d in out_ds.dims and all(d not in out_ds[v].dims for v in out_ds.data_vars):
             out_ds = out_ds.drop_dims(d)
 
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

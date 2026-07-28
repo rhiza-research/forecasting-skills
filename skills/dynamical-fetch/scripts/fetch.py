@@ -14,7 +14,7 @@
 import sys
 from datetime import date
 
-from weather_skills_core import DataError, UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import DataError, UsageError, types, weather_skill
 from weather_skills_core.dates import np_to_date, parse_token, resolve_date, resolve_window
 from weather_skills_core.envelope import stamp_cf_attrs
 
@@ -291,7 +291,7 @@ def fetch(args, context):
     )
     stamp_cf_attrs(ds)
 
-    return ds, WroteSummary("", replace=True)
+    return ds
 
 
 if __name__ == "__main__":

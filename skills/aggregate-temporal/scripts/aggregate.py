@@ -21,7 +21,6 @@ import sys
 
 from weather_skills_core import (
     UsageError,
-    WroteSummary,
     input_path,
     types,
     validate_type,
@@ -566,7 +565,7 @@ def aggregate(ds, args):
     # Resampling rebuilds the aggregated axis but keeps the envelope shape: a
     # forecast aggregated over step is still a forecast.
     validate_type(out_ds, ds)
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

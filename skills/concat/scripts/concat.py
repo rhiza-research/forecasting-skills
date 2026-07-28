@@ -8,7 +8,7 @@
 # ///
 """Concatenate weather-skills envelope Zarr stores along a named dim."""
 
-from weather_skills_core import UsageError, WroteSummary, input_path, types, weather_skill
+from weather_skills_core import UsageError, input_path, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.10"
@@ -94,7 +94,7 @@ def concat(dss, args):
             dss = [d.expand_dims(dim) for d in dss]
 
     out_ds = xr.concat(dss, dim=dim)
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

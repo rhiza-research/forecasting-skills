@@ -23,7 +23,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from weather_skills_core import DataError, UsageError, WroteSummary, types, weather_skill
+from weather_skills_core import DataError, UsageError, types, weather_skill
 from weather_skills_core.envelope import parse_bbox, stamp_cf_attrs
 from weather_skills_core.util import require_env
 
@@ -595,7 +595,7 @@ def fetch(args, context):
         # values while the files are still alive.
         ds = ds.load()
 
-    return ds, WroteSummary("", replace=True)
+    return ds
 
 
 if __name__ == "__main__":

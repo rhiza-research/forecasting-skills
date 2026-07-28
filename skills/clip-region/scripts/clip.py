@@ -7,7 +7,7 @@
 # ///
 """Spatially subset a gridded weather-skills envelope Zarr."""
 
-from weather_skills_core import WroteSummary, types, validate_type, weather_skill
+from weather_skills_core import types, validate_type, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -31,7 +31,7 @@ def clip_region(ds, args):
     sub = bbox_subset(ds, bbox, lat_dim=lat_dim, lon_dim=lon_dim)
     # Subsetting the spatial axes preserves the envelope shape.
     validate_type(sub, ds)
-    return sub, WroteSummary(f"{sub.sizes}", replace=True)
+    return sub
 
 
 if __name__ == "__main__":

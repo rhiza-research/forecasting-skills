@@ -18,7 +18,7 @@ resulting axis labels each value with the end of the period it covers.
 import re
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, types, validate_type, weather_skill
+from weather_skills_core import UsageError, types, validate_type, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.12"
@@ -163,10 +163,12 @@ def deaccumulate(ds, args):
     out_ds[variable] = diffed
     # Dropping the first step shortens the lead axis but keeps the envelope shape.
     validate_type(out_ds, ds)
-    return out_ds, WroteSummary(
-        f"variable={variable}, step length {da.sizes['step']} -> {out_ds.sizes['step']}",
-        replace=True,
+    print(
+        f"Deaccumulated variable={variable}, step length {da.sizes['step']} -> "
+        f"{out_ds.sizes['step']}",
+        file=sys.stderr,
     )
+    return out_ds
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ first input's attrs.
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, input_path, types, weather_skill
+from weather_skills_core import UsageError, input_path, types, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -211,7 +211,7 @@ def difference(ds_a, ds_b, args):
         diff.attrs = dict(ds_a[var].attrs)
         data_vars[var] = diff
     out_ds = xr.Dataset(data_vars)
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":
