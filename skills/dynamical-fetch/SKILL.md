@@ -1,6 +1,6 @@
 ---
 name: dynamical-fetch
-description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, and their analyses) and write a weather-skills envelope Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
+description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills envelope Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -21,8 +21,8 @@ selected with `--dataset` and validated at runtime against
 ## When to use
 
 - A task needs a forecast ensemble, deterministic forecast, or gridded analysis
-  that the source-specific fetchers (ECMWF S2S, CHIRPS, IMERG, TAHMO) don't
-  provide, with no credentials and no API queue.
+  that the source-specific fetchers (ECMWF S2S, CHIRPS, TAHMO) don't provide,
+  with no credentials and no API queue.
 - A downstream skill will clip, aggregate, compare, or plot the result as a
   weather-skills envelope Zarr.
 
@@ -51,10 +51,22 @@ The dataset shape determines which time flags apply and the output dims.
 | `noaa-gfs-analysis` | analysis | global | `(time, latitude, longitude)` |
 | `noaa-gefs-analysis` | analysis | global | `(time, latitude, longitude)` |
 | `noaa-mrms-conus-analysis-hourly` | analysis | CONUS | `(time, latitude, longitude)` |
+| `nasa-imerg-analysis-early` | analysis | global | `(time, latitude, longitude)` |
+| `nasa-imerg-analysis-late` | analysis | global | `(time, latitude, longitude)` |
 
 See <https://dynamical.org/catalog/> for each dataset's variables, resolution,
 and update cadence. `--variable`/`-v` lists the exact variable names per dataset
 if you pass an unknown one.
+
+The two IMERG analyses (`nasa-imerg-analysis-early`, `nasa-imerg-analysis-late`)
+are **half-hourly**: each `time` step covers one half hour, unlike the 1-hour
+cadence of `noaa-gfs-analysis` and `noaa-mrms-conus-analysis-hourly`. Both are on
+a global 0.1° grid (latitude descending from 89.95, longitude ascending from
+-179.95) and their record starts 1998-01-01, so a long window needs `--bbox` —
+the fetcher applies no size cap. Both carry `precipitation_surface`, units
+`kg m-2 s-1`, the mean rate over the half hour, and
+`precipitation_quality_index_surface`, units `1`. `early` and `late` differ in
+production latency.
 
 The two HRRR datasets (`noaa-hrrr-forecast-48-hour`, `noaa-hrrr-analysis`) are
 **not supported**: they are on a projected Lambert Conformal Conic grid (1-D
@@ -124,6 +136,20 @@ The `args` dict stores argparse dest names (underscored), not the hyphenated
 CLI flag names. A consumer reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
 invocation must translate underscore → hyphen.
 
+## Composition with aggregate-temporal and unit-convert
+
+`precipitation_surface` on the IMERG analyses is a rate in `kg m-2 s-1` averaged
+over each half hour, so daily `mm/day` takes two steps: `aggregate-temporal
+--period daily --method mean` to average the half-hourly rates within each day,
+then `unit-convert --to-units mm/day`. Restrict the fetch itself with
+`-v precipitation_surface`: a store that keeps both variables leaves every later
+step free to choose one, and `plot` chooses the dimensionless
+`precipitation_quality_index_surface`, rendering quality flags as if they were
+rainfall, while `unit-convert` stops and asks which variable to convert. Use
+`mean`, not `sum`: `--method sum` totals the half-hourly samples instead of
+averaging them, overstating the result by the number of samples in the window —
+48 for a full day.
+
 ## Examples
 
 ```bash
@@ -137,6 +163,11 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast
 # GFS analysis over a 3-week window ending at the newest available time
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start latest-3w --end latest \
   --bbox 12/-4/4/2 -o /tmp/gfs_analysis.zarr
+
+# IMERG late analysis, Kenya bbox, precipitation only — 49 half-hourly steps:
+# all 48 of 2026-07-20 plus the 00:00 step of 2026-07-21
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset nasa-imerg-analysis-late \
+  --start 2026-07-20 --end 2026-07-21 --bbox 7/32/-6/43 -v precipitation_surface -o /tmp/imerg.zarr
 ```
 
 See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the full per-dataset

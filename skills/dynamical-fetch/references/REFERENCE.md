@@ -17,9 +17,9 @@ variable subsetting all happen before any array bytes are pulled.
 
 ## Catalog datasets and native dimensions
 
-`dynamical_catalog.list()` returns 11 datasets. Nine are on regular 1-D lat/lon
-grids and are handled by this skill; the two HRRR datasets are on a projected
-grid and are rejected (see below).
+`dynamical_catalog.list()` returns the available dataset ids. Those on regular
+1-D lat/lon grids are handled by this skill; the two HRRR datasets are on a
+projected grid and are rejected (see below).
 
 | Dataset id | Shape | Native dims | Members |
 |---|---|---|---|
@@ -32,6 +32,8 @@ grid and are rejected (see below).
 | `noaa-gfs-analysis` | analysis | `time, latitude, longitude` | — |
 | `noaa-gefs-analysis` | analysis | `time, latitude, longitude` | — |
 | `noaa-mrms-conus-analysis-hourly` | analysis | `time, latitude, longitude` | — |
+| `nasa-imerg-analysis-early` | analysis | `time, latitude, longitude` | — |
+| `nasa-imerg-analysis-late` | analysis | `time, latitude, longitude` | — |
 | `noaa-hrrr-forecast-48-hour` | **rejected** — projected | `init_time, lead_time, y, x` (2-D lat/lon) | — |
 | `noaa-hrrr-analysis` | **rejected** — projected | `time, y, x` (2-D lat/lon) | — |
 
