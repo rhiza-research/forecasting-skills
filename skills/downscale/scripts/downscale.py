@@ -155,8 +155,6 @@ def _validate_args(args):
 )
 def downscale(ds, args):
     """Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
-    time_dim = args.time_dim
-    target_resolution = args.target_resolution
     from pathlib import Path
 
     import numpy as np
@@ -205,6 +203,7 @@ def downscale(ds, args):
             # --target-resolution: the requested spacing applies to both axes.
             # Require it to be finer-or-equal to BOTH input axis spacings, so a
             # value finer than one axis but coarser than the other is still rejected.
+            target_resolution = args.target_resolution
             if target_resolution > in_lat_res or target_resolution > in_lon_res:
                 raise UsageError(
                     f"--target-resolution {target_resolution}° is "
@@ -247,7 +246,7 @@ def downscale(ds, args):
         ref_ds = xr.open_zarr(ref_path, consolidated=False)
         # Resolve the axis the mapping runs along: an explicit --time-dim wins,
         # else CF/heuristic detection. Raises naming --time-dim as the remedy.
-        time_dim = detect_time_dim(out_ds, time_dim)
+        time_dim = detect_time_dim(out_ds, args.time_dim)
         if time_dim not in ref_ds.dims:
             raise UsageError(
                 f"--qq-reference has no '{time_dim}' dim (have {list(ref_ds.dims)}); pass --time-dim."

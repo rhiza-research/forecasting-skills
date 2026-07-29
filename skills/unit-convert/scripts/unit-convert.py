@@ -174,10 +174,9 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
 )
 def unit_convert(ds, args):
     """Convert one data variable in a weather-skills envelope Zarr to a target units string."""
-    variable = args.variable
-    to_units = args.to_units
     import pint
 
+    variable = args.variable
     data_vars = list(ds.data_vars)
     if variable:
         if variable not in ds.data_vars:
@@ -199,11 +198,11 @@ def unit_convert(ds, args):
     # misreported as a units-parse failure.
     values = da.values
     try:
-        converted, dim_changed, canonical_target = _convert(values, src_units, to_units)
+        converted, dim_changed, canonical_target = _convert(values, src_units, args.to_units)
     except pint.DimensionalityError:
         raise UsageError(
             f"variable '{variable}' units {src_units!r} are not convertible "
-            f"to {to_units!r} (incompatible dimensions, and no liquid-water "
+            f"to {args.to_units!r} (incompatible dimensions, and no liquid-water "
             "bridge reconciles them)."
         ) from None
     except (pint.PintError, ValueError, TypeError, AssertionError, tokenize.TokenError) as e:
@@ -213,13 +212,13 @@ def unit_convert(ds, args):
         # clean exit 2 naming both strings.
         raise UsageError(
             f"could not parse units for variable '{variable}' "
-            f"(source {src_units!r}, target {to_units!r}): {e}."
+            f"(source {src_units!r}, target {args.to_units!r}): {e}."
         ) from None
 
     new_standard_name = _resolve_standard_name(
         args.standard_name, da.attrs.get("standard_name"), dim_changed, canonical_target
     )
-    out_attrs = {**da.attrs, "units": to_units}
+    out_attrs = {**da.attrs, "units": args.to_units}
     if new_standard_name is None:
         out_attrs.pop("standard_name", None)
     else:
@@ -231,7 +230,7 @@ def unit_convert(ds, args):
     out_ds = ds.copy()
     out_ds[variable] = out_da
     print(
-        f"Converting variable={variable}, units {src_units!r} -> {to_units!r}",
+        f"Converting variable={variable}, units {src_units!r} -> {args.to_units!r}",
         file=sys.stderr,
     )
     return out_ds

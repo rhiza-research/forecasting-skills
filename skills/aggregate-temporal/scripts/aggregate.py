@@ -397,9 +397,9 @@ def _validate_args(args):
 )
 def aggregate(ds, args):
     """Temporal aggregation for weather-skills envelope Zarr stores."""
-    method = args.method
     import cf_xarray  # noqa: F401 — registers the .cf accessor
 
+    method = args.method
     src = input_path(ds)
 
     # Variable selection. When --variable is given, restrict the dataset to the

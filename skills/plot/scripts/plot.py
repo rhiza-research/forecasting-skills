@@ -421,8 +421,6 @@ def plot(ds, args):
     (up to 4 columns), shared color scale, country/coastline boundaries, and a
     horizontal colorbar at the bottom spanning all panels.
     """
-    variable = args.variable
-    style = args.style
     import matplotlib
 
     matplotlib.use("Agg")
@@ -431,7 +429,8 @@ def plot(ds, args):
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
     import xarray as xr
 
-    variable = variable or auto_variable(ds)
+    style = args.style
+    variable = args.variable or auto_variable(ds)
     if not variable or variable not in ds:
         raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
     da = ds[variable]

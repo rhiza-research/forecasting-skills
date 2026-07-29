@@ -97,10 +97,8 @@ def plot_timeseries(args):
     # PNG metadata keys are lettered by CLI position (weather_skills_history_a,
     # _b, ..., _z). The scheme stops at z; reject more inputs early so
     # users see a clear error rather than a KeyError later.
-    input = args.input
-    variable = args.variable
-    if len(input) > 26:
-        raise UsageError(f"--input must be passed at most 26 times; got {len(input)}.")
+    if len(args.input) > 26:
+        raise UsageError(f"--input must be passed at most 26 times; got {len(args.input)}.")
 
     import matplotlib
 
@@ -111,6 +109,8 @@ def plot_timeseries(args):
     import numpy as np
     import xarray as xr
 
+    input = args.input
+    variable = args.variable
     for pth in input:
         if not Path(pth).exists():
             raise UsageError(f"{pth} not found.")

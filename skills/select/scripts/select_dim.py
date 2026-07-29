@@ -194,9 +194,9 @@ def _normalize_args(args):
 )
 def select(ds, args):
     """Select entries along one named dimension of a weather-skills envelope Zarr."""
-    dim = args.dim
     import numpy as np
 
+    dim = args.dim
     if dim not in ds.dims:
         raise UsageError(f"--dim '{dim}' not in dims {list(ds.dims)}.")
     size = ds.sizes[dim]

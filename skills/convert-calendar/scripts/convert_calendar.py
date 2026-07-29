@@ -83,8 +83,6 @@ def _source_calendar(time_coord) -> str:
 )
 def convert_calendar(ds, args):
     """Convert a weather-skills envelope Zarr's time axis to a target CF calendar."""
-    time_dim = args.time_dim
-    calendar = args.calendar
     import numpy as np
     from weather_skills_core.envelope import detect_time_dim
 
@@ -92,7 +90,7 @@ def convert_calendar(ds, args):
     # else use cf-xarray's CF "T" axis detection (finds time even when named
     # unusually). Calendar conversion only applies to a wall-clock time axis,
     # not a forecast `step` (timedelta64) lead-time axis.
-    time_dim = detect_time_dim(ds, time_dim)
+    time_dim = detect_time_dim(ds, args.time_dim)
 
     # Validate that the resolved dim is actually a wall-clock time axis before
     # touching the calendar machinery. A datetime64 axis (dtype kind "M") or an
@@ -116,19 +114,19 @@ def convert_calendar(ds, args):
     # (it cannot otherwise map between a 360-day year and a calendar with months
     # of varying length). Guard up front with a message naming the flag.
     source_calendar = _source_calendar(ds[time_dim])
-    if (source_calendar == "360_day" or calendar == "360_day") and args.align_on is None:
+    if (source_calendar == "360_day" or args.calendar == "360_day") and args.align_on is None:
         raise UsageError(
             "--align-on is required when the source or target calendar "
-            f"is 360_day (source={source_calendar!r}, target={calendar!r}). "
+            f"is 360_day (source={source_calendar!r}, target={args.calendar!r}). "
             "Pass --align-on date or --align-on year."
         )
 
     print(
         f"Converting dim={time_dim} calendar {source_calendar!r} -> "
-        f"{calendar!r} (align_on={args.align_on!r})",
+        f"{args.calendar!r} (align_on={args.align_on!r})",
         file=sys.stderr,
     )
-    out_ds = ds.convert_calendar(calendar, dim=time_dim, align_on=args.align_on)
+    out_ds = ds.convert_calendar(args.calendar, dim=time_dim, align_on=args.align_on)
 
     # If every source timestep is unrepresentable in the target calendar (e.g.
     # converting a series that is entirely Feb 29 / Feb 30 dates), xarray drops
@@ -136,7 +134,7 @@ def convert_calendar(ds, args):
     n_in = ds.sizes[time_dim]
     if out_ds.sizes.get(time_dim, 0) == 0:
         raise UsageError(
-            f"conversion to calendar {calendar!r} dropped all "
+            f"conversion to calendar {args.calendar!r} dropped all "
             f"{n_in} timesteps (none representable in the target calendar); "
             "nothing to write."
         )

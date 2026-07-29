@@ -88,12 +88,12 @@ def _validate_args(args):
 )
 def coarsen(ds, args):
     """Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only)."""
-    target_resolution = args.target_resolution
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
     from weather_skills_core.envelope import detect_spatial_dims
 
+    target_resolution = args.target_resolution
     lat_dim, lon_dim = detect_spatial_dims(ds, args.dims)
 
     if args.variable:

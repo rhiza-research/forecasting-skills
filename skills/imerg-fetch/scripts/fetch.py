@@ -133,10 +133,10 @@ def _latest(args) -> date:
 )
 def fetch(args):
     """Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
-    start_time = args.start_time
     import earthaccess
     import xarray as xr
 
+    start_time = args.start_time
     shortname = SHORTNAMES[args.version]
     start = start_time.isoformat()
     end = args.end_time.isoformat()

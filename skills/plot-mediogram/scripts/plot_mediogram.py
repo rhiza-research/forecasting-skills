@@ -70,7 +70,6 @@ def _inner_stats(values):
 )
 def plot_mediogram(ds_fc, ds_mc, args):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
-    variable = args.variable
     import matplotlib
 
     matplotlib.use("Agg")
@@ -79,7 +78,7 @@ def plot_mediogram(ds_fc, ds_mc, args):
     import numpy as np
     from matplotlib.patches import Patch
 
-    variable = variable or (next(iter(ds_fc.data_vars)) if ds_fc.data_vars else None)
+    variable = args.variable or (next(iter(ds_fc.data_vars)) if ds_fc.data_vars else None)
     if variable is None or variable not in ds_fc or variable not in ds_mc:
         raise UsageError(
             f"variable '{variable}' must exist in both inputs. "

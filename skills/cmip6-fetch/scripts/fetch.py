@@ -458,9 +458,9 @@ def _verify_calendar(out, context) -> None:
 )
 def fetch(args, context):
     """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
-    variable = args.variable
     from weather_skills_core.envelope import bbox_subset
 
+    variable = args.variable
     state = _open_remote(
         context.state, args.model, args.experiment, variable, args.member, args.table, args.grid
     )

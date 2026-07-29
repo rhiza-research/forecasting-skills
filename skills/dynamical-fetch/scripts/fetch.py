@@ -207,9 +207,9 @@ def _bbox_subset(ds, bbox, bbox_raw) -> object:
 )
 def fetch(args, context):
     """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
-    dataset = args.dataset
     import numpy as np
 
+    dataset = args.dataset
     state = _open_dataset(context.state, dataset)
     ds = state["ds"]
     shape = state["shape"]
