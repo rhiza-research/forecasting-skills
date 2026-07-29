@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
@@ -349,65 +349,68 @@ def _heatmap(
     return fig
 
 
-def _normalize_entry_args(raw):
-    # The timeseries style ignores --index, --extent, and --cities; those
-    # three record as None, keeping the args schema stable across styles
-    # while showing they had no effect (--bbox and --mask-geojson record
-    # verbatim). A whitespace-only --index parses to no selection and
-    # records None too. A malformed --index is left as-is: the run fails
-    # before anything is written.
-    try:
-        overrides = _parse_index(raw["index"])
-    except ValueError:
-        return raw
-    if not overrides or raw["style"] != "heatmap":
-        raw["index"] = None
-    if raw["style"] != "heatmap":
-        raw["extent"] = None
-        raw["cities"] = None
-    return raw
-
-
 @weather_skill(
     "plot",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="png",
-    variable="single",
-    title=True,
-    bbox={
-        "mode": "optional",
-        "help": "N/W/S/E decimal degrees (heatmap only). Slices the gridded input "
-        "to the bbox and sets the axes extent to it (an explicit --extent still "
-        "overrides). Use the resolve-region skill to get a country's bbox.",
-    },
-    extra_args={
-        "style": {"choices": ["heatmap", "timeseries"], "default": "heatmap"},
-        "colormap": {"default": "viridis"},
-        "index": {
-            "help": "Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
-            "several comma-separated positions ('step=0,1,2'), which keeps the dim "
-            "and, for --style heatmap, yields one panel per selected position. "
-            "Negative positions count from the end (Python-style). "
-            "Syntax-checked, then ignored with a warning for --style timeseries.",
-        },
-        "extent": {
-            "help": "Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
-        },
-        "cities": {
-            "help": 'City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
-        },
-        "fontsize": {"type": int, "default": 16},
-        "mask_geojson": {
-            "help": "Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
-            "outside the polygon are set to NaN before plotting. Use resolve-region's "
-            "--geojson output to produce a country polygon.",
-        },
-    },
-    normalize_args=_normalize_entry_args,
-    savefig_kwargs={"bbox_inches": "tight"},
+    inputs=["any"],
+    outputs=["visualization"],
+    region="optional",
+    variable="single_optional",
+    extra_args=[
+        (("--style",), {"choices": ["heatmap", "timeseries"], "default": "heatmap"}),
+        (("--colormap",), {"default": "viridis"}),
+        (
+            ("--index",),
+            {
+                "default": None,
+                "help": "Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
+                "several comma-separated positions ('step=0,1,2'), which keeps the dim "
+                "and, for --style heatmap, yields one panel per selected position. "
+                "Negative positions count from the end (Python-style). "
+                "Syntax-checked, then ignored with a warning for --style timeseries.",
+            },
+        ),
+        (
+            ("--extent",),
+            {
+                "default": None,
+                "help": "Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
+            },
+        ),
+        (
+            ("--cities",),
+            {
+                "default": None,
+                "help": 'City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
+            },
+        ),
+        (("--fontsize",), {"type": int, "default": 16}),
+        (("--title",), {"default": None, "help": "Optional plot title."}),
+        (
+            ("--mask-geojson",),
+            {
+                "default": None,
+                "help": "Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
+                "outside the polygon are set to NaN before plotting. Use resolve-region's "
+                "--geojson output to produce a country polygon.",
+            },
+        ),
+    ],
 )
-def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, bbox, mask_geojson):
+def plot(
+    ds,
+    bbox,
+    variable,
+    style,
+    colormap,
+    title,
+    index,
+    extent,
+    cities,
+    fontsize,
+    mask_geojson,
+    output,
+):
     """Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
 
     The heatmap mode produces a CartoPy panel layout: one subplot per step
@@ -639,7 +642,11 @@ def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, 
         ax.set_title(title or f"{variable} ({style})")
         fig.tight_layout()
 
-    return fig
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return output
 
 
 if __name__ == "__main__":

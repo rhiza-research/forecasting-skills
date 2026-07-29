@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime",
 #   "xarray",
 #   "zarr",
@@ -473,25 +473,33 @@ def _render_script(data: dict) -> None:
 @weather_skill(
     "provenance",
     _SKILL_VERSION,
-    extra_args={
-        "input": {
-            "required": True,
-            "aliases": ("-i",),
-            "help": "Artifact to inspect: a zarr dir or a .png file.",
-        },
-        "format": {
-            "choices": ["human", "json", "script"],
-            "default": "human",
-            "help": "Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
-        },
-        "check": {
-            "action": "store_true",
-            "help": (
-                "Validate the weather_skills_history schema instead of rendering it. "
-                "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
-            ),
-        },
-    },
+    extra_args=[
+        (
+            ("-i", "--input"),
+            {
+                "required": True,
+                "help": "Artifact to inspect: a zarr dir or a .png file.",
+            },
+        ),
+        (
+            ("--format",),
+            {
+                "choices": ["human", "json", "script"],
+                "default": "human",
+                "help": "Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
+            },
+        ),
+        (
+            ("--check",),
+            {
+                "action": "store_true",
+                "help": (
+                    "Validate the weather_skills_history schema instead of rendering it. "
+                    "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
+                ),
+            },
+        ),
+    ],
 )
 def provenance(input, format, check):
     """Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact.

@@ -24,14 +24,13 @@ Does **not** clip station-schema envelopes (station_id-indexed). For stations, f
 
 ```
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
-    --bbox N/W/S/E [--dims LAT,LON]
+    --bbox N/W/S/E
 ```
 
 ### Arguments
 - `--input`, `-i` — gridded Zarr.
 - `--output`, `-o` — output Zarr.
 - `--bbox` — required; `N/W/S/E` in decimal degrees. To clip to a country, get its bbox from the `resolve-region` skill and pass the value here.
-- `--dims` — optional `LAT,LON` dim name override.
 
 ### Longitude convention
 

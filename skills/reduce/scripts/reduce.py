@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime>=1.6",
 # ]
 # ///
@@ -16,58 +16,40 @@ Data variables that carry none of the requested dims pass through untouched.
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
 
 
-def _normalize_args(args):
-    # Normalize provenance args before stamping so reordered or duplicated
-    # flags don't cause spurious cache misses: dedupe + sort --dim, dedupe
-    # --variable (order-insensitive selection, but keep them as a sorted list
-    # so the recorded args are canonical).
-    args["dim"] = sorted(set(args["dim"]))
-    if args.get("variable") is not None:
-        args["variable"] = sorted(set(args["variable"]))
-    return args
-
-
 @weather_skill(
     "reduce",
     _SKILL_VERSION,
-    input_type="any",
-    # The output shape depends on the input's shape and the collapsed dims,
-    # so the union declares every zarr envelope shape; the returned dataset's
-    # detected shape is validated against it before the write.
-    output_type=("gridded", "forecast", "station"),
-    input_paths=True,
-    variable={
-        "mode": "repeat",
-        "help": "Restrict the reduction to this data variable. Repeat once per "
-        "variable to select several; each selected variable must carry every "
-        "requested --dim. Default (unset) reduces every data variable that "
-        "carries at least one of the requested dims. Unselected or "
-        "untouched data variables pass through unchanged.",
-    },
-    extra_args={
-        "dim": {
-            "repeat": True,
-            "required": True,
-            "help": "Dimension to collapse. Repeat once per dimension to collapse "
-            "several in one run.",
-        },
-        "method": {
-            "required": True,
-            "choices": ["mean", "std", "min", "max", "sum", "median"],
-            "help": "Statistic applied along the collapsed dimension(s).",
-        },
-    },
-    normalize_args=_normalize_args,
+    inputs=["any"],
+    outputs=["any"],
+    variable="multiple_optional",
+    extra_args=[
+        (
+            ("--dim",),
+            {
+                "action": "append",
+                "required": True,
+                "help": "Dimension to collapse. Repeat once per dimension to collapse "
+                "several in one run.",
+            },
+        ),
+        (
+            ("--method",),
+            {
+                "required": True,
+                "choices": ["mean", "std", "min", "max", "sum", "median"],
+                "help": "Statistic applied along the collapsed dimension(s).",
+            },
+        ),
+    ],
 )
-def reduce(ds, input_paths, variable, dim, method):
+def reduce(ds, variable, dim, method):
     """Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic."""
-    src = input_paths[0]
 
     # De-duplicate the requested dims preserving first-seen order so a
     # repeated name doesn't reduce twice; each must be an actual dim.
@@ -85,7 +67,7 @@ def reduce(ds, input_paths, variable, dim, method):
         invalid_vars = [v for v in variable if v not in ds.data_vars]
         if invalid_vars:
             raise UsageError(
-                f"--variable {invalid_vars} not data variable(s) of {src}. "
+                f"--variable {invalid_vars} not data variable(s) of input. "
                 f"Valid data variables: {data_vars}"
             )
         # De-duplicate while preserving first-seen order so a repeated name
@@ -175,7 +157,7 @@ def reduce(ds, input_paths, variable, dim, method):
         if d in out_ds.dims and all(d not in out_ds[v].dims for v in out_ds.data_vars):
             out_ds = out_ds.drop_dims(d)
 
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

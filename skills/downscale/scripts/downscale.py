@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime",
 #   "xarray",
 #   "xarray-regrid",
@@ -12,7 +12,7 @@
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -81,71 +81,71 @@ def _coords_match(a, b, atol=1e-6):
     return bool(np.allclose(a, b, atol=atol, rtol=0))
 
 
-def _validate_args(args):
-    if args.factor is not None and args.factor < 1:
-        raise UsageError("--factor must be >= 1.")
-    if args.target_resolution is not None and args.target_resolution <= 0:
-        raise UsageError("--target-resolution must be > 0.")
-    if args.algorithm == "q-q" and not args.qq_reference:
-        raise UsageError(
-            "--algorithm q-q requires --qq-reference (the distribution reference to map onto)."
-        )
-    if args.qq_reference and args.algorithm != "q-q":
-        raise UsageError("--qq-reference is only valid with --algorithm q-q.")
-
-
 @weather_skill(
     "downscale",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variable={"mode": "single", "help": "Restrict to a single data variable"},
-    dims=True,
-    time_dim="time",
-    extra_args={
-        "algorithm": {
-            "required": True,
-            "choices": ["linear-interpolation", "q-q"],
-            "help": (
-                "Which downscaling algorithm adds information when going finer. "
-                "'linear-interpolation' linearly interpolates onto the finer grid; "
-                "'q-q' interpolates and then empirically quantile-maps onto a "
-                "distribution reference."
-            ),
-        },
-        "factor": {
-            "aliases": ["-f"],
-            "type": int,
-            "help": "Integer refinement factor (>= 1). New spacing = input spacing / factor.",
-        },
-        "target_resolution": {
-            "type": float,
-            "help": "Target grid spacing in degrees. Must be finer-or-equal (<=) to the input.",
-        },
-        "reference_grid": {
-            "help": (
-                "Path to a reference Zarr whose lat/lon grid defines the finer "
-                "target. The reference grid must be finer-or-equal to the input."
-            ),
-        },
-        "qq_reference": {
-            "help": (
-                "Reference Zarr whose distribution the q-q method maps the output "
-                "onto. Empirical quantile mapping per grid cell along --time-dim. "
-                "The reference must already be on the post-downscale lat/lon grid. "
-                "Required for --algorithm q-q."
-            ),
-        },
-    },
-    mutex_groups={
-        "target": {"args": ("factor", "target_resolution", "reference_grid"), "required": True},
-    },
-    validate_args=_validate_args,
-    reference_args=("reference_grid", "qq_reference"),
-    hash_input=False,
+    inputs=["any"],
+    outputs=["any"],
+    variable="single_optional",
+    extra_args=[
+        (
+            ("--algorithm",),
+            {
+                "required": True,
+                "choices": ["linear-interpolation", "q-q"],
+                "help": (
+                    "Which downscaling algorithm adds information when going finer. "
+                    "'linear-interpolation' linearly interpolates onto the finer grid; "
+                    "'q-q' interpolates and then empirically quantile-maps onto a "
+                    "distribution reference."
+                ),
+            },
+        ),
+        (
+            ("-f", "--factor"),
+            {
+                "type": int,
+                "help": "Integer refinement factor (>= 1). New spacing = input spacing / factor.",
+            },
+        ),
+        (
+            ("--target-resolution",),
+            {
+                "type": float,
+                "help": "Target grid spacing in degrees. Must be finer-or-equal (<=) to the input.",
+            },
+        ),
+        (
+            ("--reference-grid",),
+            {
+                "help": (
+                    "Path to a reference Zarr whose lat/lon grid defines the finer "
+                    "target. The reference grid must be finer-or-equal to the input."
+                ),
+            },
+        ),
+        (
+            ("--qq-reference",),
+            {
+                "help": (
+                    "Reference Zarr whose distribution the q-q method maps the output "
+                    "onto. Empirical quantile mapping per grid cell along --time-dim. "
+                    "The reference must already be on the post-downscale lat/lon grid. "
+                    "Required for --algorithm q-q."
+                ),
+            },
+        ),
+        (
+            ("--time-dim",),
+            {
+                "default": "time",
+                "help": "Time dimension used as the sample axis for q-q mapping.",
+            },
+        ),
+    ],
 )
 def downscale(
-    ds, variable, dims, time_dim, algorithm, factor, target_resolution, reference_grid, qq_reference
+    ds, variable, algorithm, factor, target_resolution, reference_grid, qq_reference, time_dim
 ):
     """Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
     from pathlib import Path
@@ -155,7 +155,26 @@ def downscale(
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
     from weather_skills_core.envelope import detect_spatial_dims
 
-    lat_dim, lon_dim = detect_spatial_dims(ds, dims)
+    if factor is not None and factor < 1:
+        raise UsageError("--factor must be >= 1.")
+    if target_resolution is not None and target_resolution <= 0:
+        raise UsageError("--target-resolution must be > 0.")
+    if algorithm == "q-q" and not qq_reference:
+        raise UsageError(
+            "--algorithm q-q requires --qq-reference (the distribution reference to map onto)."
+        )
+    if qq_reference and algorithm != "q-q":
+        raise UsageError("--qq-reference is only valid with --algorithm q-q.")
+
+    target_specs = sum(
+        1 for value in (factor, target_resolution, reference_grid) if value is not None
+    )
+    if target_specs != 1:
+        raise UsageError(
+            "pass exactly one of --factor, --target-resolution, or --reference-grid."
+        )
+
+    lat_dim, lon_dim = detect_spatial_dims(ds)
 
     if variable:
         if variable not in ds.data_vars:
@@ -276,7 +295,7 @@ def downscale(
             mapped.attrs = dict(out_ds[v].attrs)
             out_ds[v] = mapped
 
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

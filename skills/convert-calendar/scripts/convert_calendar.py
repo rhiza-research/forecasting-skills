@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime",
 #   "numpy",
 # ]
@@ -45,37 +45,47 @@ def _source_calendar(time_coord) -> str:
 @weather_skill(
     "convert-calendar",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    time_dim=True,
-    extra_args={
-        "calendar": {
-            "required": True,
-            "choices": [
-                "standard",
-                "gregorian",
-                "proleptic_gregorian",
-                "noleap",
-                "365_day",
-                "360_day",
-                "all_leap",
-                "366_day",
-                "julian",
-            ],
-            "help": "Target CF calendar name (e.g. standard, proleptic_gregorian, "
-            "noleap, 360_day, all_leap, julian).",
-        },
-        "align_on": {
-            "choices": ["date", "year"],
-            "help": "How to map dates across calendars. Required whenever the source "
-            "or target calendar is 360_day. 'year' translates dates by relative "
-            "position in the year (best for daily/sub-daily); 'date' conserves "
-            "month/day and drops invalid dates (best for coarser-than-daily).",
-        },
-    },
-    hash_input=False,
+    inputs=["any"],
+    outputs=["any"],
+    extra_args=[
+        (
+            ("--calendar",),
+            {
+                "required": True,
+                "choices": [
+                    "standard",
+                    "gregorian",
+                    "proleptic_gregorian",
+                    "noleap",
+                    "365_day",
+                    "360_day",
+                    "all_leap",
+                    "366_day",
+                    "julian",
+                ],
+                "help": "Target CF calendar name (e.g. standard, proleptic_gregorian, "
+                "noleap, 360_day, all_leap, julian).",
+            },
+        ),
+        (
+            ("--align-on",),
+            {
+                "choices": ["date", "year"],
+                "help": "How to map dates across calendars. Required whenever the source "
+                "or target calendar is 360_day. 'year' translates dates by relative "
+                "position in the year (best for daily/sub-daily); 'date' conserves "
+                "month/day and drops invalid dates (best for coarser-than-daily).",
+            },
+        ),
+        (
+            ("--time-dim",),
+            {
+                "help": "Name of the time dim when it is not auto-detectable via CF metadata.",
+            },
+        ),
+    ],
 )
-def convert_calendar(ds, time_dim, calendar, align_on):
+def convert_calendar(ds, calendar, align_on, time_dim):
     """Convert a weather-skills envelope Zarr's time axis to a target CF calendar."""
     import numpy as np
     from weather_skills_core.envelope import detect_time_dim

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -39,7 +39,6 @@ import pandas as pd
 import requests
 import xarray as xr
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.dates import today_utc
 from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
 
@@ -452,17 +451,6 @@ def _var_attrs(ds, units_by_param: dict) -> dict:
     return attrs_by_var
 
 
-def _normalize_entry_args(raw: dict) -> dict:
-    """Canonicalize the recorded cache-key args.
-
-    Variables are sorted (with the full supported list applied when --variable
-    is omitted) so flag order does not change the key. --workers (concurrency,
-    not data) is already excluded by the decorator.
-    """
-    raw["variable"] = sorted(raw.get("variable") or SUPPORTED_PARAMETERS)
-    return raw
-
-
 def _set_write_encoding(ds) -> None:
     """Controlled write encodings, applied after the decorator's encoding clear.
 
@@ -480,51 +468,34 @@ def _set_write_encoding(ds) -> None:
 @weather_skill(
     "openaq-fetch",
     _SKILL_VERSION,
-    output_type="station",
-    source="openaq",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-            "'latest' resolves to the current UTC date for this source."
-        )
-    },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
-    bbox={
-        "mode": "required",
-        "help": "Spatial subset N/W/S/E decimal degrees (required — selects stations).",
-    },
-    workers={
-        "default": DEFAULT_WORKERS,
-        "help": (
-            f"Max concurrent per-sensor fetch threads (default {DEFAULT_WORKERS}). "
-            "Threads overlap response waits only; request starts are rate-limited "
-            "globally under OpenAQ's published limits (60/minute, 2,000/hour), so "
-            "raising this does not raise the request rate."
+    outputs=["station"],
+    dates="range",
+    region="required",
+    variable="multiple_optional",
+    extra_args=[
+        (
+            ("--workers",),
+            {
+                "type": int,
+                "default": DEFAULT_WORKERS,
+                "help": (
+                    f"Max concurrent per-sensor fetch threads (default {DEFAULT_WORKERS}). "
+                    "Threads overlap response waits only; request starts are rate-limited "
+                    "globally under OpenAQ's published limits (60/minute, 2,000/hour), so "
+                    "raising this does not raise the request rate."
+                ),
+            },
         ),
-    },
-    variable={
-        "mode": "repeat",
-        "choices": SUPPORTED_PARAMETERS,
-        "help": (
-            "Restrict to this pollutant; repeat once per variable. "
-            f"Omit for all {SUPPORTED_PARAMETERS}."
-        ),
-    },
-    latest_resolver=today_utc,
-    normalize_args=_normalize_entry_args,
-    write_encoding=_set_write_encoding,
-    cache_hit_label="fetch",
+    ],
 )
-def fetch(start_time, end_time, bbox, workers, variable, context):
+def fetch(start_time, end_time, bbox, workers, variable):
     """Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr."""
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
-    # Error messages echo the bbox exactly as given on the CLI.
-    bbox_raw = context.args.bbox
     north, west, south, east = bbox
+    bbox_label = f"{north}/{west}/{south}/{east}"
 
-    variables = variable or list(SUPPORTED_PARAMETERS)
+    variables = sorted(variable or list(SUPPORTED_PARAMETERS))
 
     key = _require_key()
     session = requests.Session()
@@ -533,7 +504,7 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
     wanted = set(variables)
     sensors = _find_sensors(session, (north, west, south, east), wanted)
     if not sensors:
-        raise DataError(f"no OpenAQ sensors for {sorted(variables)} in bbox {bbox_raw}.")
+        raise DataError(f"no OpenAQ sensors for {sorted(variables)} in bbox {bbox_label}.")
 
     # Per-parameter unit reconciliation. OpenAQ reports a unit per sensor; for a
     # given pollutant they are normally identical, but a provider that reports a
@@ -572,7 +543,7 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
 
     if not sensors:
         raise DataError(
-            f"no OpenAQ sensors for {sorted(variables)} in bbox {bbox_raw} "
+            f"no OpenAQ sensors for {sorted(variables)} in bbox {bbox_label} "
             "survived unit reconciliation."
         )
 
@@ -692,14 +663,11 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
         institution="OpenAQ",
         references="https://docs.openaq.org/",
         history=f"{datetime.now(UTC).isoformat()} openaq-fetch {start_iso}..{end_iso}",
+        weather_skills_source="openaq",
     )
 
-    # Write-side decode check: confirm cf-xarray resolves the DSG geometry
-    # (timeseries_id) and the lat/lon/time axes BEFORE writing. A failure here
-    # means the stamping is wrong, so fail loudly rather than emit a store that
-    # falsely claims CF compliance.
     verify_cf_dsg(ds)
-
+    _set_write_encoding(ds)
     return ds
 
 

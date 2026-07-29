@@ -31,7 +31,7 @@ station-schema Zarr store.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox N/W/S/E --start <date> --end <date> [-v VAR ...] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox N/W/S/E --start YYYY-MM-DD --end YYYY-MM-DD [-v VAR ...] -o <path.zarr>
 ```
 
 Requires `OPENAQ_API_KEY` in the environment (free; register at
@@ -41,28 +41,17 @@ https://explore.openaq.org/register).
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees (required; selects which
   monitoring locations to fetch). To fetch over a country, get its bbox from the
   `resolve-region` skill.
-- `--start`, `--end` — inclusive date range. Each value is one of:
-  - an absolute ISO date `YYYY-MM-DD`;
-  - `now` or `today` — the current UTC date;
-  - `latest` — for OpenAQ this resolves to the current UTC date (the API has no
-    cheap global day-precise discovery); a thin trailing tail of not-yet-reported
-    days is normal;
-  - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
-    days). The offset is capped at 36525 days; a larger value, a future `+`
-    offset, a month/year unit, or any malformed value exits 2 before any network
-    call.
-
-  Boundary handling matches the other fetchers (inclusive both ends; duration
-  idiom for `B-<int>{d|w}` .. `B`). The cache key records the resolved absolute
-  dates, never the token.
+- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date
+  `YYYY-MM-DD`. A thin trailing tail of not-yet-reported days near the present
+  is normal.
 - `--variable`, `-v` — restrict to one pollutant; repeat once per variable.
   Choices: `pm25`, `pm10`, `no2`, `o3`, `so2`, `co`. Omit for all six.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--workers` — max concurrent per-sensor fetch threads (default 8). A
-  concurrency knob only, not data: it is excluded from the cache key. Threads
-  overlap response waits only: all requests are client-side rate-limited
-  under OpenAQ's published limits (60/minute, 2,000/hour), with a small margin
-  on the hourly cap, so raising `--workers` does not raise the request rate.
+  concurrency knob only, not data: threads overlap response waits only. All
+  requests are client-side rate-limited under OpenAQ's published limits (60/minute,
+  2,000/hour), with a small margin on the hourly cap, so raising `--workers` does
+  not raise the request rate.
 
 ### Output
 
@@ -142,9 +131,7 @@ The output stamps a JSON-encoded `weather_skills_history` attr: an append-only a
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="openaq-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, the sorted
-`variable` list, and the resolved concrete `start`/`end` — `--workers` is not
-recorded. `version` is the value printed by `--help`. Inspect a written
-output's provenance with the `provenance` skill.
+`variable` list, and `start`/`end` — `--workers` is not recorded. `version` is the value printed by `--help`. Inspect a written output's provenance with the `provenance` skill.
 
 ## Examples
 
@@ -153,7 +140,7 @@ output's provenance with the `provenance` skill.
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start 2024-06-01 --end 2024-06-03 \
   -v pm25 -o /tmp/openaq.zarr
 
-# NO2 + O3 over a small bbox for the last week
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start now-1w --end now \
+# NO2 + O3 over a small bbox for one week
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start 2024-06-01 --end 2024-06-07 \
   -v no2 -v o3 -o /tmp/openaq_gases.zarr
 ```

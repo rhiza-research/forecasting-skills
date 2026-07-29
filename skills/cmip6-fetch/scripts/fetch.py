@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "xarray",
 #   "zarr",
 #   "gcsfs",
@@ -14,9 +14,8 @@
 # ///
 """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
 
-import calendar
 import sys
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 # Third-party imports are at module top so a missing inline dependency fails the
 # script immediately, before any argument parsing or network access.
@@ -27,7 +26,6 @@ import pandas as pd
 import xarray as xr
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.envelope import normalize_longitude, udunits_error
-from weather_skills_core.provenance import make_completeness_probe
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -146,7 +144,7 @@ def _resolve_zstore(model, experiment, variable, member, table, grid) -> tuple:
 def _ensure_catalog(state, model, experiment, variable, member, table, grid) -> None:
     """Resolve the catalog facets to a zstore, at most once per run.
 
-    Populates the run-scoped ``state`` dict (``RunContext.state``, shared by
+    Populates the run-scoped ``state`` dict (per-run state, used by
     the decorator's hooks and the fetch body) with the matched zstore path,
     the resolved grid_label, and the catalog data version -- all known from
     the catalog CSV alone, without opening any store.
@@ -212,64 +210,6 @@ def _open_remote(state, model, experiment, variable, member, table, grid) -> dic
     return state
 
 
-def _latest(args, context) -> date:
-    """Newest date with data, from the opened remote dataset's time axis.
-
-    The time axis is cftime under a possibly non-standard CF calendar
-    (360_day, noleap, all_leap, julian), where a day value can be invalid
-    for the stdlib (e.g. Feb 30 on 360_day). Clamp the day to the
-    stdlib-valid maximum for that year/month so date() never raises. This
-    value only seeds the relative-date grammar window; the real selection
-    is string slicing on the cftime index (ds.sel(time=slice(...))), so a
-    day clamped by a day or two is acceptable here.
-    """
-    state = _open_remote(
-        context.state,
-        args.model,
-        args.experiment,
-        args.variable,
-        args.member,
-        args.table,
-        args.grid,
-    )
-    t = state["ds"]["time"].values.max()
-    last_day = calendar.monthrange(t.year, t.month)[1]
-    return date(t.year, t.month, min(t.day, last_day))
-
-
-def _canonicalize_entry(raw: dict, context) -> dict:
-    """Resolve the catalog before the cache comparison and fold the discovered
-    values into the compared entry args.
-
-    The recorded provenance args carry the resolved grid_label and the catalog
-    data version, not the raw --grid flag -- both are known from the catalog
-    CSV alone, before any store is opened. Resolving here, in the decorator's
-    entry-canonicalization hook, puts them into the entry the cache check
-    compares: a rerun against an unchanged catalog matches the stamped entry
-    and hits without opening the source store or rewriting the output, while a
-    catalog change (a new data version, a different grid resolution) changes
-    the compared entry and forces a refetch. The cost is one lightweight
-    catalog CSV fetch before the cache check.
-    """
-    state = context.state
-    _ensure_catalog(
-        state,
-        raw["model"],
-        raw["experiment"],
-        raw["variable"],
-        raw["member"],
-        raw["table"],
-        raw["grid"],
-    )
-    return {**raw, "grid": state["grid_label"], "data_version": state["version"]}
-
-
-# Cache-hit completeness probe, keyed to the requested --variable: the
-# variable must be present and its corner cell must decode, so a store whose
-# `weather_skills_history` attr survived an interrupted write is a cache miss
-# rather than a broken output handed to the caller.
-_store_is_complete = make_completeness_probe(lambda context: context.args.variable)
-
 
 def _ensure_coord_cf_attrs(ds):
     """Ensure latitude/longitude/time coords carry CF standard_name/units/axis.
@@ -334,129 +274,42 @@ def _verify_cf_decode(ds, variable: str) -> None:
         )
 
 
-def _normalize_calendar(cal: str) -> str:
-    """Fold CF calendar aliases to a canonical name for comparison.
-
-    CF/cftime treat three pairs of names as aliases of the same calendar, so a
-    source labeled with one name and a written store labeled with its alias (or
-    vice versa) are the same calendar and must compare equal:
-
-    - `gregorian` -> `standard`
-    - `365_day` -> `noleap`
-    - `366_day` -> `all_leap`
-
-    `proleptic_gregorian` is a genuinely DISTINCT calendar (it extrapolates the
-    Gregorian rule before 1582), not an alias of `standard`, and xarray
-    round-trips it verbatim, so it is left unmapped here — a coercion between it
-    and `standard` is a real change to flag.
-    """
-    aliases = {
-        "gregorian": "standard",
-        "365_day": "noleap",
-        "366_day": "all_leap",
-    }
-    return aliases.get(cal, cal)
-
-
-def _verify_written_calendar(out, source_calendar: str) -> None:
-    """Re-open the written store and confirm the time calendar was not coerced.
-
-    xarray can silently coerce a non-standard CMIP6 calendar (noleap, 360_day)
-    to a proleptic-gregorian "standard" calendar on write if the time encoding is
-    not preserved, which would corrupt the date axis. Read the calendar back off
-    the written store and fail if it does not match the source, folding the
-    CF `gregorian`/`standard` alias so a correct store is not falsely rejected.
-    """
-    with xr.open_zarr(out, consolidated=True, decode_times=False) as ds:
-        written = ds["time"].attrs.get("calendar") or ds["time"].encoding.get("calendar")
-        units = ds["time"].attrs.get("units") or ds["time"].encoding.get("units")
-    if written is None:
-        raise DataError(
-            "the written store has no `calendar` on its time axis; the source "
-            f"calendar {source_calendar!r} was not preserved."
-        )
-    if _normalize_calendar(str(written)) != _normalize_calendar(str(source_calendar)):
-        raise DataError(
-            f"time calendar was coerced to {written!r} on write but the source "
-            f"calendar is {source_calendar!r}; refusing to emit a corrupted date axis."
-        )
-    if units is None:
-        raise DataError("the written store has no udunits `units` on its time axis.")
-
-
-def _set_write_encoding(ds, context) -> None:
-    """Controlled write encodings, applied after the decorator's encoding clear.
-
-    The time axis's source `calendar` (and `units` when the source carried
-    them) must be carried into the write encoding so the non-standard CMIP6
-    calendar is not coerced. A _FillValue, if the source carried one, belongs
-    in the write encoding, not in attrs, and is restored only on data
-    variables -- CF discourages a _FillValue on coordinate variables, so
-    coords stay cleared.
-    """
-    state = context.state
-    for v, fill in state.get("fills", {}).items():
+def _set_write_encoding(ds, source_calendar, source_time_units, fills) -> None:
+    """Controlled write encodings on the dataset before write."""
+    for v, fill in fills.items():
         if fill is not None:
             ds[v].encoding["_FillValue"] = fill
-    # Omit units when the source did not carry them; xarray then generates a
-    # correct udunits string for the decoded cftime values rather than us
-    # inventing an epoch.
-    if state["source_time_units"] is not None:
-        ds["time"].encoding["units"] = state["source_time_units"]
-    ds["time"].encoding["calendar"] = state["source_calendar"]
-
-
-def _verify_calendar(out, context) -> None:
-    """Post-write hook: verify on the WRITTEN store that the source calendar
-    survived; do not assume the write preserved it.
-
-    Runs after the store is written and before the ``Wrote:`` line, so a
-    failed verification exits non-zero without a success line. A cache hit
-    skips it (nothing was written). Failures raise :class:`DataError` and map
-    to the usual stderr/exit-code convention.
-    """
-    _verify_written_calendar(out, context.state["source_calendar"])
+    if source_time_units is not None:
+        ds["time"].encoding["units"] = source_time_units
+    ds["time"].encoding["calendar"] = source_calendar
 
 
 @weather_skill(
     "cmip6-fetch",
     _SKILL_VERSION,
-    output_type="gridded",
-    start_time={
-        "help": (
-            "Range start, inclusive. Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-            "Absolute future dates are allowed (scenario experiments run to 2100)."
-        )
-    },
-    end_time=True,
-    bbox="optional",
-    variable={
-        "mode": "single",
-        "required": True,
-        "help": "CMIP6 variable_id (one variable per dataset, e.g. tas, pr).",
-    },
-    extra_args={
-        "model": {"required": True, "help": "CMIP6 source_id (e.g. GFDL-CM4)."},
-        "experiment": {"required": True, "help": "CMIP6 experiment_id (e.g. historical, ssp245)."},
-        "member": {"default": "r1i1p1f1", "help": "CMIP6 member_id (default r1i1p1f1)."},
-        "table": {"default": "Amon", "help": "CMIP6 table_id (default Amon)."},
-        "grid": {
-            "help": "CMIP6 grid_label; required only when more than one matches the other facets."
-        },
-    },
-    latest_resolver=_latest,
-    completeness_probe=_store_is_complete,
-    normalize_args=_canonicalize_entry,
-    write_encoding=_set_write_encoding,
-    post_write=_verify_calendar,
-    cache_hit_label="fetch",
+    outputs=["data"],
+    dates="range",
+    region="optional",
+    variable="single_required",
+    extra_args=[
+        (("--model",), {"required": True, "help": "CMIP6 source_id (e.g. GFDL-CM4)."}),
+        (("--experiment",), {"required": True, "help": "CMIP6 experiment_id (e.g. historical, ssp245)."}),
+        (("--member",), {"default": "r1i1p1f1", "help": "CMIP6 member_id (default r1i1p1f1)."}),
+        (("--table",), {"default": "Amon", "help": "CMIP6 table_id (default Amon)."}),
+        (
+            ("--grid",),
+            {
+                "help": "CMIP6 grid_label; required only when more than one matches the other facets."
+            },
+        ),
+    ],
 )
-def fetch(start_time, end_time, bbox, model, experiment, variable, member, table, grid, context):
+def fetch(start_time, end_time, bbox, model, experiment, variable, member, table, grid):
     """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
     from weather_skills_core.envelope import bbox_subset
 
-    state = _open_remote(context.state, model, experiment, variable, member, table, grid)
+    state = {}
+    state = _open_remote(state, model, experiment, variable, member, table, grid)
     ds = state["ds"]
     grid_label = state["grid_label"]
     start_iso = start_time.isoformat()
@@ -501,11 +354,13 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
     # catalog-discovered, so it is set here; the decorator stamps
     # `weather_skills_history`). The appended CF history line records the
     # bbox exactly as given on the CLI.
-    bbox_raw = context.args.bbox
+    bbox_label = (
+        f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
+    )
     history_line = (
         f"{datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')} cmip6-fetch: "
         f"subset {variable} to {start_iso}..{end_iso}"
-        + (f" bbox {bbox_raw}" if bbox_raw else "")
+        + (f" bbox {bbox_label}" if bbox_label else "")
         + f"; mapped onto the weather-skills envelope and re-stamped {_CF_CONVENTIONS}."
     )
     prior_history = source_globals.get("history", "")
@@ -548,10 +403,8 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
 
     _verify_cf_decode(ds, variable)
 
-    # Source _FillValues, captured before the decorator's encoding clear so the
-    # write-encoding hook can restore them on the data variables.
-    context.state["fills"] = {v: ds[v].encoding.get("_FillValue") for v in ds.data_vars}
-
+    fills = {v: ds[v].encoding.get("_FillValue") for v in ds.data_vars}
+    _set_write_encoding(ds, state["source_calendar"], state["source_time_units"], fills)
     return ds
 
 

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -33,7 +33,6 @@ import pandas as pd
 import requests
 import xarray as xr
 from weather_skills_core import DataError, weather_skill
-from weather_skills_core.dates import today_utc
 from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
 
@@ -274,17 +273,6 @@ def _var_attrs(ds) -> dict:
     return attrs
 
 
-def _normalize_entry_args(raw: dict) -> dict:
-    """Canonicalize the recorded cache-key args.
-
-    Variables are sorted (with the default list applied when --variable is
-    omitted) so flag order does not change the key. --workers (concurrency) is
-    a knob, not a data parameter; the decorator already excludes it.
-    """
-    raw["variable"] = sorted(raw.get("variable") or DEFAULT_VARIABLES)
-    return raw
-
-
 def _set_write_encoding(ds) -> None:
     """Controlled write encodings, applied after the decorator's encoding clear.
 
@@ -302,56 +290,35 @@ def _set_write_encoding(ds) -> None:
 @weather_skill(
     "ghcn-daily-fetch",
     _SKILL_VERSION,
-    output_type="station",
-    source="ghcn-daily",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). For "
-            "GHCN-Daily 'latest' resolves to the current UTC date (no cheap "
-            "day-precise discovery); a missing trailing tail near today is normal."
-        )
-    },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
-    bbox={
-        "mode": "optional",
-        "help": (
-            "Spatial subset N/W/S/E decimal degrees, filtering stations. Omitting it "
-            "(or giving an over-wide box) selects many stations, each a separate "
-            "whole-history download. To fetch over a country, get its bbox from the "
-            "resolve-region skill."
+    outputs=["station"],
+    dates="range",
+    region="optional",
+    variable="multiple_optional",
+    extra_args=[
+        (
+            ("--workers",),
+            {
+                "type": int,
+                "default": DEFAULT_WORKERS,
+                "help": (
+                    f"Max concurrent per-station download threads (default {DEFAULT_WORKERS}). "
+                    "Lower this if the server returns throttling errors."
+                ),
+            },
         ),
-    },
-    workers={
-        "default": DEFAULT_WORKERS,
-        "help": (
-            f"Max concurrent per-station download threads (default {DEFAULT_WORKERS}). "
-            "Lower this if the server returns throttling errors."
-        ),
-    },
-    variable={
-        "mode": "repeat",
-        "choices": sorted(VAR_MAP.keys()),
-        "help": (
-            "Restrict to this variable; repeat once per variable. "
-            f"Omit for default {DEFAULT_VARIABLES}."
-        ),
-    },
-    latest_resolver=today_utc,
-    normalize_args=_normalize_entry_args,
-    write_encoding=_set_write_encoding,
-    cache_hit_label="fetch",
+    ],
 )
-def fetch(start_time, end_time, bbox, workers, variable, context):
+def fetch(start_time, end_time, bbox, workers, variable):
     """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     start_int = int(start_time.strftime("%Y%m%d"))
     end_int = int(end_time.strftime("%Y%m%d"))
-    # Error messages echo the bbox exactly as given on the CLI.
-    bbox_raw = context.args.bbox
+    bbox_label = (
+        f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
+    )
 
-    variables = variable or list(DEFAULT_VARIABLES)
+    variables = sorted(variable or list(DEFAULT_VARIABLES))
     # element code -> canonical variable name, for the requested variables.
     elements = {VAR_MAP[v][0]: v for v in variables}
 
@@ -360,8 +327,8 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
     stations = _load_stations(bbox)
     if stations.empty:
         where = (
-            f"the requested --bbox {bbox_raw}"
-            if bbox_raw is not None
+            f"the requested --bbox {bbox_label}"
+            if bbox_label is not None
             else "the GHCN-Daily station table"
         )
         raise DataError(f"no stations in {where}.")
@@ -416,8 +383,8 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
 
     if not frames:
         where = (
-            f"within the requested --bbox {bbox_raw}"
-            if bbox_raw is not None
+            f"within the requested --bbox {bbox_label}"
+            if bbox_label is not None
             else "across the GHCN-Daily station network"
         )
         raise DataError(
@@ -462,14 +429,11 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
         institution="NOAA National Centers for Environmental Information",
         references="https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-daily",
         history=f"{datetime.now(UTC).isoformat()} ghcn-daily-fetch {start_iso}..{end_iso}",
+        weather_skills_source="ghcn-daily",
     )
 
-    # Write-side decode check: confirm cf-xarray resolves the DSG geometry
-    # (timeseries_id) and the lat/lon/time axes BEFORE writing. A failure here
-    # means the stamping is wrong, so fail loudly rather than emit a store that
-    # falsely claims CF compliance.
     verify_cf_dsg(ds)
-
+    _set_write_encoding(ds)
     return ds
 
 

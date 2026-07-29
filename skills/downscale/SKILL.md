@@ -47,7 +47,7 @@ Not for: coarsening a grid onto a strictly-coarser resolution — that is the
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --output <out.zarr> \
     --algorithm {linear-interpolation,q-q} \
     (--factor N | --target-resolution DEG | --reference-grid REF.zarr) \
-    [--dims LAT,LON] [--variable NAME] \
+    [--variable NAME] \
     [--qq-reference REF.zarr] [--time-dim DIM]
 ```
 
@@ -58,7 +58,6 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --out
 - `--factor`, `-f` — integer refinement factor (>= 1). New spacing = input spacing / factor (factor 1 = identity). Mutually exclusive with `--target-resolution` and `--reference-grid`.
 - `--target-resolution` — target spacing in degrees; must be finer-or-equal (<=) to the input on each axis. Mutually exclusive with `--factor` and `--reference-grid`.
 - `--reference-grid` — path to a reference Zarr whose lat/lon grid defines the target. The reference grid must be finer-or-equal to the input. Mutually exclusive with `--factor` and `--target-resolution`.
-- `--dims` — comma-separated lat,lon dim names. Defaults autodetect among `latitude/lat/y` and `longitude/lon/x`.
 - `--variable`, `-v` — restrict to a single data variable. Default: process all.
 - `--qq-reference` — reference Zarr whose distribution the `q-q` method maps the output onto. Per-grid-cell empirical quantile mapping along `--time-dim`. The reference must already be on the post-downscale lat/lon grid; mismatches are an error. Required for `--algorithm q-q`.
 - `--time-dim` — time dimension used as the sample axis for q-q mapping. Default: `time`. Both the output and the reference must have a dimension by this name.

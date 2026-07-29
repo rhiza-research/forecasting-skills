@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cf-xarray",
 #   "cftime",
 #   # matplotlib<3.10: keep the plot skills on one tested matplotlib
@@ -20,12 +20,10 @@ against its time-like coord. Inputs whose selected variable is not already
 mean-only and explicit (no silent averaging).
 """
 
-import json
 import sys
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core import provenance as _provenance
 from weather_skills_core.envelope import auto_variable, cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -49,38 +47,52 @@ def _pick_time_dim(da, override):
     )
 
 
+def _dataset_label(ds, index):
+    src = ds.attrs.get("weather_skills_source")
+    if isinstance(src, str) and src.strip():
+        return Path(src).stem
+    return f"input {index + 1}"
+
+
 @weather_skill(
     "plot-timeseries",
     _SKILL_VERSION,
-    variable="single",
-    title=True,
-    time_dim=True,
-    extra_args={
-        "input": {
-            "flag": "--input",
-            "aliases": ["-i"],
-            "repeat": True,
-            "required": True,
-            "help": "Input Zarr; repeat for each input. Order is preserved in the legend.",
-        },
-        "output": {"flag": "--output", "aliases": ["-o"], "required": True},
-        "reduce": {
-            "repeat": True,
-            "default": [],
-            "help": "Name of a non-time dim to mean-reduce before plotting. Repeatable.",
-        },
-        "align_day_of_year": {
-            "action": "store_true",
-            "help": (
-                "Plot each trace against day-of-year (1-366) instead of its absolute "
-                "date, so inputs from different years overlay on a shared x-axis. "
-                "Requires a calendar-date time axis (errors on a non-date axis such "
-                "as a forecast 'step' timedelta)."
-            ),
-        },
-    },
+    inputs=["any+"],
+    outputs=["visualization"],
+    variable="single_optional",
+    extra_args=[
+        (
+            ("--time-dim",),
+            {
+                "default": None,
+                "help": "Name of the time-like dim. When omitted, time, then step, "
+                "then the cf-xarray-identified time axis.",
+            },
+        ),
+        (
+            ("--reduce",),
+            {
+                "action": "append",
+                "default": [],
+                "help": "Name of a non-time dim to mean-reduce before plotting. Repeatable.",
+            },
+        ),
+        (("--title",), {"default": None, "help": "Optional figure title."}),
+        (
+            ("--align-day-of-year",),
+            {
+                "action": "store_true",
+                "help": (
+                    "Plot each trace against day-of-year (1-366) instead of its absolute "
+                    "date, so inputs from different years overlay on a shared x-axis. "
+                    "Requires a calendar-date time axis (errors on a non-date axis such "
+                    "as a forecast 'step' timedelta)."
+                ),
+            },
+        ),
+    ],
 )
-def plot_timeseries(input, output, variable, time_dim, reduce, title, align_day_of_year):
+def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_year, output):
     """Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
 
     Each input contributes one 1D line trace on a shared set of axes, plotted
@@ -88,11 +100,8 @@ def plot_timeseries(input, output, variable, time_dim, reduce, title, align_day_
     1D must list the dims to reduce via repeated --reduce flags; reductions are
     mean-only and explicit (no silent averaging).
     """
-    # PNG metadata keys are lettered by CLI position (weather_skills_history_a,
-    # _b, ..., _z). The scheme stops at z; reject more inputs early so
-    # users see a clear error rather than a KeyError later.
-    if len(input) > 26:
-        raise UsageError(f"--input must be passed at most 26 times; got {len(input)}.")
+    if len(datasets) > 26:
+        raise UsageError(f"--input must be passed at most 26 times; got {len(datasets)}.")
 
     import matplotlib
 
@@ -101,42 +110,24 @@ def plot_timeseries(input, output, variable, time_dim, reduce, title, align_day_
     import matplotlib.pyplot as plt
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
     import numpy as np
-    import xarray as xr
 
-    for pth in input:
-        if not Path(pth).exists():
-            raise UsageError(f"{pth} not found.")
-
-    datasets = [xr.open_zarr(pth, consolidated=False) for pth in input]
-
-    # The recorded provenance args carry the CLI-given --variable value; an
-    # auto-picked variable records as None.
-    requested_variable = variable
     variable = variable or auto_variable(datasets[0])
     if variable is None:
-        raise UsageError(f"no usable variable in {input[0]}.")
-    for pth, ds in zip(input, datasets, strict=True):
+        raise UsageError("no usable variable in the first input.")
+    for idx, ds in enumerate(datasets):
         if variable not in ds:
             raise UsageError(
-                f"variable '{variable}' missing from {pth}. Available: {list(ds.data_vars)}"
+                f"variable '{variable}' missing from input {idx + 1}. "
+                f"Available: {list(ds.data_vars)}"
             )
 
-    # Input-units check. The traces share one y-axis whose label takes the
-    # units of the first input. If the inputs hold the variable in different
-    # units, traces measured in different units are drawn against a single
-    # scale and labeled with only one of them, which misrepresents the data.
-    # This only affects the rendering, so warn and proceed. Compare only the
-    # inputs that carry the variable with a string `units` attr; an input that
-    # lacks the variable is skipped, and a missing or non-string value can't be
-    # checked. Units are compared after stripping surrounding whitespace so a
-    # trailing space is not read as a real difference.
     seen_units = {}
-    for pth, ds in zip(input, datasets, strict=True):
+    for idx, ds in enumerate(datasets):
         if variable not in ds:
             continue
         u = ds[variable].attrs.get("units")
         if isinstance(u, str):
-            seen_units[Path(pth).stem] = u.strip()
+            seen_units[_dataset_label(ds, idx)] = u.strip()
     if len(set(seen_units.values())) > 1:
         detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
         print(
@@ -151,12 +142,12 @@ def plot_timeseries(input, output, variable, time_dim, reduce, title, align_day_
     units = None
     first_tdim = None
 
-    for pth, ds in zip(input, datasets, strict=True):
+    for idx, ds in enumerate(datasets):
         da = ds[variable]
         try:
             tdim = _pick_time_dim(da, time_dim)
         except ValueError as exc:
-            raise UsageError(f"Error ({pth}): {exc}", prefix=False) from None
+            raise UsageError(f"Error (input {idx + 1}): {exc}", prefix=False) from None
 
         applicable = [d for d in reduce if d in da.dims]
         if applicable:
@@ -165,33 +156,26 @@ def plot_timeseries(input, output, variable, time_dim, reduce, title, align_day_
         extras = [d for d in da.dims if d != tdim]
         if extras:
             raise UsageError(
-                f"Error ({pth}): variable '{variable}' still has non-time dims "
+                f"Error (input {idx + 1}): variable '{variable}' still has non-time dims "
                 f"{extras} after --reduce. Pass --reduce <dim> for each.",
                 prefix=False,
             )
 
-        label = Path(pth).stem
+        label = _dataset_label(ds, idx)
         if align_day_of_year:
-            # `.dt.dayofyear` works for datetime64 and object-dtype cftime time
-            # coords; it raises TypeError/AttributeError on a non-calendar axis
-            # (e.g. a forecast `step` timedelta), which we surface clearly.
             try:
                 xvals = da[tdim].dt.dayofyear.values
             except (TypeError, AttributeError):
                 raise UsageError(
-                    f"Error ({pth}): --align-day-of-year needs a calendar-date "
+                    f"Error (input {idx + 1}): --align-day-of-year needs a calendar-date "
                     f"time axis, but '{tdim}' is not a date axis (e.g. a forecast "
                     f"'step' timedelta). Drop the flag or pick a date dim with "
                     f"--time-dim.",
                     prefix=False,
                 ) from None
-            # A non-monotonic day-of-year sequence draws over itself on the
-            # shared axis. This happens when a trace crosses a year boundary,
-            # spans multiple years, or has an out-of-order time axis. Rendering
-            # caveat only — warn and proceed.
             if len(xvals) > 1 and np.any(np.diff(xvals) < 0):
                 print(
-                    f"Warning ({pth}): day-of-year values are non-monotonic "
+                    f"Warning (input {idx + 1}): day-of-year values are non-monotonic "
                     f"(decrease at some point — a trace crossing a year boundary, "
                     f"spanning multiple years, or an out-of-order time axis); "
                     f"rendering anyway, but it may overplot itself on the shared "
@@ -217,40 +201,11 @@ def plot_timeseries(input, output, variable, time_dim, reduce, title, align_day_
 
     fig.autofmt_xdate()
     fig.tight_layout()
-    out = Path(output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    args_dict = {
-        "variable": requested_variable,
-        "time_dim": time_dim,
-        "reduce": reduce,
-        "title": title,
-        "align_day_of_year": align_day_of_year,
-    }
-    png_metadata: dict[str, str] = {"Software": "forecasting-skills"}
-    for idx, pth in enumerate(input):
-        src = Path(pth)
-        upstream = _provenance.load_history(src)
-        entry = _provenance.build_entry(
-            "plot-timeseries",
-            _SKILL_VERSION,
-            args_dict,
-            _provenance.input_ref(src, include_hash=True),
-        )
-        if not upstream:
-            print(
-                f"Warning: no upstream weather_skills_history on {src.name}; "
-                "embedding plot-timeseries step alone.",
-                file=sys.stderr,
-            )
-        letter = chr(ord("a") + idx)
-        png_metadata[f"weather_skills_history_{letter}"] = json.dumps(
-            upstream + [entry], sort_keys=True
-        )
-
-    fig.savefig(out, dpi=150, metadata=png_metadata)
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Wrote: {output}", file=sys.stderr)
+    return output
 
 
 if __name__ == "__main__":

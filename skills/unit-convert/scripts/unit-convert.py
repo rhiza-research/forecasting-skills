@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime>=1.6",
 #   "pint>=0.25",
 # ]
@@ -24,7 +24,7 @@ precipitation flux such as ``kg m-2 s-1`` into a depth rate such as ``mm/day``.
 import re
 import tokenize
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -144,28 +144,30 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
 @weather_skill(
     "unit-convert",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variable={
-        "mode": "single",
-        "help": "Variable to convert. Required if the input has multiple data vars.",
-    },
-    extra_args={
-        "to_units": {
-            "required": True,
-            "help": "Target units string (e.g. 'mm/day'); becomes the output variable's "
-            "units attribute.",
-        },
-        "standard_name": {
-            "help": (
-                "CF standard_name to write on the output variable. Overrides the "
-                "built-in target-units lookup. When omitted, a known target unit sets "
-                "the matching name, a dimensionality-changing conversion drops the "
-                "now-inconsistent source name, and a same-dimension conversion keeps it."
-            ),
-        },
-    },
-    hash_input=False,
+    inputs=["any"],
+    outputs=["any"],
+    variable="single_optional",
+    extra_args=[
+        (
+            ("--to-units",),
+            {
+                "required": True,
+                "help": "Target units string (e.g. 'mm/day'); becomes the output variable's "
+                "units attribute.",
+            },
+        ),
+        (
+            ("--standard-name",),
+            {
+                "help": (
+                    "CF standard_name to write on the output variable. Overrides the "
+                    "built-in target-units lookup. When omitted, a known target unit sets "
+                    "the matching name, a dimensionality-changing conversion drops the "
+                    "now-inconsistent source name, and a same-dimension conversion keeps it."
+                ),
+            },
+        ),
+    ],
 )
 def unit_convert(ds, variable, to_units, standard_name):
     """Convert one data variable in a weather-skills envelope Zarr to a target units string."""
@@ -223,9 +225,7 @@ def unit_convert(ds, variable, to_units, standard_name):
 
     out_ds = ds.copy()
     out_ds[variable] = out_da
-    return out_ds, WroteSummary(
-        f"variable={variable}, units {src_units!r} -> {to_units!r}", replace=True
-    )
+    return out_ds
 
 
 if __name__ == "__main__":

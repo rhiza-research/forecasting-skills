@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 #   "xarray>=2026.4",
@@ -19,7 +19,7 @@ first input's attrs.
 
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -42,35 +42,19 @@ def _to_signed(da, np):
     return da
 
 
-def _normalize_args(args):
-    # Normalize provenance args before stamping so reordered or duplicated
-    # --variable flags don't cause spurious cache misses: dedupe and sort.
-    if args.get("variable") is not None:
-        args["variable"] = sorted(set(args["variable"]))
-    return args
-
-
 @weather_skill(
     "difference",
     _SKILL_VERSION,
-    input_type=["any", "any"],
-    output_type="same",
-    input_help="Input Zarr; pass exactly twice (first = A, the minuend; second = B, the subtrahend)",
-    input_paths=True,
-    variable={
-        "mode": "repeat",
-        "help": "Data variable to difference. Repeat once per variable to select "
-        "several; each must be a data variable of BOTH inputs. Default (unset) "
-        "differences every data variable present in both inputs.",
-    },
-    normalize_args=_normalize_args,
+    inputs=["any", "any"],
+    outputs=["any"],
+    variable="multiple_optional",
 )
-def difference(ds_a, ds_b, input_paths, variable):
+def difference(ds_a, ds_b, variable):
     """Subtract one weather-skills envelope Zarr from another (A - B)."""
     import numpy as np
     import xarray as xr
 
-    names = [p.name for p in input_paths]
+    names = ["first input", "second input"]
 
     # Variable selection. Explicit --variable names must be data variables of
     # BOTH inputs. Default selection takes every data variable present in
@@ -211,7 +195,7 @@ def difference(ds_a, ds_b, input_paths, variable):
         diff.attrs = dict(ds_a[var].attrs)
         data_vars[var] = diff
     out_ds = xr.Dataset(data_vars)
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

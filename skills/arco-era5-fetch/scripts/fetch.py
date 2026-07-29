@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "xarray",
 #   "zarr",
 #   "gcsfs",
@@ -13,14 +13,11 @@
 # ///
 """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
 
-import re
 import sys
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
-from weather_skills_core.dates import np_to_date
+from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.envelope import normalize_longitude
-from weather_skills_core.provenance import make_completeness_probe
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.9"
@@ -101,17 +98,12 @@ _CURATED_STANDARD_NAME = {
     "10m_v_component_of_wind": "northward_wind",
 }
 
-# Strict absolute-date shape, used to validate the store's valid-time marker
-# attrs before trusting them as the `latest` data edge.
-_ABS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
 def _open_arco(state):
     """Open the ARCO store lazily (metadata only), at most once per run.
 
-    ``state`` is the run-scoped ``RunContext.state`` dict, shared by the
-    `latest` resolver and the fetch body so the store is opened at most once
-    per run. Lazy open with chunks=None: reads only metadata, so `latest`
+    ``state`` is the run-scoped ``per-run state`` dict, shared by the
+    the fetch body so the store is opened at most once
+    per run. Lazy open with chunks=None: reads only metadata; the
     resolution runs before any array bytes are pulled, and xarray's lazy
     indexing prunes to the bbox/time/variable selection before reading — so
     only that selection is materialized. (A dask-backed open forces the
@@ -135,45 +127,7 @@ def _open_arco(state):
     return state["ds"]
 
 
-def _latest(args, context) -> date:
-    """Newest date that actually has data, from the store's marker attrs.
-
-    The store's `time` coordinate is pre-allocated far into the future (empty
-    placeholder slots out to ~2050), so its max is not the data edge. The real
-    extent is published in the store's global attrs: `valid_time_stop_era5t`
-    marks the near-real-time (ERA5T) edge and `valid_time_stop` the
-    finalized-ERA5 edge. Both are inclusive (data exists through that date);
-    the near-real-time edge is preferred. Fall back to the time-coord max only
-    if neither attr is present or parseable. The decorator memoizes this, so
-    it is computed at most once and only when a token references `latest`.
-    These marker attrs are trusted as the data edge and are not cross-checked
-    against the actually-filled `time` slots, so in the rare case the store
-    publishes a marker ahead of its written data, a `latest`-anchored request
-    resolves to a date with no time steps and exits with the existing clean
-    "no data in <start>..<end>" error rather than silently returning wrong
-    data.
-    """
-    ds = _open_arco(context.state)
-    for attr in ("valid_time_stop_era5t", "valid_time_stop"):
-        raw = ds.attrs.get(attr)
-        if raw and _ABS_DATE_RE.match(str(raw).strip()):
-            try:
-                return date.fromisoformat(str(raw).strip())
-            except ValueError:
-                pass
-    return np_to_date(ds["time"].values.max())
-
-
-# Cache-hit completeness probe, keyed to the requested `--variable` list (or
-# every data variable already in the store when the list is omitted): each
-# probed variable must be present and its corner cell must decode, so a store
-# whose `weather_skills_history` attr survived an interrupted write is a cache
-# miss that forces a re-fetch rather than a truncated output handed to the
-# caller.
-_store_is_complete = make_completeness_probe(lambda context: context.args.variable)
-
-
-def _fix_units(units):
+def _open_arco(state):
     """Return a candidate CF unit string for an ARCO source `units` value, or
     None when the source carries no units.
 
@@ -285,16 +239,11 @@ def _global_attrs(start_iso: str, end_iso: str) -> dict:
     }
 
 
-def _set_time_encoding(ds, context) -> None:
-    """Controlled time write encoding, applied after the decorator's encoding clear.
-
-    The time coord's CF units + calendar are set explicitly so the on-disk
-    time axis is self-describing per CF; the reference date is the resolved
-    window start, read off the run context.
-    """
+def _set_time_encoding(ds, start_time) -> None:
+    """Controlled time write encoding on the dataset before write."""
     if "time" in ds.coords:
         ds["time"].encoding = {
-            "units": f"hours since {context.start_time.isoformat()} 00:00:00",
+            "units": f"hours since {start_time.isoformat()} 00:00:00",
             "calendar": "proleptic_gregorian",
         }
 
@@ -302,21 +251,12 @@ def _set_time_encoding(ds, context) -> None:
 @weather_skill(
     "arco-era5-fetch",
     _SKILL_VERSION,
-    output_type="gridded",
-    source="arco-era5",
-    start_time=True,
-    end_time=True,
-    bbox="optional",
-    variable={
-        "mode": "repeat",
-        "help": "Restrict to this data variable. Repeat once per variable; omit for all (large).",
-    },
-    latest_resolver=_latest,
-    completeness_probe=_store_is_complete,
-    write_encoding=_set_time_encoding,
-    cache_hit_label="fetch",
+    outputs=["data"],
+    dates="range",
+    region="optional",
+    variable="multiple_optional",
 )
-def fetch(start_time, end_time, bbox, variable, context):
+def fetch(start_time, end_time, bbox, variable):
     """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
     import numpy as np
     from weather_skills_core.envelope import bbox_subset
@@ -324,7 +264,8 @@ def fetch(start_time, end_time, bbox, variable, context):
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
 
-    ds = _open_arco(context.state)
+    state = {}
+    ds = _open_arco(state)
 
     # Selection: variable -> bbox -> time. Each step prunes before the eager load.
     if variable:
@@ -357,6 +298,7 @@ def fetch(start_time, end_time, bbox, variable, context):
 
     ds.attrs.clear()
     ds.attrs.update(_global_attrs(start_iso, end_iso))
+    ds.attrs["weather_skills_source"] = "arco-era5"
     _stamp_coord_attrs(ds)
     # Validate and stamp every data variable's CF attrs. A variable whose final
     # `units` cannot be made udunits-valid (missing, or non-parseable and not in
@@ -406,7 +348,8 @@ def fetch(start_time, end_time, bbox, variable, context):
             f"failed while reading from the ARCO-ERA5 store ({type(exc).__name__}: {exc})."
         ) from None
 
-    return ds, WroteSummary("", replace=True)
+    _set_time_encoding(ds, start_time)
+    return ds
 
 
 if __name__ == "__main__":

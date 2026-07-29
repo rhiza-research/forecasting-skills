@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 # ]
@@ -18,7 +18,7 @@ resulting axis labels each value with the end of the period it covers.
 import re
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.12"
@@ -91,13 +91,9 @@ def _units_look_like_rate(units: str) -> bool:
 @weather_skill(
     "deaccumulate",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variable={
-        "mode": "single",
-        "help": "Variable to deaccumulate. Required if the input has multiple data vars.",
-    },
-    hash_input=False,
+    inputs=["any"],
+    outputs=["any"],
+    variable="single_optional",
 )
 def deaccumulate(ds, variable):
     """Deaccumulate a cumulative-since-init variable along the forecast step axis."""
@@ -160,10 +156,7 @@ def deaccumulate(ds, variable):
 
     out_ds = ds.drop_vars(variable).isel(step=slice(1, None))
     out_ds[variable] = diffed
-    return out_ds, WroteSummary(
-        f"variable={variable}, step length {da.sizes['step']} -> {out_ds.sizes['step']}",
-        replace=True,
-    )
+    return out_ds
 
 
 if __name__ == "__main__":

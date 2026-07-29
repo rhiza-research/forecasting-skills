@@ -41,7 +41,7 @@ most_common); this skill is linear-only.
 ```
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --output <out.zarr> \
     --target-resolution DEG --offset DEG \
-    [--variable NAME] [--dims LAT,LON]
+    [--variable NAME]
 ```
 
 ### Arguments
@@ -50,7 +50,6 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --outpu
 - `--target-resolution` — target grid spacing in degrees.
 - `--offset` — grid offset in degrees; target points fall at `offset + k*resolution`.
 - `--variable`, `-v` — restrict to a single data variable. Default: process all.
-- `--dims` — comma-separated lat,lon dim names. Defaults autodetect via CF metadata.
 
 ### Longitude convention
 

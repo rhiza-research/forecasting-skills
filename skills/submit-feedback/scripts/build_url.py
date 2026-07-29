@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 # ]
 # ///
 """Build a length-checked prefilled GitHub "new issue" URL for filing feedback."""
@@ -36,12 +36,11 @@ def build_url(title: str, body: str) -> str:
 @weather_skill(
     "submit-feedback",
     _SKILL_VERSION,
-    extra_args={
-        "title": {"required": True, "help": "Issue title; must not be empty."},
-        "body": {"help": "Issue body as a markdown string."},
-        "body_file": {"help": "Path to a file holding the issue body."},
-    },
-    mutex_groups={"body_source": {"args": ("body", "body_file"), "required": True}},
+    extra_args=[
+        (("--title",), {"required": True, "help": "Issue title; must not be empty."}),
+        (("--body",), {"help": "Issue body as a markdown string."}),
+        (("--body-file",), {"help": "Path to a file holding the issue body."}),
+    ],
 )
 def submit_feedback(title, body, body_file):
     """Build a length-checked prefilled GitHub "new issue" URL for filing feedback.
@@ -58,6 +57,9 @@ def submit_feedback(title, body, body_file):
     """
     if not title.strip():
         raise UsageError("--title must not be empty.")
+
+    if (body is None) == (body_file is None):
+        raise UsageError("pass exactly one of --body or --body-file.")
 
     if body is None:
         body_path = Path(body_file)

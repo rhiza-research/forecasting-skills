@@ -34,7 +34,7 @@ windows are multi-year to multi-decadal.
 ```
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <id> -v <variable> \
   [--member <id>] [--table <id>] [--grid <label>] \
-  --start <date> --end <date> [--bbox N/W/S/E] -o <path.zarr>
+  --start YYYY-MM-DD --end YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
 ```
 
 ### Arguments
@@ -49,13 +49,9 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <
   e.g. `day`).
 - `--grid` — CMIP6 `grid_label` (e.g. `gn`, `gr1`). Required only when more than
   one grid matches the other facets; otherwise the single match is used.
-- `--start`, `--end` — inclusive date range. Each value is one of an absolute
-  ISO date `YYYY-MM-DD`; `now`/`today`; `latest` (the newest time present in the
-  resolved dataset); or an offset `now-<int>{d|w}` / `latest-<int>{d|w}`
-  (`w` = 7 days, capped at 36525 days). Absolute **future** dates are allowed
-  (scenario experiments run to 2100); only future `+` offsets are rejected. The
-  duration idiom and inclusive-both-ends boundary handling match the other
-  fetchers. The cache key records the resolved absolute dates, never the token.
+- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date
+  `YYYY-MM-DD`. Future dates are allowed for scenario experiments (which run to
+  2100).
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention so negative west/east values select correctly.
   Omit for the full native grid. To fetch over a country, get its bbox from the
@@ -127,8 +123,8 @@ The output stamps a JSON-encoded `weather_skills_history` attr: an append-only a
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="cmip6-fetch"` and `input=null`. `args` records the
 resolved facets (`model`, `experiment`, `variable`, `member`, `table`, the chosen
-`grid`, and the dataset `data_version`), the `bbox`, and the resolved concrete
-`start`/`end`. `version` is this skill's version, also printed by `--help`.
+`grid`, and the dataset `data_version`), the `bbox`, and `start`/`end`. `version`
+is this skill's version, also printed by `--help`.
 Inspect a written output's provenance with the `provenance` skill.
 
 ## Examples

@@ -14,7 +14,7 @@ requirements = [
     { name = "matplotlib", specifier = ">=3.8,<3.10" },
     { name = "nc-time-axis" },
     { name = "numpy" },
-    { name = "weather-skills-core", git = "https://github.com/rhiza-research/weather-skills-core" },
+    { name = "weather-skills-core", git = "https://github.com/rhiza-research/weather-skills-core", rev = "cursor/simplify-weather-skill-decorator" },
     { name = "xarray" },
     { name = "zarr" },
 ]
@@ -342,13 +342,36 @@ wheels = [
 [[package]]
 name = "weather-skills-core"
 version = "0.1.0"
-source = { git = "https://github.com/rhiza-research/weather-skills-core#6fca70e7e35d8d31bb09714a3db7c64b25c76af6" }
+source = { git = "https://github.com/rhiza-research/weather-skills-core?rev=cursor/simplify-weather-skill-decorator" }
 dependencies = [
     { name = "cf-xarray" },
     { name = "cftime" },
     { name = "numpy" },
+    { name = "pillow" },
     { name = "xarray" },
     { name = "zarr" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cf-units", marker = "extra == 'units'", specifier = ">=3.3.1" },
+    { name = "cf-xarray", specifier = ">=0.11" },
+    { name = "cftime", specifier = ">=1.6" },
+    { name = "numpy", specifier = ">=2.5" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "shapely", marker = "extra == 'geo'", specifier = ">=2.1.2" },
+    { name = "xarray", specifier = ">=2026.7" },
+    { name = "zarr", specifier = ">=3.2" },
+]
+provides-extras = ["units", "geo"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "cf-units", specifier = ">=3.3.1" },
+    { name = "pre-commit", specifier = ">=4.6" },
+    { name = "pytest", specifier = ">=9.1" },
+    { name = "ruff", specifier = ">=0.16" },
+    { name = "shapely", specifier = ">=2.1.2" },
 ]
 
 [[package]]

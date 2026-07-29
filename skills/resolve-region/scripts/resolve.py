@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 # ]
 # ///
 """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
@@ -109,15 +109,20 @@ def _bbox_from_geometry(geometry):
 @weather_skill(
     "resolve-region",
     _SKILL_VERSION,
-    extra_args={
-        "code": {
-            "positional": True,
-            "help": "ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN",
-        },
-        "geojson": {
-            "help": "Optional path: write the country's boundary polygon as GeoJSON",
-        },
-    },
+    extra_args=[
+        (
+            ("code",),
+            {
+                "help": "ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN",
+            },
+        ),
+        (
+            ("--geojson",),
+            {
+                "help": "Optional path: write the country's boundary polygon as GeoJSON",
+            },
+        ),
+    ],
 )
 def resolve_region(code, geojson):
     """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""

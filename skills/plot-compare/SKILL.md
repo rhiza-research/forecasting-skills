@@ -172,34 +172,11 @@ leftmost panel of each row.
 
 ### Provenance
 
-Every PNG carries three `tEXt` chunk keys written via matplotlib's
-`savefig(metadata=...)`:
-
-- `weather_skills_history_a` — a JSON-encoded array of `{skill, version, args,
-  input}` entries with the same schema used for the zarr `weather_skills_history`
-  attribute. The chain belongs to the first `-i` input. The last entry
-  records this `plot-compare` invocation, with its `input` field set to
-  the A-side `{basename, hash}`. Preceding entries are the upstream
-  chain inherited from input A's `weather_skills_history` (empty if input A had
-  none — a stderr warning is emitted and the array contains only the
-  rendering entry).
-- `weather_skills_history_b` — the same shape for the second `-i` input. The
-  last entry's `input` is the B-side `{basename, hash}`; preceding
-  entries come from input B's upstream chain.
-- `Software` — set to `forecasting-skills` so generic image tools like
-  `exiftool` surface the producer prominently.
-
-Two keys (not one tree-shaped key) because `plot-compare`'s two inputs
-typically have no common ancestor (e.g. tahmo-fetch vs. imerg-fetch are
-independent fetcher branches). Two linear chains keep the on-disk
-schema identical to the single-input plotters: a consumer reading
-either `weather_skills_history_a` or `weather_skills_history_b` uses one parse path and
-gets the full lineage of that branch.
-
-Read-back:
+The decorator stamps a single `weather_skills_history` JSON array into the PNG
+metadata. Read-back:
 
 ```bash
-python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['weather_skills_history_a'])); print(json.loads(img.info['weather_skills_history_b']))"
+python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['weather_skills_history']))"
 ```
 
 Or:

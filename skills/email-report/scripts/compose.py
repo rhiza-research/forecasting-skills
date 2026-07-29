@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 # ]
 # ///
 """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""
@@ -21,21 +21,23 @@ _SKILL_VERSION = "0.1.8"
 @weather_skill(
     "email-report",
     _SKILL_VERSION,
-    extra_args={
-        "sender": {"flag": "--from", "required": True, "help": "From: header"},
-        "to": {"required": True, "help": "Comma-separated recipients"},
-        "cc": {},
-        "reply_to": {},
-        "subject": {"required": True},
-        "body": {},
-        "body_file": {},
-        "attach": {"nargs": "*", "default": []},
-        "output": {"flag": "--output", "aliases": ["-o"], "required": True},
-    },
-    mutex_groups={"body_source": {"args": ("body", "body_file"), "required": True}},
+    extra_args=[
+        (("--from",), {"dest": "sender", "required": True, "help": "From: header"}),
+        (("--to",), {"required": True, "help": "Comma-separated recipients"}),
+        (("--cc",), {}),
+        (("--reply-to",), {}),
+        (("--subject",), {"required": True}),
+        (("--body",), {}),
+        (("--body-file",), {}),
+        (("--attach",), {"nargs": "*", "default": []}),
+        (("-o", "--output"), {"required": True}),
+    ],
 )
 def compose(sender, to, cc, reply_to, subject, body, body_file, attach, output):
     """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""
+    if (body is None) == (body_file is None):
+        raise UsageError("pass exactly one of --body or --body-file.")
+
     if body is None:
         body_path = Path(body_file)
         if not body_path.exists():

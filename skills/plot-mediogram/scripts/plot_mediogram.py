@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -13,8 +13,10 @@
 # ///
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
 
+from pathlib import Path
+
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.envelope import cf_dim
+from weather_skills_core.envelope import auto_variable, cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -57,18 +59,16 @@ def _inner_stats(values):
 @weather_skill(
     "plot-mediogram",
     _SKILL_VERSION,
-    input_type=["any", "any"],
-    input_names=["forecast", "mclimate"],
-    input_help=["Forecast Zarr (number × step × spatial)", "M-climate Zarr (same schema)"],
-    output_type="png",
-    variable="single",
-    title=True,
-    extra_args={
-        "lat": {"type": float, "required": True},
-        "lon": {"type": float, "required": True},
-    },
+    inputs=["any", "any"],
+    outputs=["visualization"],
+    variable="single_optional",
+    extra_args=[
+        (("--lat",), {"type": float, "required": True, "help": "Point latitude."}),
+        (("--lon",), {"type": float, "required": True, "help": "Point longitude."}),
+        (("--title",), {"default": None, "help": "Optional plot title."}),
+    ],
 )
-def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
+def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title, output):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
     import matplotlib
 
@@ -78,7 +78,7 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
     import numpy as np
     from matplotlib.patches import Patch
 
-    variable = variable or (next(iter(ds_fc.data_vars)) if ds_fc.data_vars else None)
+    variable = variable or auto_variable(ds_fc)
     if variable is None or variable not in ds_fc or variable not in ds_mc:
         raise UsageError(
             f"variable '{variable}' must exist in both inputs. "
@@ -124,9 +124,6 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
     pos_fc = time_steps - 0.2
     pos_mc = time_steps + 0.2
 
-    # Reference draws the extreme/inner box first, then the IQR/outer box on top
-    # at width 0.4 with visible black caps — the caps appear as horizontal lines
-    # at p25 and p75 since whiskers are zero-length.
     ax.bxp(
         fc_inner,
         positions=pos_fc,
@@ -189,7 +186,11 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
     ax.legend(handles=handles)
 
     fig.tight_layout()
-    return fig
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return output
 
 
 if __name__ == "__main__":

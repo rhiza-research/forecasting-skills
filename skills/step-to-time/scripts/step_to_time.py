@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 # ]
@@ -17,7 +17,7 @@ variables and other dims (``number``, lat/lon) pass through unchanged; the init
 date stays discoverable via the ``weather_skills_forecast_init`` dataset attr.
 """
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -26,8 +26,8 @@ _SKILL_VERSION = "0.1.8"
 @weather_skill(
     "step-to-time",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="gridded",
+    inputs=["any"],
+    outputs=["data"],
 )
 def step_to_time(ds):
     """Realize a forecast's step axis as wall-clock valid times (time = init + step)."""
@@ -132,10 +132,7 @@ def step_to_time(ds):
     out_ds["time"].attrs.setdefault("axis", "T")
 
     out_ds.attrs["weather_skills_forecast_init"] = init_iso
-    return out_ds, WroteSummary(
-        f"step axis realized as {out_ds.sizes['time']} valid times, init {init_iso}",
-        replace=True,
-    )
+    return out_ds
 
 
 if __name__ == "__main__":

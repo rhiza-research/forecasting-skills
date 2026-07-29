@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime",
 #   "xarray",
 #   "xarray-regrid",
@@ -57,41 +57,38 @@ def _target_axis(coord_vals, resolution: float, offset: float):
     return target
 
 
-def _validate_args(args):
-    if args.target_resolution <= 0:
-        raise UsageError("--target-resolution must be > 0.")
-
-
 @weather_skill(
     "coarsen",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variable={"mode": "single", "help": "Restrict to a single data variable."},
-    dims=True,
-    extra_args={
-        "target_resolution": {
-            "type": float,
-            "required": True,
-            "help": "Target grid spacing in degrees.",
-        },
-        "offset": {
-            "type": float,
-            "required": True,
-            "help": "Grid offset in degrees; target points fall at offset + k*resolution.",
-        },
-    },
-    validate_args=_validate_args,
-    hash_input=False,
+    inputs=["any"],
+    outputs=["any"],
+    variable="single_optional",
+    extra_args=[
+        (
+            ("--target-resolution",),
+            {"type": float, "required": True, "help": "Target grid spacing in degrees."},
+        ),
+        (
+            ("--offset",),
+            {
+                "type": float,
+                "required": True,
+                "help": "Grid offset in degrees; target points fall at offset + k*resolution.",
+            },
+        ),
+    ],
 )
-def coarsen(ds, variable, dims, target_resolution, offset):
+def coarsen(ds, variable, target_resolution, offset):
     """Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only)."""
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
     from weather_skills_core.envelope import detect_spatial_dims
 
-    lat_dim, lon_dim = detect_spatial_dims(ds, dims)
+    if target_resolution <= 0:
+        raise UsageError("--target-resolution must be > 0.")
+
+    lat_dim, lon_dim = detect_spatial_dims(ds)
 
     if variable:
         if variable not in ds.data_vars:

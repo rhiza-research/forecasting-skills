@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime",
 #   "requests",
 #   "xarray",
@@ -17,10 +17,10 @@ import sys
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
-from weather_skills_core import EntryOverride, UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.envelope import stamp_cf_attrs
 
 # Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
@@ -36,13 +36,6 @@ CHIRPS_PRELIM_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/p
 CHIRPS_FINAL_START_YEAR = 1998
 CHIRPS_NODATA = -9999.0
 HTTP_TIMEOUT = 60
-
-# How far back from today the `latest` backward probe looks for the first
-# available CHIRPS prelim day. CHIRPS v3.0 prelim is published 2 days after each
-# pentad closes (worst-case lag ~7 days); 30 days of margin comfortably covers
-# that plus any short server-side gap. Exhausting the probe without a hit exits
-# non-zero.
-_LATEST_LOOKBACK_DAYS = 30
 
 # Default size of the per-day download thread pool. The work is
 # network-I/O-bound (one independent HTTPS GET per day), so threads overlap
@@ -245,104 +238,6 @@ def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
     return out
 
 
-def _discover_latest(args) -> date:
-    """Find the newest available CHIRPS prelim day on or before today (UTC) — the
-    `latest` resolver for CHIRPS.
-
-    Probes backward day-by-day over HTTPS from today, classifying availability
-    the same way an actual download (``_download_day_tif``) would see it:
-      - HTTP 200 means the day is available -> return it;
-      - HTTP 404 means not-yet-published -> step back one day;
-      - HTTP 5xx or a transport-level failure is transient -> step back, but
-        remembered: if the probe never reaches a definitive 200/404 answer
-        (every day failed transiently), that is a connectivity/server problem,
-        not "no data", and is surfaced as a real error;
-      - any other status (403/401/405/other-4xx) is surfaced as a real
-        config/auth problem.
-    Each day is probed with HEAD first (cheap — no body), but because
-    ``_download_day_tif`` issues a GET, a server that rejects HEAD (e.g. 405
-    Method Not Allowed, or a 403/other-4xx that only applies to HEAD) would
-    falsely abort here even though the day downloads fine. So a non-404 HEAD
-    answer (the 405/403/other-4xx case) is re-probed with GET before deciding:
-    the GET status is then what a real download would see, keeping availability
-    detection consistent with the downloader. Bounded by
-    ``_LATEST_LOOKBACK_DAYS`` (covers the product's worst-case pentad lag plus
-    margin). Exits 2 if no day is available, distinguishing a genuine
-    not-yet-published lookback from a persistent transport/server failure.
-    """
-    import requests
-
-    today = datetime.now(UTC).date()
-    session = requests.Session()
-    transient_only = True  # cleared as soon as any probe gets a definitive 200/404
-    last_transient = None
-
-    def _probe_status(url: str):
-        """Return (status_code, None) or (None, transient_message) for one day.
-
-        HEAD first; on any non-404, non-200, non-5xx answer (405/403/other-4xx)
-        re-issue a GET so the verdict matches what the downloader's GET sees.
-        A transport-level failure on either request is reported as transient.
-        """
-        try:
-            resp = session.head(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
-        except requests.RequestException as exc:
-            return None, f"transport error: {exc}"
-        if resp.status_code in (200, 404) or resp.status_code >= 500:
-            return resp.status_code, None
-        # 4xx other than 404 (403/401/405/bad request, etc.) on HEAD may be a
-        # HEAD-specific rejection; confirm with a GET, which is what the real
-        # download issues, before treating it as a config/auth problem.
-        try:
-            get_resp = session.get(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
-        except requests.RequestException as exc:
-            return None, f"transport error: {exc}"
-        return get_resp.status_code, None
-
-    try:
-        for offset in range(_LATEST_LOOKBACK_DAYS + 1):
-            day = today - timedelta(days=offset)
-            name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
-            url = f"{CHIRPS_PRELIM_BASE_URL}/{day.year:04d}/{name}"
-            status, transient = _probe_status(url)
-            if status is None:
-                # Transport-level failure on this probe day is transient: step
-                # back, but record it so an all-transient probe surfaces below
-                # instead of being misreported as "no data".
-                last_transient = transient
-                continue
-            if status == 200:
-                return day
-            if status == 404:
-                # Not yet published: a definitive answer, step back one day.
-                transient_only = False
-                continue
-            if status >= 500:
-                # Server-side error is transient: step back, remembering it.
-                last_transient = f"HTTP {status}"
-                continue
-            # 4xx other than 404 (403/401/bad request, etc.) confirmed by GET is
-            # a real config or auth problem, not a not-yet-published day; surface
-            # it immediately.
-            raise UsageError(
-                f"CHIRPS 'latest' probe got HTTP {status} for {url}; "
-                "this is a config/auth problem, not a not-yet-published day."
-            )
-    finally:
-        session.close()
-    if transient_only and last_transient is not None:
-        raise UsageError(
-            f"CHIRPS 'latest' probe never reached the data server over the "
-            f"last {_LATEST_LOOKBACK_DAYS} days (last failure: {last_transient}); "
-            "this is a connectivity/server problem, not a not-yet-published day."
-        )
-    raise UsageError(
-        f"no CHIRPS prelim day available in the last {_LATEST_LOOKBACK_DAYS} "
-        f"days (probed back to {(today - timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()}); "
-        "cannot resolve 'latest'."
-    )
-
-
 def _open_day(tif: Path, day: date):
     import numpy as np
     import rioxarray
@@ -360,31 +255,22 @@ def _open_day(tif: Path, day: date):
 @weather_skill(
     "chirps-fetch",
     _SKILL_VERSION,
-    output_type="gridded",
-    source="chirps",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={
-        "help": (
-            "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    workers={
-        "default": DEFAULT_WORKERS,
-        "help": (
-            f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
-            "Deliberately conservative: CHC's data server can throttle and "
-            "temporarily block IPs under higher concurrency."
+    outputs=["data"],
+    dates="range",
+    extra_args=[
+        (
+            ("--workers",),
+            {
+                "type": int,
+                "default": DEFAULT_WORKERS,
+                "help": (
+                    f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
+                    "Deliberately conservative: CHC's data server can throttle and "
+                    "temporarily block IPs under higher concurrency."
+                ),
+            },
         ),
-    },
-    latest_resolver=_discover_latest,
-    streaming=True,
-    cache_hit_label="fetch",
+    ],
 )
 def fetch(start_time, end_time, workers):
     """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
@@ -523,7 +409,7 @@ def fetch(start_time, end_time, workers):
         if missing_days:
             print(
                 f"Tail-missing day(s) {', '.join(d.isoformat() for d in missing_days)}; "
-                f"writing partial zarr with effective end {effective_end} "
+                f"writing partial dataset with effective end {effective_end} "
                 f"(requested --end was {end}). "
                 "Consistent with CHIRPS v3.0 preliminary's pentad-based "
                 "schedule (per-day files published 2 days after each pentad "
@@ -531,41 +417,23 @@ def fetch(start_time, end_time, workers):
                 "worst-case lag ~7 days).",
                 file=sys.stderr,
             )
-            # The recorded entry reflects the EFFECTIVE end actually written, so
-            # a re-run against the same --end re-attempts the missing tail days
-            # instead of short-circuiting on a cache hit. Yielded before the
-            # first dataset because the first day's provenance stamp needs the
-            # effective entry.
-            yield EntryOverride({"end": effective_end})
 
-        # Keep the "Wrote:" line detail-free.
-        yield WroteSummary("", replace=True)
+        import xarray as xr
 
-        # Stream each day to zarr one at a time so peak resident memory is
-        # bounded to ~one day regardless of window length, instead of holding
-        # the whole concatenated window in RAM. `succeeded` is already
-        # day-sorted (built sorted above), so the appended time axis stays
-        # ascending. Per-day latitude-sort is equivalent to a single global
-        # sort because every CHIRPS day shares the identical latitude grid.
-        # The decorator re-stamps weather_skills_source/weather_skills_history
-        # (and clears per-variable encoding) on EVERY yield: a
-        # to_zarr(mode="a", append_dim="time") call rewrites the root group
-        # attrs from the dataset being appended, so a first-write-only stamp
-        # would be clobbered on the first append. The entry is identical for
-        # every day, so the final stamp is stable regardless of how many days
-        # are written. The yields happen inside the TemporaryDirectory block so
-        # the source tifs outlive each day's write.
+        pieces = []
         for _, da in succeeded:
             da = da.sortby("latitude", ascending=True)
             da.name = "precip"
             da.attrs["units"] = "mm day-1"
             da.attrs["standard_name"] = "lwe_precipitation_rate"
             da.attrs["long_name"] = "CHIRPS daily precipitation"
+            pieces.append(da)
 
-            ds = da.to_dataset()
-            ds.attrs["Conventions"] = "CF-1.13"
-            stamp_cf_attrs(ds)
-            yield ds
+        ds = xr.concat(pieces, dim="time").to_dataset()
+        ds.attrs["Conventions"] = "CF-1.13"
+        ds.attrs["weather_skills_source"] = "chirps"
+        stamp_cf_attrs(ds)
+        return ds
 
 
 if __name__ == "__main__":

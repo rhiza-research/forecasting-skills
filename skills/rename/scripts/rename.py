@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime>=1.6",
 # ]
 # ///
@@ -19,45 +19,30 @@ physical quantity differently (IMERG writes ``precip``; IFS writes
 across inputs. Rename each input's variable to a shared name, then concatenate.
 """
 
-from pathlib import Path
-
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.3"
 
 
-def _validate_args(args):
-    # Reject an empty/whitespace-only target name before any cache check: an
-    # invalid argument must never report a cache hit.
-    if not args.to_name.strip():
-        raise UsageError("--to-name must be a non-empty variable name.")
-    # An existing output must be a directory (a zarr store to replace); the
-    # write path replaces a directory, not a plain file.
-    out = Path(args.output)
-    if out.exists() and not out.is_dir():
-        raise UsageError(f"--output {args.output} exists and is not a directory.")
-
-
 @weather_skill(
     "rename",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variable={
-        "mode": "single",
-        "help": "Source data variable to rename. Required if the input has multiple data vars.",
-    },
-    extra_args={
-        "to_name": {
-            "required": True,
-            "help": "New variable name; becomes the output variable's name.",
-        },
-    },
-    validate_args=_validate_args,
+    inputs=["any"],
+    outputs=["any"],
+    variable="single_optional",
+    extra_args=[
+        (
+            ("--to-name",),
+            {"required": True, "help": "New variable name; becomes the output variable's name."},
+        ),
+    ],
 )
 def rename(ds, variable, to_name):
     """Rename one data variable in a weather-skills envelope Zarr to a new name."""
+    if not to_name.strip():
+        raise UsageError("--to-name must be a non-empty variable name.")
+
     data_vars = list(ds.data_vars)
     if variable:
         if variable not in ds.data_vars:
@@ -86,10 +71,7 @@ def rename(ds, variable, to_name):
                 f"{kind}; renaming '{variable}' to it would clash."
             )
 
-    return (
-        ds.rename({variable: to_name}),
-        WroteSummary(f"variable {variable!r} -> {to_name!r}", replace=True),
-    )
+    return ds.rename({variable: to_name})
 
 
 if __name__ == "__main__":

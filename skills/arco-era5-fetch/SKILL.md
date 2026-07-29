@@ -31,27 +31,11 @@ Not a forecast — ERA5 is reanalysis. For forecast grids use `ecmwf-fetch` or
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 ```
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is one of:
-  - an absolute ISO date `YYYY-MM-DD`;
-  - `now` or `today` — the current UTC date;
-  - `latest` — the newest date with available data;
-  - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
-    days). The offset is capped at 36525 days; a larger value, a future `+`
-    offset, a month/year unit, or any malformed value exits 2 before any network
-    call.
-
-  Boundary handling: absolute endpoints and ordinary relative ranges are
-  inclusive of both ends. The **duration idiom** — start `B-<int>{d|w}` paired
-  with end exactly its own base `B` (both `now`, or both `latest`) — yields an
-  N-day window inclusive of `B`, with the far edge shifted in by one. For any
-  invocation using a relative token, the resolved concrete window is echoed to
-  stderr before fetching. `latest` discovery runs at most once per invocation and
-  only when a token references `latest`. The cache key records the resolved
-  absolute dates, never the relative token.
+- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention, so negative west/east values select correctly on
   ERA5's native 0..360 grid. The slice follows each axis's own order, so any
@@ -131,8 +115,7 @@ The output stamps a JSON-encoded `weather_skills_history` attr: an append-only a
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="arco-era5-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records every option except
-the `--output` path — `start`, `end`, `bbox`, and `variable` — with the resolved
-concrete dates substituted for any relative token. `version` is this skill's
+the `--output` path — `start`, `end`, `bbox`, and `variable`. `version` is this skill's
 version, also printed by `--help`. Inspect a written output's provenance with the
 `provenance` skill.
 
@@ -147,8 +130,8 @@ invocation must translate underscore → hyphen.
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-02 \
   --bbox 7/32/-6/43 -v 2m_temperature -o /tmp/arco.zarr
 
-# Last week ending at the newest available time, two variables
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start latest-1w --end latest \
+# One week, two variables
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-05-24 --end 2026-05-30 \
   --bbox 23/-20/-37/59 -v 2m_temperature -v total_precipitation -o /tmp/arco_week.zarr
 
 # A pressure-level variable for one day — adds a CF `level` (air_pressure) dim

@@ -1,14 +1,14 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
 #   "cftime",
 #   "xarray",
 # ]
 # ///
 """Concatenate weather-skills envelope Zarr stores along a named dim."""
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.10"
@@ -30,20 +30,21 @@ def _coerce(values):
 @weather_skill(
     "concat",
     _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variadic_input=True,
-    input_paths=True,
-    extra_args={
-        "dim": {"required": True},
-        "coords": {"help": "Comma-separated coord values for the new dim"},
-    },
+    inputs=["any+"],
+    outputs=["any"],
+    extra_args=[
+        (("--dim",), {"required": True}),
+        (("--coords",), {"help": "Comma-separated coord values for the new dim"}),
+    ],
 )
-def concat(dss, input_paths, dim, coords):
+def concat(dss, dim, coords):
     """Concatenate weather-skills envelope Zarr stores along a named dim."""
     import xarray as xr
 
-    names = [p.name for p in input_paths]
+    if len(dss) < 2:
+        raise UsageError(f"expected at least 2 --input paths, got {len(dss)}")
+
+    names = [f"input {i + 1}" for i in range(len(dss))]
 
     # Input-units guard. Concatenation places the inputs' values into a single
     # array under one set of attrs (the first input's, stamped below). If the
@@ -93,8 +94,7 @@ def concat(dss, input_paths, dim, coords):
         else:
             dss = [d.expand_dims(dim) for d in dss]
 
-    out_ds = xr.concat(dss, dim=dim)
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return xr.concat(dss, dim=dim)
 
 
 if __name__ == "__main__":
