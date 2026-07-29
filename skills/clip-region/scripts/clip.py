@@ -30,7 +30,7 @@ def clip_region(ds, args):
     lat_dim, lon_dim = detect_spatial_dims(ds, dims)
     sub = bbox_subset(ds, bbox, lat_dim=lat_dim, lon_dim=lon_dim)
     # Subsetting the spatial axes preserves the envelope shape.
-    validate_type(sub, ds)
+    validate_type(sub, ds, dims)
     return sub
 
 

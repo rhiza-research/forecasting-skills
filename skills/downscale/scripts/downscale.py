@@ -293,7 +293,7 @@ def downscale(ds, args):
 
     # Interpolating onto a finer grid replaces the spatial axes but keeps the
     # envelope shape.
-    validate_type(out_ds, ds)
+    validate_type(out_ds, ds, dims)
     return out_ds
 
 

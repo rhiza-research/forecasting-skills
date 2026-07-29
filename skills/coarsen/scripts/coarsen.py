@@ -143,7 +143,7 @@ def coarsen(ds, args):
     )
     out_ds = ds.regrid.linear(target)
     # Regridding replaces the spatial axes but keeps the envelope shape.
-    validate_type(out_ds, ds)
+    validate_type(out_ds, ds, dims)
     return out_ds
 
 
