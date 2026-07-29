@@ -34,15 +34,12 @@ def build_url(title: str, body: str) -> str:
 
 
 @weather_skill(
-    "submit-feedback",
-    _SKILL_VERSION,
-    extra_args={
-        "title": {"required": True, "help": "Issue title; must not be empty."},
-        "body": {"help": "Issue body as a markdown string."},
-        "body_file": {"help": "Path to a file holding the issue body."},
-    },
-    mutex_groups={"body_source": {"args": ("body", "body_file"), "required": True}},
+    name="submit-feedback",
+    version=_SKILL_VERSION,
 )
+@weather_skill.argument("--title", required=True, help="Issue title; must not be empty.")
+@weather_skill.argument("--body", default=None, help="Issue body as a markdown string.")
+@weather_skill.argument("--body-file", default=None, help="Path to a file holding the issue body.")
 def submit_feedback(title, body, body_file):
     """Build a length-checked prefilled GitHub "new issue" URL for filing feedback.
 
@@ -58,6 +55,11 @@ def submit_feedback(title, body, body_file):
     """
     if not title.strip():
         raise UsageError("--title must not be empty.")
+
+    if body is None and body_file is None:
+        raise UsageError("one of --body or --body-file is required.")
+    if body is not None and body_file is not None:
+        raise UsageError("use only one of --body or --body-file.")
 
     if body is None:
         body_path = Path(body_file)

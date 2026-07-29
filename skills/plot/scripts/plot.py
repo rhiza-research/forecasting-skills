@@ -26,8 +26,8 @@ import re
 import sys
 from pathlib import Path
 
-from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+from weather_skills_core import EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.dataset import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.16"
@@ -349,64 +349,67 @@ def _heatmap(
     return fig
 
 
-def _normalize_entry_args(raw):
+def _one_variable(variable):
+    if variable is None:
+        return None
+    if len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    return variable[0]
+
+
+def _entry_overrides(style, index):
     # The timeseries style ignores --index, --extent, and --cities; those
     # three record as None, keeping the args schema stable across styles
     # while showing they had no effect (--bbox and --mask-geojson record
     # verbatim). A whitespace-only --index parses to no selection and
     # records None too. A malformed --index is left as-is: the run fails
     # before anything is written.
+    args = {}
     try:
-        overrides = _parse_index(raw["index"])
+        overrides = _parse_index(index)
     except ValueError:
-        return raw
-    if not overrides or raw["style"] != "heatmap":
-        raw["index"] = None
-    if raw["style"] != "heatmap":
-        raw["extent"] = None
-        raw["cities"] = None
-    return raw
+        return args
+    if not overrides or style != "heatmap":
+        args["index"] = None
+    if style != "heatmap":
+        args["extent"] = None
+        args["cities"] = None
+    return args
 
 
 @weather_skill(
-    "plot",
-    _SKILL_VERSION,
-    input_type="any",
-    output_type="png",
-    variable="single",
-    title=True,
-    bbox={
-        "mode": "optional",
-        "help": "N/W/S/E decimal degrees (heatmap only). Slices the gridded input "
-        "to the bbox and sets the axes extent to it (an explicit --extent still "
-        "overrides). Use the resolve-region skill to get a country's bbox.",
-    },
-    extra_args={
-        "style": {"choices": ["heatmap", "timeseries"], "default": "heatmap"},
-        "colormap": {"default": "viridis"},
-        "index": {
-            "help": "Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
-            "several comma-separated positions ('step=0,1,2'), which keeps the dim "
-            "and, for --style heatmap, yields one panel per selected position. "
-            "Negative positions count from the end (Python-style). "
-            "Syntax-checked, then ignored with a warning for --style timeseries.",
-        },
-        "extent": {
-            "help": "Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
-        },
-        "cities": {
-            "help": 'City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
-        },
-        "fontsize": {"type": int, "default": 16},
-        "mask_geojson": {
-            "help": "Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
-            "outside the polygon are set to NaN before plotting. Use resolve-region's "
-            "--geojson output to produce a country polygon.",
-        },
-    },
-    normalize_args=_normalize_entry_args,
-    savefig_kwargs={"bbox_inches": "tight"},
+    name="plot",
+    version=_SKILL_VERSION,
+    inputs=[Types.ANY],
+    outputs=[Types.PNG],
+    optional_args=("variable", "bbox"),
 )
+@weather_skill.argument("--style", choices=["heatmap", "timeseries"], default="heatmap")
+@weather_skill.argument("--colormap", default="viridis")
+@weather_skill.argument(
+    "--index",
+    help="Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
+    "several comma-separated positions ('step=0,1,2'), which keeps the dim "
+    "and, for --style heatmap, yields one panel per selected position. "
+    "Negative positions count from the end (Python-style). "
+    "Syntax-checked, then ignored with a warning for --style timeseries.",
+)
+@weather_skill.argument(
+    "--extent",
+    help="Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
+)
+@weather_skill.argument(
+    "--cities",
+    help='City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
+)
+@weather_skill.argument("--fontsize", type=int, default=16)
+@weather_skill.argument(
+    "--mask-geojson",
+    help="Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
+    "outside the polygon are set to NaN before plotting. Use resolve-region's "
+    "--geojson output to produce a country polygon.",
+)
+@weather_skill.argument("--title", default=None)
 def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, bbox, mask_geojson):
     """Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
 
@@ -422,7 +425,7 @@ def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, 
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
     import xarray as xr
 
-    variable = variable or auto_variable(ds)
+    variable = _one_variable(variable) or auto_variable(ds)
     if not variable or variable not in ds:
         raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
     da = ds[variable]
@@ -639,6 +642,9 @@ def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, 
         ax.set_title(title or f"{variable} ({style})")
         fig.tight_layout()
 
+    overrides = _entry_overrides(style, index)
+    if overrides:
+        return fig, EntryOverride(args=overrides)
     return fig
 
 

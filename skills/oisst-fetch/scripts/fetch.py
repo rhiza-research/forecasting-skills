@@ -11,24 +11,15 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""
+"""Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a WeatherSkills standard dataset."""
 
 import sys
 from datetime import UTC, date, datetime
 
-# cf_xarray is used only inside weather-skills-core, which imports it lazily at
-# write time (cf_axes_missing, in the post-write decode check) — the final step,
-# after every per-year OPeNDAP fetch. Importing it eagerly at module top turns
-# that late import into a startup fail-fast probe: a missing dependency errors
-# before any network work rather than only after every fetch has run. The
-# F401 suppression below marks the probe-only import; removing it would drop the
-# fail-fast guarantee. (cf_units is imported where it is used directly, in
-# _stamp_cf.)
-import cf_xarray  # noqa: F401  (loaded lazily by core's cf_axes_missing at write time)
-from weather_skills_core import DataError, SkillError, UsageError, weather_skill
+import cf_xarray  # noqa: F401
+from weather_skills_core import DataError, EntryOverride, SkillError, Types, UsageError, weather_skill
 from weather_skills_core.dates import np_to_date
-from weather_skills_core.envelope import cf_axes_missing, normalize_longitude, stamp_cf_coords
-from weather_skills_core.provenance import make_completeness_probe
+from weather_skills_core.dataset import cf_axes_missing, normalize_longitude, stamp_cf_coords
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -119,14 +110,6 @@ _TIME_UNITS = "days since 1970-01-01 00:00:00"
 _TIME_CALENDAR = "standard"
 
 
-# Cache-hit completeness probe: `sst` must be present and its last time slice
-# must decode, and the `time` coord must be fully valued and strictly
-# increasing. The write path removes a partial store on failure; the probe is
-# the backstop for stores left partial by other means (a killed process, a
-# full disk mid-append).
-_store_is_complete = make_completeness_probe("sst", check_time="time")
-
-
 def _strip_dangling_bounds(ds):
     """Remove a `bounds` attr from any coord when the named bounds variable is absent.
 
@@ -186,28 +169,13 @@ def _stamp_cf(ds):
     return ds
 
 
-def _cf_decode_check(out) -> None:
-    """Reopen the written store and confirm cf-xarray resolves the X/Y/T axes.
-
-    A write that does not decode as CF (coord attrs missing/wrong, axes
-    unresolvable) is a defect under the full-CF contract; surface it rather than
-    ship a store that only looks compliant. Runs as the post_write hook, after
-    the streamed write completes and before the Wrote line.
-    """
-    import xarray as xr
-
-    try:
-        with xr.open_zarr(out, consolidated=True, decode_cf=True) as ds:
-            missing = cf_axes_missing(ds)
-    except Exception as exc:
-        raise DataError(
-            f"wrote {out} but cf-xarray could not decode it ({exc}); the output "
-            "is not CF-compliant."
-        ) from exc
+def _cf_decode_check(ds) -> None:
+    """Confirm cf-xarray resolves the X/Y/T axes before write."""
+    missing = cf_axes_missing(ds)
     if missing:
         raise DataError(
-            f"wrote {out} but cf-xarray did not resolve axes {missing} "
-            "(expected X/Y/T); the output is not CF-compliant."
+            f"cf-xarray did not resolve axes {missing} (expected X/Y/T); "
+            "the output is not CF-compliant."
         )
 
 
@@ -272,14 +240,8 @@ def _is_transport_failure(exc: Exception) -> bool:
     return any(m in text for m in markers)
 
 
-def _latest(args) -> date:
-    """`latest` resolver for OISST: newest day in the current-year OPeNDAP file.
-
-    The newest available day lives in the current-year file; fall back to the
-    previous year early in January before the new year's file appears. Each
-    open is classified: a transport failure (server unreachable) is distinct
-    from a genuine absence of the year file.
-    """
+def _latest() -> date:
+    """Newest day in the current-year OPeNDAP file (fall back to previous year)."""
     today = datetime.now(UTC).date()
     transport_err = None
     for year in (today.year, today.year - 1):
@@ -308,52 +270,35 @@ def _latest(args) -> date:
     )
 
 
-def _set_write_encoding(ds) -> None:
-    """Controlled CF write encoding, applied after the decorator's encoding clear:
-    explicit time units/calendar and an explicit NaN _FillValue for sst land cells."""
-    import numpy as np
-
-    ds["time"].encoding["units"] = _TIME_UNITS
-    ds["time"].encoding["calendar"] = _TIME_CALENDAR
-    ds["sst"].encoding["_FillValue"] = np.float32("nan")
+def _resolve(d):
+    return _latest() if d == "latest" else d
 
 
 @weather_skill(
-    "oisst-fetch",
-    _SKILL_VERSION,
-    output_type="gridded",
+    name="oisst-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.GRIDDED],
+    required_args=("start_time", "end_time"),
+    optional_args=("bbox",),
+    check_cache=True,
     source="oisst",
-    start_time=True,
-    end_time=True,
-    bbox="optional",
-    latest_resolver=_latest,
-    completeness_probe=_store_is_complete,
-    write_encoding=_set_write_encoding,
-    post_write=_cf_decode_check,
-    streaming=True,
-    cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, context):
-    """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""
+def fetch(start_time, end_time, bbox):
+    """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a WeatherSkills standard dataset."""
     import numpy as np
+    import xarray as xr
 
+    start_time, end_time = _resolve(start_time), _resolve(end_time)
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     time_slice = slice(np.datetime64(f"{start_iso}T00:00"), np.datetime64(f"{end_iso}T23:59"))
     years = list(range(start_time.year, end_time.year + 1))
+    bbox_raw = (
+        f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
+    )
     print(f"Fetching oisst {start_iso}..{end_iso} (years {years[0]}..{years[-1]})", file=sys.stderr)
 
-    # Stream one year at a time: subset each year to the bbox + window, pull just
-    # that slice into memory (eager per-year load avoids the dask-over-OPeNDAP path
-    # that silently wrote zeros), then yield it for the decorator to write/append
-    # before moving to the next year. Peak resident memory is bounded to a single
-    # year's selection rather than the whole multi-year window. The decorator
-    # re-stamps weather_skills_source/weather_skills_history on every append (a
-    # to_zarr append rewrites the root group attrs from the appended dataset; the
-    # entry is identical each time, so the final stamp is stable) and removes a
-    # partial store on any mid-stream failure, so a later identical run cannot
-    # falsely accept a truncated store as a cache hit.
-    wrote_any = False
+    pieces = []
     for year in years:
         try:
             dy = _open_year(year)
@@ -367,18 +312,11 @@ def fetch(start_time, end_time, bbox, context):
             with dy:
                 piece = dy[["sst"]].rename({"lat": "latitude", "lon": "longitude"})
                 piece = normalize_longitude(piece)
-                # Narrow the TIME axis first, before any spatial selection. The
-                # antimeridian branch of _bbox_subset uses an eager `.where(drop=True)`,
-                # so doing it before the time subset would materialize the full year's
-                # longitude wings across the entire year's time axis; subsetting time
-                # first keeps that eager spatial read bounded to the requested window.
                 piece = piece.sel(time=time_slice)
                 if bbox is not None:
                     piece = _bbox_subset(piece, *bbox)
                 piece = piece.load()
         except SkillError:
-            # _bbox_subset's empty-selection DataError already says what failed;
-            # propagate it past the transfer-failure classifier below.
             raise
         except Exception as exc:
             if _is_availability_failure(exc):
@@ -391,7 +329,7 @@ def fetch(start_time, end_time, bbox, context):
             if _is_transport_failure(exc):
                 raise UsageError(
                     f"OISST OPeNDAP rejected the data transfer for {start_iso}..{end_iso} "
-                    f"bbox {context.args.bbox or 'global'} (year {year}): {exc}. OISST is served "
+                    f"bbox {bbox_raw or 'global'} (year {year}): {exc}. OISST is served "
                     "over NOAA PSL OPeNDAP, which limits request size; this request is too large. "
                     "Reduce --bbox and/or shorten the date range. This is not a credentials or "
                     "data-availability problem — retrying the same request will not help."
@@ -400,11 +338,16 @@ def fetch(start_time, end_time, bbox, context):
         if piece.sizes.get("time", 0) == 0:
             continue
         _stamp_cf(piece)
-        wrote_any = True
-        yield piece
+        pieces.append(piece)
 
-    if not wrote_any:
+    if not pieces:
         raise DataError(f"OISST has no data in {start_iso}..{end_iso}.")
+
+    ds = xr.concat(pieces, dim="time") if len(pieces) > 1 else pieces[0]
+    _cf_decode_check(ds)
+    ds["time"].encoding = {"units": _TIME_UNITS, "calendar": _TIME_CALENDAR}
+    ds["sst"].encoding["_FillValue"] = np.float32("nan")
+    return ds, EntryOverride(args={"start_time": start_iso, "end_time": end_iso})
 
 
 if __name__ == "__main__":

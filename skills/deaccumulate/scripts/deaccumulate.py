@@ -18,7 +18,7 @@ resulting axis labels each value with the end of the period it covers.
 import re
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import Types, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.12"
@@ -88,15 +88,20 @@ def _units_look_like_rate(units: str) -> bool:
     )
 
 
+def _one_variable(variable):
+    if variable is None:
+        return None
+    if len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    return variable[0]
+
+
 @weather_skill(
-    "deaccumulate",
-    _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variable={
-        "mode": "single",
-        "help": "Variable to deaccumulate. Required if the input has multiple data vars.",
-    },
+    name="deaccumulate",
+    version=_SKILL_VERSION,
+    inputs=[Types.ANY],
+    outputs=[Types.ANY],
+    optional_args=("variable",),
     hash_input=False,
 )
 def deaccumulate(ds, variable):
@@ -106,6 +111,7 @@ def deaccumulate(ds, variable):
     if "step" not in ds.dims:
         raise UsageError(f"input has no 'step' dim; got dims {list(ds.dims)}.")
 
+    variable = _one_variable(variable)
     data_vars = list(ds.data_vars)
     if variable:
         if variable not in ds.data_vars:
@@ -160,10 +166,7 @@ def deaccumulate(ds, variable):
 
     out_ds = ds.drop_vars(variable).isel(step=slice(1, None))
     out_ds[variable] = diffed
-    return out_ds, WroteSummary(
-        f"variable={variable}, step length {da.sizes['step']} -> {out_ds.sizes['step']}",
-        replace=True,
-    )
+    return out_ds
 
 
 if __name__ == "__main__":

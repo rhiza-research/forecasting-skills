@@ -107,17 +107,17 @@ def _bbox_from_geometry(geometry):
 
 
 @weather_skill(
-    "resolve-region",
-    _SKILL_VERSION,
-    extra_args={
-        "code": {
-            "positional": True,
-            "help": "ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN",
-        },
-        "geojson": {
-            "help": "Optional path: write the country's boundary polygon as GeoJSON",
-        },
-    },
+    name="resolve-region",
+    version=_SKILL_VERSION,
+)
+@weather_skill.argument(
+    "code",
+    help="ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN",
+)
+@weather_skill.argument(
+    "--geojson",
+    default=None,
+    help="Optional path: write the country's boundary polygon as GeoJSON",
 )
 def resolve_region(code, geojson):
     """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""

@@ -6,7 +6,7 @@
 #   "numpy",
 # ]
 # ///
-"""Convert a weather-skills envelope Zarr's time axis to a target CF calendar.
+"""Convert a weather-skills standard dataset Zarr's time axis to a target CF calendar.
 
 Wraps xarray's ``Dataset.convert_calendar`` so two datasets on different CF
 calendars can be aligned to a common calendar before comparison. Converting to a
@@ -19,7 +19,8 @@ are dropped. ``--align-on`` is required whenever the source or target calendar i
 
 import sys
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import Types, UsageError, weather_skill
+from weather_skills_core.dataset import detect_time_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -43,48 +44,51 @@ def _source_calendar(time_coord) -> str:
 
 
 @weather_skill(
-    "convert-calendar",
-    _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    time_dim=True,
-    extra_args={
-        "calendar": {
-            "required": True,
-            "choices": [
-                "standard",
-                "gregorian",
-                "proleptic_gregorian",
-                "noleap",
-                "365_day",
-                "360_day",
-                "all_leap",
-                "366_day",
-                "julian",
-            ],
-            "help": "Target CF calendar name (e.g. standard, proleptic_gregorian, "
-            "noleap, 360_day, all_leap, julian).",
-        },
-        "align_on": {
-            "choices": ["date", "year"],
-            "help": "How to map dates across calendars. Required whenever the source "
-            "or target calendar is 360_day. 'year' translates dates by relative "
-            "position in the year (best for daily/sub-daily); 'date' conserves "
-            "month/day and drops invalid dates (best for coarser-than-daily).",
-        },
-    },
+    name="convert-calendar",
+    version=_SKILL_VERSION,
+    inputs=[Types.ANY],
+    outputs=[Types.ANY],
     hash_input=False,
 )
-def convert_calendar(ds, time_dim, calendar, align_on):
-    """Convert a weather-skills envelope Zarr's time axis to a target CF calendar."""
+@weather_skill.argument(
+    "--calendar",
+    required=True,
+    choices=[
+        "standard",
+        "gregorian",
+        "proleptic_gregorian",
+        "noleap",
+        "365_day",
+        "360_day",
+        "all_leap",
+        "366_day",
+        "julian",
+    ],
+    help="Target CF calendar name (e.g. standard, proleptic_gregorian, "
+    "noleap, 360_day, all_leap, julian).",
+)
+@weather_skill.argument(
+    "--align-on",
+    choices=["date", "year"],
+    help="How to map dates across calendars. Required whenever the source "
+    "or target calendar is 360_day. 'year' translates dates by relative "
+    "position in the year (best for daily/sub-daily); 'date' conserves "
+    "month/day and drops invalid dates (best for coarser-than-daily).",
+)
+@weather_skill.argument(
+    "--time-dim",
+    default=None,
+    help="Name of the wall-clock time dim when not auto-detectable via CF.",
+)
+def convert_calendar(ds, calendar, align_on, time_dim):
+    """Convert a weather-skills standard dataset Zarr's time axis to a target CF calendar."""
     import numpy as np
-    from weather_skills_core.envelope import detect_time_dim
 
     # Identify the wall-clock time dim. Honor an explicit --time-dim override,
     # else use cf-xarray's CF "T" axis detection (finds time even when named
     # unusually). Calendar conversion only applies to a wall-clock time axis,
     # not a forecast `step` (timedelta64) lead-time axis.
-    time_dim = detect_time_dim(ds, time_dim)
+    time_dim = time_dim or detect_time_dim(ds)
 
     # Validate that the resolved dim is actually a wall-clock time axis before
     # touching the calendar machinery. A datetime64 axis (dtype kind "M") or an

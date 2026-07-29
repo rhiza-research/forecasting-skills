@@ -7,12 +7,12 @@
 #   "pandas",
 # ]
 # ///
-"""Select entries along one named dimension of a weather-skills envelope Zarr.
+"""Select entries along one named dimension of a weather-skills standard dataset Zarr.
 
 Picks entries along one ``--dim`` either by integer position (``--index``,
 repeatable, negative positions count from the end) or by coordinate value
 (``--value``, repeatable, parsed against the coord's dtype), writing a new
-envelope. A single selection collapses the dim and also drops every coordinate
+dataset. A single selection collapses the dim and also drops every coordinate
 variable the selection leaves scalar (the dim's own coord and any auxiliary
 coord on the collapsed dim), so outputs from different sources align under
 ``concat`` (e.g. pick the same forecast week from several model envelopes,
@@ -22,9 +22,8 @@ variables, and attrs pass through unchanged.
 """
 
 import re
-from pathlib import Path
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import Types, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.6"
@@ -125,72 +124,47 @@ def _parse_value(raw: str, coord_vals, dim: str):
     )
 
 
-def _validate_args(args):
-    # An existing output must be a directory (a zarr store to replace); the
-    # write path replaces a directory, not a plain file.
-    out = Path(args.output)
-    if out.exists() and not out.is_dir():
-        raise UsageError(f"--output {args.output} exists and is not a directory.")
-    # Structural pass on --index before anything else: every position must
-    # satisfy the strict integer grammar. The positional (range/duplicate)
-    # pass runs against the opened dataset, after the cache check.
-    if args.index is not None:
-        for raw in args.index:
-            if not _INDEX_RE.fullmatch(raw):
-                raise UsageError(
-                    f"--index '{raw}' is not an integer position; expected an "
-                    "optionally negative ASCII-digit integer (e.g. 0, 2, -1)."
-                )
-
-
-def _normalize_args(args):
-    # The canonical int forms (not the raw strings) are what provenance
-    # records — "0" and "00" name the same selection, so they must share one
-    # cache identity. Given order is preserved.
-    if args.get("index") is not None:
-        args["index"] = [int(raw) for raw in args["index"]]
-    return args
-
-
 @weather_skill(
-    "select",
-    _SKILL_VERSION,
-    input_type="any",
+    name="select",
+    version=_SKILL_VERSION,
+    inputs=[Types.ANY],
     # The output shape depends on the input's shape and the selection (a
     # single selection collapses the dim), so the union declares every zarr
-    # envelope shape; the returned dataset's detected shape is validated
-    # against it before the write.
-    output_type=("gridded", "forecast", "station"),
-    extra_args={
-        "dim": {"required": True, "help": "Dimension to select along (exactly one)."},
-        "index": {
-            "repeat": True,
-            "help": "Integer position to select (repeat once per position; negative positions "
-            "count from the end). Mutually exclusive with --value.",
-        },
-        "value": {
-            "repeat": True,
-            "help": "Coordinate value to select, parsed against the coord's dtype (repeat once "
-            "per value). Mutually exclusive with --index.",
-        },
-    },
-    mutex_groups={
-        "selector": {"args": ("index", "value"), "required": True},
-    },
-    validate_args=_validate_args,
-    normalize_args=_normalize_args,
+    # type; the returned dataset's detected type is validated against it.
+    outputs=[(Types.GRIDDED, Types.FORECAST, Types.STATION)],
+)
+@weather_skill.argument("--dim", required=True, help="Dimension to select along (exactly one).")
+@weather_skill.argument(
+    "--index",
+    action="append",
+    help="Integer position to select (repeat once per position; negative positions "
+    "count from the end). Mutually exclusive with --value.",
+)
+@weather_skill.argument(
+    "--value",
+    action="append",
+    help="Coordinate value to select, parsed against the coord's dtype (repeat once "
+    "per value). Mutually exclusive with --index.",
 )
 def select(ds, dim, index, value):
-    """Select entries along one named dimension of a weather-skills envelope Zarr."""
+    """Select entries along one named dimension of a weather-skills standard dataset Zarr."""
     import numpy as np
+
+    if (index is None) == (value is None):
+        raise UsageError("exactly one of --index or --value is required.")
 
     if dim not in ds.dims:
         raise UsageError(f"--dim '{dim}' not in dims {list(ds.dims)}.")
     size = ds.sizes[dim]
 
     if index is not None:
-        # Positional checks; the structural grammar pass already ran before
-        # the cache check.
+        for raw in index:
+            if not _INDEX_RE.fullmatch(raw):
+                raise UsageError(
+                    f"--index '{raw}' is not an integer position; expected an "
+                    "optionally negative ASCII-digit integer (e.g. 0, 2, -1)."
+                )
+        # Positional checks after the structural grammar pass.
         positions_given = [int(raw) for raw in index]
         given = list(zip(index, positions_given, strict=True))
         for raw, pos in given:
@@ -263,7 +237,7 @@ def select(ds, dim, index, value):
         # order given on the command line.
         out_ds = ds.isel({dim: positions})
 
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

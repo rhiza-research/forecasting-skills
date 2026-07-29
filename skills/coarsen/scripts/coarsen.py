@@ -8,7 +8,7 @@
 #   "numpy",
 # ]
 # ///
-"""Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only).
+"""Coarsen or align a weather-skills standard dataset Zarr onto a target grid (geometry only).
 
 Generates a target grid at points ``offset + k * resolution`` for integer k,
 clipped to the input's lon/lat range, and interpolates onto it linearly via
@@ -21,7 +21,8 @@ aligns with sheerwater's ``global0_25``; ``(0.1, 0.05)`` with ``global0_1``;
 import math
 import sys
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import Types, UsageError, weather_skill
+from weather_skills_core.dataset import detect_spatial_dims
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -57,42 +58,46 @@ def _target_axis(coord_vals, resolution: float, offset: float):
     return target
 
 
-def _validate_args(args):
-    if args.target_resolution <= 0:
-        raise UsageError("--target-resolution must be > 0.")
+def _one_variable(variable):
+    if variable is None:
+        return None
+    if len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    return variable[0]
 
 
 @weather_skill(
-    "coarsen",
-    _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variable={"mode": "single", "help": "Restrict to a single data variable."},
-    dims=True,
-    extra_args={
-        "target_resolution": {
-            "type": float,
-            "required": True,
-            "help": "Target grid spacing in degrees.",
-        },
-        "offset": {
-            "type": float,
-            "required": True,
-            "help": "Grid offset in degrees; target points fall at offset + k*resolution.",
-        },
-    },
-    validate_args=_validate_args,
+    name="coarsen",
+    version=_SKILL_VERSION,
+    inputs=[Types.ANY],
+    outputs=[Types.ANY],
+    optional_args=("variable",),
     hash_input=False,
 )
-def coarsen(ds, variable, dims, target_resolution, offset):
-    """Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only)."""
+@weather_skill.argument(
+    "--target-resolution",
+    type=float,
+    required=True,
+    help="Target grid spacing in degrees.",
+)
+@weather_skill.argument(
+    "--offset",
+    type=float,
+    required=True,
+    help="Grid offset in degrees; target points fall at offset + k*resolution.",
+)
+def coarsen(ds, variable, target_resolution, offset):
+    """Coarsen or align a weather-skills standard dataset Zarr onto a target grid (geometry only)."""
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
-    from weather_skills_core.envelope import detect_spatial_dims
 
-    lat_dim, lon_dim = detect_spatial_dims(ds, dims)
+    if target_resolution <= 0:
+        raise UsageError("--target-resolution must be > 0.")
 
+    lat_dim, lon_dim = detect_spatial_dims(ds)
+
+    variable = _one_variable(variable)
     if variable:
         if variable not in ds.data_vars:
             raise UsageError(f"variable '{variable}' not in {list(ds.data_vars)}")

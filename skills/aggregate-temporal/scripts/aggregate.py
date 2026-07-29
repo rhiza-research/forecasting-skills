@@ -9,7 +9,7 @@
 #   "pandas",
 # ]
 # ///
-"""Temporal aggregation for weather-skills envelope Zarr stores.
+"""Temporal aggregation for weather-skills standard dataset Zarr stores.
 
 Supports a `time` dim (wall-clock) or a `step` dim (forecast lead time).
 For `time`, uses xarray.resample. For `step`, rolls fixed-length windows
@@ -19,7 +19,7 @@ expressed as timedelta64 and aggregates each.
 import datetime as _dt
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import Types, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.13"
@@ -347,55 +347,45 @@ def _aggregate_step(ds, period, method):
     return xr.concat(chunks, dim="step").assign_coords(step=labels)
 
 
-def _validate_args(args):
-    if args.anchor_end is not None:
-        try:
-            _dt.date.fromisoformat(args.anchor_end)
-        except ValueError as exc:
-            raise UsageError(
-                f"--anchor-end '{args.anchor_end}' is not a valid ISO date (YYYY-MM-DD): {exc}"
-            ) from None
-
-
 @weather_skill(
-    "aggregate-temporal",
-    _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    input_paths=True,
-    variable={
-        "mode": "repeat",
-        "help": "Restrict aggregation to this data variable. Repeat once per "
-        "variable to select several. The selected data variables are "
-        "aggregated and relabeled as usual; other DATA variables are dropped "
-        "from the output (coordinates pass through). Default (unset) "
-        "aggregates all data variables.",
-    },
-    time_dim=True,
-    extra_args={
-        "period": {
-            "required": True,
-            "choices": ["daily", "weekly", "dekadal", "monthly"],
-        },
-        "method": {"default": "sum", "choices": ["sum", "mean", "max", "min"]},
-        "anchor_end": {
-            "default": None,
-            "help": "ISO date (YYYY-MM-DD). When set, anchors the obs/time "
-            "resample so the LAST bin ends at this date and previous bins "
-            "are synthesized backward in `period`-day windows. Partial bins "
-            "whose start falls before the input's first timestamp are "
-            "dropped. Has no effect on the forecast `step` path.",
-        },
-    },
-    validate_args=_validate_args,
+    name="aggregate-temporal",
+    version=_SKILL_VERSION,
+    inputs=[Types.ANY],
+    outputs=[Types.ANY],
+    optional_args=("variable",),
     hash_input=False,
-    cache_hit_label="aggregate",
 )
-def aggregate(ds, input_paths, variable, time_dim, period, method, anchor_end):
-    """Temporal aggregation for weather-skills envelope Zarr stores."""
+@weather_skill.argument(
+    "--period",
+    required=True,
+    choices=["daily", "weekly", "dekadal", "monthly"],
+)
+@weather_skill.argument("--method", default="sum", choices=["sum", "mean", "max", "min"])
+@weather_skill.argument(
+    "--anchor-end",
+    default=None,
+    help="ISO date (YYYY-MM-DD). When set, anchors the obs/time "
+    "resample so the LAST bin ends at this date and previous bins "
+    "are synthesized backward in `period`-day windows. Partial bins "
+    "whose start falls before the input's first timestamp are "
+    "dropped. Has no effect on the forecast `step` path.",
+)
+@weather_skill.argument(
+    "--time-dim",
+    default=None,
+    help="Name of the time-like dim when not auto-detectable.",
+)
+def aggregate(ds, variable, period, method, anchor_end, time_dim):
+    """Temporal aggregation for weather-skills standard dataset Zarr stores."""
     import cf_xarray  # noqa: F401 — registers the .cf accessor
 
-    src = input_paths[0]
+    if anchor_end is not None:
+        try:
+            _dt.date.fromisoformat(anchor_end)
+        except ValueError as exc:
+            raise UsageError(
+                f"--anchor-end '{anchor_end}' is not a valid ISO date (YYYY-MM-DD): {exc}"
+            ) from None
 
     # Variable selection. When --variable is given, restrict the dataset to the
     # named DATA variable(s) BEFORE aggregating, so that selecting only an
@@ -409,7 +399,7 @@ def aggregate(ds, input_paths, variable, time_dim, period, method, anchor_end):
         invalid = [v for v in variable if v not in ds.data_vars]
         if invalid:
             raise UsageError(
-                f"--variable {invalid} not data variable(s) of {src}. "
+                f"--variable {invalid} not data variable(s) of the input. "
                 f"Valid data variables: {data_vars}"
             )
         # De-duplicate while preserving first-seen order so a repeated name
@@ -551,7 +541,7 @@ def aggregate(ds, input_paths, variable, time_dim, period, method, anchor_end):
             else:
                 attrs["standard_name"] = new_name
 
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return out_ds
 
 
 if __name__ == "__main__":

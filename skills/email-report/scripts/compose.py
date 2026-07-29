@@ -19,23 +19,25 @@ _SKILL_VERSION = "0.1.8"
 
 
 @weather_skill(
-    "email-report",
-    _SKILL_VERSION,
-    extra_args={
-        "sender": {"flag": "--from", "required": True, "help": "From: header"},
-        "to": {"required": True, "help": "Comma-separated recipients"},
-        "cc": {},
-        "reply_to": {},
-        "subject": {"required": True},
-        "body": {},
-        "body_file": {},
-        "attach": {"nargs": "*", "default": []},
-        "output": {"flag": "--output", "aliases": ["-o"], "required": True},
-    },
-    mutex_groups={"body_source": {"args": ("body", "body_file"), "required": True}},
+    name="email-report",
+    version=_SKILL_VERSION,
 )
-def compose(sender, to, cc, reply_to, subject, body, body_file, attach, output):
+@weather_skill.argument("--from", dest="sender", required=True, help="From: header")
+@weather_skill.argument("--to", required=True, help="Comma-separated recipients")
+@weather_skill.argument("--cc", default=None)
+@weather_skill.argument("--reply-to", default=None)
+@weather_skill.argument("--subject", required=True)
+@weather_skill.argument("--body", default=None)
+@weather_skill.argument("--body-file", default=None)
+@weather_skill.argument("--attach", nargs="*", default=None)
+@weather_skill.argument("-o", "--output", dest="eml_path", required=True)
+def compose(sender, to, cc, reply_to, subject, body, body_file, attach, eml_path):
     """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""
+    if body is None and body_file is None:
+        raise UsageError("one of --body or --body-file is required.")
+    if body is not None and body_file is not None:
+        raise UsageError("use only one of --body or --body-file.")
+
     if body is None:
         body_path = Path(body_file)
         if not body_path.exists():
@@ -54,7 +56,7 @@ def compose(sender, to, cc, reply_to, subject, body, body_file, attach, output):
     msg["Message-ID"] = make_msgid(domain="rhiza.local")
     msg.set_content(body)
 
-    for path_str in attach:
+    for path_str in attach or []:
         path = Path(path_str)
         if not path.exists():
             print(f"Warning: attachment {path} not found, skipping.", file=sys.stderr)
@@ -67,11 +69,11 @@ def compose(sender, to, cc, reply_to, subject, body, body_file, attach, output):
             path.read_bytes(), maintype=maintype, subtype=subtype, filename=path.name
         )
 
-    out = Path(output)
+    out = Path(eml_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(bytes(msg))
     print(
-        f"Wrote: {output} ({len(msg.get_payload())} parts, {out.stat().st_size} bytes)",
+        f"Wrote: {eml_path} ({len(msg.get_payload())} parts, {out.stat().st_size} bytes)",
         file=sys.stderr,
     )
 

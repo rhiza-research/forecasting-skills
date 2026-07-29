@@ -27,8 +27,10 @@ independent otherwise (--shared-scale / --independent-scale override).
 
 import sys
 
-from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+from pathlib import Path
+
+from weather_skills_core import DataError, Types, UsageError, weather_skill
+from weather_skills_core.dataset import auto_variable, cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.16"
@@ -246,73 +248,81 @@ def _ax_bounds(ds, variable):
     )
 
 
+def _one_variable(variable):
+    if variable is None:
+        return None
+    if len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    return variable[0]
+
+
+def _dataset_label(ds, fallback):
+    src = ds.encoding.get("source")
+    return Path(src).name if src else fallback
+
+
 @weather_skill(
-    "plot-compare",
-    _SKILL_VERSION,
-    input_type=["any", "any"],
-    output_type="png",
-    input_help="Input Zarr; pass exactly twice (first = A, second = B)",
-    history_labels=["a", "b"],
-    input_paths=True,
-    variable={
-        "mode": "single",
-        "help": "Variable for both rows. Per-row --variable-a/-b take precedence.",
-    },
-    title=True,
-    time_dim=True,
-    bbox={
-        "mode": "optional",
-        "help": "N/W/S/E decimal degrees. Slices gridded inputs to the bbox, drops "
-        "stations outside the bbox, and sets axes to the bbox. Cells inside the "
-        "bbox but outside any --mask-geojson polygon are kept (rectangular "
-        "slice). Use the resolve-region skill to get a country's bbox.",
-    },
-    extra_args={
-        "variable_a": {
-            "help": "Variable for row A. Overrides --variable for that row. "
-            "Default: --variable, else first real data var of input A.",
-        },
-        "variable_b": {
-            "help": "Variable for row B. Overrides --variable for that row. "
-            "Default: --variable, else first real data var of input B.",
-        },
-        "colormap": {
-            "default": None,
-            "help": "matplotlib colormap name. In shared-scale mode, when omitted the "
-            "categorical precipitation colormap with BoundaryNorm is used. In "
-            "independent-scale mode it is the per-row default (falls back to "
-            "'viridis'); --colormap-a/-b override it per row.",
-        },
-        "colormap_a": {
-            "default": None,
-            "help": "matplotlib colormap for row A in independent-scale mode "
-            "(precedence: --colormap-a, then --colormap, then 'viridis').",
-        },
-        "colormap_b": {
-            "default": None,
-            "help": "matplotlib colormap for row B in independent-scale mode "
-            "(precedence: --colormap-b, then --colormap, then 'viridis').",
-        },
-        "shared_scale": {
-            "action": "store_true",
-            "help": "Force one shared color scale across both rows. Default: shared "
-            "when both rows resolve to the same variable AND matching units, else "
-            "independent per-row scales.",
-        },
-        "independent_scale": {
-            "action": "store_true",
-            "help": "Force per-row color scales (each row its own vmin/vmax/colorbar). "
-            "Default: independent unless both rows are the same variable + units.",
-        },
-        "panels": {"type": int, "default": 3},
-        "mask_geojson": {
-            "help": "Path to a GeoJSON boundary polygon. Gridded cells outside the "
-            "polygon are set to NaN before plotting. Use resolve-region's --geojson "
-            "output to produce a country polygon.",
-        },
-    },
-    mutex_groups={"scale": ("shared_scale", "independent_scale")},
-    savefig_kwargs={"bbox_inches": "tight"},
+    name="plot-compare",
+    version=_SKILL_VERSION,
+    inputs=[Types.ANY, Types.ANY],
+    outputs=[Types.PNG],
+    optional_args=("variable", "bbox"),
+)
+@weather_skill.argument(
+    "--variable-a",
+    help="Variable for row A. Overrides --variable for that row. "
+    "Default: --variable, else first real data var of input A.",
+)
+@weather_skill.argument(
+    "--variable-b",
+    help="Variable for row B. Overrides --variable for that row. "
+    "Default: --variable, else first real data var of input B.",
+)
+@weather_skill.argument(
+    "--colormap",
+    default=None,
+    help="matplotlib colormap name. In shared-scale mode, when omitted the "
+    "categorical precipitation colormap with BoundaryNorm is used. In "
+    "independent-scale mode it is the per-row default (falls back to "
+    "'viridis'); --colormap-a/-b override it per row.",
+)
+@weather_skill.argument(
+    "--colormap-a",
+    default=None,
+    help="matplotlib colormap for row A in independent-scale mode "
+    "(precedence: --colormap-a, then --colormap, then 'viridis').",
+)
+@weather_skill.argument(
+    "--colormap-b",
+    default=None,
+    help="matplotlib colormap for row B in independent-scale mode "
+    "(precedence: --colormap-b, then --colormap, then 'viridis').",
+)
+@weather_skill.argument(
+    "--shared-scale",
+    action="store_true",
+    help="Force one shared color scale across both rows. Default: shared "
+    "when both rows resolve to the same variable AND matching units, else "
+    "independent per-row scales.",
+)
+@weather_skill.argument(
+    "--independent-scale",
+    action="store_true",
+    help="Force per-row color scales (each row its own vmin/vmax/colorbar). "
+    "Default: independent unless both rows are the same variable + units.",
+)
+@weather_skill.argument("--panels", type=int, default=3)
+@weather_skill.argument(
+    "--mask-geojson",
+    help="Path to a GeoJSON boundary polygon. Gridded cells outside the "
+    "polygon are set to NaN before plotting. Use resolve-region's --geojson "
+    "output to produce a country polygon.",
+)
+@weather_skill.argument("--title", default=None)
+@weather_skill.argument(
+    "--time-dim",
+    default=None,
+    help="Name of the time-like dim when not auto-detectable.",
 )
 def plot_compare(
     ds_a,
@@ -330,7 +340,6 @@ def plot_compare(
     time_dim,
     bbox,
     mask_geojson,
-    input_paths,
 ):
     """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
 
@@ -341,8 +350,11 @@ def plot_compare(
     rows when they are the same variable with matching units, and per-row
     independent otherwise (--shared-scale / --independent-scale override).
     """
-    label_a = input_paths[0].name
-    label_b = input_paths[1].name
+    if shared_scale and independent_scale:
+        raise UsageError("use only one of --shared-scale or --independent-scale.")
+
+    label_a = _dataset_label(ds_a, "a")
+    label_b = _dataset_label(ds_b, "b")
 
     import matplotlib
 
@@ -355,8 +367,9 @@ def plot_compare(
 
     # Per-row variable resolution: explicit per-row flag, then the shared
     # --variable, then that input's own first real (non-CRS) data var.
-    var_a = variable_a or variable or auto_variable(ds_a)
-    var_b = variable_b or variable or auto_variable(ds_b)
+    shared_var = _one_variable(variable)
+    var_a = variable_a or shared_var or auto_variable(ds_a)
+    var_b = variable_b or shared_var or auto_variable(ds_b)
     for side, var, ds in (("A", var_a, ds_a), ("B", var_b, ds_b)):
         if var is None or var not in ds:
             # Same real-data-var criterion core's auto_variable uses: skip CF

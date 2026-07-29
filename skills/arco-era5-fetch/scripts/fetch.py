@@ -11,16 +11,15 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
+"""Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a WeatherSkills standard dataset."""
 
 import re
 import sys
 from datetime import UTC, date, datetime
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
+from weather_skills_core import DataError, EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.dataset import bbox_subset, normalize_longitude
 from weather_skills_core.dates import np_to_date
-from weather_skills_core.envelope import normalize_longitude
-from weather_skills_core.provenance import make_completeness_probe
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.9"
@@ -106,54 +105,28 @@ _CURATED_STANDARD_NAME = {
 _ABS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _open_arco(state):
-    """Open the ARCO store lazily (metadata only), at most once per run.
+_STATE: dict = {}
 
-    ``state`` is the run-scoped ``RunContext.state`` dict, shared by the
-    `latest` resolver and the fetch body so the store is opened at most once
-    per run. Lazy open with chunks=None: reads only metadata, so `latest`
-    resolution runs before any array bytes are pulled, and xarray's lazy
-    indexing prunes to the bbox/time/variable selection before reading — so
-    only that selection is materialized. (A dask-backed open forces the
-    longitude normalization sort to pull the whole global grid per step,
-    which is far slower for a bbox request with no memory benefit; the
-    selection itself is the bound.) Store-open failures (network, bad path,
-    gcsfs error) surface as a one-line actionable message rather than a raw
-    traceback.
-    """
-    if "ds" not in state:
+
+def _open_arco():
+    """Open the ARCO store lazily (metadata only), once per process."""
+    if "ds" not in _STATE:
         import xarray as xr
 
         try:
-            state["ds"] = xr.open_zarr(_ARCO_STORE, storage_options=_STORAGE_OPTIONS, chunks=None)
+            _STATE["ds"] = xr.open_zarr(_ARCO_STORE, storage_options=_STORAGE_OPTIONS, chunks=None)
         except Exception as exc:  # noqa: BLE001
             raise DataError(
                 f"could not open the ARCO-ERA5 store at {_ARCO_STORE} "
                 f"({type(exc).__name__}: {exc}). Check network access to Google Cloud "
                 "Storage; the store is read anonymously, so no credentials are needed."
             ) from None
-    return state["ds"]
+    return _STATE["ds"]
 
 
-def _latest(args, context) -> date:
-    """Newest date that actually has data, from the store's marker attrs.
-
-    The store's `time` coordinate is pre-allocated far into the future (empty
-    placeholder slots out to ~2050), so its max is not the data edge. The real
-    extent is published in the store's global attrs: `valid_time_stop_era5t`
-    marks the near-real-time (ERA5T) edge and `valid_time_stop` the
-    finalized-ERA5 edge. Both are inclusive (data exists through that date);
-    the near-real-time edge is preferred. Fall back to the time-coord max only
-    if neither attr is present or parseable. The decorator memoizes this, so
-    it is computed at most once and only when a token references `latest`.
-    These marker attrs are trusted as the data edge and are not cross-checked
-    against the actually-filled `time` slots, so in the rare case the store
-    publishes a marker ahead of its written data, a `latest`-anchored request
-    resolves to a date with no time steps and exits with the existing clean
-    "no data in <start>..<end>" error rather than silently returning wrong
-    data.
-    """
-    ds = _open_arco(context.state)
+def _latest() -> date:
+    """Newest date with data from store marker attrs (not the pre-allocated time max)."""
+    ds = _open_arco()
     for attr in ("valid_time_stop_era5t", "valid_time_stop"):
         raw = ds.attrs.get(attr)
         if raw and _ABS_DATE_RE.match(str(raw).strip()):
@@ -162,15 +135,6 @@ def _latest(args, context) -> date:
             except ValueError:
                 pass
     return np_to_date(ds["time"].values.max())
-
-
-# Cache-hit completeness probe, keyed to the requested `--variable` list (or
-# every data variable already in the store when the list is omitted): each
-# probed variable must be present and its corner cell must decode, so a store
-# whose `weather_skills_history` attr survived an interrupted write is a cache
-# miss that forces a re-fetch rather than a truncated output handed to the
-# caller.
-_store_is_complete = make_completeness_probe(lambda context: context.args.variable)
 
 
 def _fix_units(units):
@@ -285,91 +249,53 @@ def _global_attrs(start_iso: str, end_iso: str) -> dict:
     }
 
 
-def _set_time_encoding(ds, context) -> None:
-    """Controlled time write encoding, applied after the decorator's encoding clear.
-
-    The time coord's CF units + calendar are set explicitly so the on-disk
-    time axis is self-describing per CF; the reference date is the resolved
-    window start, read off the run context.
-    """
-    if "time" in ds.coords:
-        ds["time"].encoding = {
-            "units": f"hours since {context.start_time.isoformat()} 00:00:00",
-            "calendar": "proleptic_gregorian",
-        }
+def _resolve(d):
+    return _latest() if d == "latest" else d
 
 
 @weather_skill(
-    "arco-era5-fetch",
-    _SKILL_VERSION,
-    output_type="gridded",
+    name="arco-era5-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.GRIDDED],
+    required_args=("start_time", "end_time", "variable"),
+    optional_args=("bbox",),
+    exclude_args=("workers",),
+    check_cache=True,
     source="arco-era5",
-    start_time=True,
-    end_time=True,
-    bbox="optional",
-    variable={
-        "mode": "repeat",
-        "help": "Restrict to this data variable. Repeat once per variable; omit for all (large).",
-    },
-    latest_resolver=_latest,
-    completeness_probe=_store_is_complete,
-    write_encoding=_set_time_encoding,
-    cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, variable, context):
-    """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
+@weather_skill.argument("--workers", type=int, default=1, help="Unused; reserved for future parallelism.")
+def fetch(start_time, end_time, variable, bbox, workers):
+    """Fetch ARCO-ERA5 reanalysis and write a WeatherSkills standard dataset."""
     import numpy as np
-    from weather_skills_core.envelope import bbox_subset
 
-    start_iso = start_time.isoformat()
-    end_iso = end_time.isoformat()
+    start_time, end_time = _resolve(start_time), _resolve(end_time)
+    start_iso, end_iso = start_time.isoformat(), end_time.isoformat()
+    ds = _open_arco()
 
-    ds = _open_arco(context.state)
-
-    # Selection: variable -> bbox -> time. Each step prunes before the eager load.
-    if variable:
-        missing = [v for v in variable if v not in ds.data_vars]
-        if missing:
-            raise UsageError(
-                f"variable(s) not in ARCO-ERA5: {', '.join(missing)}.\n"
-                f"Available: {', '.join(sorted(ds.data_vars))}"
-            )
-        ds = ds[variable]
-    else:
-        print(
-            "Note: no --variable given; selecting all data variables (large). Pass -v to restrict.",
-            file=sys.stderr,
+    missing = [v for v in variable if v not in ds.data_vars]
+    if missing:
+        raise UsageError(
+            f"variable(s) not in ARCO-ERA5: {', '.join(missing)}.\n"
+            f"Available: {', '.join(sorted(ds.data_vars))}"
         )
-
+    ds = ds[variable]
     ds = normalize_longitude(ds)
     if bbox:
         ds = bbox_subset(ds, bbox, lat_dim="latitude", lon_dim="longitude")
-
-    # Inclusive whole-day window over the hourly time axis.
     ds = ds.sel(time=slice(np.datetime64(f"{start_iso}T00:00"), np.datetime64(f"{end_iso}T23:59")))
     if ds.sizes.get("time", 0) == 0:
         raise DataError(f"ARCO-ERA5 has no data in {start_iso}..{end_iso}.")
 
-    print(
-        f"Fetching arco-era5 {start_iso}..{end_iso}",
-        file=sys.stderr,
-    )
-
+    print(f"Fetching arco-era5 {start_iso}..{end_iso}", file=sys.stderr)
     ds.attrs.clear()
     ds.attrs.update(_global_attrs(start_iso, end_iso))
     _stamp_coord_attrs(ds)
-    # Validate and stamp every data variable's CF attrs. A variable whose final
-    # `units` cannot be made udunits-valid (missing, or non-parseable and not in
-    # the fixup map) fails here rather than being written under a false CF claim.
     try:
         _stamp_data_var_attrs(ds)
     except ValueError as exc:
         raise DataError(str(exc)) from None
 
-    # Write-side CF decode check: confirm every axis resolves from the stamped
-    # coord attrs with cf_xarray's machinery. This catches a coord attr
-    # regression before the store is written rather than at read time.
-    import cf_xarray  # noqa: F401 — registers the .cf accessor
+    import cf_xarray  # noqa: F401
 
     try:
         axes = ds.cf.axes
@@ -384,19 +310,15 @@ def fetch(start_time, end_time, bbox, variable, context):
             "This is a bug in the fetcher's CF stamping, not a data problem."
         ) from None
 
-    # Materialize the pruned selection eagerly so read failures surface here
-    # with an actionable message rather than as a raw traceback from the write.
+    if "time" in ds.coords:
+        ds["time"].encoding = {
+            "units": f"hours since {start_iso} 00:00:00",
+            "calendar": "proleptic_gregorian",
+        }
+
     try:
         ds = ds.compute()
     except MemoryError:
-        # Reactive backstop only: materializing loads the whole pruned
-        # selection into host memory at once, so a very large selection can
-        # exhaust memory. This handler is best-effort — under Linux memory
-        # overcommit an OOM typically arrives as a SIGKILL (the process is
-        # killed outright, printing only "Killed"), so a catchable MemoryError
-        # is not guaranteed. When it is catchable, surface it actionably so a
-        # caller narrows the request rather than blindly retrying the same
-        # dead call.
         raise DataError(
             "ran out of memory materializing the selection. "
             "Narrow it with -v, --bbox, or a shorter window."
@@ -406,7 +328,7 @@ def fetch(start_time, end_time, bbox, variable, context):
             f"failed while reading from the ARCO-ERA5 store ({type(exc).__name__}: {exc})."
         ) from None
 
-    return ds, WroteSummary("", replace=True)
+    return ds, EntryOverride(args={"start_time": start_iso, "end_time": end_iso})
 
 
 if __name__ == "__main__":

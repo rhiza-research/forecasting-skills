@@ -6,7 +6,7 @@
 #   "pint>=0.25",
 # ]
 # ///
-"""Convert one data variable in a weather-skills envelope Zarr to a target units string.
+"""Convert one data variable in a weather-skills standard dataset Zarr to a target units string.
 
 Reads the variable's ``units`` attr, converts the values to ``--to-units`` with
 the ``pint`` units library, and writes a new Zarr whose variable carries the
@@ -24,7 +24,7 @@ precipitation flux such as ``kg m-2 s-1`` into a depth rate such as ``mm/day``.
 import re
 import tokenize
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import Types, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -141,36 +141,42 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
     return source_name
 
 
+def _one_variable(variable):
+    if variable is None:
+        return None
+    if len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    return variable[0]
+
+
 @weather_skill(
-    "unit-convert",
-    _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variable={
-        "mode": "single",
-        "help": "Variable to convert. Required if the input has multiple data vars.",
-    },
-    extra_args={
-        "to_units": {
-            "required": True,
-            "help": "Target units string (e.g. 'mm/day'); becomes the output variable's "
-            "units attribute.",
-        },
-        "standard_name": {
-            "help": (
-                "CF standard_name to write on the output variable. Overrides the "
-                "built-in target-units lookup. When omitted, a known target unit sets "
-                "the matching name, a dimensionality-changing conversion drops the "
-                "now-inconsistent source name, and a same-dimension conversion keeps it."
-            ),
-        },
-    },
+    name="unit-convert",
+    version=_SKILL_VERSION,
+    inputs=[Types.ANY],
+    outputs=[Types.ANY],
+    optional_args=("variable",),
     hash_input=False,
 )
+@weather_skill.argument(
+    "--to-units",
+    required=True,
+    help="Target units string (e.g. 'mm/day'); becomes the output variable's "
+    "units attribute.",
+)
+@weather_skill.argument(
+    "--standard-name",
+    help=(
+        "CF standard_name to write on the output variable. Overrides the "
+        "built-in target-units lookup. When omitted, a known target unit sets "
+        "the matching name, a dimensionality-changing conversion drops the "
+        "now-inconsistent source name, and a same-dimension conversion keeps it."
+    ),
+)
 def unit_convert(ds, variable, to_units, standard_name):
-    """Convert one data variable in a weather-skills envelope Zarr to a target units string."""
+    """Convert one data variable in a weather-skills standard dataset Zarr to a target units string."""
     import pint
 
+    variable = _one_variable(variable)
     data_vars = list(ds.data_vars)
     if variable:
         if variable not in ds.data_vars:
@@ -223,9 +229,7 @@ def unit_convert(ds, variable, to_units, standard_name):
 
     out_ds = ds.copy()
     out_ds[variable] = out_da
-    return out_ds, WroteSummary(
-        f"variable={variable}, units {src_units!r} -> {to_units!r}", replace=True
-    )
+    return out_ds
 
 
 if __name__ == "__main__":

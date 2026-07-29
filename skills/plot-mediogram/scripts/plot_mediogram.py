@@ -13,8 +13,8 @@
 # ///
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
 
-from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.envelope import cf_dim
+from weather_skills_core import DataError, Types, UsageError, weather_skill
+from weather_skills_core.dataset import cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -54,21 +54,34 @@ def _inner_stats(values):
     }
 
 
+def _one_variable(variable):
+    if variable is None:
+        return None
+    if len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    return variable[0]
+
+
 @weather_skill(
-    "plot-mediogram",
-    _SKILL_VERSION,
-    input_type=["any", "any"],
-    input_names=["forecast", "mclimate"],
-    input_help=["Forecast Zarr (number × step × spatial)", "M-climate Zarr (same schema)"],
-    output_type="png",
-    variable="single",
-    title=True,
-    extra_args={
-        "lat": {"type": float, "required": True},
-        "lon": {"type": float, "required": True},
-    },
+    name="plot-mediogram",
+    version=_SKILL_VERSION,
+    outputs=[Types.PNG],
+    optional_args=("variable",),
 )
-def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
+@weather_skill.argument(
+    "--forecast",
+    required=True,
+    help="Forecast Zarr (number × step × spatial)",
+)
+@weather_skill.argument(
+    "--mclimate",
+    required=True,
+    help="M-climate Zarr (same schema)",
+)
+@weather_skill.argument("--lat", type=float, required=True)
+@weather_skill.argument("--lon", type=float, required=True)
+@weather_skill.argument("--title", default=None)
+def plot_mediogram(forecast, mclimate, variable, lat, lon, title):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
     import matplotlib
 
@@ -76,9 +89,13 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import numpy as np
+    import xarray as xr
     from matplotlib.patches import Patch
 
-    variable = variable or (next(iter(ds_fc.data_vars)) if ds_fc.data_vars else None)
+    ds_fc = xr.open_zarr(forecast, consolidated=False)
+    ds_mc = xr.open_zarr(mclimate, consolidated=False)
+
+    variable = _one_variable(variable) or (next(iter(ds_fc.data_vars)) if ds_fc.data_vars else None)
     if variable is None or variable not in ds_fc or variable not in ds_mc:
         raise UsageError(
             f"variable '{variable}' must exist in both inputs. "

@@ -25,8 +25,7 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.provenance import (
     HISTORY_ATTR,
     SOURCE_ATTR,
-    coerce_chain,
-    parse_chain,
+    read_chain,
     validate_chain,
 )
 
@@ -47,7 +46,7 @@ def _load_zarr(path: Path) -> dict:
         ) from None
     chains = {}
     raw = attrs.get(HISTORY_ATTR)
-    coerced = coerce_chain(raw, path.name) if raw else None
+    coerced = read_chain(raw, label=path.name) if raw else None
     if coerced is not None:
         chains[path.name] = coerced
     return {"chains": chains, "source": attrs.get(SOURCE_ATTR), "name": path.name}
@@ -73,7 +72,7 @@ def _load_png(path: Path) -> dict:
 
     def _add(slot: str, key: str) -> None:
         if info[key] and slot not in chains:
-            coerced = coerce_chain(info[key], f"{path.name} ({key})")
+            coerced = read_chain(info[key], label=f"{path.name} ({key})")
             if coerced is not None:
                 chains[slot] = coerced
 
@@ -174,7 +173,7 @@ def _run_check(path: Path) -> tuple[int, str]:
     notes: list = []
     for key, raw in raw_histories.items():
         try:
-            chain = parse_chain(raw)
+            chain = read_chain(raw, strict=True)
         except ValueError as exc:
             violations.append(f"{key}: {exc}")
             continue
@@ -471,29 +470,31 @@ def _render_script(data: dict) -> None:
 
 
 @weather_skill(
-    "provenance",
-    _SKILL_VERSION,
-    extra_args={
-        "input": {
-            "required": True,
-            "aliases": ("-i",),
-            "help": "Artifact to inspect: a zarr dir or a .png file.",
-        },
-        "format": {
-            "choices": ["human", "json", "script"],
-            "default": "human",
-            "help": "Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
-        },
-        "check": {
-            "action": "store_true",
-            "help": (
-                "Validate the weather_skills_history schema instead of rendering it. "
-                "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
-            ),
-        },
-    },
+    name="provenance",
+    version=_SKILL_VERSION,
 )
-def provenance(input, format, check):
+@weather_skill.argument(
+    "-i",
+    "--input",
+    dest="artifact",
+    required=True,
+    help="Artifact to inspect: a zarr dir or a .png file.",
+)
+@weather_skill.argument(
+    "--format",
+    choices=["human", "json", "script"],
+    default="human",
+    help="Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
+)
+@weather_skill.argument(
+    "--check",
+    action="store_true",
+    help=(
+        "Validate the weather_skills_history schema instead of rendering it. "
+        "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
+    ),
+)
+def provenance(artifact, format, check):
     """Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact.
 
     Read-only. Takes one artifact -- a weather-skills envelope Zarr (a directory) or a
@@ -503,7 +504,7 @@ def provenance(input, format, check):
     stdout; diagnostics and errors go to stderr. Never writes or modifies any file.
     """
     if check:
-        code, report = _run_check(Path(input))
+        code, report = _run_check(Path(artifact))
         if code == 0:
             print(report)
             return
@@ -511,10 +512,10 @@ def provenance(input, format, check):
             raise DataError(report, prefix=False)
         raise UsageError(report, prefix=False)
 
-    data = _read_artifact(Path(input))
+    data = _read_artifact(Path(artifact))
 
     if not data["chains"]:
-        print(f"no provenance recorded on {input}")
+        print(f"no provenance recorded on {artifact}")
         return
 
     if format == "human":

@@ -9,21 +9,18 @@
 #   "numpy",
 # ]
 # ///
-"""Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
+"""Fetch a dynamical.org open-catalog dataset and write a WeatherSkills standard dataset."""
 
 import sys
 from datetime import date
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
-from weather_skills_core.dates import np_to_date, parse_token, resolve_date, resolve_window
-from weather_skills_core.envelope import stamp_cf_attrs
+from weather_skills_core import DataError, EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.dates import np_to_date, parse_date_value
+from weather_skills_core.dataset import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.13"
 
-# Coords dynamical attaches that are not part of the weather-skills envelope: forecast
-# bookkeeping (valid_time, *_forecast_length) and the CRS scalar (spatial_ref).
-# Dropped on the way out so the output carries only envelope coords.
 _DROP_COORDS = (
     "valid_time",
     "expected_forecast_length",
@@ -31,17 +28,12 @@ _DROP_COORDS = (
     "spatial_ref",
 )
 
+_STATE: dict = {}
 
-def _open_dataset(state, dataset) -> dict:
-    """Validate the dataset id, open it, and detect its shape, at most once per run.
 
-    ``state`` is the run-scoped ``RunContext.state`` dict, shared by the
-    `latest` resolution and the fetch body so the dataset is opened at most
-    once per run. Lazy, icechunk-backed open: this reads only metadata, so
-    shape detection and `latest` resolution run before any array bytes are
-    pulled.
-    """
-    if "ds" not in state:
+def _open_dataset(dataset) -> dict:
+    """Validate the dataset id, open it, and detect its shape, at most once per run."""
+    if "ds" not in _STATE:
         import dynamical_catalog
 
         catalog = dynamical_catalog.list()
@@ -51,14 +43,6 @@ def _open_dataset(state, dataset) -> dict:
             )
         ds = dynamical_catalog.open(dataset)
 
-        # Projected grids (e.g. NOAA HRRR on a Lambert Conformal Conic grid) expose
-        # 1-D `y`/`x` in meters with 2-D latitude(y,x)/longitude(y,x) and a CRS in
-        # `spatial_ref`, not 1-D latitude/longitude dims. A lat/lon bbox on such a
-        # grid needs masking over the 2-D coordinate arrays, and a faithful subset
-        # stays curvilinear — which the 1-D-lat/lon weather-skills envelope does not model.
-        # Converting it to a regular lat/lon grid is a reprojection (a grid
-        # transform), which belongs in a dedicated reprojection skill, not in this
-        # faithful-I/O fetcher.
         if "latitude" not in ds.dims or "longitude" not in ds.dims:
             raise UsageError(
                 f"{dataset} is on a projected grid (dims {tuple(ds.dims)}); this "
@@ -67,7 +51,6 @@ def _open_dataset(state, dataset) -> dict:
                 "skill, not this fetcher."
             )
 
-        # Shape is detected from the dims present, not a hardcoded per-dataset table.
         if "ensemble_member" in ds.dims:
             shape = "ensemble"
         elif "lead_time" in ds.dims:
@@ -79,75 +62,42 @@ def _open_dataset(state, dataset) -> dict:
                 f"{dataset} has an unrecognized shape (dims {tuple(ds.dims)}); "
                 "expected an ensemble/deterministic forecast (lead_time) or an analysis (time)."
             )
-        state["ds"] = ds
-        state["shape"] = shape
-    return state
+        _STATE["ds"] = ds
+        _STATE["shape"] = shape
+    return _STATE
 
 
-def _latest_from_dataset(state, dataset) -> date:
-    """Newest available date, read cheaply from the opened dataset's own coords.
-
-    Max init for forecasts, max time for analysis.
-    """
-    state = _open_dataset(state, dataset)
+def _latest_from_dataset(dataset) -> date:
+    """Newest available date from the opened dataset's own coords."""
+    state = _open_dataset(dataset)
     ds = state["ds"]
     is_forecast = state["shape"] in ("ensemble", "forecast")
     coord = "init_time" if is_forecast else "time"
     vals = ds[coord].values
     if is_forecast:
-        # --date selects the 00 UTC init, so `latest` must be the newest
-        # date that HAS one. Filter to midnight inits before taking the
-        # max so a later same-day cycle (e.g. GFS 18 UTC) doesn't resolve
-        # `latest` to a date whose 00 UTC init isn't published yet.
         midnight = vals[vals == vals.astype("datetime64[D]")]
         if midnight.size:
             vals = midnight
     return np_to_date(vals.max())
 
 
-def _validate_and_resolve(args, context) -> None:
-    """Pre-cache-check date resolution onto the argparse namespace.
-
-    The time flags are optional strings here (which of them applies depends on
-    the dataset's shape, discovered only after the catalog open), so the date
-    grammar is applied through the core resolvers rather than the standard
-    toggles. Each provided value is resolved to a concrete ISO date in place,
-    so the cache key records resolved dates, never relative tokens. A
-    malformed token exits 2 before any network call; `latest` opens the
-    catalog dataset lazily, at most once. Which flags the dataset's shape
-    actually requires is validated in the body, after the open.
-    """
-
-    def latest_fn():
-        return _latest_from_dataset(context.state, args.dataset)
-
-    if args.date:
-        resolved, log_line = resolve_date(args.date, latest_fn, context="forecast init date")
-        if log_line is not None:
-            print(log_line, file=sys.stderr)
-        args.date = resolved.isoformat()
-    if args.start and args.end:
-        start_date, end_date, log_line = resolve_window(args.start, args.end, latest_fn)
-        if log_line is not None:
-            print(log_line, file=sys.stderr)
-        args.start = start_date.isoformat()
-        args.end = end_date.isoformat()
-    elif args.start or args.end:
-        # A lone --start or --end is a shape mismatch reported in the body;
-        # its token syntax is still rejected pre-network here.
-        parse_token(args.start or args.end)
+def _resolve_date(value, dataset: str):
+    if value is None:
+        return None
+    parsed = parse_date_value(value, flag="--date") if isinstance(value, str) else value
+    return _latest_from_dataset(dataset) if parsed == "latest" else parsed
 
 
-def _bbox_subset(ds, bbox, bbox_raw) -> object:
-    """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox.
+def _resolve_window_end(value, dataset: str):
+    if value is None:
+        return None
+    return _latest_from_dataset(dataset) if value == "latest" else value
 
-    The slice direction follows each axis's own monotonic order (latitude is
-    descending on these GRIB-derived stores, longitude ascending), so the same
-    bbox works whether a dataset stores latitude north-to-south or the reverse.
-    ``bbox_raw`` is the bbox exactly as given on the CLI, echoed in the
-    no-cells error message.
-    """
+
+def _bbox_subset(ds, bbox) -> object:
+    """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox."""
     north, west, south, east = bbox
+    bbox_raw = f"{north}/{west}/{south}/{east}"
     lat = ds["latitude"].values
     lon = ds["longitude"].values
     lat_slice = slice(north, south) if lat[0] > lat[-1] else slice(south, north)
@@ -160,73 +110,59 @@ def _bbox_subset(ds, bbox, bbox_raw) -> object:
     return ds
 
 
-# output_type: the written envelope is `forecast` for forecast datasets and
-# `gridded` for analysis datasets; the union declares both, and the returned
-# dataset's detected shape is validated against it before the write.
 @weather_skill(
-    "dynamical-fetch",
-    _SKILL_VERSION,
-    output_type=("gridded", "forecast"),
-    bbox="optional",
-    variable={
-        "mode": "repeat",
-        "help": "Restrict to this data variable. Repeat once per variable; omit for all.",
-    },
-    extra_args={
-        "dataset": {
-            "required": True,
-            "help": "Catalog dataset id (validated against dynamical_catalog.list()).",
-        },
-        "date": {
-            "help": (
-                "Forecast init date (forecast datasets). Either YYYY-MM-DD, 'now'/'today', "
-                "'latest', or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-                "Selects the 00 UTC initialization of the resolved date."
-            ),
-        },
-        "start": {
-            "help": "Range start, inclusive (analysis datasets). Same date grammar as --date.",
-        },
-        "end": {
-            "help": "Range end, inclusive (analysis datasets). Same date grammar as --date.",
-        },
-    },
-    validate_args=_validate_and_resolve,
-    cache_hit_label="fetch",
+    name="dynamical-fetch",
+    version=_SKILL_VERSION,
+    outputs=[(Types.GRIDDED, Types.FORECAST)],
+    optional_args=("start_time", "end_time", "bbox", "variable"),
+    check_cache=True,
 )
-def fetch(bbox, dataset, date, start, end, variable, context):
-    """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
+@weather_skill.argument(
+    "--dataset",
+    required=True,
+    help="Catalog dataset id (validated against dynamical_catalog.list()).",
+)
+@weather_skill.argument(
+    "--date",
+    help=(
+        "Forecast init date (forecast datasets). YYYY-MM-DD or 'latest'. "
+        "Selects the 00 UTC initialization of the resolved date."
+    ),
+)
+def fetch(bbox, dataset, date, start_time, end_time, variable):
+    """Fetch a dynamical.org open-catalog dataset and write a WeatherSkills standard dataset."""
     import numpy as np
 
-    state = _open_dataset(context.state, dataset)
+    state = _open_dataset(dataset)
     ds = state["ds"]
     shape = state["shape"]
     is_forecast = shape in ("ensemble", "forecast")
 
-    # Time flags are bound to the dataset shape: forecasts take a single --date,
-    # analyses take a --start/--end range. Mismatches exit 2 before any fetch.
+    override = {}
     if is_forecast:
         if not date:
             raise UsageError(f"{dataset} is a forecast dataset; --date is required.")
-        if start or end:
+        if start_time is not None or end_time is not None:
             raise UsageError(f"{dataset} is a forecast dataset; use --date, not --start/--end.")
-        date_iso = date
+        resolved = _resolve_date(date, dataset)
+        date_iso = resolved.isoformat()
+        override["date"] = date_iso
     else:
-        if not (start and end):
+        if start_time is None or end_time is None:
             raise UsageError(f"{dataset} is an analysis dataset; --start and --end are required.")
         if date:
             raise UsageError(f"{dataset} is an analysis dataset; use --start/--end, not --date.")
-        start_iso, end_iso = start, end
+        start_time = _resolve_window_end(start_time, dataset)
+        end_time = _resolve_window_end(end_time, dataset)
+        start_iso, end_iso = start_time.isoformat(), end_time.isoformat()
+        override["start_time"] = start_iso
+        override["end_time"] = end_iso
 
     if bbox:
-        ds = _bbox_subset(ds, bbox, context.args.bbox)
+        ds = _bbox_subset(ds, bbox)
 
-    # Temporal selection + dimension mapping onto the envelope.
     if is_forecast:
         inits = ds["init_time"].values
-        # Build the target in the index's own dtype so the membership test and the
-        # .sel() label lookup compare like-for-like (a [s]-vs-[ns] mismatch could
-        # otherwise let the check pass and .sel() still raise KeyError).
         init_target = np.datetime64(f"{date_iso}T00:00:00").astype(inits.dtype)
 
         def _no_init() -> DataError:
@@ -246,8 +182,6 @@ def fetch(bbox, dataset, date, start, end, variable, context):
         if shape == "ensemble":
             rename["ensemble_member"] = "number"
         ds = ds.rename(rename)
-        # Demote the selected init_time to the scalar `time` coord the envelope
-        # uses for a forecast's init date.
         ds = ds.assign_coords(time=ds["init_time"]).drop_vars("init_time")
     else:
         ds = ds.sel(time=slice(np.datetime64(start_iso), np.datetime64(end_iso)))
@@ -266,19 +200,13 @@ def fetch(bbox, dataset, date, start, end, variable, context):
 
     print(f"Fetching dynamical:{dataset} (shape={shape})", file=sys.stderr)
 
-    # Write lazily: to_zarr streams the selection chunk-by-chunk, so a no-bbox
-    # full-grid fetch does not pull the whole archive slice into memory at once.
-    # Source variable units are forwarded verbatim (dynamical stamps them); this
-    # fetcher does not convert or relabel them. `weather_skills_source` embeds
-    # the dataset id, so it is set here; the decorator stamps
-    # `weather_skills_history`.
     ds.attrs.update(
         weather_skills_source=f"dynamical:{dataset}",
         Conventions="CF-1.13",
     )
     stamp_cf_attrs(ds)
 
-    return ds, WroteSummary("", replace=True)
+    return ds, EntryOverride(args=override)
 
 
 if __name__ == "__main__":

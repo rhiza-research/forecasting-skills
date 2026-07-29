@@ -12,7 +12,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
+"""Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema WeatherSkills standard dataset."""
 
 import io
 import sys
@@ -20,21 +20,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-# cf_units and cf_xarray are used only inside weather-skills-core, which imports
-# them lazily at write time (udunits_error / verify_cf_dsg) — the final step, after
-# every per-station download. Importing them eagerly at module top turns that late
-# import into a startup fail-fast probe: a missing dependency errors before any
-# network work rather than only after every download has run. The F401 noqa marks
-# these probe-only imports; removing either would drop the fail-fast guarantee.
-import cf_units  # noqa: F401  (loaded lazily by core's udunits_error at write time)
-import cf_xarray  # noqa: F401  (loaded lazily by core's verify_cf_dsg at write time)
+import cf_units  # noqa: F401
+import cf_xarray  # noqa: F401
 import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
-from weather_skills_core import DataError, weather_skill
-from weather_skills_core.dates import today_utc
-from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
+from weather_skills_core import DataError, EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.dataset import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -274,84 +267,46 @@ def _var_attrs(ds) -> dict:
     return attrs
 
 
-def _normalize_entry_args(raw: dict) -> dict:
-    """Canonicalize the recorded cache-key args.
-
-    Variables are sorted (with the default list applied when --variable is
-    omitted) so flag order does not change the key. --workers (concurrency) is
-    a knob, not a data parameter; the decorator already excludes it.
-    """
-    raw["variable"] = sorted(raw.get("variable") or DEFAULT_VARIABLES)
-    return raw
-
-
-def _set_write_encoding(ds) -> None:
-    """Controlled write encodings, applied after the decorator's encoding clear.
-
-    Carry udunits-valid reference-time units + a calendar in the time encoding
-    so the on-disk time axis is fully CF. `_FillValue` is an encoding key, not
-    a CF attribute: set here so the on-disk store represents missing
-    station-time cells with a real fill (and reopens with the NaNs intact).
-    """
-    ds["time"].encoding["units"] = _TIME_UNITS
-    ds["time"].encoding["calendar"] = _TIME_CALENDAR
-    for canonical in ds.data_vars:
-        ds[canonical].encoding["_FillValue"] = np.float64(np.nan)
+def _resolve(d):
+    return datetime.now(UTC).date() if d == "latest" else d
 
 
 @weather_skill(
-    "ghcn-daily-fetch",
-    _SKILL_VERSION,
-    output_type="station",
+    name="ghcn-daily-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.STATION],
+    required_args=("start_time", "end_time"),
+    optional_args=("bbox", "variable"),
+    exclude_args=("workers",),
+    check_cache=True,
     source="ghcn-daily",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). For "
-            "GHCN-Daily 'latest' resolves to the current UTC date (no cheap "
-            "day-precise discovery); a missing trailing tail near today is normal."
-        )
-    },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
-    bbox={
-        "mode": "optional",
-        "help": (
-            "Spatial subset N/W/S/E decimal degrees, filtering stations. Omitting it "
-            "(or giving an over-wide box) selects many stations, each a separate "
-            "whole-history download. To fetch over a country, get its bbox from the "
-            "resolve-region skill."
-        ),
-    },
-    workers={
-        "default": DEFAULT_WORKERS,
-        "help": (
-            f"Max concurrent per-station download threads (default {DEFAULT_WORKERS}). "
-            "Lower this if the server returns throttling errors."
-        ),
-    },
-    variable={
-        "mode": "repeat",
-        "choices": sorted(VAR_MAP.keys()),
-        "help": (
-            "Restrict to this variable; repeat once per variable. "
-            f"Omit for default {DEFAULT_VARIABLES}."
-        ),
-    },
-    latest_resolver=today_utc,
-    normalize_args=_normalize_entry_args,
-    write_encoding=_set_write_encoding,
-    cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, workers, variable, context):
-    """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
+@weather_skill.argument(
+    "--workers",
+    type=int,
+    default=DEFAULT_WORKERS,
+    help=(
+        f"Max concurrent per-station download threads (default {DEFAULT_WORKERS}). "
+        "Lower this if the server returns throttling errors."
+    ),
+)
+def fetch(start_time, end_time, bbox, workers, variable):
+    """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema WeatherSkills standard dataset."""
+    start_time, end_time = _resolve(start_time), _resolve(end_time)
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     start_int = int(start_time.strftime("%Y%m%d"))
     end_int = int(end_time.strftime("%Y%m%d"))
-    # Error messages echo the bbox exactly as given on the CLI.
-    bbox_raw = context.args.bbox
+    bbox_raw = (
+        f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
+    )
 
     variables = variable or list(DEFAULT_VARIABLES)
+    unknown = [v for v in variables if v not in VAR_MAP]
+    if unknown:
+        raise UsageError(
+            f"unsupported variable(s) {unknown}; choose from {sorted(VAR_MAP)}."
+        )
     # element code -> canonical variable name, for the requested variables.
     elements = {VAR_MAP[v][0]: v for v in variables}
 
@@ -470,7 +425,17 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
     # falsely claims CF compliance.
     verify_cf_dsg(ds)
 
-    return ds
+    ds["time"].encoding = {"units": _TIME_UNITS, "calendar": _TIME_CALENDAR}
+    for canonical in ds.data_vars:
+        ds[canonical].encoding["_FillValue"] = np.float64(np.nan)
+
+    return ds, EntryOverride(
+        args={
+            "start_time": start_iso,
+            "end_time": end_iso,
+            "variable": sorted(variables),
+        }
+    )
 
 
 if __name__ == "__main__":

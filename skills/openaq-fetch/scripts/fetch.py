@@ -12,7 +12,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr.
+"""Fetch OpenAQ v3 air-quality station observations and write a station-schema WeatherSkills standard dataset.
 
 Uses the OpenAQ v3 REST API. The API key comes from the environment: OPENAQ_API_KEY.
 """
@@ -25,22 +25,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-# cf_xarray is used only inside weather-skills-core, which imports it lazily at
-# write time (verify_cf_dsg) — the final step, after every per-sensor download.
-# Importing it eagerly at module top turns that late import into a startup
-# fail-fast probe: a missing dependency errors before any network work rather than
-# only after every download has run. The F401 noqa marks the probe-only import;
-# removing it would drop the fail-fast guarantee. (cf_units is imported for direct
-# use in the module-level unit constants below, so it is not a probe.)
 import cf_units
-import cf_xarray  # noqa: F401  (loaded lazily by core's verify_cf_dsg at write time)
+import cf_xarray  # noqa: F401
 import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
-from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.dates import today_utc
-from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
+from weather_skills_core import DataError, EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.dataset import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -187,15 +179,6 @@ _MASS_CONCENTRATION_REF = cf_units.Unit("kg m-3")
 #   to the location id when absent). This is the only field rename in the
 #   transform set (location id -> station_id); the lat/lon/name values are
 #   carried through unchanged.
-
-
-def _require_key() -> str:
-    key = os.environ.get("OPENAQ_API_KEY")
-    if not key:
-        raise UsageError(
-            "OPENAQ_API_KEY must be set (free key from https://explore.openaq.org/register)."
-        )
-    return key
 
 
 def _retry_backoff(exc: Exception) -> float:
@@ -452,83 +435,49 @@ def _var_attrs(ds, units_by_param: dict) -> dict:
     return attrs_by_var
 
 
-def _normalize_entry_args(raw: dict) -> dict:
-    """Canonicalize the recorded cache-key args.
-
-    Variables are sorted (with the full supported list applied when --variable
-    is omitted) so flag order does not change the key. --workers (concurrency,
-    not data) is already excluded by the decorator.
-    """
-    raw["variable"] = sorted(raw.get("variable") or SUPPORTED_PARAMETERS)
-    return raw
-
-
-def _set_write_encoding(ds) -> None:
-    """Controlled write encodings, applied after the decorator's encoding clear.
-
-    Carry udunits-valid reference-time units + a calendar in the time encoding
-    so the on-disk time axis is fully CF. `_FillValue` is an encoding key, not
-    a CF attribute: set here so the on-disk store represents missing
-    station-time cells with a real fill (and reopens with the NaNs intact).
-    """
-    ds["time"].encoding["units"] = _TIME_UNITS
-    ds["time"].encoding["calendar"] = _TIME_CALENDAR
-    for param in ds.data_vars:
-        ds[param].encoding["_FillValue"] = np.float64(np.nan)
+def _resolve(d):
+    return datetime.now(UTC).date() if d == "latest" else d
 
 
 @weather_skill(
-    "openaq-fetch",
-    _SKILL_VERSION,
-    output_type="station",
+    name="openaq-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.STATION],
+    required_args=("start_time", "end_time", "bbox"),
+    optional_args=("variable",),
+    exclude_args=("workers",),
+    required_env=("OPENAQ_API_KEY",),
+    check_cache=True,
     source="openaq",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-            "'latest' resolves to the current UTC date for this source."
-        )
-    },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
-    bbox={
-        "mode": "required",
-        "help": "Spatial subset N/W/S/E decimal degrees (required — selects stations).",
-    },
-    workers={
-        "default": DEFAULT_WORKERS,
-        "help": (
-            f"Max concurrent per-sensor fetch threads (default {DEFAULT_WORKERS}). "
-            "Threads overlap response waits only; request starts are rate-limited "
-            "globally under OpenAQ's published limits (60/minute, 2,000/hour), so "
-            "raising this does not raise the request rate."
-        ),
-    },
-    variable={
-        "mode": "repeat",
-        "choices": SUPPORTED_PARAMETERS,
-        "help": (
-            "Restrict to this pollutant; repeat once per variable. "
-            f"Omit for all {SUPPORTED_PARAMETERS}."
-        ),
-    },
-    latest_resolver=today_utc,
-    normalize_args=_normalize_entry_args,
-    write_encoding=_set_write_encoding,
-    cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, workers, variable, context):
-    """Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr."""
+@weather_skill.argument(
+    "--workers",
+    type=int,
+    default=DEFAULT_WORKERS,
+    help=(
+        f"Max concurrent per-sensor fetch threads (default {DEFAULT_WORKERS}). "
+        "Threads overlap response waits only; request starts are rate-limited "
+        "globally under OpenAQ's published limits (60/minute, 2,000/hour), so "
+        "raising this does not raise the request rate."
+    ),
+)
+def fetch(start_time, end_time, bbox, workers, variable):
+    """Fetch OpenAQ v3 air-quality station observations and write a station-schema WeatherSkills standard dataset."""
+    start_time, end_time = _resolve(start_time), _resolve(end_time)
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
-    # Error messages echo the bbox exactly as given on the CLI.
-    bbox_raw = context.args.bbox
     north, west, south, east = bbox
+    bbox_raw = f"{north}/{west}/{south}/{east}"
 
     variables = variable or list(SUPPORTED_PARAMETERS)
+    unknown = [v for v in variables if v not in SUPPORTED_PARAMETERS]
+    if unknown:
+        raise UsageError(
+            f"unsupported variable(s) {unknown}; choose from {SUPPORTED_PARAMETERS}."
+        )
 
-    key = _require_key()
     session = requests.Session()
-    session.headers.update({"X-API-Key": key})
+    session.headers.update({"X-API-Key": os.environ["OPENAQ_API_KEY"]})
 
     wanted = set(variables)
     sensors = _find_sensors(session, (north, west, south, east), wanted)
@@ -700,7 +649,17 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
     # falsely claims CF compliance.
     verify_cf_dsg(ds)
 
-    return ds
+    ds["time"].encoding = {"units": _TIME_UNITS, "calendar": _TIME_CALENDAR}
+    for param in ds.data_vars:
+        ds[param].encoding["_FillValue"] = np.float64(np.nan)
+
+    return ds, EntryOverride(
+        args={
+            "start_time": start_iso,
+            "end_time": end_iso,
+            "variable": sorted(variables),
+        }
+    )
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@
 #   "numpy",
 # ]
 # ///
-"""Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
+"""Fetch ECMWF S2S precipitation (cf + pf) and write a WeatherSkills standard dataset."""
 
 import datetime as dt
 import sys
@@ -23,9 +23,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
-from weather_skills_core.envelope import parse_bbox, stamp_cf_attrs
-from weather_skills_core.util import require_env
+from weather_skills_core import DataError, EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.dataset import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.12"
@@ -365,81 +364,40 @@ def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
     )
 
 
-def _latest_probe(area: list[float], state: dict) -> dt.date:
-    """Discover the newest accessible init, memoized in the run state.
+_STATE: dict = {}
 
-    `latest` discovery probes ECDS, which needs credentials and a Client.
-    Build them lazily and memoize in ``state`` (``RunContext.state``, shared
-    with the fetch body) so the probe runs at most once per run and only when
-    a `latest` token is present. An absolute or now-based --date performs no
-    ECDS call and no import here.
-    """
-    if "v" not in state:
-        require_env("ECMWF_DATASTORES_URL", "ECMWF_DATASTORES_KEY")
+
+def _latest_probe(area: list[float]) -> dt.date:
+    """Discover the newest accessible init, memoized in module state."""
+    if "v" not in _STATE:
         from ecmwf.datastores import Client
 
-        state["client"] = Client()
-        # _discover_latest returns (day, completed control retrieval). Cache
-        # the remote so the fetch body reuses the probe's control leg for the
-        # winning init instead of re-submitting it.
-        #
-        # The probe only confirms whether an init exists; the longitude band
-        # does not change which init dates are published. For a wrapped
-        # (west > east) bbox, probe with a single MARS-valid sub-area (the
-        # western band) so the existence probe submits a legal request; the
-        # full wrapped band is fetched as two split legs in the body and the
-        # probe retrieval is not reused as a leg in that case.
+        _STATE["client"] = Client()
         probe_area = _split_wrapped_area(area)[0]
-        day, cf_remote = _discover_latest(state["client"], probe_area)
-        state["v"] = day
-        state["cf_remote"] = cf_remote
-    return state["v"]
-
-
-def _latest(args, context) -> dt.date:
-    """`latest` resolver for the standard --date toggle.
-
-    Parses the required bbox into a MARS area and runs the ECDS
-    probe-submit-poll discovery for the newest accessible S2S init, memoized in
-    the run state (shared with the fetch body so the winning control retrieval
-    is reused rather than re-submitted). The decorator invokes this lazily, only
-    when the --date token references `latest`, and after the bbox has already
-    been parsed and validated (a malformed bbox exits 2 before any probe).
-    """
-    area = list(parse_bbox(args.bbox))
-    return _latest_probe(area, context.state)
+        day, cf_remote = _discover_latest(_STATE["client"], probe_area)
+        _STATE["v"] = day
+        _STATE["cf_remote"] = cf_remote
+    return _STATE["v"]
 
 
 @weather_skill(
-    "ecmwf-fetch",
-    _SKILL_VERSION,
-    output_type="forecast",
+    name="ecmwf-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.FORECAST],
+    required_args=("time", "bbox"),
+    required_env=("ECMWF_DATASTORES_URL", "ECMWF_DATASTORES_KEY"),
+    check_cache=True,
     source="ecmwf-s2s",
-    bbox="required",
-    date={
-        "required": True,
-        "context": "single forecast init date",
-        "help": (
-            "Forecast init date. Either YYYY-MM-DD, 'now'/'today', 'latest', or "
-            "an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-            "'latest' probes init dates backward via ECDS submits (slow)."
-        ),
-    },
-    latest_resolver=_latest,
-    cache_hit_label="fetch",
 )
-def fetch(bbox, date, context):
-    """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
-    resolved_date = date
-    date_iso = resolved_date.isoformat()
-    area = list(bbox)
-    state = context.state
-
-    require_env("ECMWF_DATASTORES_URL", "ECMWF_DATASTORES_KEY")
-
+def fetch(bbox, time):
+    """Fetch ECMWF S2S precipitation (cf + pf) and write a WeatherSkills standard dataset."""
     import xarray as xr
     from ecmwf.datastores import Client
     from ecmwf.datastores.processing import ProcessingFailedError
+
+    area = list(bbox)
+    resolved_date = _latest_probe(area) if time == "latest" else time
+    date_iso = resolved_date.isoformat()
 
     print(f"Fetching ECMWF S2S for area={area} date={date_iso}", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="ecmwf-fetch-") as tmpdir:
@@ -454,15 +412,8 @@ def fetch(bbox, date, context):
         sub_areas = _split_wrapped_area(area)
         wrapped = len(sub_areas) > 1
 
-        # Reuse the probe's Client when `latest` discovery already built one,
-        # else create it now.
-        client = state.get("client") or Client()
+        client = _STATE.get("client") or Client()
 
-        # A "leg" is one (forecast_type, sub-area) retrieval. Each leg gets its
-        # own remote, grib path, and (after decode) dataset. The probe's control
-        # retrieval is reused only for a non-wrapped fetch of THIS exact init:
-        # in the wrapped case the probe submitted a single sub-area, not the
-        # full split, so it cannot stand in for a leg.
         legs = []
         for forecast_type, short in (("control_forecast", "cf"), ("perturbed_forecast", "pf")):
             for i, sub in enumerate(sub_areas):
@@ -477,7 +428,9 @@ def fetch(bbox, date, context):
                 )
 
         reuse_cf = (
-            (not wrapped) and resolved_date == state.get("v") and state.get("cf_remote") is not None
+            (not wrapped)
+            and resolved_date == _STATE.get("v")
+            and _STATE.get("cf_remote") is not None
         )
 
         # _submit handles the licence-not-accepted case (exits). Any other submit
@@ -497,7 +450,7 @@ def fetch(bbox, date, context):
                     and leg["forecast_type"] == "control_forecast"
                     and leg["remote"] is None
                 ):
-                    leg["remote"] = state.get("cf_remote")
+                    leg["remote"] = _STATE.get("cf_remote")
                     continue
                 req = _build_request(date_iso, leg["area"], leg["forecast_type"])
                 leg["remote"] = _submit(client, req)
@@ -589,13 +542,9 @@ def fetch(bbox, date, context):
         ds["tp"].attrs["units"] = "kg m-2"
         ds["tp"].attrs["long_name"] = "Total precipitation"
 
-        # The decoded dataset is lazily backed by the GRIB files in the
-        # temporary directory, which is removed when this block exits; the
-        # decorator writes the returned dataset after that, so materialize the
-        # values while the files are still alive.
         ds = ds.load()
 
-    return ds, WroteSummary("", replace=True)
+    return ds, EntryOverride(args={"time": date_iso})
 
 
 if __name__ == "__main__":

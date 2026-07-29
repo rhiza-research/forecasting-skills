@@ -12,24 +12,17 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
+"""Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a WeatherSkills standard dataset."""
 
 import re
 import sys
 import tempfile
 from datetime import UTC, date, datetime, timedelta
 
-# cf_units and cf_xarray are used only inside weather-skills-core, which imports
-# them lazily at write time (udunits_error / cf_axes_missing) — the final step,
-# after every granule download. Importing them eagerly at module top turns that
-# late import into a startup fail-fast probe: a missing dependency errors before
-# any network work rather than only after every download has run. The F401 noqa
-# marks these probe-only imports; removing either would drop the fail-fast
-# guarantee.
-import cf_units  # noqa: F401  (loaded lazily by core's udunits_error at write time)
-import cf_xarray  # noqa: F401  (loaded lazily by core's cf_axes_missing at write time)
-from weather_skills_core import DataError, SkillError, UsageError, weather_skill
-from weather_skills_core.envelope import cf_axes_missing, stamp_cf_coords, udunits_error
+import cf_units  # noqa: F401
+import cf_xarray  # noqa: F401
+from weather_skills_core import DataError, EntryOverride, SkillError, Types, UsageError, weather_skill
+from weather_skills_core.dataset import cf_axes_missing, stamp_cf_coords, udunits_error
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.9"
@@ -386,13 +379,9 @@ def _discover_latest(lookback_days: int) -> date:
     return max(dates)
 
 
-def _latest(args) -> date:
-    """`latest` resolver hook: log in, then discover the newest granule.
-
-    The decorator memoizes the resolver (a window referencing `latest` at both
-    ends discovers once) and invokes it lazily on first use, so an all-absolute
-    or now-only window performs no discovery login.
-    """
+def _resolve(d):
+    if d != "latest":
+        return d
     _login()
     return _discover_latest(_LATEST_LOOKBACK_DAYS)
 
@@ -472,64 +461,40 @@ def _cf_decode_check(ds) -> None:
         )
 
 
-def _set_write_encoding(ds) -> None:
-    """Controlled write encoding, applied after the decorator's encoding clear:
-    the time units/calendar and the soil_moisture _FillValue."""
-    import numpy as np
-
-    ds["time"].encoding["units"] = _TIME_UNITS
-    ds["time"].encoding["calendar"] = _TIME_CALENDAR
-    ds["soil_moisture"].encoding["_FillValue"] = np.float64(np.nan)
-
-
 @weather_skill(
-    "smap-fetch",
-    _SKILL_VERSION,
-    output_type="gridded",
+    name="smap-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.GRIDDED],
+    required_args=("start_time", "end_time"),
+    optional_args=("bbox",),
+    check_cache=True,
     source="smap",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
-    bbox={
-        "mode": "optional",
-        "help": (
-            "Spatial subset N/W/S/E decimal degrees (optional). A box with "
-            "west > east crosses the antimeridian. Resolve a country's bbox with "
-            "resolve-region."
-        ),
-    },
-    extra_args={
-        "overpass": {
-            "choices": ["AM", "PM"],
-            "default": "AM",
-            "help": (
-                "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm "
-                "ascending). Default AM."
-            ),
-        },
-    },
-    latest_resolver=_latest,
-    write_encoding=_set_write_encoding,
-    streaming=True,
-    cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, bbox, overpass, context):
-    """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
+@weather_skill.argument(
+    "--overpass",
+    choices=["AM", "PM"],
+    default="AM",
+    help=(
+        "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm "
+        "ascending). Default AM."
+    ),
+)
+def fetch(start_time, end_time, bbox, overpass):
+    """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a WeatherSkills standard dataset."""
     import numpy as np
+    import xarray as xr
 
+    start_time, end_time = _resolve(start_time), _resolve(end_time)
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     requested_span = (end_time - start_time).days + 1
+    bbox_raw = (
+        f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
+    )
 
     print(f"Fetching SMAP {_SHORT_NAME} ({overpass}) {start_iso}..{end_iso}", file=sys.stderr)
     _login()
     results = _search(start_iso, end_iso)
-    # CMR's temporal filter is overlap-based; keep only granules whose own date is
-    # inside the requested window, and one per day.
     in_window = {}
     for r in results:
         d = _granule_date(r)
@@ -539,12 +504,6 @@ def fetch(start_time, end_time, bbox, overpass, context):
         raise DataError(f"no SMAP granule day within {start_iso}..{end_iso}.")
     print(f"Found {len(in_window)} granule day(s)", file=sys.stderr)
 
-    # Missing-day visibility: name any requested day that has no granule, then
-    # proceed to write the days that do exist (rather than silently returning a
-    # short result with no note). Distinguish trailing missing days (a contiguous
-    # run at the end of the window, the usual publication-lag case) from interior
-    # gaps (missing days with a later present day) so the message does not assert a
-    # false "not yet published" cause for a genuine interior gap.
     present_days = sorted(in_window)
     requested_days = [start_time + timedelta(days=i) for i in range(requested_span)]
     missing_days = [d for d in requested_days if d not in in_window]
@@ -570,33 +529,13 @@ def fetch(start_time, end_time, bbox, overpass, context):
             file=sys.stderr,
         )
 
-    # Stream one day at a time: download a granule, read its (latitude, longitude)
-    # slice, then yield it for the decorator to write/append as a single time step
-    # before moving to the next day. Peak resident memory is bounded to one day's
-    # grid rather than the whole window. Full CF metadata is stamped on every
-    # yield — and the decorator re-stamps weather_skills_source/history on every
-    # write — because a to_zarr append rewrites the root group attrs from the
-    # appended dataset; the entry is identical each time, so the final stamp is
-    # stable. xarray appends only the time-varying soil_moisture along `time`; the
-    # non-time latitude_longitude grid_mapping scalar and the static lat/lon coords
-    # are written once on the first mode="w" write and left untouched by each
-    # append (verified: no duplication, no error).
-    #
-    # Partial-store safety is decorator-owned: the first day is written with
-    # mode="w" and subsequent days append; any pre-existing store is removed
-    # immediately before that first write, and a raise from this generator after
-    # the first write removes the partial store (with a stderr note) so a later
-    # identical run cannot falsely accept it as a complete cache hit. Every
-    # mid-stream failure below (auth, download error, h5py read error) therefore
-    # raises a DataError rather than exiting directly.
-    first = True
+    slices = []
     with tempfile.TemporaryDirectory(prefix="smap-fetch-") as td:
         for d in present_days:
             day_iso = d.isoformat()
             try:
                 files = _download([in_window[d]], local_path=td)
             except SkillError:
-                # The auth failure already carries its actionable message.
                 raise
             except Exception as exc:
                 if _is_auth_error(exc):
@@ -609,25 +548,20 @@ def fetch(start_time, end_time, bbox, overpass, context):
             try:
                 da = _slice_from_file(files[0], overpass, day_iso)
                 if bbox is not None:
-                    da = _bbox_subset(da.to_dataset(name="soil_moisture"), bbox, context.args.bbox)[
-                        "soil_moisture"
-                    ]
+                    da = _bbox_subset(
+                        da.to_dataset(name="soil_moisture"), bbox, bbox_raw
+                    )["soil_moisture"]
             except RuntimeError as exc:
-                # _slice_from_file, _read_source_units, _reduce_geolocation, and
-                # _bbox_subset all raise RuntimeError; convert to a DataError so
-                # a mid-loop failure removes any partial store before exiting.
                 raise DataError(str(exc)) from exc
-            ds_day = da.expand_dims(time=[np.datetime64(day_iso)]).to_dataset()
+            slices.append(da.expand_dims(time=[np.datetime64(day_iso)]))
 
-            _stamp_cf(ds_day)
-
-            if first:
-                # Write-side CF decode check on the first slice (the schema is
-                # identical for every appended day), before anything touches the
-                # output path.
-                _cf_decode_check(ds_day)
-                first = False
-            yield ds_day
+    da_all = xr.concat(slices, dim="time") if len(slices) > 1 else slices[0]
+    ds = da_all.to_dataset(name="soil_moisture")
+    _stamp_cf(ds)
+    _cf_decode_check(ds)
+    ds["time"].encoding = {"units": _TIME_UNITS, "calendar": _TIME_CALENDAR}
+    ds["soil_moisture"].encoding["_FillValue"] = np.float64(np.nan)
+    return ds, EntryOverride(args={"start_time": start_iso, "end_time": end_iso})
 
 
 if __name__ == "__main__":

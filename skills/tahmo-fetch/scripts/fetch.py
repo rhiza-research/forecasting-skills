@@ -13,7 +13,7 @@
 # [tool.uv.sources]
 # tahmo = { git = "https://github.com/rhiza-research/tahmo-api", rev = "8ed3adc22b5b7c53d08753e45676e9d4a0a52ab8" }
 # ///
-"""Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr.
+"""Fetch TAHMO station observations and write a station-schema WeatherSkills standard dataset.
 
 Uses the TAHMO Python SDK directly. Credentials come from the environment:
 TAHMO_API_USERNAME and TAHMO_API_PASSWORD.
@@ -24,8 +24,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 
-from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.util import is_transient, require_env
+from weather_skills_core import DataError, EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.util import is_transient
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"
@@ -161,22 +161,16 @@ def _station_frame(api, station_id: str, start: str, end: str):
     return daily
 
 
-def _ensure_setup(state, countries: list):
-    """Authenticate and load the station table + variable metadata, at most once per run.
+_STATE: dict = {}
 
-    ``state`` is the run-scoped ``RunContext.state`` dict, shared between
-    `latest` discovery (which must run before the cache key is built) and the
-    main fetch, so a run authenticates at most once. It runs only when first
-    needed: an all-absolute or now-only window that cache-hits performs no auth.
-    """
+
+def _ensure_setup(countries: list):
+    """Authenticate and load the station table + variable metadata, at most once per run."""
     import pandas as pd
 
-    if "api" not in state:
-        username, password = require_env(
-            "TAHMO_API_USERNAME",
-            "TAHMO_API_PASSWORD",
-            message="TAHMO_API_USERNAME and TAHMO_API_PASSWORD must be set.",
-        )
+    if "api" not in _STATE:
+        import os
+
         try:
             from TAHMO import apiWrapper
         except ImportError as exc:
@@ -188,51 +182,28 @@ def _ensure_setup(state, countries: list):
         if unknown:
             raise UsageError(f"unknown countries {unknown}. Known: {sorted(COUNTRY_CODE)}")
         api_local = apiWrapper()
-        api_local.setCredentials(username, password)
+        api_local.setCredentials(os.environ["TAHMO_API_USERNAME"], os.environ["TAHMO_API_PASSWORD"])
         stations_raw = api_local.getStations()
         stations_local = pd.json_normalize(list(stations_raw.values()), sep="_")
-        state["api"] = api_local
-        state["stations"] = stations_local
-        # Discover units / description from TAHMO so we don't hard-code them.
-        state["var_meta"] = api_local.getVariables()
-    return state["api"], state["stations"], state["var_meta"]
+        _STATE["api"] = api_local
+        _STATE["stations"] = stations_local
+        _STATE["var_meta"] = api_local.getVariables()
+    return _STATE["api"], _STATE["stations"], _STATE["var_meta"]
 
 
-def _discover_latest(args, context) -> date:
-    """`latest` resolver for TAHMO: newest observation date over a bounded
-    lookback ending today, across the requested countries' stations.
-
-    Requests controlled raw data over the last ``_LATEST_LOOKBACK_DAYS`` days
-    for each candidate TA-coded station and takes the max observation date
-    across ALL stations (not the first station that returns data): station
-    reporting cadence varies, so the first responder is not necessarily the
-    freshest.
-
-    Observation times are filtered to ``<= today`` (UTC) BEFORE taking the
-    max, so `latest` is always a real observation day on or before today
-    rather than a value clamped to today with no same-day data behind it (a
-    station with a future-skewed clock therefore cannot push `latest` past a
-    day it actually reported).
-
-    Error vs no-data taxonomy (mirrors chirps/ecmwf): a per-station fetch
-    that RAISES (auth/transport/HTTP) is distinguished from one that responds
-    with no observations. If EVERY candidate station raised — i.e. not one
-    station responded — that is an auth/transport problem, surfaced as a real
-    error (exit non-zero), never misreported as "no data". Only when at least
-    one station responded but none carried an in-window observation is the
-    "no observations" case reported (exit 2).
-    """
+def _discover_latest(countries: list) -> date:
+    """Newest observation date over a bounded lookback ending today."""
     import pandas as pd
 
-    api_l, stations_l, _ = _ensure_setup(context.state, list(args.country))
+    api_l, stations_l, _ = _ensure_setup(countries)
     today = datetime.now(UTC).date()
     lookback_start = (today - timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()
     today_iso = today.isoformat()
     max_obs_date = None
     candidate_count = 0
-    responded_count = 0  # stations that returned WITHOUT raising (data or empty)
+    responded_count = 0
     last_error = None
-    for country in list(args.country):
+    for country in countries:
         code = COUNTRY_CODE[country]
         sub = stations_l[stations_l["location_countrycode"] == code]
         sub = sub[sub["code"].str.startswith("TA")]
@@ -248,10 +219,7 @@ def _discover_latest(args, context) -> date:
             if raw is None or len(raw) == 0:
                 continue
             times = pd.to_datetime(raw["time"], format="mixed", utc=True)
-            obs_dates = times.dt.date
-            # Keep only observations on or before today (UTC) before taking
-            # the max, so a future-skewed station clock cannot inflate latest.
-            obs_dates = [d for d in obs_dates if d <= today]
+            obs_dates = [d for d in times.dt.date if d <= today]
             if not obs_dates:
                 continue
             station_max = max(obs_dates)
@@ -260,16 +228,11 @@ def _discover_latest(args, context) -> date:
     if max_obs_date is not None:
         return max_obs_date
     if candidate_count > 0 and responded_count == 0:
-        # No station responded — every candidate raised. This is an
-        # auth/transport problem, not an empty dataset; surface it.
         raise DataError(
             f"every candidate TAHMO station ({candidate_count}) failed to "
             f"respond while resolving 'latest' (last error: {last_error}); this is "
             "an auth/transport problem, not a not-yet-reported window."
         )
-    # At least one station responded (or there were no candidates), but none
-    # carried an in-window observation on or before today: a genuine no-data
-    # case.
     raise UsageError(
         f"no TAHMO observations in the last {_LATEST_LOOKBACK_DAYS} days "
         f"({lookback_start}..{today_iso}) for the requested countries; "
@@ -277,64 +240,46 @@ def _discover_latest(args, context) -> date:
     )
 
 
-def _normalize_entry_args(raw: dict) -> dict:
-    """Canonicalize the recorded cache-key args.
-
-    Sort --country so that `--country Ghana --country Kenya` and
-    `--country Kenya --country Ghana` produce identical cache keys.
-    --workers is a concurrency knob, not a data parameter; the decorator
-    already excludes it: the same request at any worker count produces the
-    same data.
-    """
-    raw["country"] = sorted(raw["country"])
-    return raw
+def _resolve(d, countries: list):
+    return _discover_latest(countries) if d == "latest" else d
 
 
 @weather_skill(
-    "tahmo-fetch",
-    _SKILL_VERSION,
-    output_type="station",
+    name="tahmo-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.STATION],
+    required_args=("start_time", "end_time"),
+    exclude_args=("workers",),
+    required_env=("TAHMO_API_USERNAME", "TAHMO_API_PASSWORD"),
+    check_cache=True,
     source="tahmo",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={
-        "help": (
-            "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    workers={
-        "default": DEFAULT_WORKERS,
-        "help": (
-            f"Max concurrent per-station fetch threads (default {DEFAULT_WORKERS}). "
-            "Lower this if TAHMO returns 429/throttling errors."
-        ),
-    },
-    extra_args={
-        "country": {
-            "action": "append",
-            "required": True,
-            "help": "Country name (pass once per country)",
-        },
-    },
-    latest_resolver=_discover_latest,
-    normalize_args=_normalize_entry_args,
-    cache_hit_label="fetch",
 )
-def fetch(start_time, end_time, workers, country, context):
-    """Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr."""
+@weather_skill.argument(
+    "--country",
+    action="append",
+    required=True,
+    help="Country name (pass once per country)",
+)
+@weather_skill.argument(
+    "--workers",
+    type=int,
+    default=DEFAULT_WORKERS,
+    help=(
+        f"Max concurrent per-station fetch threads (default {DEFAULT_WORKERS}). "
+        "Lower this if TAHMO returns 429/throttling errors."
+    ),
+)
+def fetch(start_time, end_time, workers, country):
+    """Fetch TAHMO station observations and write a station-schema WeatherSkills standard dataset."""
     import pandas as pd
     import xarray as xr
 
+    countries = list(country)
+    start_time, end_time = _resolve(start_time, countries), _resolve(end_time, countries)
     start = start_time.isoformat()
     end = end_time.isoformat()
 
-    api, stations, var_meta = _ensure_setup(context.state, list(country))
-    countries = list(country)
+    api, stations, var_meta = _ensure_setup(countries)
 
     # Flatten the selection into one task list of (country, station-row) pairs
     # across all requested countries, then fetch them concurrently. A single
@@ -441,7 +386,13 @@ def fetch(start_time, end_time, workers, country, context):
         Conventions="CF-1.13",
     )
 
-    return ds
+    return ds, EntryOverride(
+        args={
+            "start_time": start,
+            "end_time": end,
+            "country": sorted(countries),
+        }
+    )
 
 
 if __name__ == "__main__":

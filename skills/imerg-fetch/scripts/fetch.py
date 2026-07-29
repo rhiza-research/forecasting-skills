@@ -12,14 +12,14 @@
 #   "numpy",
 # ]
 # ///
-"""Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
+"""Fetch IMERG live precipitation and write a WeatherSkills standard dataset."""
 
 import sys
 import tempfile
 from datetime import UTC, date, datetime, timedelta
 
-from weather_skills_core import EntryOverride, UsageError, WroteSummary, weather_skill
-from weather_skills_core.envelope import stamp_cf_attrs
+from weather_skills_core import EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.dataset import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"
@@ -106,49 +106,37 @@ def _discover_latest(shortname: str) -> date:
     return max(_granule_date(r) for r in on_or_before)
 
 
-def _latest(args) -> date:
-    """`latest` resolver hook: log in, then discover the newest granule.
-
-    The decorator memoizes the resolver (a window referencing `latest` at both
-    ends discovers once) and invokes it lazily on first use, so an all-absolute
-    or now-only window performs no discovery login. The main fetch calls
-    earthaccess.login() again — login is idempotent, and on a non-`latest` run
-    it is the first and only login.
-    """
+def _resolve(d, shortname: str):
+    if d != "latest":
+        return d
     import earthaccess
 
     earthaccess.login()
-    return _discover_latest(SHORTNAMES[args.version])
+    return _discover_latest(shortname)
 
 
 @weather_skill(
-    "imerg-fetch",
-    _SKILL_VERSION,
-    output_type="gridded",
+    name="imerg-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.GRIDDED],
+    required_args=("start_time", "end_time"),
+    check_cache=True,
     source="imerg",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={
-        "help": (
-            "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    extra_args={"version": {"default": "late", "choices": list(SHORTNAMES)}},
-    latest_resolver=_latest,
-    streaming=True,
-    cache_hit_label="fetch",
+)
+@weather_skill.argument(
+    "--version",
+    default="late",
+    choices=list(SHORTNAMES),
+    help="IMERG product version (late or final).",
 )
 def fetch(start_time, end_time, version):
-    """Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
+    """Fetch IMERG live precipitation and write a WeatherSkills standard dataset."""
     import earthaccess
+    import numpy as np
     import xarray as xr
 
     shortname = SHORTNAMES[version]
+    start_time, end_time = _resolve(start_time, shortname), _resolve(end_time, shortname)
     start = start_time.isoformat()
     end = end_time.isoformat()
 
@@ -157,9 +145,6 @@ def fetch(start_time, end_time, version):
         file=sys.stderr,
     )
 
-    # Fetch over the EXACT resolved [start, end]. If a `latest` token already
-    # logged in during discovery, login() is idempotent; otherwise this is the
-    # first and only login.
     earthaccess.login()
     results = earthaccess.search_data(
         short_name=shortname,
@@ -171,6 +156,7 @@ def fetch(start_time, end_time, version):
     print(f"Found {len(results)} granules", file=sys.stderr)
 
     requested_span = (end_time - start_time).days + 1
+    effective_end = end
 
     with tempfile.TemporaryDirectory(prefix="imerg-fetch-") as td:
         files = earthaccess.download(results, local_path=td)
@@ -180,9 +166,6 @@ def fetch(start_time, end_time, version):
             combine="by_coords",
         )
         ds = ds[["precipitation"]].rename({"precipitation": "precip"})
-        # The IMERG source names its spatial dims `lat`/`lon`; normalize to the
-        # canonical `latitude`/`longitude` used across the other fetchers and
-        # ENVELOPE.md. Conditional so the rename only touches dims present.
         spatial_rename = {
             src: dst
             for src, dst in {"lat": "latitude", "lon": "longitude"}.items()
@@ -190,31 +173,12 @@ def fetch(start_time, end_time, version):
         }
         if spatial_rename:
             ds = ds.rename(spatial_rename)
-        # CMR's temporal filter is overlap-based and can return granules just
-        # outside [start, end]; trim to exact requested bounds to match the
-        # prior sheerwater @timeseries() post-process.
         ds = ds.sel(time=slice(start, end))
 
-        # Short-window protection (mirrors chirps-fetch's tail-vs-mid-gap
-        # handling). IMERG late runs a few days behind realtime, so a window
-        # whose end is at or near today (e.g. `--end now`) can resolve to a span
-        # whose trailing days are not yet published. The present-day set is
-        # derived from the WRITTEN dataset's own time axis (after the
-        # sel(time=slice) trim above), NOT from CMR BeginningDateTime metadata,
-        # so the cache stamp matches the data actually written.
-        import numpy as np
-
-        # np.datetime64(t, "D") truncates each ns timestamp to its calendar day;
-        # .item() on a datetime64[D] yields a datetime.date.
         present_days = sorted({np.datetime64(t, "D").item() for t in ds["time"].values})
-        # ds.sel already restricts to [start, end]; defensively re-bound in case
-        # any boundary granule slipped through the slice.
         present_days = [d for d in present_days if start_time <= d <= end_time]
         covered_days = len(present_days)
         if covered_days == 0:
-            # The granules search returned overlap granules just outside the
-            # bounds, but no granule day falls inside [start, end]: nothing
-            # in-window to write.
             raise UsageError(f"no granule day falls within {start}..{end}")
         if covered_days < requested_span:
             last_present = present_days[-1]
@@ -227,28 +191,21 @@ def fetch(start_time, end_time, version):
                 {start_time + timedelta(days=i) for i in range(requested_span)} - set(present_days)
             )
             if missing_days != expected_tail:
-                # Interior hole: a missing day precedes a later present day. This
-                # is a server/data gap, not realtime lag; refuse to silently cache
-                # a window with a hole in the middle (mirrors chirps).
                 raise UsageError(
                     f"non-trailing missing day(s) "
                     f"{', '.join(d.isoformat() for d in missing_days)} within "
                     f"{start}..{end} — server/data gap, not lag. Refusing to write "
                     "a partial zarr with a hole in the middle."
                 )
-            # Contiguous trailing gap: warn and stamp the EFFECTIVE end (last day
-            # actually present) so a later run re-fetches the now-published tail
-            # instead of short-circuiting on a cache hit against a partial window.
-            effective_end_iso = last_present.isoformat()
+            effective_end = last_present.isoformat()
             print(
                 f"WARNING: requested {requested_span} days ({start}..{end}) but only "
                 f"{covered_days} distinct day(s) are present in that span; writing the "
-                f"available days through {effective_end_iso} (trailing days not yet "
+                f"available days through {effective_end} (trailing days not yet "
                 "published, or near the dataset start). Caching the effective window "
                 "so a later request for the full window re-fetches the missing tail.",
                 file=sys.stderr,
             )
-            yield EntryOverride({"end": effective_end_iso})
 
         ds = ds.drop_attrs()
         ds.attrs.update(Conventions="CF-1.13")
@@ -258,17 +215,8 @@ def fetch(start_time, end_time, version):
             long_name="IMERG daily precipitation",
         )
         stamp_cf_attrs(ds)
-
-        # Keep the "Wrote:" line detail-free.
-        yield WroteSummary("", replace=True)
-
-        # The decorator's to_zarr streams the lazy open_mfdataset one
-        # granule-chunk at a time (open_mfdataset chunks per file = per day), so
-        # peak resident memory is bounded to ~one granule rather than the whole
-        # window. The dataset is yielded (and therefore written) inside the
-        # with-block so the downloaded source netCDFs are still on disk while
-        # the streamed write pulls each chunk.
-        yield ds
+        ds = ds.load()
+        return ds, EntryOverride(args={"start_time": start, "end_time": effective_end})
 
 
 if __name__ == "__main__":

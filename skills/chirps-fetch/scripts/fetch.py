@@ -10,7 +10,7 @@
 #   "rioxarray",
 # ]
 # ///
-"""Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
+"""Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a WeatherSkills standard dataset."""
 
 import os
 import sys
@@ -20,8 +20,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from weather_skills_core import EntryOverride, UsageError, WroteSummary, weather_skill
-from weather_skills_core.envelope import stamp_cf_attrs
+from weather_skills_core import EntryOverride, Types, UsageError, weather_skill
+from weather_skills_core.dataset import stamp_cf_attrs
 
 # Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
 # validated archive (per-year folders, 1998-to-present); the PRELIM product is
@@ -245,9 +245,8 @@ def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
     return out
 
 
-def _discover_latest(args) -> date:
-    """Find the newest available CHIRPS prelim day on or before today (UTC) — the
-    `latest` resolver for CHIRPS.
+def _discover_latest() -> date:
+    """Find the newest available CHIRPS prelim day on or before today (UTC).
 
     Probes backward day-by-day over HTTPS from today, classifying availability
     the same way an actual download (``_download_day_tif``) would see it:
@@ -357,39 +356,35 @@ def _open_day(tif: Path, day: date):
     return da
 
 
+def _resolve(d):
+    return _discover_latest() if d == "latest" else d
+
+
 @weather_skill(
-    "chirps-fetch",
-    _SKILL_VERSION,
-    output_type="gridded",
+    name="chirps-fetch",
+    version=_SKILL_VERSION,
+    outputs=[Types.GRIDDED],
+    required_args=("start_time", "end_time"),
+    exclude_args=("workers",),
+    check_cache=True,
     source="chirps",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    end_time={
-        "help": (
-            "End date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days)."
-        )
-    },
-    workers={
-        "default": DEFAULT_WORKERS,
-        "help": (
-            f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
-            "Deliberately conservative: CHC's data server can throttle and "
-            "temporarily block IPs under higher concurrency."
-        ),
-    },
-    latest_resolver=_discover_latest,
-    streaming=True,
-    cache_hit_label="fetch",
+)
+@weather_skill.argument(
+    "--workers",
+    type=int,
+    default=DEFAULT_WORKERS,
+    help=(
+        f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
+        "Deliberately conservative: CHC's data server can throttle and "
+        "temporarily block IPs under higher concurrency."
+    ),
 )
 def fetch(start_time, end_time, workers):
-    """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
+    """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a WeatherSkills standard dataset."""
     import requests
+    import xarray as xr
 
+    start_time, end_time = _resolve(start_time), _resolve(end_time)
     start = start_time.isoformat()
     end = end_time.isoformat()
     print(f"Fetching CHIRPS {start} -> {end} (final product, prelim fallback)", file=sys.stderr)
@@ -531,41 +526,20 @@ def fetch(start_time, end_time, workers):
                 "worst-case lag ~7 days).",
                 file=sys.stderr,
             )
-            # The recorded entry reflects the EFFECTIVE end actually written, so
-            # a re-run against the same --end re-attempts the missing tail days
-            # instead of short-circuiting on a cache hit. Yielded before the
-            # first dataset because the first day's provenance stamp needs the
-            # effective entry.
-            yield EntryOverride({"end": effective_end})
 
-        # Keep the "Wrote:" line detail-free.
-        yield WroteSummary("", replace=True)
-
-        # Stream each day to zarr one at a time so peak resident memory is
-        # bounded to ~one day regardless of window length, instead of holding
-        # the whole concatenated window in RAM. `succeeded` is already
-        # day-sorted (built sorted above), so the appended time axis stays
-        # ascending. Per-day latitude-sort is equivalent to a single global
-        # sort because every CHIRPS day shares the identical latitude grid.
-        # The decorator re-stamps weather_skills_source/weather_skills_history
-        # (and clears per-variable encoding) on EVERY yield: a
-        # to_zarr(mode="a", append_dim="time") call rewrites the root group
-        # attrs from the dataset being appended, so a first-write-only stamp
-        # would be clobbered on the first append. The entry is identical for
-        # every day, so the final stamp is stable regardless of how many days
-        # are written. The yields happen inside the TemporaryDirectory block so
-        # the source tifs outlive each day's write.
+        pieces = []
         for _, da in succeeded:
             da = da.sortby("latitude", ascending=True)
             da.name = "precip"
             da.attrs["units"] = "mm day-1"
             da.attrs["standard_name"] = "lwe_precipitation_rate"
             da.attrs["long_name"] = "CHIRPS daily precipitation"
-
-            ds = da.to_dataset()
-            ds.attrs["Conventions"] = "CF-1.13"
-            stamp_cf_attrs(ds)
-            yield ds
+            ds_day = da.to_dataset()
+            ds_day.attrs["Conventions"] = "CF-1.13"
+            stamp_cf_attrs(ds_day)
+            pieces.append(ds_day)
+        ds = xr.concat(pieces, dim="time")
+        return ds, EntryOverride(args={"start_time": start, "end_time": effective_end})
 
 
 if __name__ == "__main__":
