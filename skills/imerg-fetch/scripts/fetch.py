@@ -133,16 +133,16 @@ def _latest(args) -> date:
 )
 def fetch(args):
     """Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
-    start_time, end_time, version = args["start_time"], args["end_time"], args["version"]
+    start_time = args.start_time
     import earthaccess
     import xarray as xr
 
-    shortname = SHORTNAMES[version]
+    shortname = SHORTNAMES[args.version]
     start = start_time.isoformat()
-    end = end_time.isoformat()
+    end = args.end_time.isoformat()
 
     print(
-        f"Fetching IMERG {version} ({shortname}) {start} -> {end}",
+        f"Fetching IMERG {args.version} ({shortname}) {start} -> {end}",
         file=sys.stderr,
     )
 
@@ -156,10 +156,10 @@ def fetch(args):
         temporal=(start, end),
     )
     if not results:
-        raise RuntimeError(f"No IMERG {version} granules found in {start}..{end}")
+        raise RuntimeError(f"No IMERG {args.version} granules found in {start}..{end}")
     print(f"Found {len(results)} granules", file=sys.stderr)
 
-    requested_span = (end_time - start_time).days + 1
+    requested_span = (args.end_time - start_time).days + 1
 
     with tempfile.TemporaryDirectory(prefix="imerg-fetch-") as td:
         files = earthaccess.download(results, local_path=td)
@@ -198,7 +198,7 @@ def fetch(args):
         present_days = sorted({np.datetime64(t, "D").item() for t in ds["time"].values})
         # ds.sel already restricts to [start, end]; defensively re-bound in case
         # any boundary granule slipped through the slice.
-        present_days = [d for d in present_days if start_time <= d <= end_time]
+        present_days = [d for d in present_days if start_time <= d <= args.end_time]
         covered_days = len(present_days)
         if covered_days == 0:
             # The granules search returned overlap granules just outside the

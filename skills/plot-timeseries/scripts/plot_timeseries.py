@@ -97,15 +97,8 @@ def plot_timeseries(args):
     # PNG metadata keys are lettered by CLI position (weather_skills_history_a,
     # _b, ..., _z). The scheme stops at z; reject more inputs early so
     # users see a clear error rather than a KeyError later.
-    input, output, variable, time_dim, reduce, title, align_day_of_year = (
-        args["input"],
-        args["output"],
-        args["variable"],
-        args["time_dim"],
-        args["reduce"],
-        args["title"],
-        args["align_day_of_year"],
-    )
+    input = args.input
+    variable = args.variable
     if len(input) > 26:
         raise UsageError(f"--input must be passed at most 26 times; got {len(input)}.")
 
@@ -169,11 +162,11 @@ def plot_timeseries(args):
     for pth, ds in zip(input, datasets, strict=True):
         da = ds[variable]
         try:
-            tdim = _pick_time_dim(da, time_dim)
+            tdim = _pick_time_dim(da, args.time_dim)
         except ValueError as exc:
             raise UsageError(f"Error ({pth}): {exc}", prefix=False) from None
 
-        applicable = [d for d in reduce if d in da.dims]
+        applicable = [d for d in args.reduce if d in da.dims]
         if applicable:
             da = da.mean(applicable, keep_attrs=True)
 
@@ -186,7 +179,7 @@ def plot_timeseries(args):
             )
 
         label = Path(pth).stem
-        if align_day_of_year:
+        if args.align_day_of_year:
             # `.dt.dayofyear` works for datetime64 and object-dtype cftime time
             # coords; it raises TypeError/AttributeError on a non-calendar axis
             # (e.g. a forecast `step` timedelta), which we surface clearly.
@@ -222,25 +215,25 @@ def plot_timeseries(args):
         if first_tdim is None:
             first_tdim = tdim
 
-    ax.set_xlabel("day of year" if align_day_of_year else (first_tdim or "time"))
+    ax.set_xlabel("day of year" if args.align_day_of_year else (first_tdim or "time"))
     ylabel = variable if not units else f"{variable} [{units}]"
     ax.set_ylabel(ylabel)
-    if title:
-        ax.set_title(title)
+    if args.title:
+        ax.set_title(args.title)
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.5)
 
     fig.autofmt_xdate()
     fig.tight_layout()
-    out = Path(output)
+    out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     args_dict = {
         "variable": requested_variable,
-        "time_dim": time_dim,
-        "reduce": reduce,
-        "title": title,
-        "align_day_of_year": align_day_of_year,
+        "time_dim": args.time_dim,
+        "reduce": args.reduce,
+        "title": args.title,
+        "align_day_of_year": args.align_day_of_year,
     }
     png_metadata: dict[str, str] = {"Software": "forecasting-skills"}
     for idx, pth in enumerate(input):
@@ -265,7 +258,7 @@ def plot_timeseries(args):
 
     fig.savefig(out, dpi=150, metadata=png_metadata)
     plt.close(fig)
-    print(f"Wrote: {output}", file=sys.stderr)
+    print(f"Wrote: {args.output}", file=sys.stderr)
 
 
 if __name__ == "__main__":

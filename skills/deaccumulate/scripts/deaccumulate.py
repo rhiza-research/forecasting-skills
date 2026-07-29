@@ -101,7 +101,7 @@ def _units_look_like_rate(units: str) -> bool:
 )
 def deaccumulate(ds, args):
     """Deaccumulate a cumulative-since-init variable along the forecast step axis."""
-    variable = args["variable"]
+    variable = args.variable
     import numpy as np
 
     if "step" not in ds.dims:

@@ -351,35 +351,6 @@ def plot_compare(
     rows when they are the same variable with matching units, and per-row
     independent otherwise (--shared-scale / --independent-scale override).
     """
-    (
-        variable,
-        variable_a,
-        variable_b,
-        colormap,
-        colormap_a,
-        colormap_b,
-        shared_scale,
-        independent_scale,
-        title,
-        panels,
-        time_dim,
-        bbox,
-        mask_geojson,
-    ) = (
-        args["variable"],
-        args["variable_a"],
-        args["variable_b"],
-        args["colormap"],
-        args["colormap_a"],
-        args["colormap_b"],
-        args["shared_scale"],
-        args["independent_scale"],
-        args["title"],
-        args["panels"],
-        args["time_dim"],
-        args["bbox"],
-        args["mask_geojson"],
-    )
     label_a = input_path(ds_a).name
     label_b = input_path(ds_b).name
 
@@ -394,8 +365,8 @@ def plot_compare(
 
     # Per-row variable resolution: explicit per-row flag, then the shared
     # --variable, then that input's own first real (non-CRS) data var.
-    var_a = variable_a or variable or auto_variable(ds_a)
-    var_b = variable_b or variable or auto_variable(ds_b)
+    var_a = args.variable_a or args.variable or auto_variable(ds_a)
+    var_b = args.variable_b or args.variable or auto_variable(ds_b)
     for side, var, ds in (("A", var_a, ds_a), ("B", var_b, ds_b)):
         if var is None or var not in ds:
             # Same real-data-var criterion core's auto_variable uses: skip CF
@@ -414,8 +385,8 @@ def plot_compare(
                 f"variable '{var}' must exist in input {side}. {side} real data vars: {real_vars}"
             )
 
-    td_a = _pick_time_dim(ds_a, time_dim)
-    td_b = _pick_time_dim(ds_b, time_dim)
+    td_a = _pick_time_dim(ds_a, args.time_dim)
+    td_b = _pick_time_dim(ds_b, args.time_dim)
     if td_a is None or td_b is None:
         raise UsageError(
             f"both inputs need a time/step dim. A: {list(ds_a.dims)}  B: {list(ds_b.dims)}"
@@ -595,7 +566,7 @@ def plot_compare(
     if not common_enc:
         raise DataError(f"no overlapping time bins between the two inputs on '{td_a}'/'{td_b}'.")
 
-    n = min(panels, len(common_enc))
+    n = min(args.panels, len(common_enc))
     # Take the last `n` common labels (chronological). Map each back to a native
     # axis label drawn from input A's coord so per-row `.sel` is exact for A; for
     # B we select with method="nearest" within the same tolerance.
@@ -624,9 +595,9 @@ def plot_compare(
     units_match = (
         isinstance(units_a, str) and isinstance(units_b, str) and units_a.strip() == units_b.strip()
     )
-    if shared_scale:
+    if args.shared_scale:
         use_shared_scale = True
-    elif independent_scale:
+    elif args.independent_scale:
         use_shared_scale = False
     else:
         use_shared_scale = var_a == var_b and units_match
@@ -676,11 +647,11 @@ def plot_compare(
     # upstream's ``ds.sel(longitude=slice, latitude=slice)`` rendering — the
     # bbox alone is a rectangle, not a country shape.
     # The decorator parses --bbox to an (N, W, S, E) float tuple (or None).
-    region_bbox = bbox
+    region_bbox = args.bbox
     # When ``--mask-geojson`` is set: polygon-clip gridded inputs (cells outside
     # the polygon render as NaN/white), matching upstream sheerwater's
     # clip_region which polygon-clips IMERG/CHIRPS before plotting.
-    region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
+    region_polygon = polygon_from_geojson(args.mask_geojson) if args.mask_geojson else None
 
     if region_bbox is not None or region_polygon is not None:
         r_n, r_w, r_s, r_e = region_bbox if region_bbox is not None else (None, None, None, None)
@@ -808,20 +779,20 @@ def plot_compare(
         return u if isinstance(u, str) else None
 
     if use_shared_scale:
-        if colormap is None:
+        if args.colormap is None:
             shared_cmap = LinearSegmentedColormap.from_list("wgbrp", PRECIP_COLORS)
             shared_norm = BoundaryNorm(PRECIP_BOUNDS, shared_cmap.N)
             shared_vmin = shared_vmax = None
         else:
-            shared_cmap = colormap
+            shared_cmap = args.colormap
             shared_norm = None
             shared_vmax = float(np.nanmax([da_a.max().values, da_b.max().values]))
             shared_vmin = float(np.nanmin([da_a.min().values, da_b.min().values]))
         scale_a = (shared_cmap, shared_norm, shared_vmin, shared_vmax)
         scale_b = (shared_cmap, shared_norm, shared_vmin, shared_vmax)
     else:
-        cmap_a = colormap_a or colormap or "viridis"
-        cmap_b = colormap_b or colormap or "viridis"
+        cmap_a = args.colormap_a or args.colormap or "viridis"
+        cmap_b = args.colormap_b or args.colormap or "viridis"
         scale_a = (
             cmap_a,
             None,
@@ -851,8 +822,8 @@ def plot_compare(
     gs = GridSpec(2, n, figure=fig, wspace=0.08, hspace=0.15)
     top_axes = [fig.add_subplot(gs[0, i]) for i in range(n)]
     bottom_axes = [fig.add_subplot(gs[1, i]) for i in range(n)]
-    if title:
-        fig.suptitle(title)
+    if args.title:
+        fig.suptitle(args.title)
 
     # The "gridded base" determines both the admin-polygon clip bbox and
     # the shared spatial extent across both rows. Pick whichever of A/B

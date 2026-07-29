@@ -70,7 +70,7 @@ def _inner_stats(values):
 )
 def plot_mediogram(ds_fc, ds_mc, args):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
-    variable, lat, lon, title = args["variable"], args["lat"], args["lon"], args["title"]
+    variable = args.variable
     import matplotlib
 
     matplotlib.use("Agg")
@@ -95,8 +95,8 @@ def plot_mediogram(ds_fc, ds_mc, args):
                 f"{label} input requires 'number' and 'step' dims; got {list(da.dims)}."
             )
 
-    pt_fc = _select_point(da_fc, lat, lon)
-    pt_mc = _select_point(da_mc, lat, lon)
+    pt_fc = _select_point(da_fc, args.lat, args.lon)
+    pt_mc = _select_point(da_mc, args.lat, args.lon)
 
     n_steps = min(pt_fc.sizes["step"], pt_mc.sizes["step"], 6)
     if n_steps < 1:
@@ -109,8 +109,8 @@ def plot_mediogram(ds_fc, ds_mc, args):
 
     lat_dim = cf_dim(pt_fc, "latitude")
     lon_dim = cf_dim(pt_fc, "longitude")
-    snapped_lat = float(pt_fc[lat_dim].values) if lat_dim else lat
-    snapped_lon = float(pt_fc[lon_dim].values) if lon_dim else lon
+    snapped_lat = float(pt_fc[lat_dim].values) if lat_dim else args.lat
+    snapped_lon = float(pt_fc[lon_dim].values) if lon_dim else args.lon
 
     time_steps = np.arange(n_steps)
     ensemble_mean = np.mean(fc, axis=0)
@@ -180,7 +180,7 @@ def plot_mediogram(ds_fc, ds_mc, args):
     ax.set_xticklabels([f"T+{t + 1}" for t in time_steps])
     ax.set_xlabel("Forecast step")
     ax.set_ylabel(variable)
-    ax.set_title(title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
+    ax.set_title(args.title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
     ax.grid(True, linestyle="--", alpha=0.6)
 
     handles = [

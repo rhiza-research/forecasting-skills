@@ -57,7 +57,6 @@ def _to_signed(da, np):
 )
 def difference(ds_a, ds_b, args):
     """Subtract one weather-skills envelope Zarr from another (A - B)."""
-    variable = args["variable"]
     import numpy as np
     import xarray as xr
 
@@ -69,10 +68,10 @@ def difference(ds_a, ds_b, args):
     # Data variables present in only one input are not differenced and are
     # dropped from the output.
     shared = [v for v in ds_a.data_vars if v in ds_b.data_vars]
-    if variable is not None:
+    if args.variable is not None:
         # De-duplicate while preserving first-seen order so a repeated name
         # doesn't difference a variable twice.
-        selected = list(dict.fromkeys(variable))
+        selected = list(dict.fromkeys(args.variable))
         for var in selected:
             absent = [
                 name

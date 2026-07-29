@@ -506,9 +506,8 @@ def provenance(args):
     or a runnable bash script that reproduces the artifact. All output goes to
     stdout; diagnostics and errors go to stderr. Never writes or modifies any file.
     """
-    input, format, check = args["input"], args["format"], args["check"]
-    if check:
-        code, report = _run_check(Path(input))
+    if args.check:
+        code, report = _run_check(Path(args.input))
         if code == 0:
             print(report)
             return
@@ -516,15 +515,15 @@ def provenance(args):
             raise DataError(report, prefix=False)
         raise UsageError(report, prefix=False)
 
-    data = _read_artifact(Path(input))
+    data = _read_artifact(Path(args.input))
 
     if not data["chains"]:
-        print(f"no provenance recorded on {input}")
+        print(f"no provenance recorded on {args.input}")
         return
 
-    if format == "human":
+    if args.format == "human":
         _render_human(data)
-    elif format == "json":
+    elif args.format == "json":
         _render_json(data)
     else:
         _render_script(data)

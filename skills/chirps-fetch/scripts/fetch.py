@@ -376,15 +376,15 @@ def _open_day(tif: Path, day: date):
 )
 def fetch(args):
     """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
-    start_time, end_time, workers = args["start_time"], args["end_time"], args["workers"]
     import requests
 
-    start = start_time.isoformat()
-    end = end_time.isoformat()
+    start = args.start_time.isoformat()
+    end = args.end_time.isoformat()
     print(f"Fetching CHIRPS {start} -> {end} (final product, prelim fallback)", file=sys.stderr)
 
     expected_days = [
-        start_time + timedelta(days=i) for i in range((end_time - start_time).days + 1)
+        args.start_time + timedelta(days=i)
+        for i in range((args.end_time - args.start_time).days + 1)
     ]
     succeeded = []
     missing_days: list[date] = []
@@ -408,7 +408,7 @@ def fetch(args):
 
         downloaded: list[tuple[date, Path]] = []
         try:
-            with ThreadPoolExecutor(max_workers=workers) as pool:
+            with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 futures = {pool.submit(_download, day): day for day in expected_days}
                 for fut in as_completed(futures):
                     day = futures[fut]
@@ -437,7 +437,7 @@ def fetch(args):
                         # Cancel not-yet-started downloads so no new request
                         # starts while the abort message is built and printed.
                         pool.shutdown(wait=False, cancel_futures=True)
-                        print(_http_refusal_message(e, workers), file=sys.stderr)
+                        print(_http_refusal_message(e, args.workers), file=sys.stderr)
                         sys.stderr.flush()
                         # os._exit avoids the ThreadPoolExecutor __exit__ /
                         # shutdown(wait=True) that a SystemExit would trigger,
@@ -478,7 +478,7 @@ def fetch(args):
                     f"range {start}..{end} (HTTP {codes} on all days). This "
                     "usually means rate limiting / a temporary server-side "
                     "block from too many requests — wait and retry later, and "
-                    f"consider lowering --workers (current: {workers})."
+                    f"consider lowering --workers (current: {args.workers})."
                 )
             raise UsageError(
                 f"no days available in range {start}..{end} from the "

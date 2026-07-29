@@ -24,13 +24,12 @@ _SKILL_VERSION = "0.1.11"
 )
 def clip_region(ds, args):
     """Spatially subset a gridded weather-skills envelope Zarr."""
-    bbox, dims = args["bbox"], args["dims"]
     from weather_skills_core.envelope import bbox_subset, detect_spatial_dims
 
-    lat_dim, lon_dim = detect_spatial_dims(ds, dims)
-    sub = bbox_subset(ds, bbox, lat_dim=lat_dim, lon_dim=lon_dim)
+    lat_dim, lon_dim = detect_spatial_dims(ds, args.dims)
+    sub = bbox_subset(ds, args.bbox, lat_dim=lat_dim, lon_dim=lon_dim)
     # Subsetting the spatial axes preserves the envelope shape.
-    validate_type(sub, ds, dims)
+    validate_type(sub, ds, args.dims)
     return sub
 
 

@@ -40,7 +40,6 @@ def _coerce(values):
 )
 def concat(dss, args):
     """Concatenate weather-skills envelope Zarr stores along a named dim."""
-    dim, coords = args["dim"], args["coords"]
     import xarray as xr
 
     names = [input_path(ds).name for ds in dss]
@@ -82,18 +81,18 @@ def concat(dss, args):
                 f"'{var}' in one consistent unit."
             )
 
-    dim_on_inputs = all(dim in ds.dims for ds in dss)
+    dim_on_inputs = all(args.dim in ds.dims for ds in dss)
 
     if not dim_on_inputs:
-        if coords:
-            coord_vals = _coerce([c.strip() for c in coords.split(",")])
+        if args.coords:
+            coord_vals = _coerce([c.strip() for c in args.coords.split(",")])
             if len(coord_vals) != len(dss):
                 raise UsageError(f"--coords len {len(coord_vals)} != inputs {len(dss)}")
-            dss = [d.expand_dims({dim: [v]}) for d, v in zip(dss, coord_vals, strict=True)]
+            dss = [d.expand_dims({args.dim: [v]}) for d, v in zip(dss, coord_vals, strict=True)]
         else:
-            dss = [d.expand_dims(dim) for d in dss]
+            dss = [d.expand_dims(args.dim) for d in dss]
 
-    out_ds = xr.concat(dss, dim=dim)
+    out_ds = xr.concat(dss, dim=args.dim)
     return out_ds
 
 

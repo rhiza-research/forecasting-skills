@@ -36,36 +36,26 @@ _SKILL_VERSION = "0.1.8"
 )
 def compose(args):
     """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""
-    sender, to, cc, reply_to, subject, body, body_file, attach, output = (
-        args["sender"],
-        args["to"],
-        args["cc"],
-        args["reply_to"],
-        args["subject"],
-        args["body"],
-        args["body_file"],
-        args["attach"],
-        args["output"],
-    )
+    body = args.body
     if body is None:
-        body_path = Path(body_file)
+        body_path = Path(args.body_file)
         if not body_path.exists():
             raise UsageError(f"body file {body_path} not found.")
         body = body_path.read_text()
 
     msg = EmailMessage()
-    msg["From"] = sender
-    msg["To"] = to
-    if cc:
-        msg["Cc"] = cc
-    if reply_to:
-        msg["Reply-To"] = reply_to
-    msg["Subject"] = subject
+    msg["From"] = args.sender
+    msg["To"] = args.to
+    if args.cc:
+        msg["Cc"] = args.cc
+    if args.reply_to:
+        msg["Reply-To"] = args.reply_to
+    msg["Subject"] = args.subject
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain="rhiza.local")
     msg.set_content(body)
 
-    for path_str in attach:
+    for path_str in args.attach:
         path = Path(path_str)
         if not path.exists():
             print(f"Warning: attachment {path} not found, skipping.", file=sys.stderr)
@@ -78,11 +68,11 @@ def compose(args):
             path.read_bytes(), maintype=maintype, subtype=subtype, filename=path.name
         )
 
-    out = Path(output)
+    out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(bytes(msg))
     print(
-        f"Wrote: {output} ({len(msg.get_payload())} parts, {out.stat().st_size} bytes)",
+        f"Wrote: {args.output} ({len(msg.get_payload())} parts, {out.stat().st_size} bytes)",
         file=sys.stderr,
     )
 

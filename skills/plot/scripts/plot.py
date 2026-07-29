@@ -421,18 +421,8 @@ def plot(ds, args):
     (up to 4 columns), shared color scale, country/coastline boundaries, and a
     horizontal colorbar at the bottom spanning all panels.
     """
-    variable, style, colormap, title, index, extent, cities, fontsize, bbox, mask_geojson = (
-        args["variable"],
-        args["style"],
-        args["colormap"],
-        args["title"],
-        args["index"],
-        args["extent"],
-        args["cities"],
-        args["fontsize"],
-        args["bbox"],
-        args["mask_geojson"],
-    )
+    variable = args.variable
+    style = args.style
     import matplotlib
 
     matplotlib.use("Agg")
@@ -446,12 +436,12 @@ def plot(ds, args):
         raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
     da = ds[variable]
     try:
-        overrides = _parse_index(index)
+        overrides = _parse_index(args.index)
     except ValueError as exc:
         raise UsageError(str(exc)) from None
 
     # The decorator parses --bbox to an (N, W, S, E) float tuple (or None).
-    bbox_nwse = bbox
+    bbox_nwse = args.bbox
 
     if bbox_nwse is not None and style != "heatmap":
         r_n, r_w, r_s, r_e = bbox_nwse
@@ -461,19 +451,19 @@ def plot(ds, args):
             file=sys.stderr,
         )
 
-    if mask_geojson and style != "heatmap":
+    if args.mask_geojson and style != "heatmap":
         print(
             f"Warning: --mask-geojson is a heatmap-only option; ignored for --style {style}.",
             file=sys.stderr,
         )
 
-    if extent and style != "heatmap":
+    if args.extent and style != "heatmap":
         print(
-            f"Warning: --extent {extent!r} is a heatmap-only option; ignored for --style {style}.",
+            f"Warning: --extent {args.extent!r} is a heatmap-only option; ignored for --style {style}.",
             file=sys.stderr,
         )
 
-    if cities and style != "heatmap":
+    if args.cities and style != "heatmap":
         print(
             f"Warning: --cities is a heatmap-only option; ignored for --style {style}.",
             file=sys.stderr,
@@ -481,7 +471,7 @@ def plot(ds, args):
 
     if overrides and style != "heatmap":
         print(
-            f"Warning: --index {index!r} is a heatmap-only option; ignored for --style {style}.",
+            f"Warning: --index {args.index!r} is a heatmap-only option; ignored for --style {style}.",
             file=sys.stderr,
         )
 
@@ -561,10 +551,10 @@ def plot(ds, args):
                 )
         if panel_dim is not None and da.sizes[panel_dim] == 0:
             raise UsageError(f"dimension {panel_dim!r} has size 0; nothing to plot.")
-        extent_vals = _parse_extent(extent)
-        cities_map = _parse_cities(cities)
-        cmap = _parse_colormap(colormap)
-        region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
+        extent_vals = _parse_extent(args.extent)
+        cities_map = _parse_cities(args.cities)
+        cmap = _parse_colormap(args.colormap)
+        region_polygon = polygon_from_geojson(args.mask_geojson) if args.mask_geojson else None
         wrapped_bbox = bbox_nwse is not None and bbox_nwse[1] > bbox_nwse[3]
         if bbox_nwse is not None or region_polygon is not None:
             import numpy as _np_local
@@ -641,8 +631,8 @@ def plot(ds, args):
             cmap,
             extent_vals,
             cities_map,
-            title,
-            fontsize,
+            args.title,
+            args.fontsize,
             wrap_lon=not wrapped_bbox,
             native_step_dim=native_step_dim,
             native_steps=native_steps,
@@ -655,7 +645,7 @@ def plot(ds, args):
         reduce_dims = [d for d in da.dims if d != sdim]
         da.mean(reduce_dims).plot(ax=ax)
         ax.set_xlabel(sdim)
-        ax.set_title(title or f"{variable} ({style})")
+        ax.set_title(args.title or f"{variable} ({style})")
         fig.tight_layout()
 
     return fig

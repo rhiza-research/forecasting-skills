@@ -207,14 +207,7 @@ def _bbox_subset(ds, bbox, bbox_raw) -> object:
 )
 def fetch(args, context):
     """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
-    bbox, dataset, date, start, end, variable = (
-        args["bbox"],
-        args["dataset"],
-        args["date"],
-        args["start"],
-        args["end"],
-        args["variable"],
-    )
+    dataset = args.dataset
     import numpy as np
 
     state = _open_dataset(context.state, dataset)
@@ -225,20 +218,20 @@ def fetch(args, context):
     # Time flags are bound to the dataset shape: forecasts take a single --date,
     # analyses take a --start/--end range. Mismatches exit 2 before any fetch.
     if is_forecast:
-        if not date:
+        if not args.date:
             raise UsageError(f"{dataset} is a forecast dataset; --date is required.")
-        if start or end:
+        if args.start or args.end:
             raise UsageError(f"{dataset} is a forecast dataset; use --date, not --start/--end.")
-        date_iso = date
+        date_iso = args.date
     else:
-        if not (start and end):
+        if not (args.start and args.end):
             raise UsageError(f"{dataset} is an analysis dataset; --start and --end are required.")
-        if date:
+        if args.date:
             raise UsageError(f"{dataset} is an analysis dataset; use --start/--end, not --date.")
-        start_iso, end_iso = start, end
+        start_iso, end_iso = args.start, args.end
 
-    if bbox:
-        ds = _bbox_subset(ds, bbox, context.args.bbox)
+    if args.bbox:
+        ds = _bbox_subset(ds, args.bbox, context.args.bbox)
 
     # Temporal selection + dimension mapping onto the envelope.
     if is_forecast:
@@ -274,14 +267,14 @@ def fetch(args, context):
             raise DataError(f"{dataset} has no data in {start_iso}..{end_iso}.")
         ds = ds.drop_vars([c for c in _DROP_COORDS if c in ds.coords])
 
-    if variable:
-        missing = [v for v in variable if v not in ds.data_vars]
+    if args.variable:
+        missing = [v for v in args.variable if v not in ds.data_vars]
         if missing:
             raise UsageError(
                 f"variable(s) not in {dataset}: {', '.join(missing)}.\n"
                 f"Available: {', '.join(sorted(ds.data_vars))}"
             )
-        ds = ds[variable]
+        ds = ds[args.variable]
 
     print(f"Fetching dynamical:{dataset} (shape={shape})", file=sys.stderr)
 

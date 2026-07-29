@@ -155,16 +155,8 @@ def _validate_args(args):
 )
 def downscale(ds, args):
     """Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
-    variable, dims, time_dim, algorithm, factor, target_resolution, reference_grid, qq_reference = (
-        args["variable"],
-        args["dims"],
-        args["time_dim"],
-        args["algorithm"],
-        args["factor"],
-        args["target_resolution"],
-        args["reference_grid"],
-        args["qq_reference"],
-    )
+    time_dim = args.time_dim
+    target_resolution = args.target_resolution
     from pathlib import Path
 
     import numpy as np
@@ -172,19 +164,19 @@ def downscale(ds, args):
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
     from weather_skills_core.envelope import detect_spatial_dims, detect_time_dim
 
-    lat_dim, lon_dim = detect_spatial_dims(ds, dims)
+    lat_dim, lon_dim = detect_spatial_dims(ds, args.dims)
 
-    if variable:
-        if variable not in ds.data_vars:
-            raise UsageError(f"variable '{variable}' not in {list(ds.data_vars)}")
-        ds = ds[[variable]]
+    if args.variable:
+        if args.variable not in ds.data_vars:
+            raise UsageError(f"variable '{args.variable}' not in {list(ds.data_vars)}")
+        ds = ds[[args.variable]]
 
     in_lat_res = _grid_spacing(ds, lat_dim)
     in_lon_res = _grid_spacing(ds, lon_dim)
 
     # Build the finer target grid from one of the three mutually-exclusive specs.
-    if reference_grid is not None:
-        ref_grid_path = Path(reference_grid)
+    if args.reference_grid is not None:
+        ref_grid_path = Path(args.reference_grid)
         ref_grid_ds = xr.open_zarr(ref_grid_path, consolidated=False)
         for d in (lat_dim, lon_dim):
             if d not in ref_grid_ds.dims:
@@ -205,10 +197,10 @@ def downscale(ds, args):
             )
         target_desc = f"reference grid {ref_grid_path.name}"
     else:
-        if factor is not None:
-            lat_spacing = in_lat_res / factor
-            lon_spacing = in_lon_res / factor
-            target_desc = f"factor {factor}"
+        if args.factor is not None:
+            lat_spacing = in_lat_res / args.factor
+            lon_spacing = in_lon_res / args.factor
+            target_desc = f"factor {args.factor}"
         else:
             # --target-resolution: the requested spacing applies to both axes.
             # Require it to be finer-or-equal to BOTH input axis spacings, so a
@@ -243,15 +235,15 @@ def downscale(ds, args):
     )
 
     print(
-        f"Downscaling {lat_dim},{lon_dim} (algorithm={algorithm}, "
+        f"Downscaling {lat_dim},{lon_dim} (algorithm={args.algorithm}, "
         f"{target_desc}): {ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> "
         f"{len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
     out_ds = ds.regrid.linear(target)
 
-    if algorithm == "q-q":
-        ref_path = Path(qq_reference)
+    if args.algorithm == "q-q":
+        ref_path = Path(args.qq_reference)
         ref_ds = xr.open_zarr(ref_path, consolidated=False)
         # Resolve the axis the mapping runs along: an explicit --time-dim wins,
         # else CF/heuristic detection. Raises naming --time-dim as the remedy.
@@ -293,7 +285,7 @@ def downscale(ds, args):
 
     # Interpolating onto a finer grid replaces the spatial axes but keeps the
     # envelope shape.
-    validate_type(out_ds, ds, dims)
+    validate_type(out_ds, ds, args.dims)
     return out_ds
 
 

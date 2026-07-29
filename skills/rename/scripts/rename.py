@@ -59,7 +59,8 @@ def _validate_args(args):
 )
 def rename(ds, args):
     """Rename one data variable in a weather-skills envelope Zarr to a new name."""
-    variable, to_name = args["variable"], args["to_name"]
+    variable = args.variable
+    to_name = args.to_name
     data_vars = list(ds.data_vars)
     if variable:
         if variable not in ds.data_vars:

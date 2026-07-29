@@ -458,24 +458,16 @@ def _verify_calendar(out, context) -> None:
 )
 def fetch(args, context):
     """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
-    start_time, end_time, bbox, model, experiment, variable, member, table, grid = (
-        args["start_time"],
-        args["end_time"],
-        args["bbox"],
-        args["model"],
-        args["experiment"],
-        args["variable"],
-        args["member"],
-        args["table"],
-        args["grid"],
-    )
+    variable = args.variable
     from weather_skills_core.envelope import bbox_subset
 
-    state = _open_remote(context.state, model, experiment, variable, member, table, grid)
+    state = _open_remote(
+        context.state, args.model, args.experiment, variable, args.member, args.table, args.grid
+    )
     ds = state["ds"]
     grid_label = state["grid_label"]
-    start_iso = start_time.isoformat()
-    end_iso = end_time.isoformat()
+    start_iso = args.start_time.isoformat()
+    end_iso = args.end_time.isoformat()
 
     if variable not in ds.data_vars:
         raise UsageError(
@@ -494,18 +486,18 @@ def fetch(args, context):
     ds = ds.rename({"lat": "latitude", "lon": "longitude"})
     ds = _drop_bounds(ds)
     ds = normalize_longitude(ds)
-    if bbox:
-        ds = bbox_subset(ds, bbox, lat_dim="latitude", lon_dim="longitude")
+    if args.bbox:
+        ds = bbox_subset(ds, args.bbox, lat_dim="latitude", lon_dim="longitude")
 
     ds = ds.sel(time=slice(start_iso, end_iso))
     if ds.sizes.get("time", 0) == 0:
         raise DataError(
-            f"{model}/{experiment}/{variable} has no data in "
+            f"{args.model}/{args.experiment}/{variable} has no data in "
             f"{start_iso}..{end_iso} (dataset time range may not cover the window)."
         )
 
     print(
-        f"Fetching cmip6 {model}/{experiment}/{member}/{table}/"
+        f"Fetching cmip6 {args.model}/{args.experiment}/{args.member}/{args.table}/"
         f"{variable}/{grid_label} {start_iso}..{end_iso}",
         file=sys.stderr,
     )
@@ -530,7 +522,10 @@ def fetch(args, context):
     ds.attrs = new_globals
     # The grid_label component is catalog-discovered, so the value only exists
     # at run time.
-    set_source(ds, f"cmip6:{model}/{experiment}/{member}/{table}/{variable}/{grid_label}")
+    set_source(
+        ds,
+        f"cmip6:{args.model}/{args.experiment}/{args.member}/{args.table}/{variable}/{grid_label}",
+    )
 
     _ensure_coord_cf_attrs(ds)
 

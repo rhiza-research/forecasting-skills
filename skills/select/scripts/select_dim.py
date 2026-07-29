@@ -194,18 +194,18 @@ def _normalize_args(args):
 )
 def select(ds, args):
     """Select entries along one named dimension of a weather-skills envelope Zarr."""
-    dim, index, value = args["dim"], args["index"], args["value"]
+    dim = args.dim
     import numpy as np
 
     if dim not in ds.dims:
         raise UsageError(f"--dim '{dim}' not in dims {list(ds.dims)}.")
     size = ds.sizes[dim]
 
-    if index is not None:
+    if args.index is not None:
         # Positional checks; the structural grammar pass already ran before
         # the cache check.
-        positions_given = [int(raw) for raw in index]
-        given = list(zip(index, positions_given, strict=True))
+        positions_given = [int(raw) for raw in args.index]
+        given = list(zip(args.index, positions_given, strict=True))
         for raw, pos in given:
             if pos < -size or pos >= size:
                 raise UsageError(
@@ -236,7 +236,7 @@ def select(ds, args):
         coord_vals = ds[dim].values
         positions = []
         seen = {}
-        for raw in value:
+        for raw in args.value:
             parsed = _parse_value(raw, coord_vals, dim)
             matched = np.nonzero(coord_vals == parsed)[0]
             if matched.size == 0:

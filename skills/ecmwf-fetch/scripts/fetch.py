@@ -426,10 +426,9 @@ def _latest(args, context) -> dt.date:
 )
 def fetch(args, context):
     """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
-    bbox, date = args["bbox"], args["date"]
-    resolved_date = date
+    resolved_date = args.date
     date_iso = resolved_date.isoformat()
-    area = list(bbox)
+    area = list(args.bbox)
     state = context.state
 
     require_env("ECMWF_DATASTORES_URL", "ECMWF_DATASTORES_KEY")

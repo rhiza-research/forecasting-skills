@@ -174,7 +174,8 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
 )
 def unit_convert(ds, args):
     """Convert one data variable in a weather-skills envelope Zarr to a target units string."""
-    variable, to_units, standard_name = args["variable"], args["to_units"], args["standard_name"]
+    variable = args.variable
+    to_units = args.to_units
     import pint
 
     data_vars = list(ds.data_vars)
@@ -216,7 +217,7 @@ def unit_convert(ds, args):
         ) from None
 
     new_standard_name = _resolve_standard_name(
-        standard_name, da.attrs.get("standard_name"), dim_changed, canonical_target
+        args.standard_name, da.attrs.get("standard_name"), dim_changed, canonical_target
     )
     out_attrs = {**da.attrs, "units": to_units}
     if new_standard_name is None:

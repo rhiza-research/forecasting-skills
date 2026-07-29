@@ -514,20 +514,13 @@ def _set_write_encoding(ds) -> None:
 )
 def fetch(args, context):
     """Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr."""
-    start_time, end_time, bbox, workers, variable = (
-        args["start_time"],
-        args["end_time"],
-        args["bbox"],
-        args["workers"],
-        args["variable"],
-    )
-    start_iso = start_time.isoformat()
-    end_iso = end_time.isoformat()
+    start_iso = args.start_time.isoformat()
+    end_iso = args.end_time.isoformat()
     # Error messages echo the bbox exactly as given on the CLI.
     bbox_raw = context.args.bbox
-    north, west, south, east = bbox
+    north, west, south, east = args.bbox
 
-    variables = variable or list(SUPPORTED_PARAMETERS)
+    variables = args.variable or list(SUPPORTED_PARAMETERS)
 
     key = _require_key()
     session = requests.Session()
@@ -594,7 +587,7 @@ def fetch(args, context):
 
     frames = []
     meta_rows = []
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {pool.submit(_fetch_one, d): d for d in sensors}
         for fut in as_completed(futures):
             d = futures[fut]

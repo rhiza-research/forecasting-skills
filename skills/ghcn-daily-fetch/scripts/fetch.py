@@ -341,27 +341,20 @@ def _set_write_encoding(ds) -> None:
 )
 def fetch(args, context):
     """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
-    start_time, end_time, bbox, workers, variable = (
-        args["start_time"],
-        args["end_time"],
-        args["bbox"],
-        args["workers"],
-        args["variable"],
-    )
-    start_iso = start_time.isoformat()
-    end_iso = end_time.isoformat()
-    start_int = int(start_time.strftime("%Y%m%d"))
-    end_int = int(end_time.strftime("%Y%m%d"))
+    start_iso = args.start_time.isoformat()
+    end_iso = args.end_time.isoformat()
+    start_int = int(args.start_time.strftime("%Y%m%d"))
+    end_int = int(args.end_time.strftime("%Y%m%d"))
     # Error messages echo the bbox exactly as given on the CLI.
     bbox_raw = context.args.bbox
 
-    variables = variable or list(DEFAULT_VARIABLES)
+    variables = args.variable or list(DEFAULT_VARIABLES)
     # element code -> canonical variable name, for the requested variables.
     elements = {VAR_MAP[v][0]: v for v in variables}
 
     # Parse + bbox-filter the (single, cheap) station metadata file before any
     # per-station download.
-    stations = _load_stations(bbox)
+    stations = _load_stations(args.bbox)
     if stations.empty:
         where = (
             f"the requested --bbox {bbox_raw}"
@@ -379,7 +372,7 @@ def fetch(args, context):
     frames = []
     meta_rows = []
     dropped = 0
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {
             pool.submit(_station_frame, sid, elements, start_int, end_int): sid
             for sid in stations.index

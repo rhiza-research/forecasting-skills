@@ -116,7 +116,7 @@ def _bbox_from_geometry(geometry):
 )
 def resolve_region(args):
     """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
-    code, geojson = args["code"], args["geojson"]
+    code = args.code
     if len(code) != 3 or not code.isalpha() or code != code.upper():
         raise UsageError(
             f"{code!r} is not an ISO 3166-1 alpha-3 (iso3) code. "
@@ -143,13 +143,13 @@ def resolve_region(args):
 
     # Write the polygon (guarded) BEFORE printing the bbox, so a failed write
     # never emits a valid-looking bbox to stdout that a caller might consume.
-    if geojson:
+    if args.geojson:
         out_fc = {"type": "FeatureCollection", "features": [match]}
         try:
-            Path(geojson).write_text(json.dumps(out_fc, separators=(",", ":")))
+            Path(args.geojson).write_text(json.dumps(out_fc, separators=(",", ":")))
         except OSError as exc:
-            raise DataError(f"could not write boundary polygon to {geojson}: {exc}") from None
-        print(f"Wrote boundary polygon: {geojson}", file=sys.stderr)
+            raise DataError(f"could not write boundary polygon to {args.geojson}: {exc}") from None
+        print(f"Wrote boundary polygon: {args.geojson}", file=sys.stderr)
 
     print(f"{n}/{w}/{s}/{e}")
 

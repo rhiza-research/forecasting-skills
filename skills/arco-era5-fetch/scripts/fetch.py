@@ -316,29 +316,23 @@ def _set_time_encoding(ds, context) -> None:
 )
 def fetch(args, context):
     """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
-    start_time, end_time, bbox, variable = (
-        args["start_time"],
-        args["end_time"],
-        args["bbox"],
-        args["variable"],
-    )
     import numpy as np
     from weather_skills_core.envelope import bbox_subset
 
-    start_iso = start_time.isoformat()
-    end_iso = end_time.isoformat()
+    start_iso = args.start_time.isoformat()
+    end_iso = args.end_time.isoformat()
 
     ds = _open_arco(context.state)
 
     # Selection: variable -> bbox -> time. Each step prunes before the eager load.
-    if variable:
-        missing = [v for v in variable if v not in ds.data_vars]
+    if args.variable:
+        missing = [v for v in args.variable if v not in ds.data_vars]
         if missing:
             raise UsageError(
                 f"variable(s) not in ARCO-ERA5: {', '.join(missing)}.\n"
                 f"Available: {', '.join(sorted(ds.data_vars))}"
             )
-        ds = ds[variable]
+        ds = ds[args.variable]
     else:
         print(
             "Note: no --variable given; selecting all data variables (large). Pass -v to restrict.",
@@ -346,8 +340,8 @@ def fetch(args, context):
         )
 
     ds = normalize_longitude(ds)
-    if bbox:
-        ds = bbox_subset(ds, bbox, lat_dim="latitude", lon_dim="longitude")
+    if args.bbox:
+        ds = bbox_subset(ds, args.bbox, lat_dim="latitude", lon_dim="longitude")
 
     # Inclusive whole-day window over the hourly time axis.
     ds = ds.sel(time=slice(np.datetime64(f"{start_iso}T00:00"), np.datetime64(f"{end_iso}T23:59")))

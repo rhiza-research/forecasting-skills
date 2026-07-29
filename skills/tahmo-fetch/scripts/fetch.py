@@ -300,20 +300,14 @@ def _discover_latest(args, context) -> date:
 )
 def fetch(args, context):
     """Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr."""
-    start_time, end_time, workers, country = (
-        args["start_time"],
-        args["end_time"],
-        args["workers"],
-        args["country"],
-    )
     import pandas as pd
     import xarray as xr
 
-    start = start_time.isoformat()
-    end = end_time.isoformat()
+    start = args.start_time.isoformat()
+    end = args.end_time.isoformat()
 
-    api, stations, var_meta = _ensure_setup(context.state, list(country))
-    countries = list(country)
+    api, stations, var_meta = _ensure_setup(context.state, list(args.country))
+    countries = list(args.country)
 
     # Flatten the selection into one task list of (country, station-row) pairs
     # across all requested countries, then fetch them concurrently. A single
@@ -359,7 +353,7 @@ def fetch(args, context):
 
     frames = []
     meta_rows = []
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {
             pool.submit(_fetch_one, country_name, row): (country_name, row["code"])
             for country_name, row in tasks

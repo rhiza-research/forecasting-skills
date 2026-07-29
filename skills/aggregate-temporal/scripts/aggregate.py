@@ -397,13 +397,7 @@ def _validate_args(args):
 )
 def aggregate(ds, args):
     """Temporal aggregation for weather-skills envelope Zarr stores."""
-    variable, time_dim, period, method, anchor_end = (
-        args["variable"],
-        args["time_dim"],
-        args["period"],
-        args["method"],
-        args["anchor_end"],
-    )
+    method = args.method
     import cf_xarray  # noqa: F401 — registers the .cf accessor
 
     src = input_path(ds)
@@ -415,9 +409,9 @@ def aggregate(ds, args):
     # Indexing with a list of data-var names keeps all coordinates; the
     # unselected data variables are dropped. Each name must be an actual data
     # variable (not a coordinate or a missing name).
-    if variable is not None:
+    if args.variable is not None:
         data_vars = list(ds.data_vars)
-        invalid = [v for v in variable if v not in ds.data_vars]
+        invalid = [v for v in args.variable if v not in ds.data_vars]
         if invalid:
             raise UsageError(
                 f"--variable {invalid} not data variable(s) of {src}. "
@@ -425,7 +419,7 @@ def aggregate(ds, args):
             )
         # De-duplicate while preserving first-seen order so a repeated name
         # doesn't duplicate a column.
-        selected = list(dict.fromkeys(variable))
+        selected = list(dict.fromkeys(args.variable))
         dropped = [v for v in data_vars if v not in selected]
         if dropped:
             print(
@@ -435,8 +429,8 @@ def aggregate(ds, args):
             )
         ds = ds[selected]
 
-    if time_dim:
-        dim = time_dim
+    if args.time_dim:
+        dim = args.time_dim
         if dim not in ds.dims:
             raise UsageError(f"--time-dim '{dim}' not in dims {list(ds.dims)}")
     else:
@@ -493,7 +487,7 @@ def aggregate(ds, args):
             )
 
     print(
-        f"Aggregating dim={dim} period={period} method={method}",
+        f"Aggregating dim={dim} period={args.period} method={method}",
         file=sys.stderr,
     )
 
@@ -521,13 +515,15 @@ def aggregate(ds, args):
                 )
 
     if dim == "step":
-        out_ds = _aggregate_step(ds, period, method)
-    elif anchor_end is not None:
+        out_ds = _aggregate_step(ds, args.period, method)
+    elif args.anchor_end is not None:
         import pandas as pd
 
-        out_ds = _aggregate_time_anchored(ds, dim, period, method, pd.Timestamp(anchor_end))
+        out_ds = _aggregate_time_anchored(
+            ds, dim, args.period, method, pd.Timestamp(args.anchor_end)
+        )
     else:
-        resampled = ds.resample({dim: RESAMPLE_FREQ[period]})
+        resampled = ds.resample({dim: RESAMPLE_FREQ[args.period]})
         out_ds = _reduce(resampled, method)
 
     # Units after sum: `_reduce` keeps the input attrs (keep_attrs=True), so a

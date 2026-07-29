@@ -333,13 +333,12 @@ def _set_write_encoding(ds) -> None:
 )
 def fetch(args, context):
     """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""
-    start_time, end_time, bbox = args["start_time"], args["end_time"], args["bbox"]
     import numpy as np
 
-    start_iso = start_time.isoformat()
-    end_iso = end_time.isoformat()
+    start_iso = args.start_time.isoformat()
+    end_iso = args.end_time.isoformat()
     time_slice = slice(np.datetime64(f"{start_iso}T00:00"), np.datetime64(f"{end_iso}T23:59"))
-    years = list(range(start_time.year, end_time.year + 1))
+    years = list(range(args.start_time.year, args.end_time.year + 1))
     print(f"Fetching oisst {start_iso}..{end_iso} (years {years[0]}..{years[-1]})", file=sys.stderr)
 
     # Stream one year at a time: subset each year to the bbox + window, pull just
@@ -372,8 +371,8 @@ def fetch(args, context):
                 # longitude wings across the entire year's time axis; subsetting time
                 # first keeps that eager spatial read bounded to the requested window.
                 piece = piece.sel(time=time_slice)
-                if bbox is not None:
-                    piece = _bbox_subset(piece, *bbox)
+                if args.bbox is not None:
+                    piece = _bbox_subset(piece, *args.bbox)
                 piece = piece.load()
         except SkillError:
             # _bbox_subset's empty-selection DataError already says what failed;

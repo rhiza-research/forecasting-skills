@@ -513,19 +513,13 @@ def _set_write_encoding(ds) -> None:
 )
 def fetch(args, context):
     """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
-    start_time, end_time, bbox, overpass = (
-        args["start_time"],
-        args["end_time"],
-        args["bbox"],
-        args["overpass"],
-    )
     import numpy as np
 
-    start_iso = start_time.isoformat()
-    end_iso = end_time.isoformat()
-    requested_span = (end_time - start_time).days + 1
+    start_iso = args.start_time.isoformat()
+    end_iso = args.end_time.isoformat()
+    requested_span = (args.end_time - args.start_time).days + 1
 
-    print(f"Fetching SMAP {_SHORT_NAME} ({overpass}) {start_iso}..{end_iso}", file=sys.stderr)
+    print(f"Fetching SMAP {_SHORT_NAME} ({args.overpass}) {start_iso}..{end_iso}", file=sys.stderr)
     _login()
     results = _search(start_iso, end_iso)
     # CMR's temporal filter is overlap-based; keep only granules whose own date is
@@ -533,7 +527,7 @@ def fetch(args, context):
     in_window = {}
     for r in results:
         d = _granule_date(r)
-        if start_time <= d <= end_time:
+        if args.start_time <= d <= args.end_time:
             in_window.setdefault(d, r)
     if not in_window:
         raise DataError(f"no SMAP granule day within {start_iso}..{end_iso}.")
@@ -546,7 +540,7 @@ def fetch(args, context):
     # gaps (missing days with a later present day) so the message does not assert a
     # false "not yet published" cause for a genuine interior gap.
     present_days = sorted(in_window)
-    requested_days = [start_time + timedelta(days=i) for i in range(requested_span)]
+    requested_days = [args.start_time + timedelta(days=i) for i in range(requested_span)]
     missing_days = [d for d in requested_days if d not in in_window]
     if missing_days:
         last_present = present_days[-1]
@@ -607,11 +601,11 @@ def fetch(args, context):
             if not files:
                 raise DataError(f"download returned no local file for the {day_iso} granule.")
             try:
-                da = _slice_from_file(files[0], overpass, day_iso)
-                if bbox is not None:
-                    da = _bbox_subset(da.to_dataset(name="soil_moisture"), bbox, context.args.bbox)[
-                        "soil_moisture"
-                    ]
+                da = _slice_from_file(files[0], args.overpass, day_iso)
+                if args.bbox is not None:
+                    da = _bbox_subset(
+                        da.to_dataset(name="soil_moisture"), args.bbox, context.args.bbox
+                    )["soil_moisture"]
             except RuntimeError as exc:
                 # _slice_from_file, _read_source_units, _reduce_geolocation, and
                 # _bbox_subset all raise RuntimeError; convert to a DataError so

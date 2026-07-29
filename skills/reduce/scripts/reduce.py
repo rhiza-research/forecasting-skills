@@ -60,12 +60,12 @@ _SKILL_VERSION = "0.1.7"
 )
 def reduce(ds, args):
     """Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic."""
-    variable, dim, method = args["variable"], args["dim"], args["method"]
+    method = args.method
     src = input_path(ds)
 
     # De-duplicate the requested dims preserving first-seen order so a
     # repeated name doesn't reduce twice; each must be an actual dim.
-    dims = list(dict.fromkeys(dim))
+    dims = list(dict.fromkeys(args.dim))
     invalid_dims = [d for d in dims if d not in ds.dims]
     if invalid_dims:
         raise UsageError(f"--dim {invalid_dims} not in dims {list(ds.dims)}.")
@@ -74,9 +74,9 @@ def reduce(ds, args):
     # must each carry every requested dim. Default selection takes every data
     # variable carrying at least one of the requested dims (each is reduced
     # over the subset of dims it carries); the rest pass through untouched.
-    if variable is not None:
+    if args.variable is not None:
         data_vars = list(ds.data_vars)
-        invalid_vars = [v for v in variable if v not in ds.data_vars]
+        invalid_vars = [v for v in args.variable if v not in ds.data_vars]
         if invalid_vars:
             raise UsageError(
                 f"--variable {invalid_vars} not data variable(s) of {src}. "
@@ -84,7 +84,7 @@ def reduce(ds, args):
             )
         # De-duplicate while preserving first-seen order so a repeated name
         # doesn't reduce a variable twice.
-        selected = list(dict.fromkeys(variable))
+        selected = list(dict.fromkeys(args.variable))
         for var in selected:
             missing = [d for d in dims if d not in ds[var].dims]
             if missing:

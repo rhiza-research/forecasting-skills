@@ -56,12 +56,12 @@ def submit_feedback(args):
     clicking the link and pressing Submit on github.com, which posts under their own
     GitHub account.
     """
-    title, body, body_file = args["title"], args["body"], args["body_file"]
-    if not title.strip():
+    body = args.body
+    if not args.title.strip():
         raise UsageError("--title must not be empty.")
 
     if body is None:
-        body_path = Path(body_file)
+        body_path = Path(args.body_file)
         if not body_path.is_file():
             raise UsageError(f"--body-file {body_path} not found.")
         try:
@@ -71,14 +71,14 @@ def submit_feedback(args):
         except OSError as exc:
             raise UsageError(f"cannot read --body-file {body_path}: {exc}") from None
 
-    fixed = len(build_url(title, ""))
+    fixed = len(build_url(args.title, ""))
     if fixed >= MAX_URL:
         raise UsageError(
             f"the title alone encodes to {fixed} characters, at or above the "
             f"{MAX_URL}-character URL limit; shorten the title."
         )
 
-    url = build_url(title, body)
+    url = build_url(args.title, body)
     total = len(url)
 
     if total > MAX_URL:

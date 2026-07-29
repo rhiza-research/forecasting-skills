@@ -88,23 +88,18 @@ def _validate_args(args):
 )
 def coarsen(ds, args):
     """Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only)."""
-    variable, dims, target_resolution, offset = (
-        args["variable"],
-        args["dims"],
-        args["target_resolution"],
-        args["offset"],
-    )
+    target_resolution = args.target_resolution
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
     from weather_skills_core.envelope import detect_spatial_dims
 
-    lat_dim, lon_dim = detect_spatial_dims(ds, dims)
+    lat_dim, lon_dim = detect_spatial_dims(ds, args.dims)
 
-    if variable:
-        if variable not in ds.data_vars:
-            raise UsageError(f"variable '{variable}' not in {list(ds.data_vars)}")
-        ds = ds[[variable]]
+    if args.variable:
+        if args.variable not in ds.data_vars:
+            raise UsageError(f"variable '{args.variable}' not in {list(ds.data_vars)}")
+        ds = ds[[args.variable]]
 
     # Wrap lon to [-180, 180] before building the target axis so a 0..360 input
     # grid doesn't produce a target axis spanning ~the whole globe. Mirrors plot.py.
@@ -126,8 +121,8 @@ def coarsen(ds, args):
             f"information use the downscale skill."
         )
 
-    new_lat = _target_axis(ds[lat_dim].values, target_resolution, offset)
-    new_lon = _target_axis(ds[lon_dim].values, target_resolution, offset)
+    new_lat = _target_axis(ds[lat_dim].values, target_resolution, args.offset)
+    new_lon = _target_axis(ds[lon_dim].values, target_resolution, args.offset)
     target = xr.Dataset(
         coords={
             lat_dim: (lat_dim, new_lat, dict(ds[lat_dim].attrs)),
@@ -137,13 +132,13 @@ def coarsen(ds, args):
 
     print(
         f"Coarsening/aligning {lat_dim},{lon_dim} (linear) to "
-        f"resolution={target_resolution} offset={offset}: "
+        f"resolution={target_resolution} offset={args.offset}: "
         f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
         file=sys.stderr,
     )
     out_ds = ds.regrid.linear(target)
     # Regridding replaces the spatial axes but keeps the envelope shape.
-    validate_type(out_ds, ds, dims)
+    validate_type(out_ds, ds, args.dims)
     return out_ds
 
 
