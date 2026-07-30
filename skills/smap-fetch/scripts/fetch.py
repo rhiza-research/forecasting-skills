@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "earthaccess",
 #   "h5py",
 #   "xarray",
@@ -11,6 +11,9 @@
 #   "cf_units",
 #   "cftime",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a WeatherSkills standard dataset."""
 

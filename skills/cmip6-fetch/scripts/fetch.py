@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "xarray",
 #   "zarr",
 #   "gcsfs",
@@ -11,6 +11,9 @@
 #   "cf_xarray",
 #   "cf_units",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a WeatherSkills standard dataset."""
 

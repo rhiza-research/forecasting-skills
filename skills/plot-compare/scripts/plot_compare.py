@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
@@ -14,6 +14,9 @@
 #   "xarray",
 #   "zarr",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
 

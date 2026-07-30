@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "cftime",
 #   "requests",
 #   "xarray",
@@ -9,6 +9,9 @@
 #   "numpy",
 #   "rioxarray",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a WeatherSkills standard dataset."""
 

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "cftime",
 #   "xarray",
 #   "zarr",
@@ -11,6 +11,7 @@
 # ]
 #
 # [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # tahmo = { git = "https://github.com/rhiza-research/tahmo-api", rev = "8ed3adc22b5b7c53d08753e45676e9d4a0a52ab8" }
 # ///
 """Fetch TAHMO station observations and write a station-schema WeatherSkills standard dataset.

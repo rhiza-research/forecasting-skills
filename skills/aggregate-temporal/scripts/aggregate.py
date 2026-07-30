@@ -1,13 +1,16 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
 #   "numpy",
 #   "pandas",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Temporal aggregation: calendar resample, rolling window, or step buckets."""
 

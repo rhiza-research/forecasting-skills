@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "xarray",
 #   "zarr",
 #   "gcsfs",
@@ -10,6 +10,9 @@
 #   "cf_units",
 #   "cftime",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a WeatherSkills standard dataset."""
 

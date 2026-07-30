@@ -1,12 +1,15 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "cftime",
 #   "xarray",
 #   "xarray-regrid",
 #   "numpy",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Downscale onto a finer grid (linear or empirical q-q)."""
 

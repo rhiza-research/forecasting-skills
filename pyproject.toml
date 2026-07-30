@@ -15,6 +15,7 @@ cli = "forecasting-skills"
 
 [tool.uv.sources]
 skills-runner = { git = "https://github.com/tescalada/skills-runner" }
+weather-skills-core = { path = "../weather-skills-core", editable = true }
 
 [tool.ruff]
 line-length = 100

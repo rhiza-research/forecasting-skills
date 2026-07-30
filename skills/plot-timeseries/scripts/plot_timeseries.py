@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "cf-xarray",
 #   "cftime",
 #   # matplotlib<3.10: keep the plot skills on one tested matplotlib
@@ -11,6 +11,9 @@
 #   "xarray",
 #   "zarr",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
 

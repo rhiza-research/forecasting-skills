@@ -1,13 +1,16 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core",
 #   "cftime",
 #   "dynamical-catalog==0.5.0",
 #   "xarray",
 #   "zarr",
 #   "numpy",
 # ]
+#
+# [tool.uv.sources]
+# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Fetch a dynamical.org open-catalog dataset and write a WeatherSkills standard dataset."""
 
