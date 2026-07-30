@@ -72,7 +72,9 @@ def test_select_by_index(tmp_path, gridded_a):
         "--no-check-cache",
     )
     ds = xr.open_zarr(out, consolidated=True)
-    assert ds.sizes["time"] == 1
+    # single-index select drops the dim (scalar time coord)
+    assert "time" not in ds.dims
+    assert ds["precip"].ndim == 2
 
 
 def test_reduce_mean_time(tmp_path, gridded_a):

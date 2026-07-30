@@ -11,7 +11,7 @@ resolution-markers = [
 requirements = [
     { name = "cf-units", specifier = ">=3.3" },
     { name = "cftime", specifier = ">=1.6" },
-    { name = "weather-skills-core", editable = "../../../../weather-skills-core" },
+    { name = "weather-skills-core", git = "https://github.com/rhiza-research/weather-skills-core" },
 ]
 
 [[package]]
@@ -243,34 +243,13 @@ wheels = [
 [[package]]
 name = "weather-skills-core"
 version = "0.1.0"
-source = { editable = "../../../../weather-skills-core" }
+source = { git = "https://github.com/rhiza-research/weather-skills-core#5742ba5e40887bdaf5b90ac6187c6605850332df" }
 dependencies = [
     { name = "cf-xarray" },
     { name = "cftime" },
     { name = "numpy" },
     { name = "xarray" },
     { name = "zarr" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cf-units", marker = "extra == 'units'", specifier = ">=3.3.1" },
-    { name = "cf-xarray", specifier = ">=0.11" },
-    { name = "cftime", specifier = ">=1.6" },
-    { name = "numpy", specifier = ">=2.5" },
-    { name = "shapely", marker = "extra == 'geo'", specifier = ">=2.1.2" },
-    { name = "xarray", specifier = ">=2026.7" },
-    { name = "zarr", specifier = ">=3.2" },
-]
-provides-extras = ["units", "geo"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "cf-units", specifier = ">=3.3.1" },
-    { name = "pre-commit", specifier = ">=4.6" },
-    { name = "pytest", specifier = ">=9.1" },
-    { name = "ruff", specifier = ">=0.16" },
-    { name = "shapely", specifier = ">=2.1.2" },
 ]
 
 [[package]]
