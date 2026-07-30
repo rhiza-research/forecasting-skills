@@ -5,20 +5,10 @@
 #   "cftime>=1.6",
 # ]
 # ///
-"""Collapse one or more named dimensions of a weather-skills standard dataset Zarr with a statistic.
-
-Reduces the selected data variables along the requested dims with one of
-``mean``/``std``/``min``/``max``/``sum``/``median`` (NaNs are skipped), e.g.
-the ensemble-spread field as the std across ``number``, model disagreement as
-the std across a model dim, or a time-mean baseline for anomaly computation.
-Data variables that carry none of the requested dims pass through untouched.
-"""
-
-import sys
+"""Collapse named dims with a statistic."""
 
 from weather_skills_core import Types, UsageError, weather_skill
 
-# Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
 
 
@@ -26,134 +16,56 @@ _SKILL_VERSION = "0.1.7"
     name="reduce",
     version=_SKILL_VERSION,
     inputs=[Types.ANY],
-    # The output shape depends on the input's shape and the collapsed dims,
-    # so the union declares every zarr type; the returned dataset's detected
-    # type is validated against it.
     outputs=[(Types.GRIDDED, Types.FORECAST, Types.STATION)],
     optional_args=("variable",),
 )
-@weather_skill.argument(
-    "--dim",
-    action="append",
-    required=True,
-    help="Dimension to collapse. Repeat once per dimension to collapse "
-    "several in one run.",
-)
+@weather_skill.argument("--dim", action="append", required=True, help="Dim to collapse (repeatable).")
 @weather_skill.argument(
     "--method",
     required=True,
     choices=["mean", "std", "min", "max", "sum", "median"],
-    help="Statistic applied along the collapsed dimension(s).",
 )
-def reduce(ds, variable, dim, method):
-    """Collapse one or more named dimensions of a weather-skills standard dataset Zarr with a statistic."""
-    # De-duplicate the requested dims preserving first-seen order so a
-    # repeated name doesn't reduce twice; each must be an actual dim.
+@weather_skill.argument(
+    "--lat-weighted",
+    action="store_true",
+    help="cos(lat) weights for --method mean over latitude.",
+)
+def reduce(ds, variable, dim, method, lat_weighted):
+    """Collapse named dims with a statistic."""
+    from weather_skills_core.dataset import detect_spatial_dims, latitude_weights
+
     dims = list(dict.fromkeys(dim))
-    invalid_dims = [d for d in dims if d not in ds.dims]
-    if invalid_dims:
-        raise UsageError(f"--dim {invalid_dims} not in dims {list(ds.dims)}.")
+    lat_dim = None
+    if lat_weighted:
+        if method != "mean":
+            raise UsageError("--lat-weighted requires --method mean")
+        lat_dim, _ = detect_spatial_dims(ds)
+        if lat_dim not in dims:
+            raise UsageError(f"--lat-weighted needs --dim {lat_dim}")
 
-    # Variable selection. Explicit --variable names must be data variables and
-    # must each carry every requested dim. Default selection takes every data
-    # variable carrying at least one of the requested dims (each is reduced
-    # over the subset of dims it carries); the rest pass through untouched.
-    if variable is not None:
-        data_vars = list(ds.data_vars)
-        invalid_vars = [v for v in variable if v not in ds.data_vars]
-        if invalid_vars:
-            raise UsageError(
-                f"--variable {invalid_vars} not data variable(s) of the input. "
-                f"Valid data variables: {data_vars}"
-            )
-        # De-duplicate while preserving first-seen order so a repeated name
-        # doesn't reduce a variable twice.
-        selected = list(dict.fromkeys(variable))
-        for var in selected:
-            missing = [d for d in dims if d not in ds[var].dims]
-            if missing:
-                raise UsageError(
-                    f"variable '{var}' does not carry --dim {missing}; "
-                    f"its dims are {list(ds[var].dims)}."
-                )
-    else:
-        selected = [v for v in ds.data_vars if any(d in ds[v].dims for d in dims)]
-        if not selected:
-            detail = ", ".join(f"{v}{tuple(ds[v].dims)}" for v in ds.data_vars)
-            raise UsageError(
-                f"no data variable carries any of --dim {dims}. "
-                f"Data variables and their dims: {detail}."
-            )
-
-    passthrough = [v for v in ds.data_vars if v not in selected]
-    if passthrough:
-        print(
-            f"Note: passing through unreduced data variable(s) {passthrough}.",
-            file=sys.stderr,
-        )
-
-    print(
-        f"Reducing dims={dims} method={method} variables={selected}",
-        file=sys.stderr,
-    )
-
-    # Reduce each selected variable over the requested dims it carries.
-    # keep_attrs=True preserves the variable attrs (units included); this
-    # skill performs no unit math or relabeling — `sum` keeps the input
-    # units attr unchanged, and unit-convert exists to restamp units when
-    # needed. NaNs are skipped (xarray's default skipna).
-    out_ds = ds.copy()
+    selected = list(dict.fromkeys(variable)) if variable else [
+        v for v in ds.data_vars if any(d in ds[v].dims for d in dims)
+    ]
+    out = ds.copy()
     for var in selected:
         da = ds[var]
         rdims = [d for d in dims if d in da.dims]
-
-        # `std` over a size-1 dim is zero by construction (a single sample has
-        # no spread); warn so a degenerate spread field isn't read as real.
-        if method == "std":
-            singleton = [d for d in rdims if da.sizes[d] == 1]
-            if singleton:
-                print(
-                    f"Warning: std of variable '{var}' over size-1 dim(s) "
-                    f"{singleton} is zero by construction (a single sample has "
-                    "no spread).",
-                    file=sys.stderr,
-                )
-
-        # `median` over ALL of a dask-backed variable's dims raises
-        # NotImplementedError in dask (no flattened-median across chunks), so
-        # materialize the variable first. Only the all-dims case is affected;
-        # a partial-dims median streams fine.
         if method == "median" and da.chunks is not None and set(rdims) == set(da.dims):
             da = da.load()
-
         if method == "sum":
-            # min_count=1 keeps an all-missing slice NaN instead of summing to
-            # 0 (which would read as a real zero total rather than "no data").
-            out_ds[var] = da.sum(dim=rdims, keep_attrs=True, min_count=1)
+            # min_count=1: all-NaN → NaN, not 0
+            out[var] = da.sum(dim=rdims, keep_attrs=True, min_count=1)
         elif method == "std":
-            # ddof=1 is the sample standard deviation (ensemble-spread
-            # convention: spread across members is a sample estimate, not the
-            # population sigma).
-            out_ds[var] = da.std(dim=rdims, keep_attrs=True, ddof=1)
+            out[var] = da.std(dim=rdims, keep_attrs=True, ddof=1)
+        elif method == "mean" and lat_weighted and lat_dim in rdims:
+            out[var] = da.weighted(latitude_weights(ds[lat_dim])).mean(dim=rdims, keep_attrs=True)
         else:
-            fn = {
-                "mean": da.mean,
-                "min": da.min,
-                "max": da.max,
-                "median": da.median,
-            }[method]
-            out_ds[var] = fn(dim=rdims, keep_attrs=True)
+            out[var] = getattr(da, method)(dim=rdims, keep_attrs=True)
 
-    # A reduced dim disappears from the reduced variables, but its index
-    # coordinate (and any auxiliary coordinate on the dim) would otherwise
-    # keep the dim alive on the dataset. Drop each requested dim once no
-    # data variable carries it; a dim still carried by a pass-through
-    # variable stays.
     for d in dims:
-        if d in out_ds.dims and all(d not in out_ds[v].dims for v in out_ds.data_vars):
-            out_ds = out_ds.drop_dims(d)
-
-    return out_ds
+        if d in out.dims and all(d not in out[v].dims for v in out.data_vars):
+            out = out.drop_dims(d)
+    return out
 
 
 if __name__ == "__main__":

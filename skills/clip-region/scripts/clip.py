@@ -3,14 +3,14 @@
 # dependencies = [
 #   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cftime",
+#   "shapely",
 # ]
 # ///
-"""Spatially subset a gridded weather-skills standard dataset Zarr."""
+"""Subset by bbox or GeoJSON polygon."""
 
-from weather_skills_core import Types, weather_skill
-from weather_skills_core.dataset import bbox_subset, detect_spatial_dims
+from weather_skills_core import Types, UsageError, weather_skill
+from weather_skills_core.dataset import bbox_subset, clip_by_geometry, polygon_from_geojson
 
-# Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
 
 
@@ -19,13 +19,22 @@ _SKILL_VERSION = "0.1.11"
     version=_SKILL_VERSION,
     inputs=[Types.ANY],
     outputs=[Types.ANY],
-    required_args=("bbox",),
+    optional_args=("bbox",),
     hash_input=False,
 )
-def clip_region(ds, bbox):
-    """Spatially subset a gridded weather-skills standard dataset Zarr."""
-    lat_dim, lon_dim = detect_spatial_dims(ds)
-    return bbox_subset(ds, bbox, lat_dim=lat_dim, lon_dim=lon_dim)
+@weather_skill.argument("--geojson", default=None, help="GeoJSON polygon path (mutex with --bbox).")
+@weather_skill.argument(
+    "--keep-outside",
+    action="store_true",
+    help="With --geojson: NaN outside instead of dropping.",
+)
+def clip_region(ds, bbox, geojson, keep_outside):
+    """Subset by bbox or GeoJSON polygon."""
+    if (bbox is None) == (geojson is None):
+        raise UsageError("exactly one of --bbox or --geojson is required")
+    if geojson is not None:
+        return clip_by_geometry(ds, polygon_from_geojson(geojson, flag="--geojson"), drop=not keep_outside)
+    return bbox_subset(ds, bbox)
 
 
 if __name__ == "__main__":

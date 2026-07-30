@@ -1,6 +1,6 @@
 ---
 name: clip-region
-description: Spatially subset a gridded weather-skills envelope Zarr to an explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a custom bounding box before downstream aggregation or plotting. To clip to a country, get its bbox from the resolve-region skill first.
+description: Spatially subset a weather-skills envelope Zarr to an explicit lat/lon bbox or a GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting. To clip to a country, get a bbox or --geojson polygon from the resolve-region skill.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
@@ -11,27 +11,26 @@ metadata:
 
 # clip-region
 
-Source-agnostic spatial subset using simple lat/lon slicing, driven by an explicit `--bbox`. To clip to a country, resolve its bbox with the `resolve-region` skill and pass that value.
+Source-agnostic spatial subset via `--bbox` (lat/lon slice) or `--geojson` (polygon clip). Exactly one is required. Country polygons come from `resolve-region --geojson`.
 
 ## When to use
 
 - Narrowing a continental grid down to one country for plotting or per-country reporting.
-- Applying a custom bbox to any gridded envelope before further processing.
-
-Does **not** clip station-schema envelopes (station_id-indexed). For stations, filter by country using an `aggregate-*` or custom skill.
+- Applying a custom bbox or polygon to any gridded or station envelope before further processing.
 
 ## Usage
 
 ```
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
-    --bbox N/W/S/E [--dims LAT,LON]
+    (--bbox N/W/S/E | --geojson PATH [--keep-outside])
 ```
 
 ### Arguments
-- `--input`, `-i` — gridded Zarr.
+- `--input`, `-i` — input Zarr (gridded or station).
 - `--output`, `-o` — output Zarr.
-- `--bbox` — required; `N/W/S/E` in decimal degrees. To clip to a country, get its bbox from the `resolve-region` skill and pass the value here.
-- `--dims` — optional `LAT,LON` dim name override.
+- `--bbox` — `N/W/S/E` in decimal degrees (mutually exclusive with `--geojson`).
+- `--geojson` — path to a GeoJSON polygon/multipolygon; cells/stations outside are dropped (or NaN'd with `--keep-outside`).
+- `--keep-outside` — with `--geojson`, keep the full grid/station set and NaN outside the polygon.
 
 ### Longitude convention
 
