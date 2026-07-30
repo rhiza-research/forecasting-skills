@@ -62,7 +62,6 @@ _RATE_WATT_RE = re.compile(
     re.IGNORECASE,
 )
 
-
 def _units_look_like_rate(units: str) -> bool:
     """Return True when a CF ``units`` string carries a per-time denominator or a
     power (watt) term, indicating a rate rather than an accumulated amount.
@@ -87,15 +86,14 @@ def _units_look_like_rate(units: str) -> bool:
         _RATE_SLASH_RE.search(units) or _RATE_POWER_RE.search(units) or _RATE_WATT_RE.search(units)
     )
 
-
 @weather_skill(
     "deaccumulate",
     _SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
-    variable="single_optional",
+    inputs=["forecast"],
+    outputs=["forecast"]
 )
-def deaccumulate(ds, variable):
+@weather_skill.argument("--variable", "-v")
+def deaccumulate(ds, variable, **kwargs):
     """Deaccumulate a cumulative-since-init variable along the forecast step axis."""
     import numpy as np
 
@@ -157,7 +155,6 @@ def deaccumulate(ds, variable):
     out_ds = ds.drop_vars(variable).isel(step=slice(1, None))
     out_ds[variable] = diffed
     return out_ds
-
 
 if __name__ == "__main__":
     deaccumulate()

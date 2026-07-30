@@ -30,7 +30,6 @@ _DROP_COORDS = (
     "spatial_ref",
 )
 
-
 def _open_dataset(state, dataset) -> dict:
     """Validate the dataset id, open it, and detect its shape, at most once per run."""
     if "ds" not in state:
@@ -66,7 +65,6 @@ def _open_dataset(state, dataset) -> dict:
         state["shape"] = shape
     return state
 
-
 def _bbox_subset(ds, bbox) -> object:
     """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox."""
     north, west, south, east = bbox
@@ -82,25 +80,22 @@ def _bbox_subset(ds, bbox) -> object:
         )
     return ds
 
-
 @weather_skill(
     "dynamical-fetch",
     _SKILL_VERSION,
-    outputs=["any"],
-    dates="either",
-    region="optional",
-    variable="multiple_optional",
-    extra_args=[
-        (
-            ("--dataset",),
-            {
-                "required": True,
-                "help": "Catalog dataset id (validated against dynamical_catalog.list()).",
-            },
-        ),
-    ],
+    outputs=[["observations", "forecast", "ensemble_forecast"]]
 )
-def fetch(bbox, dataset, date, start_time, end_time, variable):
+@weather_skill.argument("--date")
+@weather_skill.argument("--start-time")
+@weather_skill.argument("--end-time")
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument(
+            "--dataset",
+            required=True,
+            help="Catalog dataset id (validated against dynamical_catalog.list()).",
+        )
+def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
     """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
     import numpy as np
 
@@ -114,13 +109,13 @@ def fetch(bbox, dataset, date, start_time, end_time, variable):
         if date is None:
             raise UsageError(f"{dataset} is a forecast dataset; --date is required.")
         if start_time is not None or end_time is not None:
-            raise UsageError(f"{dataset} is a forecast dataset; use --date, not --start/--end.")
+            raise UsageError(f"{dataset} is a forecast dataset; use --date, not --start-time/--end-time.")
         date_iso = date.isoformat()
     else:
         if start_time is None or end_time is None:
-            raise UsageError(f"{dataset} is an analysis dataset; --start and --end are required.")
+            raise UsageError(f"{dataset} is an analysis dataset; --start-time and --end-time are required.")
         if date is not None:
-            raise UsageError(f"{dataset} is an analysis dataset; use --start/--end, not --date.")
+            raise UsageError(f"{dataset} is an analysis dataset; use --start-time/--end-time, not --date.")
         start_iso = start_time.isoformat()
         end_iso = end_time.isoformat()
 
@@ -173,7 +168,6 @@ def fetch(bbox, dataset, date, start_time, end_time, variable):
     stamp_cf_attrs(ds)
 
     return ds
-
 
 if __name__ == "__main__":
     fetch()

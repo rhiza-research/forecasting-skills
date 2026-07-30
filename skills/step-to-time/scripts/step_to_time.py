@@ -26,10 +26,10 @@ _SKILL_VERSION = "0.1.8"
 @weather_skill(
     "step-to-time",
     _SKILL_VERSION,
-    inputs=["any"],
-    outputs=["data"],
+    inputs=["forecast"],
+    outputs=["observations"],
 )
-def step_to_time(ds):
+def step_to_time(ds, **kwargs):
     """Realize a forecast's step axis as wall-clock valid times (time = init + step)."""
     import cftime
     import numpy as np

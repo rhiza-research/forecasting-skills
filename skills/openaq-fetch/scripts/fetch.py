@@ -78,7 +78,6 @@ _RETRY_AFTER_MAX_S = 300.0  # 5 minutes
 _rate_lock = threading.Lock()
 _next_request_start = 0.0  # monotonic time of the next free request slot
 
-
 def _rate_limit_wait() -> None:
     """Block until this thread may start the next API request.
 
@@ -94,7 +93,6 @@ def _rate_limit_wait() -> None:
     delay = slot - now
     if delay > 0:
         time.sleep(delay)
-
 
 # CF time-coordinate encoding. udunits-valid reference-time units plus a
 # calendar, carried in the write encoding so the on-disk time axis is fully CF.
@@ -187,7 +185,6 @@ _MASS_CONCENTRATION_REF = cf_units.Unit("kg m-3")
 #   transform set (location id -> station_id); the lat/lon/name values are
 #   carried through unchanged.
 
-
 def _require_key() -> str:
     key = os.environ.get("OPENAQ_API_KEY")
     if not key:
@@ -195,7 +192,6 @@ def _require_key() -> str:
             "OPENAQ_API_KEY must be set (free key from https://explore.openaq.org/register)."
         )
     return key
-
 
 def _retry_backoff(exc: Exception) -> float:
     """Return how long to sleep before the single retry of a transient error.
@@ -239,7 +235,6 @@ def _retry_backoff(exc: Exception) -> float:
             parsed = _BACKOFF_429_S
     return min(max(parsed, _BACKOFF_429_S), _RETRY_AFTER_MAX_S)
 
-
 def _classify_api_error(exc: Exception, context: str) -> str:
     """Map an API exception to a one-line actionable message that never echoes
     the key.
@@ -262,7 +257,6 @@ def _classify_api_error(exc: Exception, context: str) -> str:
         return f"OpenAQ request failed while {context} (HTTP {status})."
     return f"OpenAQ request failed while {context} ({exc})."
 
-
 def _auth_status(exc: Exception):
     """Return the HTTP status if `exc` is an auth failure (401/403), else None.
 
@@ -275,7 +269,6 @@ def _auth_status(exc: Exception):
         return None
     status = getattr(resp, "status_code", None)
     return status if status in (401, 403) else None
-
 
 def _get_pages(session, url: str, params: dict):
     """Yield each result across all pages of an OpenAQ v3 listing endpoint.
@@ -304,7 +297,6 @@ def _get_pages(session, url: str, params: dict):
         if len(results) < _PAGE_LIMIT:
             return
         page += 1
-
 
 def _find_sensors(session, bbox: tuple, wanted: set) -> list:
     """Return a list of sensor descriptors inside the bbox for the wanted params.
@@ -346,7 +338,6 @@ def _find_sensors(session, bbox: tuple, wanted: set) -> list:
         raise DataError(_classify_api_error(exc, "listing locations in the bbox")) from None
     return sensors
 
-
 def _sensor_daily(session, desc: dict, start_iso: str, end_iso: str):
     """Fetch daily values for one sensor. Returns a list of (date, value) or None."""
     url = f"{_API_BASE}/sensors/{desc['sensor_id']}/days"
@@ -361,7 +352,6 @@ def _sensor_daily(session, desc: dict, start_iso: str, end_iso: str):
         rows.append((stamp[:10], float(value)))
     return rows or None
 
-
 def _is_blank_units(units) -> bool:
     """True if a reported unit is missing/empty and so cannot back a CF claim.
 
@@ -372,7 +362,6 @@ def _is_blank_units(units) -> bool:
     value is treated as invalid everywhere it could reach an output variable.
     """
     return units is None or (isinstance(units, str) and not units.strip())
-
 
 def _unit_family(units: str):
     """Classify a udunits-valid unit string into the CF standard-name family.
@@ -391,7 +380,6 @@ def _unit_family(units: str):
     if u.is_dimensionless():
         return "mole"
     return None
-
 
 def _var_attrs(ds, units_by_param: dict) -> dict:
     """Per-variable CF attr dicts: verbatim OpenAQ units (validated), long_name,
@@ -450,7 +438,6 @@ def _var_attrs(ds, units_by_param: dict) -> dict:
         attrs_by_var[param] = attrs
     return attrs_by_var
 
-
 def _set_write_encoding(ds) -> None:
     """Controlled write encodings, applied after the decorator's encoding clear.
 
@@ -464,31 +451,27 @@ def _set_write_encoding(ds) -> None:
     for param in ds.data_vars:
         ds[param].encoding["_FillValue"] = np.float64(np.nan)
 
-
 @weather_skill(
     "openaq-fetch",
     _SKILL_VERSION,
-    outputs=["station"],
-    dates="range",
-    region="required",
-    variable="multiple_optional",
-    extra_args=[
-        (
-            ("--workers",),
-            {
-                "type": int,
-                "default": DEFAULT_WORKERS,
-                "help": (
-                    f"Max concurrent per-sensor fetch threads (default {DEFAULT_WORKERS}). "
-                    "Threads overlap response waits only; request starts are rate-limited "
-                    "globally under OpenAQ's published limits (60/minute, 2,000/hour), so "
-                    "raising this does not raise the request rate."
-                ),
-            },
-        ),
-    ],
+    outputs=["station"]
 )
-def fetch(start_time, end_time, bbox, workers, variable):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--bbox", required=True)
+@weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument(
+            "--workers",
+            type=int,
+            default=DEFAULT_WORKERS,
+            help=(
+                f"Max concurrent per-sensor fetch threads (default {DEFAULT_WORKERS}). "
+                "Threads overlap response waits only; request starts are rate-limited "
+                "globally under OpenAQ's published limits (60/minute, 2,000/hour), so "
+                "raising this does not raise the request rate."
+            ),
+        )
+def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
     """Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr."""
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
@@ -669,7 +652,6 @@ def fetch(start_time, end_time, bbox, workers, variable):
     verify_cf_dsg(ds)
     _set_write_encoding(ds)
     return ds
-
 
 if __name__ == "__main__":
     fetch()

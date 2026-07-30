@@ -32,10 +32,8 @@ from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polyg
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.16"
 
-
 # Strict decimal integer: optional single sign, then ASCII digits only.
 _INDEX_INT_RE = re.compile(r"[+-]?[0-9]+")
-
 
 def _parse_index(spec):
     """Parse an ``--index`` spec into ``{dim: int | list[int]}``.
@@ -82,7 +80,6 @@ def _parse_index(spec):
         values[current].append(pos)
     return {k: v[0] if len(v) == 1 else v for k, v in values.items()}
 
-
 def _parse_extent(spec):
     if not spec:
         return None
@@ -92,7 +89,6 @@ def _parse_extent(spec):
             "--extent expects 4 comma-separated floats: lon_min,lon_max,lat_min,lat_max"
         )
     return parts
-
 
 def _parse_colormap(spec):
     """Pass through a named matplotlib colormap, or build one from a color list.
@@ -108,7 +104,6 @@ def _parse_colormap(spec):
     parts = [p.strip() for p in spec.split(",") if p.strip()]
     return LinearSegmentedColormap.from_list("custom", parts)
 
-
 def _parse_cities(spec):
     if not spec:
         return {}
@@ -123,7 +118,6 @@ def _parse_cities(spec):
             out[name] = (float(val[0]), float(val[1]))
     return out
 
-
 def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
     lat_range = abs(lat_max - lat_min)
     lon_range = abs(lon_max - lon_min)
@@ -133,14 +127,12 @@ def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
     width = height * lon_range / lat_range
     return max(width, 2.0), height
 
-
 def _step_dim(da):
     for cand in ("step", "time", "valid_time"):
         if cand in da.dims:
             return cand
     cf = cf_dim(da, "time")
     return cf if cf and cf in da.dims else None
-
 
 def _format_step(value):
     import numpy as np
@@ -152,7 +144,6 @@ def _format_step(value):
         days = arr.astype("timedelta64[D]").astype(int)
         return f"+{days}d"
     return str(value)
-
 
 def _panel_title(da, sdim, step_value, all_steps):
     """Match panel_plot_variable: '<start> until <end>' from time + step.
@@ -185,7 +176,6 @@ def _panel_title(da, sdim, step_value, all_steps):
         return f"{str(start)[:16]} until {str(end)[:16]}"
     except Exception:  # noqa: BLE001 -- best-effort time-range label; fall back on any failure
         return fallback
-
 
 def _heatmap(
     da,
@@ -348,55 +338,44 @@ def _heatmap(
 
     return fig
 
-
 @weather_skill(
     "plot",
     _SKILL_VERSION,
     inputs=["any"],
-    outputs=["visualization"],
-    region="optional",
-    variable="single_optional",
-    extra_args=[
-        (("--style",), {"choices": ["heatmap", "timeseries"], "default": "heatmap"}),
-        (("--colormap",), {"default": "viridis"}),
-        (
-            ("--index",),
-            {
-                "default": None,
-                "help": "Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
-                "several comma-separated positions ('step=0,1,2'), which keeps the dim "
-                "and, for --style heatmap, yields one panel per selected position. "
-                "Negative positions count from the end (Python-style). "
-                "Syntax-checked, then ignored with a warning for --style timeseries.",
-            },
-        ),
-        (
-            ("--extent",),
-            {
-                "default": None,
-                "help": "Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
-            },
-        ),
-        (
-            ("--cities",),
-            {
-                "default": None,
-                "help": 'City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
-            },
-        ),
-        (("--fontsize",), {"type": int, "default": 16}),
-        (("--title",), {"default": None, "help": "Optional plot title."}),
-        (
-            ("--mask-geojson",),
-            {
-                "default": None,
-                "help": "Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
-                "outside the polygon are set to NaN before plotting. Use resolve-region's "
-                "--geojson output to produce a country polygon.",
-            },
-        ),
-    ],
+    outputs=["visualization"]
 )
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument("--style", choices=["heatmap", "timeseries"], default="heatmap")
+@weather_skill.argument("--colormap", default="viridis")
+@weather_skill.argument(
+            "--index",
+            default=None,
+            help="Slice spec like 'step=3,number=0' (heatmap only). A dim may take "
+            "several comma-separated positions ('step=0,1,2'), which keeps the dim "
+            "and, for --style heatmap, yields one panel per selected position. "
+            "Negative positions count from the end (Python-style). "
+            "Syntax-checked, then ignored with a warning for --style timeseries.",
+        )
+@weather_skill.argument(
+            "--extent",
+            default=None,
+            help="Map extent as 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
+        )
+@weather_skill.argument(
+            "--cities",
+            default=None,
+            help='City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or path to a JSON file.',
+        )
+@weather_skill.argument("--fontsize", type=int, default=16)
+@weather_skill.argument("--title", default=None, help="Optional plot title.")
+@weather_skill.argument(
+            "--mask-geojson",
+            default=None,
+            help="Path to a GeoJSON boundary polygon (heatmap only). Gridded cells "
+            "outside the polygon are set to NaN before plotting. Use resolve-region's "
+            "--geojson output to produce a country polygon.",
+        )
 def plot(
     ds,
     bbox,
@@ -410,6 +389,7 @@ def plot(
     fontsize,
     mask_geojson,
     output,
+    **kwargs,
 ):
     """Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
 
@@ -647,7 +627,6 @@ def plot(
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return output
-
 
 if __name__ == "__main__":
     plot()

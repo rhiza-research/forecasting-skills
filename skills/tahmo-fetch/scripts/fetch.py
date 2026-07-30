@@ -93,7 +93,6 @@ CF_META = {
     "pressure": ("air_pressure", None),
 }
 
-
 def _fetch_raw(api, station_id: str, start: str, end: str):
     """Call getRawData once, retrying a single transient error after a short
     backoff. Returns the raw DataFrame (or None for genuine no-data). Raises if
@@ -113,7 +112,6 @@ def _fetch_raw(api, station_id: str, start: str, end: str):
         return api.getRawData(
             station=station_id, startDate=start, endDate=end, dataset="controlled"
         )
-
 
 def _station_frame(api, station_id: str, start: str, end: str):
     """Return a daily-aggregated DataFrame for one station, or None.
@@ -154,7 +152,6 @@ def _station_frame(api, station_id: str, start: str, end: str):
     daily["station_id"] = station_id
     return daily
 
-
 def _ensure_setup(state, countries: list):
     """Authenticate and load the station table + variable metadata, at most once per run.
 
@@ -191,35 +188,29 @@ def _ensure_setup(state, countries: list):
         state["var_meta"] = api_local.getVariables()
     return state["api"], state["stations"], state["var_meta"]
 
-
 @weather_skill(
     "tahmo-fetch",
     _SKILL_VERSION,
-    outputs=["station"],
-    dates="range",
-    extra_args=[
-        (
-            ("--workers",),
-            {
-                "type": int,
-                "default": DEFAULT_WORKERS,
-                "help": (
-                    f"Max concurrent per-station fetch threads (default {DEFAULT_WORKERS}). "
-                    "Lower this if TAHMO returns 429/throttling errors."
-                ),
-            },
-        ),
-        (
-            ("--country",),
-            {
-                "action": "append",
-                "required": True,
-                "help": "Country name (pass once per country)",
-            },
-        ),
-    ],
+    outputs=["station"]
 )
-def fetch(start_time, end_time, workers, country):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument(
+            "--workers",
+            type=int,
+            default=DEFAULT_WORKERS,
+            help=(
+                f"Max concurrent per-station fetch threads (default {DEFAULT_WORKERS}). "
+                "Lower this if TAHMO returns 429/throttling errors."
+            ),
+        )
+@weather_skill.argument(
+            "--country",
+            action="append",
+            required=True,
+            help="Country name (pass once per country)",
+        )
+def fetch(start_time, end_time, workers, country, **kwargs):
     """Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr."""
     import pandas as pd
     import xarray as xr
@@ -338,7 +329,6 @@ def fetch(start_time, end_time, workers, country):
     )
 
     return ds
-
 
 if __name__ == "__main__":
     fetch()

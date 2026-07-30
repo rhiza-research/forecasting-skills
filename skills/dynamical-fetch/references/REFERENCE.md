@@ -61,7 +61,7 @@ analysis.
 | `lead_time` | `step` dim | renamed; stays `timedelta64` |
 | `ensemble_member` | `number` dim | renamed; member 0 = control |
 | `latitude` / `longitude` | `latitude` / `longitude` | unchanged (1-D) |
-| `time` (analysis) | `time` dim | sliced to `--start`/`--end`, kept |
+| `time` (analysis) | `time` dim | sliced to `--start-time`/`--end-time`, kept |
 | data variables | data variables | units forwarded verbatim |
 
 Forecast `--date` selects the **00 UTC** initialization of the resolved date

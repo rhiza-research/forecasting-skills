@@ -13,7 +13,6 @@ from weather_skills_core import UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.10"
 
-
 def _coerce(values):
     out = []
     for v in values:
@@ -26,18 +25,15 @@ def _coerce(values):
                 out.append(v)
     return out
 
-
 @weather_skill(
     "concat",
     _SKILL_VERSION,
     inputs=["any+"],
-    outputs=["any"],
-    extra_args=[
-        (("--dim",), {"required": True}),
-        (("--coords",), {"help": "Comma-separated coord values for the new dim"}),
-    ],
+    outputs=["any"]
 )
-def concat(dss, dim, coords):
+@weather_skill.argument("--dim", required=True)
+@weather_skill.argument("--coords", help="Comma-separated coord values for the new dim")
+def concat(dss, dim, coords, **kwargs):
     """Concatenate weather-skills envelope Zarr stores along a named dim."""
     import xarray as xr
 
@@ -95,7 +91,6 @@ def concat(dss, dim, coords):
             dss = [d.expand_dims(dim) for d in dss]
 
     return xr.concat(dss, dim=dim)
-
 
 if __name__ == "__main__":
     concat()

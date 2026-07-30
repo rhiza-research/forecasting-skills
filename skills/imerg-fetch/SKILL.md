@@ -26,17 +26,17 @@ Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr> [--version late|final]
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr> [--version late|final]
 ```
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--version` — `late` (default; ~4 days behind realtime, `GPM_3IMERGDL`) or `final` (`GPM_3IMERGDF`).
 
 ### Production lag and partial-tail behavior
 
-IMERG late runs ~4 days behind realtime, so a window whose `--end` is at or near
+IMERG late runs ~4 days behind realtime, so a window whose `--end-time` is at or near
 the present can include trailing days not yet published. After the fetch, the
 present days are read from the written dataset's own time axis, and a span with
 fewer present days than requested is classified as follows:
@@ -71,5 +71,5 @@ records `{start, end, version}`. `version` is the value printed by
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-05-01 --end 2026-05-10 --output /tmp/imerg.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-05-01 --end-time 2026-05-10 --output /tmp/imerg.zarr
 ```

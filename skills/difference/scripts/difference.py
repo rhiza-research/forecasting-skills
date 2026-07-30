@@ -24,7 +24,6 @@ from weather_skills_core import UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
 
-
 def _to_signed(da, np):
     """Promote a boolean or unsigned-integer DataArray to a type that can
     hold a negative difference, leaving signed-int / float / other dtypes
@@ -41,15 +40,14 @@ def _to_signed(da, np):
         return da.astype(widen.get(da.dtype.itemsize, np.int64))
     return da
 
-
 @weather_skill(
     "difference",
     _SKILL_VERSION,
     inputs=["any", "any"],
-    outputs=["any"],
-    variable="multiple_optional",
+    outputs=["any"]
 )
-def difference(ds_a, ds_b, variable):
+@weather_skill.argument("--variable", "-v", action="append")
+def difference(ds_a, ds_b, variable, **kwargs):
     """Subtract one weather-skills envelope Zarr from another (A - B)."""
     import numpy as np
     import xarray as xr
@@ -196,7 +194,6 @@ def difference(ds_a, ds_b, variable):
         data_vars[var] = diff
     out_ds = xr.Dataset(data_vars)
     return out_ds
-
 
 if __name__ == "__main__":
     difference()

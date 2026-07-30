@@ -29,7 +29,6 @@ from weather_skills_core.envelope import auto_variable, cf_dim
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"
 
-
 def _pick_time_dim(da, override):
     if override:
         if override not in da.dims:
@@ -46,53 +45,43 @@ def _pick_time_dim(da, override):
         f"Could not identify a time-like dim in {list(da.dims)}; pass --time-dim explicitly."
     )
 
-
 def _dataset_label(ds, index):
     src = ds.attrs.get("weather_skills_source")
     if isinstance(src, str) and src.strip():
         return Path(src).stem
     return f"input {index + 1}"
 
-
 @weather_skill(
     "plot-timeseries",
     _SKILL_VERSION,
     inputs=["any+"],
-    outputs=["visualization"],
-    variable="single_optional",
-    extra_args=[
-        (
-            ("--time-dim",),
-            {
-                "default": None,
-                "help": "Name of the time-like dim. When omitted, time, then step, "
-                "then the cf-xarray-identified time axis.",
-            },
-        ),
-        (
-            ("--reduce",),
-            {
-                "action": "append",
-                "default": [],
-                "help": "Name of a non-time dim to mean-reduce before plotting. Repeatable.",
-            },
-        ),
-        (("--title",), {"default": None, "help": "Optional figure title."}),
-        (
-            ("--align-day-of-year",),
-            {
-                "action": "store_true",
-                "help": (
-                    "Plot each trace against day-of-year (1-366) instead of its absolute "
-                    "date, so inputs from different years overlay on a shared x-axis. "
-                    "Requires a calendar-date time axis (errors on a non-date axis such "
-                    "as a forecast 'step' timedelta)."
-                ),
-            },
-        ),
-    ],
+    outputs=["visualization"]
 )
-def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_year, output):
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument(
+            "--time-dim",
+            default=None,
+            help="Name of the time-like dim. When omitted, time, then step, "
+            "then the cf-xarray-identified time axis.",
+        )
+@weather_skill.argument(
+            "--reduce",
+            action="append",
+            default=[],
+            help="Name of a non-time dim to mean-reduce before plotting. Repeatable.",
+        )
+@weather_skill.argument("--title", default=None, help="Optional figure title.")
+@weather_skill.argument(
+            "--align-day-of-year",
+            action="store_true",
+            help=(
+                "Plot each trace against day-of-year (1-366) instead of its absolute "
+                "date, so inputs from different years overlay on a shared x-axis. "
+                "Requires a calendar-date time axis (errors on a non-date axis such "
+                "as a forecast 'step' timedelta)."
+            ),
+        )
+def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_year, output, **kwargs):
     """Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
 
     Each input contributes one 1D line trace on a shared set of axes, plotted
@@ -206,7 +195,6 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return output
-
 
 if __name__ == "__main__":
     plot_timeseries()

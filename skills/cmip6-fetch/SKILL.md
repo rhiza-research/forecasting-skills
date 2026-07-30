@@ -34,7 +34,7 @@ windows are multi-year to multi-decadal.
 ```
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <id> -v <variable> \
   [--member <id>] [--table <id>] [--grid <label>] \
-  --start YYYY-MM-DD --end YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
+  --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
 ```
 
 ### Arguments
@@ -49,7 +49,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <
   e.g. `day`).
 - `--grid` — CMIP6 `grid_label` (e.g. `gn`, `gr1`). Required only when more than
   one grid matches the other facets; otherwise the single match is used.
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
   `YYYY-MM-DD`. Future dates are allowed for scenario experiments (which run to
   2100).
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
@@ -133,13 +133,13 @@ Inspect a written output's provenance with the `provenance` skill.
 # GFDL-CM4 historical near-surface air temperature over East Africa,
 # a multi-decade monthly slice
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
-  --table Amon --start 1980-01-01 --end 2014-12-31 --bbox 7/32/-6/43 -o /tmp/cmip6_hist.zarr
+  --table Amon --start-time 1980-01-01 --end-time 2014-12-31 --bbox 7/32/-6/43 -o /tmp/cmip6_hist.zarr
 
 # Full historical monthly record (1850–2014), global grid
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
-  --table Amon --start 1850-01-01 --end 2014-12-31 -o /tmp/cmip6_full_hist.zarr
+  --table Amon --start-time 1850-01-01 --end-time 2014-12-31 -o /tmp/cmip6_full_hist.zarr
 
 # A future scenario: monthly precipitation under ssp245, mid-century decade
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment ssp245 -v pr \
-  --table Amon --start 2040-01-01 --end 2049-12-31 -o /tmp/cmip6_ssp245.zarr
+  --table Amon --start-time 2040-01-01 --end-time 2049-12-31 -o /tmp/cmip6_ssp245.zarr
 ```

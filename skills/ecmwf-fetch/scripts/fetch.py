@@ -38,7 +38,6 @@ LEADTIME_HOURS = ["0", "168", "240", "336", "480", "504", "672", "720", "840", "
 
 S2S_LICENCE_URL = "https://ecds.ecmwf.int/datasets/s2s-forecasts?tab=download#manage-licences"
 
-
 def _submit(client, request: dict):
     """Submit an s2s-forecasts retrieval; surface a clean message on the licence-not-accepted case."""
     import requests
@@ -60,7 +59,6 @@ def _submit(client, request: dict):
             ) from None
         raise
 
-
 def _build_request(date_iso: str, area: list[float], forecast_type: str) -> dict:
     d = dt.date.fromisoformat(date_iso)
     return {
@@ -77,7 +75,6 @@ def _build_request(date_iso: str, area: list[float], forecast_type: str) -> dict
         "data_format": "grib",
     }
 
-
 def _is_wrapped_area(area: list[float]) -> bool:
     """True if the bbox crosses +-180 (west > east), an RFC 7946 sec 5.2 box.
 
@@ -87,7 +84,6 @@ def _is_wrapped_area(area: list[float]) -> bool:
     """
     _, w, _, e = area
     return w > e
-
 
 def _split_wrapped_area(area: list[float]) -> list[list[float]]:
     """Split a wrapped [N, W, S, E] (W > E) into two MARS-valid areas.
@@ -100,7 +96,6 @@ def _split_wrapped_area(area: list[float]) -> list[list[float]]:
     if not _is_wrapped_area(area):
         return [area]
     return [[n, w, s, 180.0], [n, -180.0, s, e]]
-
 
 def _concat_lon(datasets: list) -> object:
     """Concatenate per-area decoded datasets along longitude into one envelope.
@@ -138,7 +133,6 @@ def _concat_lon(datasets: list) -> object:
     _, unique_idx = np.unique(combined[lon_name].values, return_index=True)
     combined = combined.isel({lon_name: np.sort(unique_idx)})
     return combined.sortby(lon_name)
-
 
 # Signature of the ECMWF S2S real-time embargo, matched on the failed job's
 # error text. When a probed init falls inside the access-restricted window, the
@@ -181,15 +175,14 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
     haystack = " ".join(parts).lower()
     return any(sig in haystack for sig in _S2S_EMBARGO_SIGNATURES)
 
-
 @weather_skill(
     "ecmwf-fetch",
     _SKILL_VERSION,
-    outputs=["forecast"],
-    dates="single",
-    region="required",
+    outputs=[["forecast", "ensemble_forecast"]]
 )
-def fetch(bbox, date):
+@weather_skill.argument("--bbox", required=True)
+@weather_skill.argument("--date", required=True)
+def fetch(bbox, date, **kwargs):
     """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
     date_iso = date.isoformat()
     area = list(bbox)
@@ -317,7 +310,6 @@ def fetch(bbox, date):
         ds = ds.load()
 
     return ds
-
 
 if __name__ == "__main__":
     fetch()

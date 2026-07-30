@@ -21,14 +21,12 @@ from weather_skills_core.envelope import auto_variable, cf_dim
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
 
-
 def _select_point(da, lat, lon):
     lat_dim = cf_dim(da, "latitude")
     lon_dim = cf_dim(da, "longitude")
     if lat_dim is None or lon_dim is None:
         raise ValueError(f"Could not identify latitude/longitude in dims {list(da.dims)}.")
     return da.sel({lat_dim: lat, lon_dim: lon}, method="nearest")
-
 
 def _outer_stats(values):
     import numpy as np
@@ -42,7 +40,6 @@ def _outer_stats(values):
         "fliers": [],
     }
 
-
 def _inner_stats(values):
     import numpy as np
 
@@ -55,20 +52,17 @@ def _inner_stats(values):
         "fliers": [],
     }
 
-
 @weather_skill(
     "plot-mediogram",
     _SKILL_VERSION,
     inputs=["any", "any"],
-    outputs=["visualization"],
-    variable="single_optional",
-    extra_args=[
-        (("--lat",), {"type": float, "required": True, "help": "Point latitude."}),
-        (("--lon",), {"type": float, "required": True, "help": "Point longitude."}),
-        (("--title",), {"default": None, "help": "Optional plot title."}),
-    ],
+    outputs=["visualization"]
 )
-def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title, output):
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument("--lat", type=float, required=True, help="Point latitude.")
+@weather_skill.argument("--lon", type=float, required=True, help="Point longitude.")
+@weather_skill.argument("--title", default=None, help="Optional plot title.")
+def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title, output, **kwargs):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
     import matplotlib
 
@@ -191,7 +185,6 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title, output):
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return output
-
 
 if __name__ == "__main__":
     plot_mediogram()

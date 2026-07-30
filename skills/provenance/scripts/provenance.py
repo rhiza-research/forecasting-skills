@@ -33,7 +33,6 @@ from weather_skills_core.provenance import (
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.10"
 
-
 def _load_zarr(path: Path) -> dict:
     """Return {chains, source, name} for a zarr store's weather_skills_history."""
     import xarray as xr
@@ -51,7 +50,6 @@ def _load_zarr(path: Path) -> dict:
     if coerced is not None:
         chains[path.name] = coerced
     return {"chains": chains, "source": attrs.get(SOURCE_ATTR), "name": path.name}
-
 
 def _load_png(path: Path) -> dict:
     """Return {chains, source, name} for a PNG's tEXt provenance keys.
@@ -84,7 +82,6 @@ def _load_png(path: Path) -> dict:
             _add(key[len(f"{HISTORY_ATTR}_") :], key)
     return {"chains": chains, "source": None, "name": path.name}
 
-
 def _read_artifact(path: Path) -> dict:
     """Detect zarr (directory) vs PNG (.png file) and read it; else exit 2."""
     if not path.exists():
@@ -97,7 +94,6 @@ def _read_artifact(path: Path) -> dict:
         f"Error: {path} is neither a zarr directory nor a .png file; cannot inspect provenance.",
         prefix=False,
     )
-
 
 # --------------------------------------------------------------------------- #
 # check (schema validation)
@@ -156,7 +152,6 @@ def _read_raw_histories(path: Path) -> dict:
         prefix=False,
     )
 
-
 def _run_check(path: Path) -> tuple[int, str]:
     """Validate the weather_skills_history schema on `path`; return (exit_code, report).
 
@@ -199,7 +194,6 @@ def _run_check(path: Path) -> tuple[int, str]:
             lines.append(f"  - {n}")
     return 0, "\n".join(lines)
 
-
 # --------------------------------------------------------------------------- #
 # human
 # --------------------------------------------------------------------------- #
@@ -211,7 +205,6 @@ def _format_input(step_input) -> str:
     if isinstance(step_input, dict):
         return step_input.get("basename", "?")
     return str(step_input)
-
 
 def _print_step(n: int, step: dict, indent: str) -> None:
     if not isinstance(step, dict):
@@ -226,7 +219,6 @@ def _print_step(n: int, step: dict, indent: str) -> None:
         print(f"{indent}   args: " + ", ".join(f"{k}={v!r}" for k, v in sorted(args.items())))
     else:
         print(f"{indent}   args: (none)")
-
 
 def _print_concat_branches(step: dict, indent: str) -> None:
     """Under a concat step, list each input branch's recorded lineage. Letters
@@ -248,7 +240,6 @@ def _print_concat_branches(step: dict, indent: str) -> None:
             continue
         for bn, bstep in enumerate(history, start=1):
             _print_step(bn, bstep, indent + "     ")
-
 
 def _render_human(data: dict) -> None:
     chains = data["chains"]
@@ -274,7 +265,6 @@ def _render_human(data: dict) -> None:
             ):
                 _print_concat_branches(step, indent)
 
-
 # --------------------------------------------------------------------------- #
 # json
 # --------------------------------------------------------------------------- #
@@ -282,7 +272,6 @@ def _render_json(data: dict) -> None:
     chains = data["chains"]
     payload = next(iter(chains.values())) if len(chains) == 1 else chains
     print(json.dumps(payload, indent=2, sort_keys=True))
-
 
 # --------------------------------------------------------------------------- #
 # script
@@ -308,7 +297,6 @@ def _args_to_flags(args: dict) -> list:
             tokens += [flag, shlex.quote(str(value))]
     return tokens
 
-
 def _command(skill: str, args: dict, inputs: list, output: str) -> str:
     """Render one reproduction command. `inputs` is a list of (flag, path)."""
     parts = [
@@ -319,7 +307,6 @@ def _command(skill: str, args: dict, inputs: list, output: str) -> str:
         parts += [flag, shlex.quote(path)]
     parts += ["--output", shlex.quote(output)]
     return " ".join(parts)
-
 
 def _emit_linear(chain: list, prefix: str, final_output: str) -> list:
     """Commands for one linear chain. Intermediate steps write `<prefix>N.zarr`;
@@ -364,7 +351,6 @@ def _emit_linear(chain: list, prefix: str, final_output: str) -> list:
         prev = output
     return lines
 
-
 def _concat_branches(chain: list) -> dict | None:
     """If `chain`'s terminal entry is a multi-input `concat` carrying per-input
     `history`, expand it into a `{letter: history + [concat_entry]}` chains dict
@@ -394,7 +380,6 @@ def _concat_branches(chain: list) -> dict | None:
         branches[label] = list(history) + [terminal]
     return branches
 
-
 def _branch_input_flags(branch_outputs: list) -> list:
     """Map (label, output) branch pairs to the final plotter's input flags."""
     labels = [lab for lab, _ in branch_outputs]
@@ -404,7 +389,6 @@ def _branch_input_flags(branch_outputs: list) -> list:
         return [("--" + lab, out) for lab, out in ordered]
     ordered = sorted(branch_outputs, key=lambda x: x[0])
     return [("--input", out) for _, out in ordered]
-
 
 def _render_script(data: dict) -> None:
     chains = data["chains"]
@@ -469,39 +453,31 @@ def _render_script(data: dict) -> None:
             )
     print("\n".join(lines))
 
-
 @weather_skill(
     "provenance",
-    _SKILL_VERSION,
-    extra_args=[
-        (
-            ("-i", "--input"),
-            {
-                "required": True,
-                "help": "Artifact to inspect: a zarr dir or a .png file.",
-            },
-        ),
-        (
-            ("--format",),
-            {
-                "choices": ["human", "json", "script"],
-                "default": "human",
-                "help": "Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
-            },
-        ),
-        (
-            ("--check",),
-            {
-                "action": "store_true",
-                "help": (
-                    "Validate the weather_skills_history schema instead of rendering it. "
-                    "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
-                ),
-            },
-        ),
-    ],
+    _SKILL_VERSION
 )
-def provenance(input, format, check):
+@weather_skill.argument(
+            "-i",
+            "--input",
+            required=True,
+            help="Artifact to inspect: a zarr dir or a .png file.",
+        )
+@weather_skill.argument(
+            "--format",
+            choices=["human", "json", "script"],
+            default="human",
+            help="Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
+        )
+@weather_skill.argument(
+            "--check",
+            action="store_true",
+            help=(
+                "Validate the weather_skills_history schema instead of rendering it. "
+                "Exit 0 = valid provenance present, 1 = none found, 2 = present but invalid."
+            ),
+        )
+def provenance(input, format, check, **kwargs):
     """Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact.
 
     Read-only. Takes one artifact -- a weather-skills envelope Zarr (a directory) or a
@@ -531,7 +507,6 @@ def provenance(input, format, check):
         _render_json(data)
     else:
         _render_script(data)
-
 
 if __name__ == "__main__":
     provenance()

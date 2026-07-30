@@ -27,11 +27,11 @@ window rather than whole yearly files, with no credentials.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
 ```
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
   `YYYY-MM-DD`. OISST runs about a day behind realtime, so the trailing day of a
   window ending near the present may be absent.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
@@ -88,7 +88,7 @@ provider or the resolver fails:
   with a "no data in window" message, kept distinct from a failure.
 
 Exit codes: exit `2` covers pre-network argument/parse errors (a malformed
-`--start`/`--end` date, a reversed range, or a malformed `--bbox`) and
+`--start-time`/`--end-time` date, a reversed range, or a malformed `--bbox`) and
 load-time data-transfer failures on a year's slice (transport, availability, or
 an unexpected read failure). Exit `1` covers the remaining failures: the
 empty-window case, a year-file open failure, a `--bbox` that selects no grid
@@ -111,10 +111,10 @@ by `--help`. Inspect a written output's provenance with the `provenance` skill.
 
 ```bash
 # SST over the seas around East Africa for three days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start 2024-06-01 --end 2024-06-03 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start-time 2024-06-01 --end-time 2024-06-03 \
   -o /tmp/oisst.zarr
 
 # Three weeks over a bounded region
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start 2024-05-12 --end 2024-06-01 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start-time 2024-05-12 --end-time 2024-06-01 \
   -o /tmp/oisst_week.zarr
 ```

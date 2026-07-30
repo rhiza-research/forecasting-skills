@@ -115,7 +115,6 @@ _STALE_RANGE_ATTRS = (
 _TIME_UNITS = "days since 1970-01-01 00:00:00"
 _TIME_CALENDAR = "standard"
 
-
 def _strip_dangling_bounds(ds):
     """Remove a `bounds` attr from any coord when the named bounds variable is absent.
 
@@ -129,7 +128,6 @@ def _strip_dangling_bounds(ds):
         if bnds is not None and bnds not in present:
             del ds[name].attrs["bounds"]
     return ds
-
 
 def _stamp_cf(ds):
     """Stamp full CF-1.13 attrs: global block, coord standard_name/units/axis, sst attrs.
@@ -174,7 +172,6 @@ def _stamp_cf(ds):
     _strip_dangling_bounds(ds)
     return ds
 
-
 def _cf_decode_check(ds) -> None:
     """Confirm cf-xarray resolves the X/Y/T axes on the dataset."""
     missing = cf_axes_missing(ds)
@@ -183,7 +180,6 @@ def _cf_decode_check(ds) -> None:
             f"cf-xarray did not resolve axes {missing} "
             "(expected X/Y/T); the output is not CF-compliant."
         )
-
 
 def _bbox_subset(ds, north, west, south, east):
     """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox.
@@ -207,7 +203,6 @@ def _bbox_subset(ds, north, west, south, east):
         raise DataError("--bbox selects no grid cells; check the extent and N/W/S/E order.")
     return ds
 
-
 def _open_year(year: int):
     """Open one OISST year's OPeNDAP dataset.
 
@@ -219,7 +214,6 @@ def _open_year(year: int):
 
     return xr.open_dataset(_OPENDAP_URL.format(year=year))
 
-
 def _is_availability_failure(exc: Exception) -> bool:
     """Heuristic: does this error mean the requested year file is absent (outside
     the served range / not yet published) rather than a transport problem? The
@@ -229,7 +223,6 @@ def _is_availability_failure(exc: Exception) -> bool:
     text = str(exc).lower()
     markers = ("not found", "no such file", "404", "does not exist", "file not found")
     return any(m in text for m in markers)
-
 
 def _is_transport_failure(exc: Exception) -> bool:
     """Heuristic: does this look like an OPeNDAP transport/size failure rather than
@@ -245,7 +238,6 @@ def _is_transport_failure(exc: Exception) -> bool:
     markers = ("dap failure", "dap2", "dap", "curl", "connection", "timed out", "timeout")
     return any(m in text for m in markers)
 
-
 def _set_write_encoding(ds) -> None:
     """Controlled CF write encoding, applied after the decorator's encoding clear:
     explicit time units/calendar and an explicit NaN _FillValue for sst land cells."""
@@ -255,15 +247,15 @@ def _set_write_encoding(ds) -> None:
     ds["time"].encoding["calendar"] = _TIME_CALENDAR
     ds["sst"].encoding["_FillValue"] = np.float32("nan")
 
-
 @weather_skill(
     "oisst-fetch",
     _SKILL_VERSION,
-    outputs=["data"],
-    dates="range",
-    region="optional",
+    outputs=["observations"]
 )
-def fetch(start_time, end_time, bbox):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--bbox")
+def fetch(start_time, end_time, bbox, **kwargs):
     """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""
     import numpy as np
     import xarray as xr
@@ -302,7 +294,7 @@ def fetch(start_time, end_time, bbox):
                 raise UsageError(
                     f"could not read the OISST file for year {year} ({exc}). The year may be "
                     "outside the served range (1981-09 to present), or that year's file is not yet "
-                    "available — check the date range and use an absolute --start/--end in the "
+                    "available — check the date range and use an absolute --start-time/--end-time in the "
                     "served range."
                 ) from exc
             if _is_transport_failure(exc):
@@ -327,7 +319,6 @@ def fetch(start_time, end_time, bbox):
     _set_write_encoding(ds)
     _cf_decode_check(ds)
     return ds
-
 
 if __name__ == "__main__":
     fetch()

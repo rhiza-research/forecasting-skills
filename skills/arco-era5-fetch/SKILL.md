@@ -31,11 +31,11 @@ Not a forecast — ERA5 is reanalysis. For forecast grids use `ecmwf-fetch` or
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 ```
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention, so negative west/east values select correctly on
   ERA5's native 0..360 grid. The slice follows each axis's own order, so any
@@ -127,14 +127,14 @@ invocation must translate underscore → hyphen.
 
 ```bash
 # 2m temperature over Kenya for two days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-02 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-02 \
   --bbox 7/32/-6/43 -v 2m_temperature -o /tmp/arco.zarr
 
 # One week, two variables
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-05-24 --end 2026-05-30 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-05-24 --end-time 2026-05-30 \
   --bbox 23/-20/-37/59 -v 2m_temperature -v total_precipitation -o /tmp/arco_week.zarr
 
 # A pressure-level variable for one day — adds a CF `level` (air_pressure) dim
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-01 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-01 \
   --bbox 7/32/-6/43 -v temperature -o /tmp/arco_level.zarr
 ```

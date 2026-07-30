@@ -21,34 +21,27 @@ from weather_skills_core import UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
 
-
 @weather_skill(
     "reduce",
     _SKILL_VERSION,
     inputs=["any"],
-    outputs=["any"],
-    variable="multiple_optional",
-    extra_args=[
-        (
-            ("--dim",),
-            {
-                "action": "append",
-                "required": True,
-                "help": "Dimension to collapse. Repeat once per dimension to collapse "
-                "several in one run.",
-            },
-        ),
-        (
-            ("--method",),
-            {
-                "required": True,
-                "choices": ["mean", "std", "min", "max", "sum", "median"],
-                "help": "Statistic applied along the collapsed dimension(s).",
-            },
-        ),
-    ],
+    outputs=["any"]
 )
-def reduce(ds, variable, dim, method):
+@weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument(
+            "--dim",
+            action="append",
+            required=True,
+            help="Dimension to collapse. Repeat once per dimension to collapse "
+            "several in one run.",
+        )
+@weather_skill.argument(
+            "--method",
+            required=True,
+            choices=["mean", "std", "min", "max", "sum", "median"],
+            help="Statistic applied along the collapsed dimension(s).",
+        )
+def reduce(ds, variable, dim, method, **kwargs):
     """Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic."""
 
     # De-duplicate the requested dims preserving first-seen order so a
@@ -158,7 +151,6 @@ def reduce(ds, variable, dim, method):
             out_ds = out_ds.drop_dims(d)
 
     return out_ds
-
 
 if __name__ == "__main__":
     reduce()

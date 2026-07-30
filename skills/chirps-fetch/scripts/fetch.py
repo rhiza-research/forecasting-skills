@@ -50,7 +50,6 @@ DEFAULT_WORKERS = 2
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.18"
 
-
 class DayUnavailable(Exception):
     """Raised when a day's TIF cannot be retrieved: not yet published (HTTP 404),
     a transient server (5xx) or network error, or a non-TIFF / truncated / empty
@@ -65,7 +64,6 @@ class DayUnavailable(Exception):
     def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
-
 
 class _SessionPool:
     """Per-thread requests.Session holder.
@@ -100,12 +98,10 @@ class _SessionPool:
         for s in sessions:
             s.close()
 
-
 # Sentinel returned by _get_tif_body when a URL answers 404 (the day is not
 # published at that product) — distinct from None and from a validated body, so
 # the caller can fall back to the other product rather than failing the day.
 _NOT_FOUND = object()
-
 
 def _get_tif_body(session, url: str):
     """Fetch one CHIRPS day TIF URL and return its validated bytes.
@@ -162,7 +158,6 @@ def _get_tif_body(session, url: str):
 
     return body
 
-
 def _http_refusal_message(exc, workers: int) -> str:
     """Build the abort message for an HTTPError escaping a download worker.
 
@@ -194,7 +189,6 @@ def _http_refusal_message(exc, workers: int) -> str:
         "retrying will not help — check that the CHIRPS product layout "
         "has not changed."
     )
-
 
 def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
     """Fetch one day, preferring the validated final product over prelim.
@@ -237,7 +231,6 @@ def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
         f.write(body)
     return out
 
-
 def _open_day(tif: Path, day: date):
     import numpy as np
     import rioxarray
@@ -251,28 +244,24 @@ def _open_day(tif: Path, day: date):
     da = da.expand_dims(time=[np.datetime64(day.isoformat(), "ns")])
     return da
 
-
 @weather_skill(
     "chirps-fetch",
     _SKILL_VERSION,
-    outputs=["data"],
-    dates="range",
-    extra_args=[
-        (
-            ("--workers",),
-            {
-                "type": int,
-                "default": DEFAULT_WORKERS,
-                "help": (
-                    f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
-                    "Deliberately conservative: CHC's data server can throttle and "
-                    "temporarily block IPs under higher concurrency."
-                ),
-            },
-        ),
-    ],
+    outputs=["observations"]
 )
-def fetch(start_time, end_time, workers):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument(
+            "--workers",
+            type=int,
+            default=DEFAULT_WORKERS,
+            help=(
+                f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
+                "Deliberately conservative: CHC's data server can throttle and "
+                "temporarily block IPs under higher concurrency."
+            ),
+        )
+def fetch(start_time, end_time, workers, **kwargs):
     """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
     import requests
 
@@ -386,7 +375,7 @@ def fetch(start_time, end_time, workers):
                 "very recent days come from the preliminary product (published 2 "
                 "days after each pentad closes — pentads end on days 5, 10, 15, "
                 "20, 25, and last of month, worst-case lag ~7 days); for a very "
-                "recent --end, try an earlier one."
+                "recent --end-time, try an earlier one."
             )
 
         succeeded_days = [d for d, _ in succeeded]
@@ -410,7 +399,7 @@ def fetch(start_time, end_time, workers):
             print(
                 f"Tail-missing day(s) {', '.join(d.isoformat() for d in missing_days)}; "
                 f"writing partial dataset with effective end {effective_end} "
-                f"(requested --end was {end}). "
+                f"(requested --end-time was {end}). "
                 "Consistent with CHIRPS v3.0 preliminary's pentad-based "
                 "schedule (per-day files published 2 days after each pentad "
                 "ends on days 5, 10, 15, 20, 25, and last of month; "
@@ -434,7 +423,6 @@ def fetch(start_time, end_time, workers):
         ds.attrs["weather_skills_source"] = "chirps"
         stamp_cf_attrs(ds)
         return ds
-
 
 if __name__ == "__main__":
     fetch()

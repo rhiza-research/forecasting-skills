@@ -54,20 +54,17 @@ _STANDARD_NAME_BY_UNITS = {
     "kilogram / meter ** 2 / second": "precipitation_flux",
 }
 
-
 def _is_precipitation_name(name) -> bool:
     """True when a CF standard_name denotes a precipitation quantity (e.g.
     ``precipitation_flux``, ``lwe_precipitation_rate``, ``rainfall_rate``,
     ``thickness_of_rainfall_amount``)."""
     return isinstance(name, str) and ("precipitation" in name.lower() or "rainfall" in name.lower())
 
-
 def _normalize_units(units: str) -> str:
     """Rewrite UDUNITS power notation (``m-2``, ``s-1``, ``m2``) into the
     ``m**-2`` / ``s**-1`` / ``m**2`` form pint parses, leaving a
     scientific-notation exponent (``1e3``, ``1e-6``) untouched."""
     return _UDUNITS_POWER_RE.sub(lambda m: "**" + m.group(1), units)
-
 
 def _convert(values, src_units: str, dst_units: str):
     """Convert a numpy array from ``src_units`` to ``dst_units`` with pint.
@@ -116,7 +113,6 @@ def _convert(values, src_units: str, dst_units: str):
             raise pint.DimensionalityError(src_u, dst_u) from None
     return magnitude, dim_changed, canonical_target
 
-
 def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_target: str):
     """Pick the output variable's standard_name so it stays consistent with the
     new units. An explicit ``--standard-name`` override wins; else a lookup keyed
@@ -140,36 +136,29 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
         return None
     return source_name
 
-
 @weather_skill(
     "unit-convert",
     _SKILL_VERSION,
     inputs=["any"],
-    outputs=["any"],
-    variable="single_optional",
-    extra_args=[
-        (
-            ("--to-units",),
-            {
-                "required": True,
-                "help": "Target units string (e.g. 'mm/day'); becomes the output variable's "
-                "units attribute.",
-            },
-        ),
-        (
-            ("--standard-name",),
-            {
-                "help": (
-                    "CF standard_name to write on the output variable. Overrides the "
-                    "built-in target-units lookup. When omitted, a known target unit sets "
-                    "the matching name, a dimensionality-changing conversion drops the "
-                    "now-inconsistent source name, and a same-dimension conversion keeps it."
-                ),
-            },
-        ),
-    ],
+    outputs=["any"]
 )
-def unit_convert(ds, variable, to_units, standard_name):
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument(
+            "--to-units",
+            required=True,
+            help="Target units string (e.g. 'mm/day'); becomes the output variable's "
+            "units attribute.",
+        )
+@weather_skill.argument(
+            "--standard-name",
+            help=(
+                "CF standard_name to write on the output variable. Overrides the "
+                "built-in target-units lookup. When omitted, a known target unit sets "
+                "the matching name, a dimensionality-changing conversion drops the "
+                "now-inconsistent source name, and a same-dimension conversion keeps it."
+            ),
+        )
+def unit_convert(ds, variable, to_units, standard_name, **kwargs):
     """Convert one data variable in a weather-skills envelope Zarr to a target units string."""
     import pint
 
@@ -226,7 +215,6 @@ def unit_convert(ds, variable, to_units, standard_name):
     out_ds = ds.copy()
     out_ds[variable] = out_da
     return out_ds
-
 
 if __name__ == "__main__":
     unit_convert()

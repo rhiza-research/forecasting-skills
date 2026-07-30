@@ -24,21 +24,19 @@ from weather_skills_core import UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.3"
 
-
 @weather_skill(
     "rename",
     _SKILL_VERSION,
     inputs=["any"],
-    outputs=["any"],
-    variable="single_optional",
-    extra_args=[
-        (
-            ("--to-name",),
-            {"required": True, "help": "New variable name; becomes the output variable's name."},
-        ),
-    ],
+    outputs=["any"]
 )
-def rename(ds, variable, to_name):
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument(
+            "--to-name",
+            required=True,
+            help="New variable name; becomes the output variable's name.",
+        )
+def rename(ds, variable, to_name, **kwargs):
     """Rename one data variable in a weather-skills envelope Zarr to a new name."""
     if not to_name.strip():
         raise UsageError("--to-name must be a non-empty variable name.")
@@ -72,7 +70,6 @@ def rename(ds, variable, to_name):
             )
 
     return ds.rename({variable: to_name})
-
 
 if __name__ == "__main__":
     rename()

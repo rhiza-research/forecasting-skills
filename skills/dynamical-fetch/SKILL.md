@@ -33,7 +33,7 @@ selected with `--dataset` and validated at runtime against
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --date <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 
 # Analysis datasets — an inclusive date range:
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --start <date> --end <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --start-time <date> --end-time <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 ```
 
 ### Supported datasets
@@ -70,7 +70,7 @@ out of scope for this fetcher.
 - `--dataset` — catalog dataset id from the table above (validated against
   `dynamical_catalog.list()`; an unknown id prints the available list and exits).
 - `--date` — forecast init date (**forecast datasets only**). Absolute ISO date `YYYY-MM-DD`. Selects the **00 UTC** initialization.
-- `--start`, `--end` — inclusive date range (**analysis datasets only**). Absolute ISO dates `YYYY-MM-DD`.
+- `--start-time`, `--end-time` — inclusive date range (**analysis datasets only**). Absolute ISO dates `YYYY-MM-DD`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. The slice follows each
   axis's own order, so any region works regardless of how a dataset stores
   latitude. Omit to fetch the dataset's full native grid.
@@ -113,7 +113,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gefs-forecas
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast --date 2026-06-01 -o /tmp/gfs.zarr
 
 # GFS analysis over a date range
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start 2026-05-10 --end 2026-05-30 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start-time 2026-05-10 --end-time 2026-05-30 \
   --bbox 12/-4/4/2 -o /tmp/gfs_analysis.zarr
 ```
 

@@ -27,12 +27,12 @@ Downloads TAHMO station observations via the TAHMO SDK for the requested countri
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya [--country Ghana ...] --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya [--country Ghana ...] --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
 - `--country` — country name (pass once per country). Supported: Kenya, Ghana, Senegal, Ethiopia, Burkina Faso, Benin, DR Congo, Côte d'Ivoire, Cameroon, Lesotho, Madagascar, Mali, Malawi, Mozambique, Niger, Nigeria, Rwanda, Chad, Togo, Tanzania, Uganda, South Africa, Zambia, Zimbabwe.
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--workers` — max concurrent per-station fetch threads (default 8). Stations are fetched concurrently over a bounded thread pool; lower this if TAHMO returns 429/throttling errors. Does not affect the output.
 
@@ -59,6 +59,6 @@ translate underscore → hyphen.
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --country Ghana --start 2026-01-01 --end 2026-02-15 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --country Ghana --start-time 2026-01-01 --end-time 2026-02-15 \
     --output /tmp/tahmo.zarr
 ```

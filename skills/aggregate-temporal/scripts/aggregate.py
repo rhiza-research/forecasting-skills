@@ -62,7 +62,6 @@ _PRESSURE_UNITS = {"pa", "hpa", "mbar", "bar"}
 # are legitimately summable, so flagging it would be a false positive.
 _FRACTION_UNITS = {"%", "percent"}
 
-
 def _intensive_reason(units, standard_name):
     """Return a short reason string when the variable is clearly an intensive
     quantity (one whose values describe a state, not an amount, so summing them
@@ -97,7 +96,6 @@ def _intensive_reason(units, standard_name):
         return f"units={units!r} denotes a dimensionless fraction or percentage"
 
     return None
-
 
 # Extensive depth units (an amount that accumulates, so a per-window SUM of a
 # rate expressed in "<depth>/day" lands in this depth). Keys are tolerated input
@@ -139,7 +137,6 @@ _RATE_TO_AMOUNT_STANDARD_NAME = {
 # rate. Case-insensitive, compared against the stripped name.
 _RATE_NAME_SUFFIXES = ("_rate", "_flux")
 
-
 def _rate_depth_numerator(units):
     """If `units` is a recognized per-day depth rate (e.g. ``mm/day``,
     ``mm day-1``), return the canonical extensive depth unit a per-window SUM
@@ -169,7 +166,6 @@ def _rate_depth_numerator(units):
         return None
     return _DEPTH_UNITS.get(head.strip().lower())
 
-
 def _summed_units_and_name(units, standard_name):
     """Return the ``(units, standard_name)`` a SUM output should carry.
 
@@ -198,7 +194,6 @@ def _summed_units_and_name(units, standard_name):
         return depth, None
     return depth, standard_name
 
-
 def _reduce(grouped, method, dim=None):
     fn = {
         "sum": grouped.sum,
@@ -209,7 +204,6 @@ def _reduce(grouped, method, dim=None):
     if dim is not None:
         return fn(dim=dim, keep_attrs=True)
     return fn(keep_attrs=True)
-
 
 def _aggregate_time_anchored(ds, dim, period, method, anchor_end):
     """Backward-anchored time resample.
@@ -308,7 +302,6 @@ def _aggregate_time_anchored(ds, dim, period, method, anchor_end):
         return ds.isel({dim: slice(0, 0)})
     return xr.concat(chunks, dim=dim).assign_coords({dim: labels})
 
-
 def _aggregate_step(ds, period, method):
     import numpy as np
     import pandas as pd
@@ -346,36 +339,29 @@ def _aggregate_step(ds, period, method):
 
     return xr.concat(chunks, dim="step").assign_coords(step=labels)
 
-
 @weather_skill(
     "aggregate-temporal",
     _SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
-    variable="multiple_optional",
-    extra_args=[
-        (("--period",), {"required": True, "choices": ["daily", "weekly", "dekadal", "monthly"]}),
-        (("--method",), {"default": "sum", "choices": ["sum", "mean", "max", "min"]}),
-        (
-            ("--time-dim",),
-            {
-                "help": "Override the time-like dim. When omitted, uses CF time if present, else step.",
-            },
-        ),
-        (
-            ("--anchor-end",),
-            {
-                "default": None,
-                "help": "ISO date (YYYY-MM-DD). When set, anchors the obs/time "
-                "resample so the LAST bin ends at this date and previous bins "
-                "are synthesized backward in `period`-day windows. Partial bins "
-                "whose start falls before the input's first timestamp are "
-                "dropped. Has no effect on the forecast `step` path.",
-            },
-        ),
-    ],
+    inputs=[["time", "prediction_timedelta"]],
+    outputs=["any"]
 )
-def aggregate(ds, variable, time_dim, period, method, anchor_end):
+@weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument("--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"])
+@weather_skill.argument("--method", default="sum", choices=["sum", "mean", "max", "min"])
+@weather_skill.argument(
+            "--time-dim",
+            help="Override the time-like dim. When omitted, uses CF time if present, else step.",
+        )
+@weather_skill.argument(
+            "--anchor-end",
+            default=None,
+            help="ISO date (YYYY-MM-DD). When set, anchors the obs/time "
+            "resample so the LAST bin ends at this date and previous bins "
+            "are synthesized backward in `period`-day windows. Partial bins "
+            "whose start falls before the input's first timestamp are "
+            "dropped. Has no effect on the forecast `step` path.",
+        )
+def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
     """Temporal aggregation for weather-skills envelope Zarr stores."""
     import cf_xarray  # noqa: F401 — registers the .cf accessor
 
@@ -542,7 +528,6 @@ def aggregate(ds, variable, time_dim, period, method, anchor_end):
                 attrs["standard_name"] = new_name
 
     return out_ds
-
 
 if __name__ == "__main__":
     aggregate()

@@ -28,7 +28,7 @@ meteorological questions and produce visualizations.
 
 Prefer small steps over stuffing every filter into one call:
 
-- **Dates:** Fetchers take absolute `YYYY-MM-DD` only (`--start`/`--end` or
+- **Dates:** Fetchers take absolute `YYYY-MM-DD` only (`--start-time`/`--end-time` or
   `--date`). Resolve relative ideas like "today", "latest", or "last 7 days"
   yourself to concrete calendar dates before calling a fetcher.
 - **Region:** Use `resolve-region` for a country bbox, then `clip-region` (or

@@ -96,7 +96,6 @@ _TIME_CALENDAR = "proleptic_gregorian"
 # CRS is a plain geographic latitude_longitude.
 _GRID_MAPPING_NAME = "latitude_longitude"
 
-
 def _bbox_subset(ds, bbox):
     """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox."""
     north, west, south, east = bbox
@@ -115,7 +114,6 @@ def _bbox_subset(ds, bbox):
         )
     return ds
 
-
 def _granule_date(granule) -> date:
     """Parse the acquisition date from a granule's data-file name."""
     for url in granule.data_links():
@@ -123,7 +121,6 @@ def _granule_date(granule) -> date:
         if m:
             return datetime.strptime(m.group(1), "%Y%m%d").date()  # noqa: DTZ007 -- date-only parse; a timezone is meaningless here
     raise ValueError("could not parse a YYYYMMDD date from the granule file name")
-
 
 def _reduce_geolocation(lat2d, lon2d, day_iso: str) -> tuple:
     """Reduce the 2-D EASE-Grid geolocation to 1-D lat/lon coordinate vectors.
@@ -176,7 +173,6 @@ def _reduce_geolocation(lat2d, lon2d, day_iso: str) -> tuple:
         )
     return lat1d, lon1d
 
-
 def _read_source_units(grp, day_iso: str) -> str:
     """Read the granule's soil_moisture `units` attribute for verbatim pass-through.
 
@@ -200,7 +196,6 @@ def _read_source_units(grp, day_iso: str) -> str:
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8", "replace")
     return str(raw).strip()
-
 
 def _slice_from_file(path: str, group: str, day_iso: str):
     """Read one SPL3SMP_E granule into a (latitude, longitude) DataArray.
@@ -259,7 +254,6 @@ def _slice_from_file(path: str, group: str, day_iso: str):
     )
     return da
 
-
 def _is_auth_error(exc: Exception) -> bool:
     """Detect an Earthdata auth failure, primarily from the HTTP status.
 
@@ -283,7 +277,6 @@ def _is_auth_error(exc: Exception) -> bool:
     msg = str(exc).lower()
     return "401 unauthorized" in msg or "403 forbidden" in msg
 
-
 def _auth_fail() -> None:
     """Raise the single actionable, credential-free auth failure (exit 1).
 
@@ -292,7 +285,6 @@ def _auth_fail() -> None:
     which removes the partial store before the message is printed.
     """
     raise DataError(_AUTH_FAIL_MSG)
-
 
 def _login() -> None:
     """Authenticate to Earthdata, converting any failure into the actionable message.
@@ -326,7 +318,6 @@ def _login() -> None:
     # No strategy yielded an authenticated session.
     _auth_fail()
 
-
 def _search(start_iso: str, end_iso: str):
     """Search CMR for SPL3SMP_E granules, mapping a 401/403 to the auth message."""
     import earthaccess
@@ -343,7 +334,6 @@ def _search(start_iso: str, end_iso: str):
             _auth_fail()
         raise
 
-
 def _download(granules, local_path: str):
     """Download granules, mapping a 401/403 to the auth message."""
     import earthaccess
@@ -356,7 +346,6 @@ def _download(granules, local_path: str):
         if _is_auth_error(exc):
             _auth_fail()
         raise
-
 
 def _stamp_cf(ds) -> None:
     """Stamp full CF-1.13 metadata onto the dataset in place.
@@ -417,7 +406,6 @@ def _stamp_cf(ds) -> None:
         inverse_flattening=298.257223563,
     )
 
-
 def _cf_decode_check(ds) -> None:
     """Write-side decode check: confirm cf-xarray resolves the lat/lon/time axes.
 
@@ -432,7 +420,6 @@ def _cf_decode_check(ds) -> None:
             "CF attrs; refusing to write a store downstream skills cannot decode."
         )
 
-
 def _set_write_encoding(ds) -> None:
     """Controlled write encoding, applied after the decorator's encoding clear:
     the time units/calendar and the soil_moisture _FillValue."""
@@ -442,28 +429,24 @@ def _set_write_encoding(ds) -> None:
     ds["time"].encoding["calendar"] = _TIME_CALENDAR
     ds["soil_moisture"].encoding["_FillValue"] = np.float64(np.nan)
 
-
 @weather_skill(
     "smap-fetch",
     _SKILL_VERSION,
-    outputs=["data"],
-    dates="range",
-    region="optional",
-    extra_args=[
-        (
-            ("--overpass",),
-            {
-                "choices": ["AM", "PM"],
-                "default": "AM",
-                "help": (
-                    "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm "
-                    "ascending). Default AM."
-                ),
-            },
-        ),
-    ],
+    outputs=["observations"]
 )
-def fetch(start_time, end_time, bbox, overpass):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--bbox")
+@weather_skill.argument(
+            "--overpass",
+            choices=["AM", "PM"],
+            default="AM",
+            help=(
+                "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm "
+                "ascending). Default AM."
+            ),
+        )
+def fetch(start_time, end_time, bbox, overpass, **kwargs):
     """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
     import numpy as np
     import xarray as xr
@@ -542,7 +525,6 @@ def fetch(start_time, end_time, bbox, overpass):
     _cf_decode_check(ds)
     _set_write_encoding(ds)
     return ds
-
 
 if __name__ == "__main__":
     fetch()

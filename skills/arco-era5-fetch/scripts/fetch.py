@@ -126,7 +126,6 @@ def _open_arco(state):
             ) from None
     return state["ds"]
 
-
 def _open_arco(state):
     """Return a candidate CF unit string for an ARCO source `units` value, or
     None when the source carries no units.
@@ -142,7 +141,6 @@ def _open_arco(state):
         return None
     return _UNIT_FIXUPS.get(units, units)
 
-
 def _udunits_valid(units: str) -> bool:
     """Return True if `units` parses as a UDUNITS-2 unit string.
 
@@ -156,7 +154,6 @@ def _udunits_valid(units: str) -> bool:
     except Exception:  # noqa: BLE001 — cf_units signals an unparseable unit by raising
         return False
     return True
-
 
 def _stamp_data_var_attrs(ds) -> None:
     """Stamp CF `units` (mandatory), `long_name` (mandatory), and `standard_name`
@@ -203,7 +200,6 @@ def _stamp_data_var_attrs(ds) -> None:
             new_attrs["standard_name"] = standard_name
         ds[name].attrs = new_attrs
 
-
 def _stamp_coord_attrs(ds) -> None:
     """Stamp CF standard_name/units/axis on spatial, time, and level coords."""
     if "latitude" in ds.coords:
@@ -225,7 +221,6 @@ def _stamp_coord_attrs(ds) -> None:
             long_name="pressure level",
         )
 
-
 def _global_attrs(start_iso: str, end_iso: str) -> dict:
     """Build the CF-1.13 global attrs for the output store."""
     stamped = datetime.now(UTC).isoformat(timespec="seconds")
@@ -238,7 +233,6 @@ def _global_attrs(start_iso: str, end_iso: str) -> dict:
         "history": f"{stamped}: fetched by arco-era5-fetch {_SKILL_VERSION}",
     }
 
-
 def _set_time_encoding(ds, start_time) -> None:
     """Controlled time write encoding on the dataset before write."""
     if "time" in ds.coords:
@@ -247,16 +241,16 @@ def _set_time_encoding(ds, start_time) -> None:
             "calendar": "proleptic_gregorian",
         }
 
-
 @weather_skill(
     "arco-era5-fetch",
     _SKILL_VERSION,
-    outputs=["data"],
-    dates="range",
-    region="optional",
-    variable="multiple_optional",
+    outputs=["observations"]
 )
-def fetch(start_time, end_time, bbox, variable):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--variable", "-v", action="append")
+def fetch(start_time, end_time, bbox, variable, **kwargs):
     """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
     import numpy as np
     from weather_skills_core.envelope import bbox_subset
@@ -350,7 +344,6 @@ def fetch(start_time, end_time, bbox, variable):
 
     _set_time_encoding(ds, start_time)
     return ds
-
 
 if __name__ == "__main__":
     fetch()

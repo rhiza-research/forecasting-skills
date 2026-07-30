@@ -26,7 +26,6 @@ from weather_skills_core import UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
 
-
 def _grid_spacing(coord_vals) -> float:
     import numpy as np
 
@@ -34,7 +33,6 @@ def _grid_spacing(coord_vals) -> float:
     if coord.size < 2:
         raise ValueError(f"Cannot infer spacing for coord with size {coord.size}")
     return float(abs(np.median(np.diff(coord))))
-
 
 def _target_axis(coord_vals, resolution: float, offset: float):
     import numpy as np
@@ -56,29 +54,21 @@ def _target_axis(coord_vals, resolution: float, offset: float):
         target = target[::-1]
     return target
 
-
 @weather_skill(
     "coarsen",
     _SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
-    variable="single_optional",
-    extra_args=[
-        (
-            ("--target-resolution",),
-            {"type": float, "required": True, "help": "Target grid spacing in degrees."},
-        ),
-        (
-            ("--offset",),
-            {
-                "type": float,
-                "required": True,
-                "help": "Grid offset in degrees; target points fall at offset + k*resolution.",
-            },
-        ),
-    ],
+    inputs=["space"],
+    outputs=["space"]
 )
-def coarsen(ds, variable, target_resolution, offset):
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument("--target-resolution", type=float, required=True, help="Target grid spacing in degrees.")
+@weather_skill.argument(
+            "--offset",
+            type=float,
+            required=True,
+            help="Grid offset in degrees; target points fall at offset + k*resolution.",
+        )
+def coarsen(ds, variable, target_resolution, offset, **kwargs):
     """Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only)."""
     import numpy as np
     import xarray as xr
@@ -131,7 +121,6 @@ def coarsen(ds, variable, target_resolution, offset):
         file=sys.stderr,
     )
     return ds.regrid.linear(target)
-
 
 if __name__ == "__main__":
     coarsen()

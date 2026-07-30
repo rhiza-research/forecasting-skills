@@ -37,11 +37,11 @@ For African stations with sub-daily sensor data, `tahmo-fetch` is an alternative
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start YYYY-MM-DD --end YYYY-MM-DD [-v VAR ...] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start-time YYYY-MM-DD --end-time YYYY-MM-DD [-v VAR ...] -o <path.zarr>
 ```
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
   `YYYY-MM-DD`. GHCN-Daily has a publication lag of a day or two, so the
   trailing days of a window ending near the present may simply be absent; a
   missing trailing tail is treated as a normal partial window, not an error.
@@ -118,10 +118,10 @@ with the `provenance` skill.
 
 ```bash
 # Precip + max temperature for NYC-area stations over three days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start 2024-06-01 --end 2024-06-03 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-03 \
   -v precip -v tmax -o /tmp/ghcn.zarr
 
 # Default variables (precip, tmax, tmin) over Kenya for three weeks
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5.5/33.9/-4.7/41.9 --start 2024-06-01 --end 2024-06-21 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5.5/33.9/-4.7/41.9 --start-time 2024-06-01 --end-time 2024-06-21 \
   -o /tmp/ghcn_kenya.zarr
 ```

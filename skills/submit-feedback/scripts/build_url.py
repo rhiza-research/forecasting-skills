@@ -24,7 +24,6 @@ REPO = "rhiza-research/forecasting-skills"
 # starts erroring (500s) well before the hard 414, so this is the usable limit.
 MAX_URL = 6800
 
-
 def build_url(title: str, body: str) -> str:
     """Assemble the prefilled new-issue URL with title and body percent-encoded."""
     return (
@@ -32,17 +31,14 @@ def build_url(title: str, body: str) -> str:
         f"?title={quote(title, safe='')}&body={quote(body, safe='')}"
     )
 
-
 @weather_skill(
     "submit-feedback",
-    _SKILL_VERSION,
-    extra_args=[
-        (("--title",), {"required": True, "help": "Issue title; must not be empty."}),
-        (("--body",), {"help": "Issue body as a markdown string."}),
-        (("--body-file",), {"help": "Path to a file holding the issue body."}),
-    ],
+    _SKILL_VERSION
 )
-def submit_feedback(title, body, body_file):
+@weather_skill.argument("--title", required=True, help="Issue title; must not be empty.")
+@weather_skill.argument("--body", help="Issue body as a markdown string.")
+@weather_skill.argument("--body-file", help="Path to a file holding the issue body.")
+def submit_feedback(title, body, body_file, **kwargs):
     """Build a length-checked prefilled GitHub "new issue" URL for filing feedback.
 
     Stateless formatter and validator. The caller authors the title and body; this
@@ -106,7 +102,6 @@ def submit_feedback(title, body, body_file):
         "required).",
         file=sys.stderr,
     )
-
 
 if __name__ == "__main__":
     submit_feedback()

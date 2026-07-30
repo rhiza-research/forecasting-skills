@@ -76,7 +76,6 @@ _CF_CONVENTIONS = "CF-1.13"
 #       (standard_name/units/axis on latitude/longitude/time) are only filled
 #       via setdefault when absent after the rename, leaving source values intact.
 
-
 def _resolve_zstore(model, experiment, variable, member, table, grid) -> tuple:
     """Resolve the facet flags against the CMIP6 catalog to exactly one zstore.
 
@@ -140,7 +139,6 @@ def _resolve_zstore(model, experiment, variable, member, table, grid) -> tuple:
         )
     return zstore, grids[0], str(row["version"])
 
-
 def _ensure_catalog(state, model, experiment, variable, member, table, grid) -> None:
     """Resolve the catalog facets to a zstore, at most once per run.
 
@@ -154,7 +152,6 @@ def _ensure_catalog(state, model, experiment, variable, member, table, grid) -> 
             model, experiment, variable, member, table, grid
         )
         state.update(zstore=zstore, grid_label=grid_label, version=version)
-
 
 def _open_remote(state, model, experiment, variable, member, table, grid) -> dict:
     """Resolve the catalog and open the matched store, at most once per run.
@@ -209,8 +206,6 @@ def _open_remote(state, model, experiment, variable, member, table, grid) -> dic
         )
     return state
 
-
-
 def _ensure_coord_cf_attrs(ds):
     """Ensure latitude/longitude/time coords carry CF standard_name/units/axis.
 
@@ -229,7 +224,6 @@ def _ensure_coord_cf_attrs(ds):
         ds["time"].attrs.setdefault("standard_name", "time")
         ds["time"].attrs.setdefault("axis", "T")
     return ds
-
 
 def _drop_bounds(ds):
     """Drop every `*_bnds` bounds variable and the dangling `bounds` attr it leaves.
@@ -257,7 +251,6 @@ def _drop_bounds(ds):
             del ds[v].attrs["bounds"]
     return ds
 
-
 def _verify_cf_decode(ds, variable: str) -> None:
     """Confirm cf-xarray can resolve the X/Y/T axes before writing.
 
@@ -273,7 +266,6 @@ def _verify_cf_decode(ds, variable: str) -> None:
             f"(resolved: {sorted(axes)}); the coord CF attrs are incomplete."
         )
 
-
 def _set_write_encoding(ds, source_calendar, source_time_units, fills) -> None:
     """Controlled write encodings on the dataset before write."""
     for v, fill in fills.items():
@@ -283,28 +275,24 @@ def _set_write_encoding(ds, source_calendar, source_time_units, fills) -> None:
         ds["time"].encoding["units"] = source_time_units
     ds["time"].encoding["calendar"] = source_calendar
 
-
 @weather_skill(
     "cmip6-fetch",
     _SKILL_VERSION,
-    outputs=["data"],
-    dates="range",
-    region="optional",
-    variable="single_required",
-    extra_args=[
-        (("--model",), {"required": True, "help": "CMIP6 source_id (e.g. GFDL-CM4)."}),
-        (("--experiment",), {"required": True, "help": "CMIP6 experiment_id (e.g. historical, ssp245)."}),
-        (("--member",), {"default": "r1i1p1f1", "help": "CMIP6 member_id (default r1i1p1f1)."}),
-        (("--table",), {"default": "Amon", "help": "CMIP6 table_id (default Amon)."}),
-        (
-            ("--grid",),
-            {
-                "help": "CMIP6 grid_label; required only when more than one matches the other facets."
-            },
-        ),
-    ],
+    outputs=["observations"]
 )
-def fetch(start_time, end_time, bbox, model, experiment, variable, member, table, grid):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--variable", "-v", required=True)
+@weather_skill.argument("--model", required=True, help="CMIP6 source_id (e.g. GFDL-CM4).")
+@weather_skill.argument("--experiment", required=True, help="CMIP6 experiment_id (e.g. historical, ssp245).")
+@weather_skill.argument("--member", default="r1i1p1f1", help="CMIP6 member_id (default r1i1p1f1).")
+@weather_skill.argument("--table", default="Amon", help="CMIP6 table_id (default Amon).")
+@weather_skill.argument(
+            "--grid",
+            help="CMIP6 grid_label; required only when more than one matches the other facets.",
+        )
+def fetch(start_time, end_time, bbox, model, experiment, variable, member, table, grid, **kwargs):
     """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
     from weather_skills_core.envelope import bbox_subset
 
@@ -406,7 +394,6 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
     fills = {v: ds[v].encoding.get("_FillValue") for v in ds.data_vars}
     _set_write_encoding(ds, state["source_calendar"], state["source_time_units"], fills)
     return ds
-
 
 if __name__ == "__main__":
     fetch()

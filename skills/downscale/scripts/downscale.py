@@ -17,7 +17,6 @@ from weather_skills_core import UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
 
-
 def _grid_spacing(ds, dim):
     import numpy as np
 
@@ -25,7 +24,6 @@ def _grid_spacing(ds, dim):
     if coord.size < 2:
         raise ValueError(f"Cannot infer spacing for dim '{dim}' with size {coord.size}")
     return float(abs(np.median(np.diff(coord))))
-
 
 def _target_coord(coord, new_spacing):
     import numpy as np
@@ -37,7 +35,6 @@ def _target_coord(coord, new_spacing):
     if coord[0] > coord[-1]:
         target = target[::-1]
     return target
-
 
 def _empirical_qmap_1d(model, ref):
     import numpy as np
@@ -57,7 +54,6 @@ def _empirical_qmap_1d(model, ref):
     out[m_valid] = np.interp(quants, ref_q, sorted_ref)
     return out
 
-
 def _qmap_dataarray(model_da, ref_da, time_dim):
     import xarray as xr
 
@@ -72,7 +68,6 @@ def _qmap_dataarray(model_da, ref_da, time_dim):
         output_dtypes=[float],
     )
 
-
 def _coords_match(a, b, atol=1e-6):
     import numpy as np
 
@@ -80,72 +75,58 @@ def _coords_match(a, b, atol=1e-6):
         return False
     return bool(np.allclose(a, b, atol=atol, rtol=0))
 
-
 @weather_skill(
     "downscale",
     _SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
-    variable="single_optional",
-    extra_args=[
-        (
-            ("--algorithm",),
-            {
-                "required": True,
-                "choices": ["linear-interpolation", "q-q"],
-                "help": (
-                    "Which downscaling algorithm adds information when going finer. "
-                    "'linear-interpolation' linearly interpolates onto the finer grid; "
-                    "'q-q' interpolates and then empirically quantile-maps onto a "
-                    "distribution reference."
-                ),
-            },
-        ),
-        (
-            ("-f", "--factor"),
-            {
-                "type": int,
-                "help": "Integer refinement factor (>= 1). New spacing = input spacing / factor.",
-            },
-        ),
-        (
-            ("--target-resolution",),
-            {
-                "type": float,
-                "help": "Target grid spacing in degrees. Must be finer-or-equal (<=) to the input.",
-            },
-        ),
-        (
-            ("--reference-grid",),
-            {
-                "help": (
-                    "Path to a reference Zarr whose lat/lon grid defines the finer "
-                    "target. The reference grid must be finer-or-equal to the input."
-                ),
-            },
-        ),
-        (
-            ("--qq-reference",),
-            {
-                "help": (
-                    "Reference Zarr whose distribution the q-q method maps the output "
-                    "onto. Empirical quantile mapping per grid cell along --time-dim. "
-                    "The reference must already be on the post-downscale lat/lon grid. "
-                    "Required for --algorithm q-q."
-                ),
-            },
-        ),
-        (
-            ("--time-dim",),
-            {
-                "default": "time",
-                "help": "Time dimension used as the sample axis for q-q mapping.",
-            },
-        ),
-    ],
+    inputs=["space"],
+    outputs=["space"]
 )
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument(
+            "--algorithm",
+            required=True,
+            choices=["linear-interpolation", "q-q"],
+            help=(
+                "Which downscaling algorithm adds information when going finer. "
+                "'linear-interpolation' linearly interpolates onto the finer grid; "
+                "'q-q' interpolates and then empirically quantile-maps onto a "
+                "distribution reference."
+            ),
+        )
+@weather_skill.argument(
+            "-f",
+            "--factor",
+            type=int,
+            help="Integer refinement factor (>= 1). New spacing = input spacing / factor.",
+        )
+@weather_skill.argument(
+            "--target-resolution",
+            type=float,
+            help="Target grid spacing in degrees. Must be finer-or-equal (<=) to the input.",
+        )
+@weather_skill.argument(
+            "--reference-grid",
+            help=(
+                "Path to a reference Zarr whose lat/lon grid defines the finer "
+                "target. The reference grid must be finer-or-equal to the input."
+            ),
+        )
+@weather_skill.argument(
+            "--qq-reference",
+            help=(
+                "Reference Zarr whose distribution the q-q method maps the output "
+                "onto. Empirical quantile mapping per grid cell along --time-dim. "
+                "The reference must already be on the post-downscale lat/lon grid. "
+                "Required for --algorithm q-q."
+            ),
+        )
+@weather_skill.argument(
+            "--time-dim",
+            default="time",
+            help="Time dimension used as the sample axis for q-q mapping.",
+        )
 def downscale(
-    ds, variable, algorithm, factor, target_resolution, reference_grid, qq_reference, time_dim
+    ds, variable, algorithm, factor, target_resolution, reference_grid, qq_reference, time_dim, **kwargs
 ):
     """Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
     from pathlib import Path
@@ -296,7 +277,6 @@ def downscale(
             out_ds[v] = mapped
 
     return out_ds
-
 
 if __name__ == "__main__":
     downscale()

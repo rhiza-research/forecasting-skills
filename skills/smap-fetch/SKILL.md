@@ -34,7 +34,7 @@ skill is built for a bounded `--bbox` over a short window — pass `--bbox`.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
 ```
 
 Requires Earthdata credentials in the environment (`EARTHDATA_USERNAME` /
@@ -42,7 +42,7 @@ Requires Earthdata credentials in the environment (`EARTHDATA_USERNAME` /
 like `imerg-fetch`.
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
   `YYYY-MM-DD`. Keep windows short — each day is a separate large granule.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees (optional). Strongly
   recommended for every run, since each daily granule is the entire ~690 MB
@@ -129,10 +129,10 @@ trimming.
 
 ```bash
 # Soil moisture over a Horn-of-Africa bbox for two days (AM overpass)
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start 2024-06-01 --end 2024-06-02 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start-time 2024-06-01 --end-time 2024-06-02 \
   -o /tmp/smap.zarr
 
 # One week ending at a recent date, PM overpass
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start 2024-05-26 --end 2024-06-01 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start-time 2024-05-26 --end-time 2024-06-01 \
   --overpass PM -o /tmp/smap_pm.zarr
 ```

@@ -29,20 +29,15 @@ SHORTNAMES = {
     "final": "GPM_3IMERGDF",
 }
 
-
 @weather_skill(
     "imerg-fetch",
     _SKILL_VERSION,
-    outputs=["data"],
-    dates="range",
-    extra_args=[
-        (
-            ("--version",),
-            {"default": "late", "choices": list(SHORTNAMES)},
-        ),
-    ],
+    outputs=["observations"]
 )
-def fetch(start_time, end_time, version):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--version", default="late", choices=list(SHORTNAMES))
+def fetch(start_time, end_time, version, **kwargs):
     """Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
     import earthaccess
     import xarray as xr
@@ -128,7 +123,6 @@ def fetch(start_time, end_time, version):
         )
         stamp_cf_attrs(ds)
         return ds
-
 
 if __name__ == "__main__":
     fetch()

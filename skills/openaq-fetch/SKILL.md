@@ -31,7 +31,7 @@ station-schema Zarr store.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox N/W/S/E --start YYYY-MM-DD --end YYYY-MM-DD [-v VAR ...] -o <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox N/W/S/E --start-time YYYY-MM-DD --end-time YYYY-MM-DD [-v VAR ...] -o <path.zarr>
 ```
 
 Requires `OPENAQ_API_KEY` in the environment (free; register at
@@ -41,7 +41,7 @@ https://explore.openaq.org/register).
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees (required; selects which
   monitoring locations to fetch). To fetch over a country, get its bbox from the
   `resolve-region` skill.
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
   `YYYY-MM-DD`. A thin trailing tail of not-yet-reported days near the present
   is normal.
 - `--variable`, `-v` — restrict to one pollutant; repeat once per variable.
@@ -137,10 +137,10 @@ zarr-writing skills append their own entry. `args` records `bbox`, the sorted
 
 ```bash
 # PM2.5 for NYC-area stations over three days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start 2024-06-01 --end 2024-06-03 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-03 \
   -v pm25 -o /tmp/openaq.zarr
 
 # NO2 + O3 over a small bbox for one week
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start 2024-06-01 --end 2024-06-07 \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-07 \
   -v no2 -v o3 -o /tmp/openaq_gases.zarr
 ```

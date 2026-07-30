@@ -39,7 +39,6 @@ _INDEX_RE = re.compile(r"-?[0-9]+")
 _NUM_INT_RE = re.compile(r"-?[0-9]+")
 _NUM_FLOAT_RE = re.compile(r"-?([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)([eE][+-]?[0-9]+)?")
 
-
 def _fmt_coord_value(v) -> str:
     """Render one coord element for an error-message sample."""
     import numpy as np
@@ -51,12 +50,10 @@ def _fmt_coord_value(v) -> str:
         return str(pd.Timedelta(v))
     return str(v)
 
-
 def _fail_parse(raw: str, dim: str, dtype, expected: str) -> None:
     raise UsageError(
         f"--value '{raw}' is not parseable for coord '{dim}' (dtype {dtype}); expected {expected}."
     )
-
 
 def _parse_value(raw: str, coord_vals, dim: str):
     """Parse a ``--value`` literal against the coord's dtype family.
@@ -123,33 +120,26 @@ def _parse_value(raw: str, coord_vals, dim: str):
         "select by position with --index instead."
     )
 
-
 @weather_skill(
     "select",
     _SKILL_VERSION,
     inputs=["any"],
-    outputs=["any"],
-    extra_args=[
-        (("--dim",), {"required": True, "help": "Dimension to select along (exactly one)."}),
-        (
-            ("--index",),
-            {
-                "action": "append",
-                "help": "Integer position to select (repeat once per position; negative positions "
-                "count from the end). Mutually exclusive with --value.",
-            },
-        ),
-        (
-            ("--value",),
-            {
-                "action": "append",
-                "help": "Coordinate value to select, parsed against the coord's dtype (repeat once "
-                "per value). Mutually exclusive with --index.",
-            },
-        ),
-    ],
+    outputs=["any"]
 )
-def select(ds, dim, index, value):
+@weather_skill.argument("--dim", required=True, help="Dimension to select along (exactly one).")
+@weather_skill.argument(
+            "--index",
+            action="append",
+            help="Integer position to select (repeat once per position; negative positions "
+            "count from the end). Mutually exclusive with --value.",
+        )
+@weather_skill.argument(
+            "--value",
+            action="append",
+            help="Coordinate value to select, parsed against the coord's dtype (repeat once "
+            "per value). Mutually exclusive with --index.",
+        )
+def select(ds, dim, index, value, **kwargs):
     """Select entries along one named dimension of a weather-skills envelope Zarr."""
     import numpy as np
 
@@ -245,7 +235,6 @@ def select(ds, dim, index, value):
         out_ds = ds.isel({dim: positions})
 
     return out_ds
-
 
 if __name__ == "__main__":
     select()

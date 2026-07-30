@@ -132,7 +132,6 @@ VAR_MAP = {
 }
 DEFAULT_VARIABLES = ["precip", "tmax", "tmin"]
 
-
 def _load_stations(bbox):
     """Fetch and parse ghcnd-stations.txt, optionally filtered to a bbox.
 
@@ -169,7 +168,6 @@ def _load_stations(bbox):
         stations = stations[lat_in & lon_in]
     return stations.set_index("station_id")
 
-
 def _fetch_station_csv(station_id: str):
     """GET one station's gzip CSV bytes, retrying once on a transient error.
 
@@ -190,7 +188,6 @@ def _fetch_station_csv(station_id: str):
                 continue
             raise
     return None
-
 
 def _station_frame(station_id: str, elements: dict, start_int: int, end_int: int):
     """Return a daily DataFrame (time index, canonical-variable columns) for one
@@ -241,7 +238,6 @@ def _station_frame(station_id: str, elements: dict, start_int: int, end_int: int
     daily["station_id"] = station_id
     return daily
 
-
 def _var_attrs(ds) -> dict:
     """Per-variable CF attr dicts from VAR_MAP, udunits-validated.
 
@@ -272,7 +268,6 @@ def _var_attrs(ds) -> dict:
         }
     return attrs
 
-
 def _set_write_encoding(ds) -> None:
     """Controlled write encodings, applied after the decorator's encoding clear.
 
@@ -286,29 +281,25 @@ def _set_write_encoding(ds) -> None:
     for canonical in ds.data_vars:
         ds[canonical].encoding["_FillValue"] = np.float64(np.nan)
 
-
 @weather_skill(
     "ghcn-daily-fetch",
     _SKILL_VERSION,
-    outputs=["station"],
-    dates="range",
-    region="optional",
-    variable="multiple_optional",
-    extra_args=[
-        (
-            ("--workers",),
-            {
-                "type": int,
-                "default": DEFAULT_WORKERS,
-                "help": (
-                    f"Max concurrent per-station download threads (default {DEFAULT_WORKERS}). "
-                    "Lower this if the server returns throttling errors."
-                ),
-            },
-        ),
-    ],
+    outputs=["station"]
 )
-def fetch(start_time, end_time, bbox, workers, variable):
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument(
+            "--workers",
+            type=int,
+            default=DEFAULT_WORKERS,
+            help=(
+                f"Max concurrent per-station download threads (default {DEFAULT_WORKERS}). "
+                "Lower this if the server returns throttling errors."
+            ),
+        )
+def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
     """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
@@ -435,7 +426,6 @@ def fetch(start_time, end_time, bbox, workers, variable):
     verify_cf_dsg(ds)
     _set_write_encoding(ds)
     return ds
-
 
 if __name__ == "__main__":
     fetch()

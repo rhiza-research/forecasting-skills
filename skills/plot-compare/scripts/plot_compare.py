@@ -49,7 +49,6 @@ PRECIP_COLORS = [
 ]
 PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
 
-
 def _pick_time_dim(ds, override):
     if override:
         return override
@@ -59,10 +58,8 @@ def _pick_time_dim(ds, override):
         return "step"
     return None
 
-
 def _is_station(ds):
     return "station_id" in ds.dims
-
 
 def _format_single(t, bin_width=None):
     """Render a time-bin label.
@@ -109,7 +106,6 @@ def _format_single(t, bin_width=None):
     except (TypeError, ValueError):
         return end.date().isoformat()
     return f"{start.date().isoformat()} to {end.date().isoformat()}"
-
 
 def _load_admin_boundaries(bbox=None):
     """Natural Earth admin-1 boundaries via cartopy downloader.
@@ -160,7 +156,6 @@ def _load_admin_boundaries(bbox=None):
             )
     return gdf
 
-
 def _median_bin_width(time_values):
     """Return median spacing of a 1-D time coord.
 
@@ -197,7 +192,6 @@ def _median_bin_width(time_values):
         return None
     return pd.Timedelta(pd.Series(diffs).median())
 
-
 def _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax):
     lats = ds["latitude"].values
     lons = ds["longitude"].values
@@ -212,7 +206,6 @@ def _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax):
         s=30,
     )
 
-
 def _grid_panel(ax, sel, cmap, norm, vmin, vmax):
     lat_dim = cf_dim(sel, "latitude")
     lon_dim = cf_dim(sel, "longitude")
@@ -226,7 +219,6 @@ def _grid_panel(ax, sel, cmap, norm, vmin, vmax):
         vmax=vmax,
         add_colorbar=False,
     )
-
 
 def _ax_bounds(ds, variable):
     if _is_station(ds):
@@ -246,98 +238,75 @@ def _ax_bounds(ds, variable):
         float(np.nanmax(lats)),
     )
 
-
 def _dataset_label(ds, fallback):
     src = ds.attrs.get("weather_skills_source")
     if isinstance(src, str) and src.strip():
         return Path(src).stem
     return fallback
 
-
 @weather_skill(
     "plot-compare",
     _SKILL_VERSION,
     inputs=["any", "any"],
-    outputs=["visualization"],
-    region="optional",
-    variable="single_optional",
-    extra_args=[
-        (
-            ("--variable-a",),
-            {
-                "default": None,
-                "help": "Variable for row A. Overrides --variable for that row. "
-                "Default: --variable, else first real data var of input A.",
-            },
-        ),
-        (
-            ("--variable-b",),
-            {
-                "default": None,
-                "help": "Variable for row B. Overrides --variable for that row. "
-                "Default: --variable, else first real data var of input B.",
-            },
-        ),
-        (
-            ("--colormap",),
-            {
-                "default": None,
-                "help": "matplotlib colormap name. In shared-scale mode, when omitted the "
-                "categorical precipitation colormap with BoundaryNorm is used. In "
-                "independent-scale mode it is the per-row default (falls back to "
-                "'viridis'); --colormap-a/-b override it per row.",
-            },
-        ),
-        (
-            ("--colormap-a",),
-            {
-                "default": None,
-                "help": "matplotlib colormap for row A in independent-scale mode "
-                "(precedence: --colormap-a, then --colormap, then 'viridis').",
-            },
-        ),
-        (
-            ("--colormap-b",),
-            {
-                "default": None,
-                "help": "matplotlib colormap for row B in independent-scale mode "
-                "(precedence: --colormap-b, then --colormap, then 'viridis').",
-            },
-        ),
-        (
-            ("--shared-scale",),
-            {
-                "action": "store_true",
-                "help": "Force one shared color scale across both rows. Default: shared "
-                "when both rows resolve to the same variable AND matching units, else "
-                "independent per-row scales.",
-            },
-        ),
-        (
-            ("--independent-scale",),
-            {
-                "action": "store_true",
-                "help": "Force per-row color scales (each row its own vmin/vmax/colorbar). "
-                "Default: independent unless both rows are the same variable + units.",
-            },
-        ),
-        (("--panels",), {"type": int, "default": 3}),
-        (
-            ("--time-dim",),
-            {"default": None, "help": "Override the time axis. Defaults to time, else step."},
-        ),
-        (("--title",), {"default": None, "help": "Optional figure title."}),
-        (
-            ("--mask-geojson",),
-            {
-                "default": None,
-                "help": "Path to a GeoJSON boundary polygon. Gridded cells outside the "
-                "polygon are set to NaN before plotting. Use resolve-region's --geojson "
-                "output to produce a country polygon.",
-            },
-        ),
-    ],
+    outputs=["visualization"]
 )
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument(
+            "--variable-a",
+            default=None,
+            help="Variable for row A. Overrides --variable for that row. "
+            "Default: --variable, else first real data var of input A.",
+        )
+@weather_skill.argument(
+            "--variable-b",
+            default=None,
+            help="Variable for row B. Overrides --variable for that row. "
+            "Default: --variable, else first real data var of input B.",
+        )
+@weather_skill.argument(
+            "--colormap",
+            default=None,
+            help="matplotlib colormap name. In shared-scale mode, when omitted the "
+            "categorical precipitation colormap with BoundaryNorm is used. In "
+            "independent-scale mode it is the per-row default (falls back to "
+            "'viridis'); --colormap-a/-b override it per row.",
+        )
+@weather_skill.argument(
+            "--colormap-a",
+            default=None,
+            help="matplotlib colormap for row A in independent-scale mode "
+            "(precedence: --colormap-a, then --colormap, then 'viridis').",
+        )
+@weather_skill.argument(
+            "--colormap-b",
+            default=None,
+            help="matplotlib colormap for row B in independent-scale mode "
+            "(precedence: --colormap-b, then --colormap, then 'viridis').",
+        )
+@weather_skill.argument(
+            "--shared-scale",
+            action="store_true",
+            help="Force one shared color scale across both rows. Default: shared "
+            "when both rows resolve to the same variable AND matching units, else "
+            "independent per-row scales.",
+        )
+@weather_skill.argument(
+            "--independent-scale",
+            action="store_true",
+            help="Force per-row color scales (each row its own vmin/vmax/colorbar). "
+            "Default: independent unless both rows are the same variable + units.",
+        )
+@weather_skill.argument("--panels", type=int, default=3)
+@weather_skill.argument("--time-dim", default=None, help="Override the time axis. Defaults to time, else step.")
+@weather_skill.argument("--title", default=None, help="Optional figure title.")
+@weather_skill.argument(
+            "--mask-geojson",
+            default=None,
+            help="Path to a GeoJSON boundary polygon. Gridded cells outside the "
+            "polygon are set to NaN before plotting. Use resolve-region's --geojson "
+            "output to produce a country polygon.",
+        )
 def plot_compare(
     ds_a,
     ds_b,
@@ -355,6 +324,7 @@ def plot_compare(
     time_dim,
     mask_geojson,
     output,
+    **kwargs,
 ):
     """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
 
@@ -968,7 +938,6 @@ def plot_compare(
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return output
-
 
 if __name__ == "__main__":
     plot_compare()

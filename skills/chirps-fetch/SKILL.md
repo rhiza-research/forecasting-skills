@@ -23,11 +23,11 @@ Coverage starts in 1998 (CHIRPS v3.0 `sat`); dates before 1998 are unavailable a
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YYYY-MM-DD --output <path.zarr>
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--workers` — max concurrent per-day download threads (default 2). Bounds the thread pool that fetches each day's TIF over HTTPS. The default is deliberately conservative: CHC's data server can throttle and temporarily block IPs under higher concurrency. If throttling errors appear, lower it to 1. If requests are refused outright, the IP may be temporarily blocked — wait before retrying; lowering `--workers` helps only before a block.
 
@@ -45,7 +45,7 @@ All per-day TIFs are staged to a temp directory before writing, so a very long w
 
 ### Production lag and partial-tail behavior
 
-Historical days come from the validated final product and carry no publication lag; the lag and partial-tail behavior described here apply only to the recent tail, which is served by the preliminary product. The CHIRPS v3.0 daily preliminary product is published on a pentad-based schedule: per-day files appear in batches **2 days after each pentad closes** (pentads end on the 5th, 10th, 15th, 20th, 25th, and last day of each month). Best-case lag is 2 days (the last day of a pentad, published 2 days later); worst case is ~7 days (the day right after a pentad ends, which waits for the next pentad to close before its batch is published). Average lag is 4-5 days. See https://www.chc.ucsb.edu/data/chirps3 for the official schedule. When the requested `--end` falls inside the lag window, the script writes a partial dataset covering only the days that were available on the server, logs the missing days and effective end date to stderr, and exits 0. If days are missing from the middle of the range (not the tail), the script exits 2 — that's a server-side data gap, not a lag issue.
+Historical days come from the validated final product and carry no publication lag; the lag and partial-tail behavior described here apply only to the recent tail, which is served by the preliminary product. The CHIRPS v3.0 daily preliminary product is published on a pentad-based schedule: per-day files appear in batches **2 days after each pentad closes** (pentads end on the 5th, 10th, 15th, 20th, 25th, and last day of each month). Best-case lag is 2 days (the last day of a pentad, published 2 days later); worst case is ~7 days (the day right after a pentad ends, which waits for the next pentad to close before its batch is published). Average lag is 4-5 days. See https://www.chc.ucsb.edu/data/chirps3 for the official schedule. When the requested `--end-time` falls inside the lag window, the script writes a partial dataset covering only the days that were available on the server, logs the missing days and effective end date to stderr, and exits 0. If days are missing from the middle of the range (not the tail), the script exits 2 — that's a server-side data gap, not a lag issue.
 
 ### Provenance
 
@@ -60,5 +60,5 @@ output's provenance with the `provenance` skill.
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-02-15 --output /tmp/chirps.zarr
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-02-15 --output /tmp/chirps.zarr
 ```

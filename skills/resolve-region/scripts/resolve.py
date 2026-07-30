@@ -15,7 +15,6 @@ from weather_skills_core import DataError, UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.9"
 
-
 def _iter_coords(coords):
     """Yield (lon, lat) pairs by walking a nested GeoJSON coordinate array.
 
@@ -32,7 +31,6 @@ def _iter_coords(coords):
         return
     for item in coords:
         yield from _iter_coords(item)
-
 
 def _lon_bounds(lons):
     """Compute the (W, E) longitude interval on the circle.
@@ -87,7 +85,6 @@ def _lon_bounds(lons):
     # east of the gap, E is the end of the band west of the gap, so W > E.
     return L[gap_index + 1], L[gap_index]
 
-
 def _bbox_from_geometry(geometry):
     """Compute (N, W, S, E) = (max lat, W, min lat, E).
 
@@ -105,26 +102,16 @@ def _bbox_from_geometry(geometry):
     w, e = _lon_bounds(lons)
     return max_lat, w, min_lat, e
 
-
 @weather_skill(
     "resolve-region",
-    _SKILL_VERSION,
-    extra_args=[
-        (
-            ("code",),
-            {
-                "help": "ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN",
-            },
-        ),
-        (
-            ("--geojson",),
-            {
-                "help": "Optional path: write the country's boundary polygon as GeoJSON",
-            },
-        ),
-    ],
+    _SKILL_VERSION
 )
-def resolve_region(code, geojson):
+@weather_skill.argument("code", help="ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN")
+@weather_skill.argument(
+            "--geojson",
+            help="Optional path: write the country's boundary polygon as GeoJSON",
+        )
+def resolve_region(code, geojson, **kwargs):
     """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
     if len(code) != 3 or not code.isalpha() or code != code.upper():
         raise UsageError(
@@ -161,7 +148,6 @@ def resolve_region(code, geojson):
         print(f"Wrote boundary polygon: {geojson}", file=sys.stderr)
 
     print(f"{n}/{w}/{s}/{e}")
-
 
 if __name__ == "__main__":
     resolve_region()
