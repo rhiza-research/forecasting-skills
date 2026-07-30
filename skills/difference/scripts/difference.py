@@ -41,8 +41,8 @@ def _to_signed(da, np):
     return da
 
 @weather_skill(
-    "difference",
-    _SKILL_VERSION,
+    name="difference",
+    version=_SKILL_VERSION,
     inputs=["any", "any"],
     outputs=["any"]
 )

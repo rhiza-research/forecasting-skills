@@ -30,8 +30,8 @@ SHORTNAMES = {
 }
 
 @weather_skill(
-    "imerg-fetch",
-    _SKILL_VERSION,
+    name="imerg-fetch",
+    version=_SKILL_VERSION,
     outputs=["observations"]
 )
 @weather_skill.argument("--start-time", required=True)

@@ -24,8 +24,8 @@ _SKILL_VERSION = "0.1.8"
 
 
 @weather_skill(
-    "step-to-time",
-    _SKILL_VERSION,
+    name="step-to-time",
+    version=_SKILL_VERSION,
     inputs=["forecast"],
     outputs=["observations"],
 )

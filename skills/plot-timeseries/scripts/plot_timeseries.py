@@ -52,8 +52,8 @@ def _dataset_label(ds, index):
     return f"input {index + 1}"
 
 @weather_skill(
-    "plot-timeseries",
-    _SKILL_VERSION,
+    name="plot-timeseries",
+    version=_SKILL_VERSION,
     inputs=["any+"],
     outputs=["visualization"]
 )

@@ -76,8 +76,8 @@ def _coords_match(a, b, atol=1e-6):
     return bool(np.allclose(a, b, atol=atol, rtol=0))
 
 @weather_skill(
-    "downscale",
-    _SKILL_VERSION,
+    name="downscale",
+    version=_SKILL_VERSION,
     inputs=["space"],
     outputs=["space"]
 )

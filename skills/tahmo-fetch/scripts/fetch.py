@@ -189,8 +189,8 @@ def _ensure_setup(state, countries: list):
     return state["api"], state["stations"], state["var_meta"]
 
 @weather_skill(
-    "tahmo-fetch",
-    _SKILL_VERSION,
+    name="tahmo-fetch",
+    version=_SKILL_VERSION,
     outputs=["station"]
 )
 @weather_skill.argument("--start-time", required=True)

@@ -454,8 +454,8 @@ def _render_script(data: dict) -> None:
     print("\n".join(lines))
 
 @weather_skill(
-    "provenance",
-    _SKILL_VERSION
+    name="provenance",
+    version=_SKILL_VERSION
 )
 @weather_skill.argument(
             "-i",

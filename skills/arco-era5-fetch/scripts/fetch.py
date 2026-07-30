@@ -242,8 +242,8 @@ def _set_time_encoding(ds, start_time) -> None:
         }
 
 @weather_skill(
-    "arco-era5-fetch",
-    _SKILL_VERSION,
+    name="arco-era5-fetch",
+    version=_SKILL_VERSION,
     outputs=["observations"]
 )
 @weather_skill.argument("--start-time", required=True)

@@ -22,8 +22,8 @@ from weather_skills_core import UsageError, weather_skill
 _SKILL_VERSION = "0.1.7"
 
 @weather_skill(
-    "reduce",
-    _SKILL_VERSION,
+    name="reduce",
+    version=_SKILL_VERSION,
     inputs=["any"],
     outputs=["any"]
 )

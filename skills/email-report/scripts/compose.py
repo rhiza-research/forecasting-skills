@@ -18,8 +18,8 @@ from weather_skills_core import UsageError, weather_skill
 _SKILL_VERSION = "0.1.8"
 
 @weather_skill(
-    "email-report",
-    _SKILL_VERSION
+    name="email-report",
+    version=_SKILL_VERSION
 )
 @weather_skill.argument("--from", dest="sender", required=True, help="From: header")
 @weather_skill.argument("--to", required=True, help="Comma-separated recipients")

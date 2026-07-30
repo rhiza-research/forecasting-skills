@@ -25,8 +25,8 @@ from weather_skills_core import UsageError, weather_skill
 _SKILL_VERSION = "0.1.3"
 
 @weather_skill(
-    "rename",
-    _SKILL_VERSION,
+    name="rename",
+    version=_SKILL_VERSION,
     inputs=["any"],
     outputs=["any"]
 )

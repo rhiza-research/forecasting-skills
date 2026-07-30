@@ -452,8 +452,8 @@ def _set_write_encoding(ds) -> None:
         ds[param].encoding["_FillValue"] = np.float64(np.nan)
 
 @weather_skill(
-    "openaq-fetch",
-    _SKILL_VERSION,
+    name="openaq-fetch",
+    version=_SKILL_VERSION,
     outputs=["station"]
 )
 @weather_skill.argument("--start-time", required=True)

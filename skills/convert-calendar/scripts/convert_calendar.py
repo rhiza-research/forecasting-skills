@@ -41,8 +41,8 @@ def _source_calendar(time_coord) -> str:
     return "standard"
 
 @weather_skill(
-    "convert-calendar",
-    _SKILL_VERSION,
+    name="convert-calendar",
+    version=_SKILL_VERSION,
     inputs=["any"],
     outputs=["any"]
 )

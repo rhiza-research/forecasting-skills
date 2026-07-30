@@ -137,8 +137,8 @@ def _resolve_standard_name(override, source_name, dim_changed: bool, canonical_t
     return source_name
 
 @weather_skill(
-    "unit-convert",
-    _SKILL_VERSION,
+    name="unit-convert",
+    version=_SKILL_VERSION,
     inputs=["any"],
     outputs=["any"]
 )

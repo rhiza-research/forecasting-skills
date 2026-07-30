@@ -430,8 +430,8 @@ def _set_write_encoding(ds) -> None:
     ds["soil_moisture"].encoding["_FillValue"] = np.float64(np.nan)
 
 @weather_skill(
-    "smap-fetch",
-    _SKILL_VERSION,
+    name="smap-fetch",
+    version=_SKILL_VERSION,
     outputs=["observations"]
 )
 @weather_skill.argument("--start-time", required=True)

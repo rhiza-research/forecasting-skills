@@ -26,8 +26,8 @@ def _coerce(values):
     return out
 
 @weather_skill(
-    "concat",
-    _SKILL_VERSION,
+    name="concat",
+    version=_SKILL_VERSION,
     inputs=["any+"],
     outputs=["any"]
 )

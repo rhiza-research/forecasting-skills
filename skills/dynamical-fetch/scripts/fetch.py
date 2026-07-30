@@ -81,8 +81,8 @@ def _bbox_subset(ds, bbox) -> object:
     return ds
 
 @weather_skill(
-    "dynamical-fetch",
-    _SKILL_VERSION,
+    name="dynamical-fetch",
+    version=_SKILL_VERSION,
     outputs=[["observations", "forecast", "ensemble_forecast"]]
 )
 @weather_skill.argument("--date")

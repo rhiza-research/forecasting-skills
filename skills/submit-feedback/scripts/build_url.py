@@ -32,8 +32,8 @@ def build_url(title: str, body: str) -> str:
     )
 
 @weather_skill(
-    "submit-feedback",
-    _SKILL_VERSION
+    name="submit-feedback",
+    version=_SKILL_VERSION
 )
 @weather_skill.argument("--title", required=True, help="Issue title; must not be empty.")
 @weather_skill.argument("--body", help="Issue body as a markdown string.")

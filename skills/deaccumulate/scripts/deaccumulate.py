@@ -87,8 +87,8 @@ def _units_look_like_rate(units: str) -> bool:
     )
 
 @weather_skill(
-    "deaccumulate",
-    _SKILL_VERSION,
+    name="deaccumulate",
+    version=_SKILL_VERSION,
     inputs=["forecast"],
     outputs=["forecast"]
 )

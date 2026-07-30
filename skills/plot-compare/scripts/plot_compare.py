@@ -245,8 +245,8 @@ def _dataset_label(ds, fallback):
     return fallback
 
 @weather_skill(
-    "plot-compare",
-    _SKILL_VERSION,
+    name="plot-compare",
+    version=_SKILL_VERSION,
     inputs=["any", "any"],
     outputs=["visualization"]
 )

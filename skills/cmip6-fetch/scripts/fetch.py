@@ -276,8 +276,8 @@ def _set_write_encoding(ds, source_calendar, source_time_units, fills) -> None:
     ds["time"].encoding["calendar"] = source_calendar
 
 @weather_skill(
-    "cmip6-fetch",
-    _SKILL_VERSION,
+    name="cmip6-fetch",
+    version=_SKILL_VERSION,
     outputs=["observations"]
 )
 @weather_skill.argument("--start-time", required=True)

@@ -245,8 +245,8 @@ def _open_day(tif: Path, day: date):
     return da
 
 @weather_skill(
-    "chirps-fetch",
-    _SKILL_VERSION,
+    name="chirps-fetch",
+    version=_SKILL_VERSION,
     outputs=["observations"]
 )
 @weather_skill.argument("--start-time", required=True)

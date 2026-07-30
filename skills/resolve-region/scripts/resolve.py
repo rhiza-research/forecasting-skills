@@ -103,8 +103,8 @@ def _bbox_from_geometry(geometry):
     return max_lat, w, min_lat, e
 
 @weather_skill(
-    "resolve-region",
-    _SKILL_VERSION
+    name="resolve-region",
+    version=_SKILL_VERSION
 )
 @weather_skill.argument("code", help="ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN")
 @weather_skill.argument(

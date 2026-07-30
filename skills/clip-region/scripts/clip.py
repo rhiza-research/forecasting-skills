@@ -13,8 +13,8 @@ from weather_skills_core import weather_skill
 _SKILL_VERSION = "0.1.11"
 
 @weather_skill(
-    "clip-region",
-    _SKILL_VERSION,
+    name="clip-region",
+    version=_SKILL_VERSION,
     inputs=["space"],
     outputs=["space"]
 )

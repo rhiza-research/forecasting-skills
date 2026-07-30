@@ -282,8 +282,8 @@ def _set_write_encoding(ds) -> None:
         ds[canonical].encoding["_FillValue"] = np.float64(np.nan)
 
 @weather_skill(
-    "ghcn-daily-fetch",
-    _SKILL_VERSION,
+    name="ghcn-daily-fetch",
+    version=_SKILL_VERSION,
     outputs=["station"]
 )
 @weather_skill.argument("--start-time", required=True)

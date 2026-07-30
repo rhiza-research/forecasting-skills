@@ -340,8 +340,8 @@ def _aggregate_step(ds, period, method):
     return xr.concat(chunks, dim="step").assign_coords(step=labels)
 
 @weather_skill(
-    "aggregate-temporal",
-    _SKILL_VERSION,
+    name="aggregate-temporal",
+    version=_SKILL_VERSION,
     inputs=[["time", "prediction_timedelta"]],
     outputs=["any"]
 )

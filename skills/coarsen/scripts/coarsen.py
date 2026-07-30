@@ -55,8 +55,8 @@ def _target_axis(coord_vals, resolution: float, offset: float):
     return target
 
 @weather_skill(
-    "coarsen",
-    _SKILL_VERSION,
+    name="coarsen",
+    version=_SKILL_VERSION,
     inputs=["space"],
     outputs=["space"]
 )

@@ -339,8 +339,8 @@ def _heatmap(
     return fig
 
 @weather_skill(
-    "plot",
-    _SKILL_VERSION,
+    name="plot",
+    version=_SKILL_VERSION,
     inputs=["any"],
     outputs=["visualization"]
 )

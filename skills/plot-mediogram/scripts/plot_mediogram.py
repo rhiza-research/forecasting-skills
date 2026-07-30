@@ -53,8 +53,8 @@ def _inner_stats(values):
     }
 
 @weather_skill(
-    "plot-mediogram",
-    _SKILL_VERSION,
+    name="plot-mediogram",
+    version=_SKILL_VERSION,
     inputs=["any", "any"],
     outputs=["visualization"]
 )

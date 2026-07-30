@@ -121,8 +121,8 @@ def _parse_value(raw: str, coord_vals, dim: str):
     )
 
 @weather_skill(
-    "select",
-    _SKILL_VERSION,
+    name="select",
+    version=_SKILL_VERSION,
     inputs=["any"],
     outputs=["any"]
 )

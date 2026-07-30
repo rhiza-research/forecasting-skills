@@ -176,8 +176,8 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
     return any(sig in haystack for sig in _S2S_EMBARGO_SIGNATURES)
 
 @weather_skill(
-    "ecmwf-fetch",
-    _SKILL_VERSION,
+    name="ecmwf-fetch",
+    version=_SKILL_VERSION,
     outputs=[["forecast", "ensemble_forecast"]]
 )
 @weather_skill.argument("--bbox", required=True)
