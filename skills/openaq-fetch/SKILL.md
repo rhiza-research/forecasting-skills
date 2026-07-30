@@ -1,6 +1,6 @@
 ---
 name: openaq-fetch
-description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3, SO2, CO) for a date range and region, and write a station-schema weather-skills envelope Zarr. Use when a task needs in-situ air-quality and atmospheric-composition data, e.g. to compare against gridded model output.
+description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3, SO2, CO) for a date range and region, and write a station-schema weather-skills standard dataset. Use when a task needs in-situ air-quality and atmospheric-composition data, e.g. to compare against gridded model output.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Uses the OpenAQ v3 REST API over HTTPS; requires a free OPENAQ_API_KEY in the environment (register at https://explore.openaq.org/register).
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -41,4 +41,4 @@ https://explore.openaq.org/register).
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees (required; selects which
   monitoring locations to fetch). To fetch over a country, get its bbox from the
   `resolve-region` skill.
-- `--start`, `--end` — inclusive date range. Each value is `YYYY-MM-DD` or `latest` (newest observation day available for the requested locations). Both ends inclusive. Offsets like `latest-3w` / `now` are not accepted (decorator exits 2). Prefer recording resolved absolute dates in provenance.
+- `--start`, `--end` — inclusive date range. Each value is `YYYY-MM-DD` or `latest` (newest observation day available for the requested locations). Both ends inclusive (see CONVENTIONS date grammar).

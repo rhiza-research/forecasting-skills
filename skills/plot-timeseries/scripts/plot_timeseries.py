@@ -12,7 +12,7 @@
 #   "zarr",
 # ]
 # ///
-"""Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
+"""Render a multi-input timeseries PNG from one or more weather-skills standard datasets.
 
 Each input contributes one 1D line trace on a shared set of axes, plotted
 against its time-like coord. Inputs whose selected variable is not already
@@ -77,7 +77,7 @@ def _pick_time_dim(da, override):
     help="Name of the time-like dim when not auto-detectable.",
 )
 def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_year):
-    """Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
+    """Render a multi-input timeseries PNG from one or more weather-skills standard datasets.
 
     Each input contributes one 1D line trace on a shared set of axes, plotted
     against its time-like coord. Inputs whose selected variable is not already

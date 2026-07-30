@@ -52,7 +52,6 @@ def _qmap_1d(model, ref):
     inputs=[Types.ANY],
     outputs=[Types.ANY],
     optional_args=("variable",),
-    hash_input=False,
 )
 @weather_skill.argument("--algorithm", required=True, choices=["linear-interpolation", "q-q"])
 @weather_skill.argument("--factor", "-f", type=int, default=None)

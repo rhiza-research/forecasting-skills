@@ -1,6 +1,6 @@
 ---
 name: plot
-description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills envelope Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile.
+description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills standard dataset. Use when you need to visualize a single dataset as a map or as a time/step profile.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
@@ -22,8 +22,8 @@ Source-agnostic single-dataset visualization. Two styles:
 
 ## When to use
 
-- Producing a quick-look forecast map panel for any gridded envelope.
-- Producing a time/step profile for a gridded or station envelope.
+- Producing a quick-look forecast map panel for any gridded dataset.
+- Producing a time/step profile for a gridded or station dataset.
 
 For two-dataset comparisons, use the `plot-compare` skill.
 
@@ -94,30 +94,9 @@ with `[units]` when the `units` attr is present.
 
 ### Provenance
 
-Every PNG carries two `tEXt` chunk keys written via matplotlib's
-`savefig(metadata=...)`:
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-- `weather_skills_history` — a JSON-encoded array of `{skill, version, args,
-  input}` entries with the same schema used for the zarr `weather_skills_history`
-  attribute. Each entry records one pipeline step. The last entry is
-  this `plot` invocation; preceding entries are the upstream chain
-  inherited from the input zarr's `weather_skills_history` (empty array if the
-  input had none — a stderr warning is emitted in that case and the
-  array contains only the `plot` entry).
-- `Software` — set to `forecasting-skills` so generic image tools like
-  `exiftool` surface the producer prominently.
-
-Read-back:
-
-```bash
-python3 -c "from PIL import Image; import json; print(json.loads(Image.open('out.png').info['weather_skills_history']))"
-```
-
-Or:
-
-```bash
-exiftool out.png
-```
 
 ## Examples
 

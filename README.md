@@ -3,7 +3,7 @@
 > ⚠️ **Under active development — not production ready.**
 >
 > These skills are an early experiment in tool composition for weather/climate
-> data pipelines. Interfaces, envelope schema, and skill boundaries may change
+> data pipelines. Interfaces, standard dataset schema, and skill boundaries may change
 > without notice. Fetchers hit real APIs and require credentials; middle-
 > pipeline skills have only been smoke-tested on small synthetic data. Do not
 > use in any automated workflow you rely on, and do not assume outputs are
@@ -28,7 +28,7 @@ Initiated by Rhiza Research.
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
 | `dynamical-fetch` | dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses) via `--dataset`, credential-free → Zarr |
 
-### Generic middle (operate on any envelope)
+### Generic middle (operate on any standard dataset)
 | Skill | What it does |
 |---|---|
 | `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) from bundled Natural Earth 1:110m boundaries |
@@ -42,14 +42,14 @@ Initiated by Rhiza Research.
 | `rename` | Rename a data variable to a new name |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
 | `reduce` | Collapse named dims with a statistic (mean/std/min/max/sum/median) — e.g. ensemble spread as the std across `number`, or a time-mean baseline |
-| `difference` | Subtract one envelope from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
+| `difference` | Subtract one dataset from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
 | `plot` | Heatmap (optionally restricted to a `--bbox` and/or masked to a `--mask-geojson` polygon) or timeseries PNG from one dataset |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
 
 ### Agent capabilities
 Capabilities the agent uses alongside pipelines; none of them produces an
-envelope output.
+standard dataset output.
 
 | Skill | What it does |
 |---|---|

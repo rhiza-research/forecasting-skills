@@ -207,7 +207,7 @@ def _stamp_data_var_attrs(ds) -> None:
         long_name = src.get("long_name") or str(name)
         standard_name = src.get("standard_name") or _CURATED_STANDARD_NAME.get(name)
         # Replace the source attr block so GRIB bookkeeping (short_name, etc.)
-        # does not ride along into the envelope.
+        # does not ride along into the dataset.
         new_attrs = {"units": units, "long_name": long_name}
         if standard_name:
             new_attrs["standard_name"] = standard_name
@@ -261,7 +261,6 @@ def _resolve(d):
     optional_args=("bbox",),
     exclude_args=("workers",),
     check_cache=True,
-    source="arco-era5",
 )
 @weather_skill.argument("--workers", type=int, default=1, help="Unused; reserved for future parallelism.")
 def fetch(start_time, end_time, variable, bbox, workers):
@@ -327,6 +326,8 @@ def fetch(start_time, end_time, variable, bbox, workers):
         raise DataError(
             f"failed while reading from the ARCO-ERA5 store ({type(exc).__name__}: {exc})."
         ) from None
+
+    ds.attrs.setdefault("source", 'ARCO ERA5 (Google WeatherNext / ECMWF)')
 
     return ds, EntryOverride(args={"start_time": start_iso, "end_time": end_iso})
 

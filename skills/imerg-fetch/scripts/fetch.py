@@ -121,7 +121,6 @@ def _resolve(d, shortname: str):
     outputs=[Types.GRIDDED],
     required_args=("start_time", "end_time"),
     check_cache=True,
-    source="imerg",
 )
 @weather_skill.argument(
     "--version",
@@ -216,6 +215,7 @@ def fetch(start_time, end_time, version):
         )
         stamp_cf_attrs(ds)
         ds = ds.load()
+        ds.attrs.setdefault("source", 'NASA GPM IMERG')
         return ds, EntryOverride(args={"start_time": start, "end_time": effective_end})
 
 

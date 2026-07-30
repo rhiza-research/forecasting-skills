@@ -1,6 +1,6 @@
 ---
 name: convert-calendar
-description: Convert a weather-skills envelope Zarr's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields a cftime axis. Dates not representable in the target calendar are dropped.
+description: Convert a weather-skills standard dataset's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields a cftime axis. Dates not representable in the target calendar are dropped.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py *)
@@ -11,7 +11,7 @@ metadata:
 
 # convert-calendar
 
-Convert the time axis of a weather-skills envelope Zarr to a target CF calendar. CF
+Convert the time axis of a weather-skills standard dataset to a target CF calendar. CF
 datasets may use different calendars — the standard (proleptic Gregorian)
 calendar of observations, or a model calendar such as `noleap` (no Feb 29) or
 `360_day` (twelve 30-day months). The same wall-clock date maps to a different
@@ -50,7 +50,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py --input <in.zarr
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr (any envelope with a wall-clock `time` axis).
+- `--input`, `-i` — input Zarr (any dataset with a wall-clock `time` axis).
 - `--output`, `-o` — output Zarr.
 - `--calendar` — target CF calendar name (`standard`, `proleptic_gregorian`,
   `noleap`, `360_day`, `all_leap`, `julian`, ...).
@@ -73,26 +73,9 @@ preserved.
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
-per-step entries `{skill, version, args, input}`. This skill reads the upstream
-input's `weather_skills_history` (default `[]` and a stderr warning if absent) and
-appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings (so `calendar`, `time_dim`, `align_on`);
-`input` is a `{basename, hash}` dict — `basename` is the upstream zarr's
-filename and `hash` is a sha256 of its stored bytes; `version` is the
-`_SKILL_VERSION` constant in `scripts/convert_calendar.py`, kept in
-lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow. Cache-hit comparison reads the existing output's `weather_skills_history`: a
-hit requires the upstream chain to match and the last entry's `skill`,
-`version`, `args`, and `input.basename` to match the proposed new entry; on a
-hit the script returns without recomputing. The `input.hash` is not part of the
-cache key, so a same-named input whose content changed in place still hits on
-basename.
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`align_on`), not the hyphenated CLI flag names (`--time-dim`, `--align-on`). A
-consumer reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>`
-invocation must translate underscore → hyphen.
 
 ## Examples
 

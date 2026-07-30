@@ -1,6 +1,6 @@
 ---
 name: plot-timeseries
-description: Render a single PNG with one 1D trace per input Zarr overlaid on a shared time axis. Use when you want to compare a variable across multiple weather-skills envelope Zarrs as line traces. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging.
+description: Render a single PNG with one 1D trace per input Zarr overlaid on a shared time axis. Use when you want to compare a variable across multiple weather-skills standard datasets as line traces. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py *)
@@ -12,7 +12,7 @@ metadata:
 # plot-timeseries
 
 Source-agnostic multi-input timeseries plotting. Takes one or more weather-skills
-envelope Zarrs and draws each as a 1D line on a single set of axes against
+standard datasets and draws each as a 1D line on a single set of axes against
 its time/step coord. Each trace is labeled in the legend by the input
 filename stem.
 
@@ -87,27 +87,9 @@ Only inputs that carry a `units` attr participate in the comparison.
 
 ### Provenance
 
-Every PNG carries a per-input `tEXt` chunk plus a producer key:
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-- `weather_skills_history_a`, `weather_skills_history_b`, `weather_skills_history_c`, ... — one key per
-  `-i` input, lettered by CLI position (first input → `_a`, second → `_b`,
-  third → `_c`, ...). Each value is a JSON-encoded array of
-  `{skill, version, args, input}` entries with the same schema used for the
-  zarr `weather_skills_history` attribute. The last entry records this
-  `plot-timeseries` invocation, with `input` set to that branch's
-  `{basename, hash}`. Preceding entries are the upstream chain inherited
-  from that input's `weather_skills_history` (empty if the input had none — a stderr
-  warning is emitted and the array contains only the rendering entry).
-  Inputs beyond 26 are rejected at argument-validation time, before any
-  rendering.
-- `Software` — set to `forecasting-skills` so generic image tools like
-  `exiftool` surface the producer prominently.
-
-Read-back:
-
-```bash
-python3 -c "from PIL import Image; import json; img = Image.open('out.png'); print(json.loads(img.info['weather_skills_history_a']))"
-```
 
 ## Examples
 

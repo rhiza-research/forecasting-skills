@@ -1,6 +1,6 @@
 ---
 name: provenance
-description: Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact (an envelope Zarr or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
+description: Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact (an standard dataset or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py *)
@@ -35,7 +35,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py --input <artifact> [--
 ```
 
 ### Arguments
-- `--input`, `-i` — the artifact to inspect: a weather-skills envelope Zarr (a
+- `--input`, `-i` — the artifact to inspect: a weather-skills standard dataset (a
   directory) or a plot PNG (a file ending `.png`). Required.
 - `--format` — output view, one of `human` (default), `json`, or `script`.
 - `--check` — validate the `weather_skills_history` schema instead of rendering it.
@@ -60,7 +60,7 @@ basename, and args. For a two-input PNG (`plot-compare` or
 `plot-mediogram`), each input branch is printed under its own label. For a
 `concat` zarr, the concat step lists each input branch's full recorded lineage
 beneath it (labeled `a`, `b`, … by input order). If the zarr carries a
-`weather_skills_source` attr it is printed first.
+CF `source` attr, it is printed first.
 
 ### `json`
 
@@ -104,10 +104,9 @@ each. Each value must be a JSON array, and each entry an object with:
 - `skill` — a non-empty string.
 - `version` — a string.
 - `args` — an object.
-- `input` — `null`, a `{basename, hash}` object, or an array of
-  `{basename, hash}` objects (each of which may also carry a nested `history`
-  chain, which is validated recursively, so a `concat` entry's per-input
-  branches are checked too).
+- `input` — `null`, a `{basename}` object, or an array of `{basename}` objects
+  (each of which may also carry a nested `history` chain, validated
+  recursively — e.g. a `concat` entry's per-input branches).
 
 Unknown or extra keys are noted but do not fail validation. Every violation is
 reported with its location (which key, which entry index, which rule).

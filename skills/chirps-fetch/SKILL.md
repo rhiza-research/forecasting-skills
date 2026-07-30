@@ -1,6 +1,6 @@
 ---
 name: chirps-fetch
-description: Fetch CHIRPS precipitation observations for a date range — the validated final product back to 1998, with a preliminary fallback for very recent days — and write a weather-skills envelope Zarr. Use when a task needs CHIRPS rainfall, recent or historical, e.g. to compare against a forecast or station data, or to build a reference period.
+description: Fetch CHIRPS precipitation observations for a date range — the validated final product back to 1998, with a preliminary fallback for very recent days — and write a weather-skills standard dataset. Use when a task needs CHIRPS rainfall, recent or historical, e.g. to compare against a forecast or station data, or to build a reference period.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -27,4 +27,4 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start YYYY-MM-DD --end YY
 ```
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is `YYYY-MM-DD` or `latest` (newest available CHIRPS prelim day (HTTPS probe)). Both ends inclusive. Offsets like `latest-3w` / `now` are not accepted (decorator exits 2). Prefer recording resolved absolute dates in provenance.
+- `--start`, `--end` — inclusive date range. Each value is `YYYY-MM-DD` or `latest` (newest available CHIRPS prelim day (HTTPS probe)). Both ends inclusive. See CONVENTIONS date grammar.

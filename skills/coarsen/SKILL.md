@@ -1,6 +1,6 @@
 ---
 name: coarsen
-description: Coarsen or align a weather-skills envelope Zarr by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
+description: Coarsen or align a weather-skills standard dataset by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py *)
@@ -45,7 +45,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --outpu
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr (any gridded envelope).
+- `--input`, `-i` — input Zarr (any gridded dataset).
 - `--output`, `-o` — output Zarr.
 - `--target-resolution` — target grid spacing in degrees.
 - `--offset` — grid offset in degrees; target points fall at `offset + k*resolution`.
@@ -64,28 +64,9 @@ lat/lon and data variables is preserved.
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array
-of per-step entries `{skill, version, args, input}`. This skill reads the
-upstream input's `weather_skills_history` (default `[]` and stderr warning if absent)
-and appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
-`basename` is the upstream zarr's filename and `hash` is a sha256 of its
-stored bytes; `version` is the `_SKILL_VERSION` constant in
-`scripts/coarsen.py`, kept in lockstep with `metadata.version` in this SKILL.md
-by the CI version-bump workflow. Cache-hit comparison reads the existing
-output's `weather_skills_history`: a hit requires the upstream chain to match and the
-last entry's `skill`, `version`, `args`, and `input.basename` to match the
-proposed new entry; on a hit the script returns without recomputing. The
-`input.hash` is not part of the cache key — the comparison rests on basename,
-args, and the upstream chain, and the input content is not re-hashed for the
-cache decision (so a same-named input whose content changed in place still
-hits on basename).
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-The `args` dict stores argparse dest names (underscored, e.g.
-`target_resolution`, `offset`), not the hyphenated CLI flag names
-(`--target-resolution`, `--offset`). A consumer reconstructing a
-`uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
-underscore → hyphen.
 
 ## Examples
 

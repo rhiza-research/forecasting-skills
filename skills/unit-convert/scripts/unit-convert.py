@@ -49,7 +49,6 @@ def _convert(values, src_units, dst_units):
     inputs=[Types.ANY],
     outputs=[Types.ANY],
     optional_args=("variable",),
-    hash_input=False,
 )
 @weather_skill.argument("--to-units", required=True)
 @weather_skill.argument("--standard-name", help="Override output CF standard_name.")

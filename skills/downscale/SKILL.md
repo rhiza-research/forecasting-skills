@@ -1,6 +1,6 @@
 ---
 name: downscale
-description: Downscale a weather-skills envelope Zarr onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
+description: Downscale a weather-skills standard dataset onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py *)
@@ -52,7 +52,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --out
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr (any gridded envelope).
+- `--input`, `-i` — input Zarr (any gridded dataset).
 - `--output`, `-o` — output Zarr.
 - `--algorithm` — `linear-interpolation` or `q-q`. Required.
 - `--factor`, `-f` — integer refinement factor (>= 1). New spacing = input spacing / factor (factor 1 = identity). Mutually exclusive with `--target-resolution` and `--reference-grid`.
@@ -72,26 +72,9 @@ mapped; others pass through unchanged.
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
-per-step entries `{skill, version, args, input}`. This skill reads the upstream
-input's `weather_skills_history` (default `[]` with a stderr warning if absent) and
-appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings — so `algorithm`, `factor`, `target_resolution`,
-`reference_grid`, `dims`, `variable`, `qq_reference`, and `time_dim` are
-recorded under their argparse dest names (underscored). `input` is a
-`{basename, hash}` dict for `--input`. When `--reference-grid` and/or
-`--qq-reference` are supplied, the entry also carries a `reference_inputs`
-field: a list of `{basename, hash}` dicts content-hashing each supplied
-reference zarr's stored bytes, so editing a reference in place (same path,
-changed content) invalidates the cache and forces a recompute. `version` is
-the `_SKILL_VERSION` constant in `scripts/downscale.py`, kept in lockstep
-with `metadata.version` in this SKILL.md by the CI version-bump workflow.
-Cache-hit comparison reads the existing output's `weather_skills_history`: a hit requires
-the upstream chain to match and the last entry's `skill`, `version`, `args`,
-`input.basename`, and `reference_inputs` to match the proposed new entry; on a
-hit the script returns without recomputing. The main `--input` hash is not part
-of the cache key (a renamed-but-unchanged input still hits on basename), but the
-secondary `reference_inputs` hashes are.
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
+
 
 ## Examples
 

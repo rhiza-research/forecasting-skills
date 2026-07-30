@@ -10,7 +10,7 @@
 # ///
 """Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact.
 
-Read-only. Takes one artifact -- a weather-skills envelope Zarr (a directory) or a
+Read-only. Takes one artifact -- a weather-skills standard dataset (a directory) or a
 plot PNG (a file ending .png) -- extracts its weather_skills_history chain(s), and
 renders one of three views: a human-readable lineage, the raw JSON chain,
 or a runnable bash script that reproduces the artifact. All output goes to
@@ -253,7 +253,7 @@ def _render_human(data: dict) -> None:
     chains = data["chains"]
     source = data.get("source")
     if source:
-        print(f"weather_skills_source: {source}")
+        print(f"source: {source}")
         print()
     multi = len(chains) > 1
     first = True
@@ -497,7 +497,7 @@ def _render_script(data: dict) -> None:
 def provenance(artifact, format, check):
     """Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact.
 
-    Read-only. Takes one artifact -- a weather-skills envelope Zarr (a directory) or a
+    Read-only. Takes one artifact -- a weather-skills standard dataset (a directory) or a
     plot PNG (a file ending .png) -- extracts its weather_skills_history chain(s), and
     renders one of three views: a human-readable lineage, the raw JSON chain,
     or a runnable bash script that reproduces the artifact. All output goes to

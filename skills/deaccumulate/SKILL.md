@@ -50,7 +50,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py --input <in.zarr> --
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr containing a forecast envelope with a `step` dim.
+- `--input`, `-i` — input Zarr containing a forecast dataset with a `step` dim.
 - `--output`, `-o` — output Zarr.
 - `--variable`, `-v` — variable to deaccumulate. If omitted and the input has a
   single data variable, that one is used. If multiple data vars are present,
@@ -68,23 +68,9 @@ If the input lacks a `step` dim, or has multiple data vars and no
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array
-of per-step entries `{skill, version, args, input}`. This skill reads the
-upstream input's `weather_skills_history` (default `[]` and stderr warning if absent)
-and appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
-`basename` is the upstream zarr's filename and `hash` is a sha256 of its
-stored bytes, so a renamed-but-unchanged input still cache-hits and a
-same-named-but-modified input correctly cache-misses; `version` is the
-`_SKILL_VERSION` constant in `scripts/deaccumulate.py`, kept in
-lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow.
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
-(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
-translate underscore → hyphen.
 
 ## Composition with aggregate-temporal
 

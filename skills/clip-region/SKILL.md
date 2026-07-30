@@ -1,6 +1,6 @@
 ---
 name: clip-region
-description: Spatially subset a weather-skills envelope Zarr to an explicit lat/lon bbox or a GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting. To clip to a country, get a bbox or --geojson polygon from the resolve-region skill.
+description: Spatially subset a weather-skills standard dataset to an explicit lat/lon bbox or a GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting. To clip to a country, get a bbox or --geojson polygon from the resolve-region skill.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
@@ -16,7 +16,7 @@ Source-agnostic spatial subset via `--bbox` (lat/lon slice) or `--geojson` (poly
 ## When to use
 
 - Narrowing a continental grid down to one country for plotting or per-country reporting.
-- Applying a custom bbox or polygon to any gridded or station envelope before further processing.
+- Applying a custom bbox or polygon to any gridded or station dataset before further processing.
 
 ## Usage
 
@@ -42,25 +42,9 @@ Same dims and variables, reduced to the requested window.
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array
-of per-step entries `{skill, version, args, input}`. This skill reads the
-upstream input's `weather_skills_history` (default `[]` and stderr warning if absent)
-and appends its own entry. `args` is the argparse namespace minus the
-`--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
-`basename` is the upstream zarr's filename and `hash` is a sha256 of its
-stored bytes, so a renamed-but-unchanged input still cache-hits and a
-same-named-but-modified input correctly cache-misses; `version` is the
-`_SKILL_VERSION` constant in `scripts/clip.py`, kept in lockstep with
-`metadata.version` in this SKILL.md by the CI version-bump workflow.
-Cache-hit comparison reads the existing output's
-`weather_skills_history`: a hit requires the upstream entries to match and the last
-entry's `skill`, `args`, and `input` to match the proposed new entry.
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
-(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
-translate underscore → hyphen.
 
 ## Example
 

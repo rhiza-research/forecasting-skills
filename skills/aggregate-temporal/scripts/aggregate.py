@@ -117,7 +117,6 @@ def _aggregate_step(ds, period, method):
     inputs=[Types.ANY],
     outputs=[Types.ANY],
     optional_args=("variable",),
-    hash_input=False,
 )
 @weather_skill.argument("--period", default=None, choices=["daily", "weekly", "dekadal", "monthly"])
 @weather_skill.argument("--window", type=int, default=None, help="Rolling window (mutex with --period).")

@@ -48,7 +48,7 @@ _SM_STANDARD_NAME = "volume_fraction_of_condensed_water_in_soil"
 # --- Source -> output transforms ---
 # Pass-through is the default for everything not listed here (values, fill, dtype,
 # time). The divergences this skill introduces between the raw SPL3SMP_E granule
-# and the output envelope are:
+# and the output dataset are:
 #
 #   - soil_moisture units: PASS THROUGH VERBATIM. The granule's `units` attribute
 #     (cm3/cm3, a dimensionless volumetric ratio) is read off the dataset and
@@ -393,7 +393,7 @@ def _stamp_cf(ds) -> None:
     standard_name/units/axis on lat/lon/time; soil_moisture standard_name +
     verbatim source units + long_name + grid_mapping; a latitude_longitude
     grid_mapping container variable. Validates the data-var units against udunits.
-    The provenance attrs (weather_skills_source/weather_skills_history) are
+    The provenance attr (weather_skills_history) is
     stamped by the decorator on every write, after this runs. The time
     udunits/calendar and the soil_moisture _FillValue are NOT set here — they
     live in the WRITE ENCODING so the per-variable .encoding clear cannot drop
@@ -468,7 +468,6 @@ def _cf_decode_check(ds) -> None:
     required_args=("start_time", "end_time"),
     optional_args=("bbox",),
     check_cache=True,
-    source="smap",
 )
 @weather_skill.argument(
     "--overpass",

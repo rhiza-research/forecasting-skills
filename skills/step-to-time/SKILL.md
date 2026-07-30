@@ -1,6 +1,6 @@
 ---
 name: step-to-time
-description: Realize a forecast envelope's `step` lead-time axis as wall-clock valid times (`time = init + step`), replacing the `step` dim with a `time` dim. Use it to compare a forecast against observations — e.g. before plot-compare, plot-timeseries, or difference against a time-based dataset.
+description: Realize a forecast dataset's `step` lead-time axis as wall-clock valid times (`time = init + step`), replacing the `step` dim with a `time` dim. Use it to compare a forecast against observations — e.g. before plot-compare, plot-timeseries, or difference against a time-based dataset.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py *)
@@ -11,12 +11,12 @@ metadata:
 
 # step-to-time
 
-Axis-realization primitive. A forecast envelope labels its temporal axis with
+Axis-realization primitive. A forecast dataset labels its temporal axis with
 lead times — a `step` dim (`timedelta64`) plus a scalar `time` coord holding
-the forecast init date — while observation envelopes carry a wall-clock `time`
+the forecast init date — while observation datasets carry a wall-clock `time`
 dim (`datetime64`). Skills that compare the two need both inputs on the same
 kind of axis. This skill computes `valid_time = init + step` and rewrites the
-envelope with the `step` dim replaced by a `time` dim labeled with those valid
+dataset with the `step` dim replaced by a `time` dim labeled with those valid
 times.
 
 ## When to use
@@ -44,7 +44,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py --input <in.zarr> --
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr containing a forecast envelope with a `step` dim
+- `--input`, `-i` — input Zarr containing a forecast dataset with a `step` dim
   and a scalar `time` init coord.
 - `--output`, `-o` — output Zarr.
 
@@ -73,20 +73,9 @@ message.
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: the input's chain plus
-an entry for this run, each entry `{skill, version, args, input}` (the
-`version` recorded in this skill's own entry is the value printed by its
-`--help`; inherited upstream entries carry their own versions). Flag values in
-`args` are recorded under underscored names (e.g. a flag `--time-dim` is
-recorded as `time_dim`); translate underscore → hyphen when reconstructing a
-CLI invocation. Inspect a written output's lineage with the `provenance` skill.
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-Re-running with identical arguments against an unchanged input and an existing
-output is a cheap no-op — reuse the same output path. A cache hit requires the
-same skill `version`, the same flags, the same input name, the same input
-content, and the same upstream history; any modification to the input forces a
-recompute (a renamed-but-unchanged input misses, and a modified same-named
-input misses).
 
 ## Example
 

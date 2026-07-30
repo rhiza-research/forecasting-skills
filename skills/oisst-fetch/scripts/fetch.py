@@ -281,7 +281,6 @@ def _resolve(d):
     required_args=("start_time", "end_time"),
     optional_args=("bbox",),
     check_cache=True,
-    source="oisst",
 )
 def fetch(start_time, end_time, bbox):
     """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a WeatherSkills standard dataset."""
@@ -347,6 +346,7 @@ def fetch(start_time, end_time, bbox):
     _cf_decode_check(ds)
     ds["time"].encoding = {"units": _TIME_UNITS, "calendar": _TIME_CALENDAR}
     ds["sst"].encoding["_FillValue"] = np.float32("nan")
+    ds.attrs.setdefault("source", 'NOAA OISST v2.1')
     return ds, EntryOverride(args={"start_time": start_iso, "end_time": end_iso})
 
 

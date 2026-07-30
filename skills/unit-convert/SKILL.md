@@ -1,6 +1,6 @@
 ---
 name: unit-convert
-description: Convert one data variable in a weather-skills envelope Zarr to a target units string (e.g. a precipitation flux `kg m-2 s-1` to a depth rate `mm/day`), updating the variable's values and its `units` attribute.
+description: Convert one data variable in a weather-skills standard dataset to a target units string (e.g. a precipitation flux `kg m-2 s-1` to a depth rate `mm/day`), updating the variable's values and its `units` attribute.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py *)
@@ -50,7 +50,7 @@ The output must be a distinct store from the input; the skill rejects a run
 where `--input` and `--output` resolve to the same path.
 
 ### Arguments
-- `--input`, `-i` — input Zarr containing a weather-skills envelope.
+- `--input`, `-i` — input Zarr containing a weather-skills standard dataset.
 - `--output`, `-o` — output Zarr (a distinct path from `--input`).
 - `--to-units` — target units string. Becomes the output variable's `units`
   attr verbatim.
@@ -97,21 +97,9 @@ is given.
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
-per-step entries `{skill, version, args, input}`. This skill reads the upstream
-input's `weather_skills_history` (default `[]` and stderr warning if absent) and appends
-its own entry. `args` is the argparse namespace minus the `--input`/`--output`
-path strings; `input` is a `{basename, hash}` dict — `basename` is the upstream
-zarr's filename and `hash` is a sha256 of its stored bytes, so a
-renamed-but-unchanged input still cache-hits and a same-named-but-modified input
-correctly cache-misses; `version` is the `_SKILL_VERSION` constant in
-`scripts/unit-convert.py`, kept in lockstep with `metadata.version` in this
-SKILL.md by the CI version-bump workflow.
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-The `args` dict stores argparse dest names (underscored, e.g. `to_units`), not
-the hyphenated CLI flag names (`--to-units`). A consumer reconstructing a
-`uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
-underscore → hyphen.
 
 ## Examples
 

@@ -94,7 +94,7 @@ def _rate_limit_wait() -> None:
 _TIME_UNITS = "days since 1970-01-01"
 _TIME_CALENDAR = "proleptic_gregorian"
 
-# OpenAQ parameter names exposed as canonical envelope variables. Units are NOT
+# OpenAQ parameter names exposed as canonical variables. Units are NOT
 # hardcoded — they are forwarded verbatim from each sensor's parameter.units in
 # the API response (µg/m³ for particulates, ppm/ppb for gases, varying by
 # provider) and validated under udunits at write time.
@@ -448,7 +448,6 @@ def _resolve(d):
     exclude_args=("workers",),
     required_env=("OPENAQ_API_KEY",),
     check_cache=True,
-    source="openaq",
 )
 @weather_skill.argument(
     "--workers",
@@ -637,8 +636,8 @@ def fetch(start_time, end_time, bbox, workers, variable):
         Conventions="CF-1.13",
         featureType="timeSeries",
         title="OpenAQ air-quality station observations",
-        source="OpenAQ v3 API (https://api.openaq.org/v3)",
         institution="OpenAQ",
+        source="OpenAQ v3 API (https://api.openaq.org/v3)",
         references="https://docs.openaq.org/",
         history=f"{datetime.now(UTC).isoformat()} openaq-fetch {start_iso}..{end_iso}",
     )

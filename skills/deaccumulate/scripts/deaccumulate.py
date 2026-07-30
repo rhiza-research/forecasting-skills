@@ -27,7 +27,6 @@ _RATE_RE = re.compile(
     inputs=[Types.ANY],
     outputs=[Types.ANY],
     optional_args=("variable",),
-    hash_input=False,
 )
 def deaccumulate(ds, variable):
     """Per-step diff along forecast step. Omitting --variable deaccumulates all data vars."""

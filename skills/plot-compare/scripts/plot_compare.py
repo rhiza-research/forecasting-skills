@@ -15,7 +15,7 @@
 #   "zarr",
 # ]
 # ///
-"""Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
+"""Side-by-side multi-panel PNG comparing two weather-skills standard datasets.
 
 Top row is dataset A, bottom row is dataset B. When exactly one of A/B
 is a station-schema Zarr, it is placed on the top row to match the
@@ -328,7 +328,7 @@ def plot_compare(
     bbox,
     mask_geojson,
 ):
-    """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
+    """Side-by-side multi-panel PNG comparing two weather-skills standard datasets.
 
     Top row is dataset A, bottom row is dataset B. When exactly one of A/B
     is a station-schema Zarr, it is placed on the top row to match the

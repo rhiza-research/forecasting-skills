@@ -14,7 +14,7 @@
 #   "zarr",
 # ]
 # ///
-"""Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
+"""Render a heatmap or timeseries PNG from a weather-skills standard dataset.
 
 The heatmap mode produces a CartoPy panel layout: one subplot per step
 (up to 4 columns), shared color scale, country/coastline boundaries, and a
@@ -403,7 +403,7 @@ def _entry_overrides(style, index):
 )
 @weather_skill.argument("--title", default=None)
 def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, bbox, mask_geojson):
-    """Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
+    """Render a heatmap or timeseries PNG from a weather-skills standard dataset.
 
     The heatmap mode produces a CartoPy panel layout: one subplot per step
     (up to 4 columns), shared color scale, country/coastline boundaries, and a

@@ -4,8 +4,8 @@ This module is the single source of truth for the patterns used by both
 `.github/scripts/bump-skill-version.py` (which rewrites the constant in
 lockstep with SKILL.md) and `tools/check_version_consistency.py` (which
 verifies they agree). It lives under `tools/` — outside `skills/` — so
-the "no shared helper module" rule in `CONVENTIONS.md` (which scopes to
-skill scripts) does not apply.
+the "no shared helper module" rule in weather-skills-core CONVENTIONS
+(which scopes to skill scripts) does not apply.
 
 The Python-constant patterns intentionally tolerate several stylistic
 variations that a contributor might use without changing semantics:

@@ -19,7 +19,6 @@ _SKILL_VERSION = "0.1.8"
     version=_SKILL_VERSION,
     inputs=[Types.ANY],
     outputs=[Types.ANY],
-    hash_input=False,
 )
 @weather_skill.argument(
     "--calendar",

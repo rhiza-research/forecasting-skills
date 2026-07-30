@@ -367,7 +367,6 @@ def _resolve(d):
     required_args=("start_time", "end_time"),
     exclude_args=("workers",),
     check_cache=True,
-    source="chirps",
 )
 @weather_skill.argument(
     "--workers",
@@ -539,6 +538,7 @@ def fetch(start_time, end_time, workers):
             stamp_cf_attrs(ds_day)
             pieces.append(ds_day)
         ds = xr.concat(pieces, dim="time")
+        ds.attrs.setdefault("source", 'CHIRPS v3.0 (Climate Hazards Center)')
         return ds, EntryOverride(args={"start_time": start, "end_time": effective_end})
 
 

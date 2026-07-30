@@ -20,7 +20,6 @@ _SKILL_VERSION = "0.1.11"
     inputs=[Types.ANY],
     outputs=[Types.ANY],
     optional_args=("bbox",),
-    hash_input=False,
 )
 @weather_skill.argument("--geojson", default=None, help="GeoJSON polygon path (mutex with --bbox).")
 @weather_skill.argument(

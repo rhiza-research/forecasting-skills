@@ -37,7 +37,6 @@ def _target_axis(coord_vals, resolution, offset):
     inputs=[Types.ANY],
     outputs=[Types.ANY],
     optional_args=("variable",),
-    hash_input=False,
 )
 @weather_skill.argument("--target-resolution", type=float, required=True)
 @weather_skill.argument("--offset", type=float, required=True)

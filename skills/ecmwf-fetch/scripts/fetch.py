@@ -127,7 +127,7 @@ def _split_wrapped_area(area: list[float]) -> list[list[float]]:
 
 
 def _concat_lon(datasets: list) -> object:
-    """Concatenate per-area decoded datasets along longitude into one envelope.
+    """Concatenate per-area decoded datasets along longitude into one dataset.
 
     Each dataset covers a disjoint longitude band of a wrapped bbox. Concatenate
     along the longitude dim, then drop any duplicated shared edge (the +-180
@@ -387,7 +387,6 @@ def _latest_probe(area: list[float]) -> dt.date:
     required_args=("time", "bbox"),
     required_env=("ECMWF_DATASTORES_URL", "ECMWF_DATASTORES_KEY"),
     check_cache=True,
-    source="ecmwf-s2s",
 )
 def fetch(bbox, time):
     """Fetch ECMWF S2S precipitation (cf + pf) and write a WeatherSkills standard dataset."""
@@ -406,7 +405,7 @@ def fetch(bbox, time):
         # resolve-region (Russia, Fiji) is split at +-180 into a western band
         # [N, W, S, 180] and an eastern band [N, -180, S, E]; each forecast type
         # (cf, pf) is then retrieved once per sub-area and the per-area decoded
-        # datasets are concatenated along longitude into one envelope. A normal
+        # datasets are concatenated along longitude into one dataset. A normal
         # (west <= east) bbox yields a single sub-area, so this is one retrieval
         # per forecast type as before.
         sub_areas = _split_wrapped_area(area)
@@ -543,6 +542,8 @@ def fetch(bbox, time):
         ds["tp"].attrs["long_name"] = "Total precipitation"
 
         ds = ds.load()
+
+    ds.attrs.setdefault("source", 'ECMWF S2S')
 
     return ds, EntryOverride(args={"time": date_iso})
 

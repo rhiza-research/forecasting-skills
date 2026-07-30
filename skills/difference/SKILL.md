@@ -1,6 +1,6 @@
 ---
 name: difference
-description: Subtract one weather-skills envelope Zarr from another (A − B) with xarray inner-join alignment and broadcasting — e.g. anomalies as a field minus its baseline mean, or a scenario-minus-historical change map. Use whenever two envelopes must be compared cell-by-cell as a difference field.
+description: Subtract one weather-skills standard dataset from another (A − B) with xarray inner-join alignment and broadcasting — e.g. anomalies as a field minus its baseline mean, or a scenario-minus-historical change map. Use whenever two datasets must be compared cell-by-cell as a difference field.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/difference.py *)
@@ -11,7 +11,7 @@ metadata:
 
 # difference
 
-Source-agnostic subtraction of two envelopes: the first input is the minuend
+Source-agnostic subtraction of two datasets: the first input is the minuend
 (A), the second the subtrahend (B). Subtraction is xarray-aligned — inner
 join on shared dims, broadcasting over dims present on only one side — so a
 `(time, latitude, longitude)` field minus a `(latitude, longitude)` baseline
@@ -92,21 +92,9 @@ One data variable per differenced variable, holding A − B on the aligned
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array
-of per-step entries `{skill, version, args, input}` (the `version` recorded in
-this skill's own entry is the value printed by its `--help`; inherited upstream
-entries carry their own versions). Because difference takes two inputs, its entry's `input`
-is a list with one item per input (A then B), each carrying that input's full
-upstream chain, so both branches are recorded; the top-level chain is the first
-input's chain followed by the difference entry. Inspect a written output's
-lineage with the `provenance` skill.
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
 
-Re-running with identical arguments against unchanged inputs and an existing
-output is a cheap no-op — reuse the same output path. A cache hit requires the
-same skill `version`, the same flags, the same input names, the same input
-content, and the same upstream history; any modification to either input forces
-a recompute (a renamed-but-unchanged input misses, and a modified same-named
-input misses).
 
 ## Examples
 

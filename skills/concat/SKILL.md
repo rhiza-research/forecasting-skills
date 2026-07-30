@@ -1,6 +1,6 @@
 ---
 name: concat
-description: Concatenate two or more weather-skills envelope Zarr stores along a named dimension, optionally assigning coordinate values to the new axis. Use when combining ensemble members, stitching time windows, or merging per-country fetches into a single dataset.
+description: Concatenate two or more weather-skills standard dataset stores along a named dimension, optionally assigning coordinate values to the new axis. Use when combining ensemble members, stitching time windows, or merging per-country fetches into a single dataset.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/concat.py *)
@@ -48,21 +48,9 @@ A single Zarr with the concat dim extended. Attrs from the first input are prese
 
 ### Provenance
 
-The output stamps a JSON-encoded `weather_skills_history` attr: an append-only array of
-per-step entries `{skill, version, args, input}`. Because concat takes multiple
-inputs, its entry's `input` field is a list of `{basename, hash, history}` dicts
-(one per input, in the order given on the command line). Each item's `history`
-holds that input's full `weather_skills_history` chain (an empty list when the input had
-no `weather_skills_history`), so the concat entry records every input branch and the
-output is fully reproducible from its own provenance. The output's top-level
-`weather_skills_history` is a single linear array: the first input's chain followed by
-this concat entry, matching the attr passthrough already done on the dataset.
-`args` is the argparse namespace minus the `--input`/`--output` path strings;
-`version` is the `_SKILL_VERSION` constant in `scripts/concat.py`, kept in
-lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow. Each input's `hash` is a sha256 over its stored bytes, so
-renamed-but-unchanged inputs still match and same-named-but-modified inputs
-do not.
+Appends a `{skill, version, args, input}` entry to `weather_skills_history`
+(see the `provenance` skill). Cache keys include input basename and upstream history (no content hash).
+
 
 ## Example
 

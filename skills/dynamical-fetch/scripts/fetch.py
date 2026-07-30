@@ -201,7 +201,7 @@ def fetch(bbox, dataset, date, start_time, end_time, variable):
     print(f"Fetching dynamical:{dataset} (shape={shape})", file=sys.stderr)
 
     ds.attrs.update(
-        weather_skills_source=f"dynamical:{dataset}",
+        source=f"dynamical:{dataset}",
         Conventions="CF-1.13",
     )
     stamp_cf_attrs(ds)

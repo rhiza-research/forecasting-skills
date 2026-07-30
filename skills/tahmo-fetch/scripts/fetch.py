@@ -72,7 +72,7 @@ COUNTRY_CODE = {
     "Kenya": "KE",
 }
 
-# TAHMO short codes -> canonical variable names used in the envelope.
+# TAHMO short codes -> canonical variable names used in the dataset.
 VAR_MAP = {
     "pr": "precip",
     "te": "temperature",
@@ -86,7 +86,7 @@ DAILY_AGG = {
     "humidity": "mean",
     "pressure": "mean",
 }
-# CF metadata per envelope variable as (standard_name, units_override).
+# CF metadata per variable as (standard_name, units_override).
 # Standard names are verified against the CF standard name table v93. Units
 # are pulled live from api.getVariables() so they track whatever TAHMO is
 # actually returning, except for `precip`: the raw TAHMO shortcode reports
@@ -252,7 +252,6 @@ def _resolve(d, countries: list):
     exclude_args=("workers",),
     required_env=("TAHMO_API_USERNAME", "TAHMO_API_PASSWORD"),
     check_cache=True,
-    source="tahmo",
 )
 @weather_skill.argument(
     "--country",
@@ -385,6 +384,8 @@ def fetch(start_time, end_time, workers, country):
         featureType="timeSeries",
         Conventions="CF-1.13",
     )
+
+    ds.attrs.setdefault("source", 'TAHMO')
 
     return ds, EntryOverride(
         args={

@@ -47,13 +47,13 @@ analysis.
   0.25°). `longitude`: 1-D, **ascending**, −180 … 179.75. The bbox slice keys
   off each axis's own order, so it is correct either way.
 - `init_time`: `datetime64`. `lead_time`: `timedelta64`. `ensemble_member`:
-  `int16`, **0-indexed with member 0 as the control** — already the envelope's
+  `int16`, **0-indexed with member 0 as the control** — already the standard dataset's
   `number` convention.
 - Bookkeeping coords present on forecast stores — `valid_time`,
   `expected_forecast_length`, `ingested_forecast_length` — and the CRS scalar
-  `spatial_ref` are dropped on output (not part of the envelope).
+  `spatial_ref` are dropped on output (not part of the standard dataset).
 
-## dynamical → weather-skills envelope mapping
+## dynamical → weather-skills standard dataset mapping
 
 | dynamical | Envelope | Notes |
 |---|---|---|
@@ -76,8 +76,8 @@ The HRRR stores use a Lambert Conformal Conic projection: native dims are 1-D
 as 2-D `(y, x)` fields and the CRS in `spatial_ref`
 (`grid_mapping_name=lambert_conformal_conic`, central meridian −97.5°). There is
 no 1-D latitude axis to slice. A faithful bbox subset stays curvilinear (`y`/`x`
-+ 2-D lat/lon), which the 1-D-lat/lon envelope does not model. Producing a
-regular lat/lon envelope from such a grid requires reprojection with
++ 2-D lat/lon), which the 1-D-lat/lon dataset does not model. Producing a
+regular lat/lon dataset from such a grid requires reprojection with
 interpolation — a grid transform — so it is out of scope for this fetcher, which
 rejects the two HRRR ids. The skill detects this generically: any opened dataset
 without 1-D `latitude` and `longitude` dims is rejected.
