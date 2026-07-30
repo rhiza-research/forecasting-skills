@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -10,9 +10,6 @@
 #   "matplotlib>=3.8,<3.10",
 #   "numpy",
 # ]
-#
-# [tool.uv.sources]
-# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
 

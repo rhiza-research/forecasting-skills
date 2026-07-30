@@ -2,8 +2,8 @@
 
 Skills in this repo declare their CLIs through the `@weather_skill` decorator
 from `weather_skills_core`, so a flag that does the same thing on different
-skills shares one canonical name, and `--start` / `--end` / `--date` share one
-relative-or-absolute date grammar across skills.
+skills shares one canonical name, and `--start` / `--end` / `--date` /
+`--time` share one date grammar (`YYYY-MM-DD` or `latest`).
 
 The canonical, enforced mapping of concept to flag name, together with the date
 grammar, lives in weather-skills-core:

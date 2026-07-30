@@ -70,10 +70,8 @@ out of scope for this fetcher.
 - `--dataset` — catalog dataset id from the table above (validated against
   `dynamical_catalog.list()`; an unknown id prints the available list and exits).
 - `--date` — forecast init date (**forecast datasets only**). Selects the **00
-  UTC** initialization of the resolved date. Accepts the relative-or-absolute
-  date grammar (below).
-- `--start`, `--end` — inclusive date range (**analysis datasets only**). Same
-  date grammar.
+  UTC** initialization of the resolved date. `YYYY-MM-DD` or `latest` (newest init_time (forecast) or time (analysis) in the dataset).
+- `--start`, `--end` — inclusive date range (**analysis datasets only**). Each value is `YYYY-MM-DD` or `latest` (newest init_time (forecast) or time (analysis) in the dataset). Both ends inclusive.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. The slice follows each
   axis's own order, so any region works regardless of how a dataset stores
   latitude. Omit to fetch the dataset's full native grid.
@@ -81,26 +79,9 @@ out of scope for this fetcher.
   (`-v temperature_2m -v precipitation_surface`). Omit to fetch all variables.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
-#### Relative-or-absolute date grammar
+#### Date grammar
 
-`--date`, `--start`, and `--end` each accept:
-
-- an absolute ISO date `YYYY-MM-DD`;
-- `now` or `today` — the current UTC date;
-- `latest` — the newest date present in the dataset (read from its `init_time`
-  for forecasts, `time` for analysis — no extra network call beyond the open);
-- an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
-  days). The offset is capped at 36525 days; a larger value, a future `+`
-  offset, a month/year unit, or any malformed value exits 2 before any data is
-  read.
-
-For `--start`/`--end`, absolute endpoints and ordinary relative ranges are
-inclusive of both ends. The **duration idiom** — start `B-<int>{d|w}` paired
-with end exactly its own base `B` (both `now`, or both `latest`) — yields an
-N-day window inclusive of `B` with the far edge shifted in by one (so
-`latest-3w .. latest` = 21 days incl. `latest`). For any relative token the
-resolved concrete date(s) are echoed to stderr before fetching. The cache key
-records the resolved absolute date(s), never the relative token.
+`--date`, `--start`, and `--end` accept only `YYYY-MM-DD` or `latest` (newest init_time (forecast) or time (analysis) in the dataset). Offsets like `latest-3w` / `now` are not accepted (decorator exits 2). Prefer recording resolved absolute dates in provenance.
 
 ### Output
 
@@ -137,7 +118,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gefs-forecas
 uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast --date 2026-06-01 -o /tmp/gfs.zarr
 
 # GFS analysis over a 3-week window ending at the newest available time
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start latest-3w --end latest \
+uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start 2026-05-10 --end latest \
   --bbox 12/-4/4/2 -o /tmp/gfs_analysis.zarr
 ```
 

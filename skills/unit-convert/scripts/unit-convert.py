@@ -1,13 +1,10 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 #   "cftime>=1.6",
 #   "cf-units>=3.3",
 # ]
-#
-# [tool.uv.sources]
-# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Convert data variable(s) to --to-units via cf-units (UDUNITS-2 / CF)."""
 

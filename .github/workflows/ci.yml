@@ -28,6 +28,24 @@ jobs:
       - run: uv run --script tools/check_inline_deps.py skills/
       - run: uv run --script tools/check_cftime_deps.py skills/
 
+  transforms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+      - name: Checkout weather-skills-core
+        uses: actions/checkout@v4
+        with:
+          repository: rhiza-research/weather-skills-core
+          path: .deps/weather-skills-core
+      - name: Transform smoke tests
+        env:
+          WEATHER_SKILLS_CORE: ${{ github.workspace }}/.deps/weather-skills-core
+        run: uv run --group dev pytest -q
+
   discover:
     runs-on: ubuntu-latest
     timeout-minutes: 2

@@ -1,5 +1,27 @@
 # Contributing
 
+## Local development against weather-skills-core
+
+Skill scripts declare `weather-skills-core` from its published git URL so
+standalone clones, CI, and skillkit installs resolve without a sibling checkout.
+When developing core and skills together, override that with an editable
+install of the local package:
+
+```bash
+# Sibling layout: weather-skills/{forecasting-skills,weather-skills-core}
+tools/run_with_local_core.sh skills/difference/scripts/difference.py --help
+
+# Equivalent:
+uv run --with-editable ../weather-skills-core --script skills/difference/scripts/difference.py --help
+```
+
+Set `WEATHER_SKILLS_CORE` if core lives somewhere other than
+`../weather-skills-core`. Transform smoke tests under `tests/` auto-use the
+sibling checkout when present (`uv run --group dev pytest`).
+
+Do **not** commit path-based `[tool.uv.sources]` for `weather-skills-core` in
+skill scripts — that breaks CI and published installs.
+
 ## Publish model
 
 `main` is the consumer-facing branch. Anything merged to `main` is considered
@@ -21,7 +43,7 @@ contributors never edit either by hand.
 1. Branch off `main`.
 2. Open a PR back into `main`.
 3. CI must pass (the `CI` workflow runs ruff format-check, ruff check, inline-dep
-   validation, and a `--help` invocation per script).
+   validation, transform smoke tests, and a `--help` invocation per script).
 4. Rebase onto `main` before merging — linear history is required.
 5. Use the GitHub merge button (squash-merge or rebase-merge, per-PR choice).
 
@@ -200,8 +222,8 @@ Configure these on `main` under Settings → Branches → Branch protection rule
 - **Require a pull request before merging**: on.
   - Require approvals: at least 1.
 - **Require status checks to pass before merging**: on.
-  - Required checks: the `ruff`, `inline-deps`, `discover`, and `script-help`
-    jobs from `.github/workflows/ci.yml`.
+  - Required checks: the `ruff`, `inline-deps`, `transforms`, `discover`, and
+    `script-help` jobs from `.github/workflows/ci.yml`.
 - **Require linear history**: on. (Forces rebase-or-squash; blocks merge
   commits, so the bump workflow's view of `github.event.before..github.sha`
   remains a clean linear range.)

@@ -12,7 +12,7 @@
 A set of composable [Agent Skills](https://agentskills.io) for building
 weather/climate data pipelines from an LLM-driven agent. Skills are
 source-specific fetchers (ingress), generic operators that work on a shared
-Zarr-based container (see [`ENVELOPE.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/ENVELOPE.md)), or capabilities the
+Zarr-based container (see [`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md)), or capabilities the
 agent uses alongside pipelines.
 
 Initiated by Rhiza Research.
@@ -37,7 +37,7 @@ Initiated by Rhiza Research.
 | `deaccumulate` | Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) into per-step diffs along the `step` axis |
 | `step-to-time` | Realize a forecast's `step` lead-time axis as wall-clock valid times (`time = init + step`) so it can be compared against time-based observations |
 | `unit-convert` | Convert a variable to target `--to-units` (e.g. precip flux `kg m-2 s-1` → depth rate `mm/day`, via a liquid-water density bridge) |
-| `downscale` | Spatial downscaling onto a finer grid (by factor, finer resolution, or a reference grid) via `--method` (linear-interpolation or q-q empirical quantile mapping) |
+| `downscale` | Spatial downscaling onto a finer grid (by factor, finer resolution, or a reference grid) via `--algorithm` (`linear-interpolation` or `q-q` empirical quantile mapping) |
 | `coarsen` | Coarsen or align a grid by linear interpolation onto a target `(resolution, offset)` — geometry only, adds no information |
 | `rename` | Rename a data variable to a new name |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
@@ -226,12 +226,12 @@ forecasting-skills email-report \
 In practice a user just states the goal in natural language and the agent
 picks and composes skills from this set.
 
-## Envelope contract
+## Standard dataset contract
 
 The generic middle skills rely on a shared Zarr shape — gridded
 `(number?, step|time, latitude, longitude)` or station
-`(time, station_id)` — documented in [`ENVELOPE.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/ENVELOPE.md). Fetchers
-produce an envelope; consumers only rely on dims, coords, data variables and
+`(time, station_id)` — documented in [`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md). Fetchers
+produce a standard dataset; consumers only rely on dims, coords, data variables and
 `weather_skills_*` attrs, never on per-variable codec encoding.
 
 ## CLI flag conventions

@@ -49,13 +49,11 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <
   e.g. `day`).
 - `--grid` — CMIP6 `grid_label` (e.g. `gn`, `gr1`). Required only when more than
   one grid matches the other facets; otherwise the single match is used.
-- `--start`, `--end` — inclusive date range. Each value is one of an absolute
-  ISO date `YYYY-MM-DD`; `now`/`today`; `latest` (the newest time present in the
-  resolved dataset); or an offset `now-<int>{d|w}` / `latest-<int>{d|w}`
-  (`w` = 7 days, capped at 36525 days). Absolute **future** dates are allowed
-  (scenario experiments run to 2100); only future `+` offsets are rejected. The
-  duration idiom and inclusive-both-ends boundary handling match the other
-  fetchers. The cache key records the resolved absolute dates, never the token.
+- `--start`, `--end` — inclusive date range. Each value is `YYYY-MM-DD` or
+  `latest` (newest time present in the resolved dataset). Both ends inclusive.
+  Absolute **future** dates are allowed (scenario experiments run to 2100).
+  Offsets like `latest-3w` / `now` are not accepted (decorator exits 2). Prefer
+  recording resolved absolute dates in provenance.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention so negative west/east values select correctly.
   Omit for the full native grid. To fetch over a country, get its bbox from the

@@ -1,11 +1,8 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 # ]
-#
-# [tool.uv.sources]
-# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
 

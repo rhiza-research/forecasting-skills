@@ -13,9 +13,21 @@ cli = "forecasting-skills"
 
 [tool.hatch.build.hooks.skills-runner]
 
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "numpy>=2.4",
+    "xarray>=2026.4",
+    "cftime>=1.6",
+    "zarr>=3.2",
+]
+
 [tool.uv.sources]
 skills-runner = { git = "https://github.com/tescalada/skills-runner" }
-weather-skills-core = { path = "../weather-skills-core", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
 
 [tool.ruff]
 line-length = 100

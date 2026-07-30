@@ -92,7 +92,7 @@ nothing needs to be installed first — `uvx` fetches the CLI on demand.
 ## `--check` (schema validation)
 
 `--check` validates the `weather_skills_history` on an artifact against the array
-contract in `ENVELOPE.md` and reports every violation it finds. It validates
+contract in `STANDARD_DATASET.md` and reports every violation it finds. It validates
 **schema shape**, not skill-name membership: a `skill` value may be any
 non-empty string, because external tools that emit `weather_skills_history` have their
 own skill names.

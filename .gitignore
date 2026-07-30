@@ -6,3 +6,6 @@ uv.lock
 _site
 __pycache__/
 *.py[cod]
+.deps/
+.pytest_cache/
+.venv/

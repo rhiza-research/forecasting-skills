@@ -1,11 +1,8 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
 # ]
-#
-# [tool.uv.sources]
-# weather-skills-core = { path = "../../../../weather-skills-core", editable = true }
 # ///
 """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""
 
