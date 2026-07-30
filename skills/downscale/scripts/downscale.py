@@ -78,7 +78,7 @@ def downscale(
 
     lat_dim, lon_dim = detect_spatial_dims(ds)
     if variable:
-        ds = ds[[variable[0]]]
+        ds = ds[list(dict.fromkeys(variable))]
     in_lat, in_lon = _spacing(ds, lat_dim), _spacing(ds, lon_dim)
 
     if reference_grid is not None:

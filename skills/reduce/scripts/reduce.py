@@ -43,13 +43,14 @@ def reduce(ds, variable, dim, method, lat_weighted):
         if lat_dim not in dims:
             raise UsageError(f"--lat-weighted needs --dim {lat_dim}")
 
-    selected = list(dict.fromkeys(variable)) if variable else [
-        v for v in ds.data_vars if any(d in ds[v].dims for d in dims)
-    ]
+    # No --variable: whole dataset (vars without the dim are skipped by rdims).
+    selected = list(dict.fromkeys(variable)) if variable else list(ds.data_vars)
     out = ds.copy()
     for var in selected:
         da = ds[var]
         rdims = [d for d in dims if d in da.dims]
+        if not rdims:
+            continue
         if method == "median" and da.chunks is not None and set(rdims) == set(da.dims):
             da = da.load()
         if method == "sum":

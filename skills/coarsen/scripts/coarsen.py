@@ -51,7 +51,7 @@ def coarsen(ds, variable, target_resolution, offset):
         raise UsageError("--target-resolution must be > 0")
     lat_dim, lon_dim = detect_spatial_dims(ds)
     if variable:
-        ds = ds[[variable[0]]]
+        ds = ds[list(dict.fromkeys(variable))]
     lon_vals = np.asarray(ds[lon_dim].values)
     if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
         ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)

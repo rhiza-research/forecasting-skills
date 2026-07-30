@@ -5,9 +5,9 @@
 #   "cftime>=1.6",
 # ]
 # ///
-"""Rename one data variable."""
+"""Rename one data variable (omit --variable after select left a single var)."""
 
-from weather_skills_core import Types, UsageError, weather_skill
+from weather_skills_core import Types, weather_skill
 
 _SKILL_VERSION = "0.1.3"
 
@@ -22,13 +22,9 @@ _SKILL_VERSION = "0.1.3"
 @weather_skill.argument("--to-name", required=True, help="New variable name.")
 def rename(ds, variable, to_name):
     """Rename one data variable."""
-    if variable is None:
-        if len(ds.data_vars) != 1:
-            raise UsageError(f"specify --variable; data_vars={list(ds.data_vars)}")
-        variable = next(iter(ds.data_vars))
-    else:
-        variable = variable[0]
-    return ds.rename({variable: to_name})
+    # No --variable: presume select already left the var of interest.
+    name = variable[0] if variable else next(iter(ds.data_vars))
+    return ds.rename({name: to_name})
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 from weather_skills_core import Types, UsageError, weather_skill
-from weather_skills_core.dataset import auto_variable, cf_dim
+from weather_skills_core.dataset import cf_dim
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"
@@ -45,19 +45,6 @@ def _pick_time_dim(da, override):
     raise ValueError(
         f"Could not identify a time-like dim in {list(da.dims)}; pass --time-dim explicitly."
     )
-
-
-def _one_variable(variable):
-    if variable is None:
-        return None
-    if len(variable) != 1:
-        raise UsageError(f"--variable must be given once; got {variable!r}")
-    return variable[0]
-
-
-def _dataset_label(ds, fallback):
-    src = ds.encoding.get("source")
-    return Path(src).stem if src else fallback
 
 
 @weather_skill(
@@ -108,7 +95,9 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
     import numpy as np
 
-    variable = _one_variable(variable) or auto_variable(datasets[0])
+    if variable is not None and len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    variable = variable[0] if variable else next(iter(datasets[0].data_vars), None)
     if variable is None:
         label0 = paths[0] if paths[0] is not None else "input 0"
         raise UsageError(f"no usable variable in {label0}.")
@@ -134,7 +123,8 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
             continue
         u = ds[variable].attrs.get("units")
         if isinstance(u, str):
-            seen_units[_dataset_label(ds, f"input{idx}")] = u.strip()
+            src = ds.encoding.get("source")
+            seen_units[Path(src).stem if src else f"input{idx}"] = u.strip()
     if len(set(seen_units.values())) > 1:
         detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
         print(
@@ -151,7 +141,8 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
 
     for idx, ds in enumerate(datasets):
         da = ds[variable]
-        label = _dataset_label(ds, f"input{idx}")
+        src = ds.encoding.get("source")
+        label = Path(src).stem if src else f"input{idx}"
         try:
             tdim = _pick_time_dim(da, time_dim)
         except ValueError as exc:

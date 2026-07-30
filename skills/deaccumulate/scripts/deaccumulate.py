@@ -6,7 +6,7 @@
 #   "numpy>=2.4",
 # ]
 # ///
-"""Per-step diff of cumulative-since-init forecast variable (clipped ≥0)."""
+"""Per-step diff of cumulative-since-init vars (clipped ≥0). Omitting --variable: all."""
 
 import re
 
@@ -30,32 +30,27 @@ _RATE_RE = re.compile(
     hash_input=False,
 )
 def deaccumulate(ds, variable):
-    """Per-step diff of cumulative-since-init forecast variable (clipped ≥0)."""
+    """Per-step diff along forecast step. Omitting --variable deaccumulates all data vars."""
     import numpy as np
 
-    if variable is None:
-        if len(ds.data_vars) != 1:
-            raise UsageError(f"specify --variable; data_vars={list(ds.data_vars)}")
-        variable = next(iter(ds.data_vars))
-    else:
-        variable = variable[0]
-    da = ds[variable]
-    units, name = da.attrs.get("units"), da.attrs.get("standard_name")
-    # Refuse rates — differencing them is silently meaningless
-    if (isinstance(name, str) and name.strip().lower().endswith(("_rate", "_flux"))) or (
-        isinstance(units, str) and _RATE_RE.search(units)
-    ):
-        raise UsageError(f"'{variable}' looks like a rate; refuse to deaccumulate")
-    diffed = da.isel(step=slice(1, None)).copy(
-        data=np.clip(
-            da.isel(step=slice(1, None)).values - da.isel(step=slice(0, -1)).values,
-            a_min=0,
-            a_max=None,
+    names = list(dict.fromkeys(variable)) if variable else list(ds.data_vars)
+    out = ds.isel(step=slice(1, None))
+    for name in names:
+        da = ds[name]
+        units, std = da.attrs.get("units"), da.attrs.get("standard_name")
+        if (isinstance(std, str) and std.strip().lower().endswith(("_rate", "_flux"))) or (
+            isinstance(units, str) and _RATE_RE.search(units)
+        ):
+            raise UsageError(f"'{name}' looks like a rate; refuse to deaccumulate")
+        diffed = da.isel(step=slice(1, None)).copy(
+            data=np.clip(
+                da.isel(step=slice(1, None)).values - da.isel(step=slice(0, -1)).values,
+                a_min=0,
+                a_max=None,
+            )
         )
-    )
-    diffed.attrs = dict(da.attrs)
-    out = ds.drop_vars(variable).isel(step=slice(1, None))
-    out[variable] = diffed
+        diffed.attrs = dict(da.attrs)
+        out[name] = diffed
     return out
 
 

@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 from weather_skills_core import DataError, Types, UsageError, weather_skill
-from weather_skills_core.dataset import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+from weather_skills_core.dataset import cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.16"
@@ -248,19 +248,6 @@ def _ax_bounds(ds, variable):
     )
 
 
-def _one_variable(variable):
-    if variable is None:
-        return None
-    if len(variable) != 1:
-        raise UsageError(f"--variable must be given once; got {variable!r}")
-    return variable[0]
-
-
-def _dataset_label(ds, fallback):
-    src = ds.encoding.get("source")
-    return Path(src).name if src else fallback
-
-
 @weather_skill(
     name="plot-compare",
     version=_SKILL_VERSION,
@@ -353,8 +340,9 @@ def plot_compare(
     if shared_scale and independent_scale:
         raise UsageError("use only one of --shared-scale or --independent-scale.")
 
-    label_a = _dataset_label(ds_a, "a")
-    label_b = _dataset_label(ds_b, "b")
+    src_a, src_b = ds_a.encoding.get("source"), ds_b.encoding.get("source")
+    label_a = Path(src_a).name if src_a else "a"
+    label_b = Path(src_b).name if src_b else "b"
 
     import matplotlib
 
@@ -365,27 +353,18 @@ def plot_compare(
     from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap
     from matplotlib.gridspec import GridSpec
 
-    # Per-row variable resolution: explicit per-row flag, then the shared
-    # --variable, then that input's own first real (non-CRS) data var.
-    shared_var = _one_variable(variable)
-    var_a = variable_a or shared_var or auto_variable(ds_a)
-    var_b = variable_b or shared_var or auto_variable(ds_b)
+    # Per-row: --variable-a/b, then shared --variable, then first data var
+    # (presume select already narrowed each store).
+    if variable is not None and len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    shared_var = variable[0] if variable else None
+    var_a = variable_a or shared_var or next(iter(ds_a.data_vars), None)
+    var_b = variable_b or shared_var or next(iter(ds_b.data_vars), None)
     for side, var, ds in (("A", var_a, ds_a), ("B", var_b, ds_b)):
         if var is None or var not in ds:
-            # Same real-data-var criterion core's auto_variable uses: skip CF
-            # grid-mapping (CRS) container vars so the hint lists only real vars.
-            mapping_targets = {
-                ds[d].attrs.get("grid_mapping")
-                for d in ds.data_vars
-                if ds[d].attrs.get("grid_mapping")
-            }
-            real_vars = [
-                v
-                for v in ds.data_vars
-                if "grid_mapping_name" not in ds[v].attrs and v not in mapping_targets
-            ]
             raise UsageError(
-                f"variable '{var}' must exist in input {side}. {side} real data vars: {real_vars}"
+                f"variable '{var}' must exist in input {side}. "
+                f"{side} data vars: {list(ds.data_vars)}"
             )
 
     td_a = _pick_time_dim(ds_a, time_dim)

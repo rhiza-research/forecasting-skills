@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 from weather_skills_core import EntryOverride, Types, UsageError, weather_skill
-from weather_skills_core.dataset import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+from weather_skills_core.dataset import cf_dim, lat_slice, polygon_from_geojson
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.16"
@@ -349,14 +349,6 @@ def _heatmap(
     return fig
 
 
-def _one_variable(variable):
-    if variable is None:
-        return None
-    if len(variable) != 1:
-        raise UsageError(f"--variable must be given once; got {variable!r}")
-    return variable[0]
-
-
 def _entry_overrides(style, index):
     # The timeseries style ignores --index, --extent, and --cities; those
     # three record as None, keeping the args schema stable across styles
@@ -425,7 +417,10 @@ def plot(ds, variable, style, colormap, title, index, extent, cities, fontsize, 
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
     import xarray as xr
 
-    variable = _one_variable(variable) or auto_variable(ds)
+    # No --variable: first data var (presume select already narrowed the store).
+    if variable is not None and len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    variable = variable[0] if variable else next(iter(ds.data_vars), None)
     if not variable or variable not in ds:
         raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
     da = ds[variable]

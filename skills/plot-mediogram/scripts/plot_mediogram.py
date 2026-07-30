@@ -54,14 +54,6 @@ def _inner_stats(values):
     }
 
 
-def _one_variable(variable):
-    if variable is None:
-        return None
-    if len(variable) != 1:
-        raise UsageError(f"--variable must be given once; got {variable!r}")
-    return variable[0]
-
-
 @weather_skill(
     name="plot-mediogram",
     version=_SKILL_VERSION,
@@ -95,7 +87,9 @@ def plot_mediogram(forecast, mclimate, variable, lat, lon, title):
     ds_fc = xr.open_zarr(forecast, consolidated=False)
     ds_mc = xr.open_zarr(mclimate, consolidated=False)
 
-    variable = _one_variable(variable) or (next(iter(ds_fc.data_vars)) if ds_fc.data_vars else None)
+    if variable is not None and len(variable) != 1:
+        raise UsageError(f"--variable must be given once; got {variable!r}")
+    variable = variable[0] if variable else next(iter(ds_fc.data_vars), None)
     if variable is None or variable not in ds_fc or variable not in ds_mc:
         raise UsageError(
             f"variable '{variable}' must exist in both inputs. "
