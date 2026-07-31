@@ -11,7 +11,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
+"""Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills standard dataset Zarr."""
 
 import sys
 from datetime import UTC, datetime
@@ -194,7 +194,7 @@ def _stamp_data_var_attrs(ds) -> None:
         long_name = src.get("long_name") or str(name)
         standard_name = src.get("standard_name") or _CURATED_STANDARD_NAME.get(name)
         # Replace the source attr block so GRIB bookkeeping (short_name, etc.)
-        # does not ride along into the envelope.
+        # does not ride along into the standard dataset.
         new_attrs = {"units": units, "long_name": long_name}
         if standard_name:
             new_attrs["standard_name"] = standard_name
@@ -251,7 +251,7 @@ def _set_time_encoding(ds, start_time) -> None:
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v", action="append")
 def fetch(start_time, end_time, bbox, variable, **kwargs):
-    """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills envelope Zarr."""
+    """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills standard dataset Zarr."""
     import numpy as np
     from weather_skills_core.dataset import bbox_subset
 

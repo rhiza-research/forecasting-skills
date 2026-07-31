@@ -1,6 +1,6 @@
 ---
 name: arco-era5-fetch
-description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, pressure, and more) for a date range and region from the public, credential-free Google Cloud Zarr store, and write a weather-skills envelope Zarr. Use when a task needs multi-variable gridded reanalysis ground truth for comparison, verification, or downstream clipping/aggregation/plotting.
+description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, pressure, and more) for a date range and region from the public, credential-free Google Cloud Zarr store, and write a weather-skills standard dataset Zarr. Use when a task needs multi-variable gridded reanalysis ground truth for comparison, verification, or downstream clipping/aggregation/plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads the public ARCO-ERA5 analysis-ready Zarr from Google Cloud (gs://gcp-public-data-arco-era5) over anonymous access; no credentials required.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -14,7 +14,7 @@ metadata:
 Opens the [ARCO-ERA5](https://github.com/google-research/arco-era5) analysis-ready
 Zarr store (`gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3`),
 subsets it by bounding box, time range, and variables, maps it onto the weather-skills
-envelope analysis shape, and writes a consolidated Zarr store. The store is a
+standard dataset analysis shape, and writes a consolidated Zarr store. The store is a
 uniform 0.25° equiangular lat/lon grid, hourly, opened with anonymous Google
 Cloud access — no credentials and no API queue.
 
@@ -23,7 +23,7 @@ Cloud access — no credentials and no API queue.
 - A task needs multi-variable reanalysis (2m temperature, winds, precipitation,
   geopotential, pressure-level fields) as gridded observations/ground truth.
 - A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
-  envelope Zarr.
+  standard dataset Zarr.
 
 Not a forecast — ERA5 is reanalysis. For forecast grids use `ecmwf-fetch` or
 `dynamical-fetch`.
@@ -57,9 +57,9 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --e
 
 ### Output
 
-A consolidated, fully CF-1.13 compliant weather-skills envelope analysis Zarr with a
+A consolidated, fully CF-1.13 compliant weather-skills standard dataset analysis Zarr with a
 `time` dimension and dims `(time, latitude, longitude)` — plus `level` when a
-pressure-level variable is selected. The weather-skills envelope is a CF superset: the
+pressure-level variable is selected. The weather-skills standard dataset is a CF superset: the
 output passes CF first, then carries the `weather_skills_history` provenance key.
 
 CF stamping on the output:

@@ -11,7 +11,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""
+"""Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills standard dataset Zarr."""
 
 import sys
 
@@ -256,7 +256,7 @@ def _set_write_encoding(ds) -> None:
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument("--bbox")
 def fetch(start_time, end_time, bbox, **kwargs):
-    """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills envelope Zarr."""
+    """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills standard dataset Zarr."""
     import numpy as np
     import xarray as xr
 

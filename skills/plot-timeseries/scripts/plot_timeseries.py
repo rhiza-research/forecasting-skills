@@ -13,7 +13,7 @@
 #   "cf-units>=3.3",
 # ]
 # ///
-"""Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
+"""Render a multi-input timeseries PNG from one or more weather-skills standard dataset Zarrs.
 
 Each input contributes one 1D line trace on a shared set of axes, plotted
 against its time-like coord. Inputs whose selected variable is not already
@@ -84,7 +84,7 @@ def _dataset_label(ds, index):
             ),
         )
 def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_year, output, **kwargs):
-    """Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
+    """Render a multi-input timeseries PNG from one or more weather-skills standard dataset Zarrs.
 
     Each input contributes one 1D line trace on a shared set of axes, plotted
     against its time-like coord. Inputs whose selected variable is not already

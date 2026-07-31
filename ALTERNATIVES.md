@@ -8,7 +8,7 @@ scaling up or deciding what to swap in.
 
 Decision at time of survey: keep our current xarray-based wrappers. They
 handle the shapes we care about (forecast ensembles with `number`/`step`,
-station envelopes) and the data sizes we care about (MB–low-GB per
+point_obs datasets) and the data sizes we care about (MB–low-GB per
 country/date). The alternatives below become worth it when data size,
 access patterns, or production ops scale past that.
 

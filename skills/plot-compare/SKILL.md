@@ -1,6 +1,6 @@
 ---
 name: plot-compare
-description: Render a side-by-side multi-panel comparison PNG of two weather-skills envelope Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC.
+description: Render a side-by-side multi-panel comparison PNG of two weather-skills standard dataset Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py *)
@@ -18,7 +18,7 @@ Handles:
 - Gridded vs. gridded (pcolormesh maps).
 - Station (`station_id`-indexed) vs. gridded (scatter over mesh).
 
-When exactly one input is a station-schema Zarr, that input is placed
+When exactly one input is a point_obs Zarr, that input is placed
 on the top row to match the canonical "stations vs. satellite" layout.
 
 The two inputs must already be at the same time resolution and are

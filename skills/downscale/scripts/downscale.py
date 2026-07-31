@@ -8,7 +8,7 @@
 #   "numpy",
 # ]
 # ///
-"""Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
+"""Downscale a weather-skills standard dataset Zarr onto a finer grid via a chosen algorithm."""
 
 import sys
 
@@ -128,7 +128,7 @@ def _coords_match(a, b, atol=1e-6):
 def downscale(
     ds, variable, algorithm, factor, target_resolution, reference_grid, qq_reference, time_dim, **kwargs
 ):
-    """Downscale a weather-skills envelope Zarr onto a finer grid via a chosen algorithm."""
+    """Downscale a weather-skills standard dataset Zarr onto a finer grid via a chosen algorithm."""
     from pathlib import Path
 
     import numpy as np

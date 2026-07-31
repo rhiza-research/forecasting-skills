@@ -16,7 +16,7 @@
 #   "cf-units>=3.3",
 # ]
 # ///
-"""Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
+"""Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills standard dataset Zarr."""
 
 import datetime as dt
 import sys
@@ -100,7 +100,7 @@ def _split_wrapped_area(area: list[float]) -> list[list[float]]:
     return [[n, w, s, 180.0], [n, -180.0, s, e]]
 
 def _concat_lon(datasets: list) -> object:
-    """Concatenate per-area decoded datasets along longitude into one envelope.
+    """Concatenate per-area decoded datasets along longitude into one standard dataset.
 
     Each dataset covers a disjoint longitude band of a wrapped bbox. Concatenate
     along the longitude dim, then drop any duplicated shared edge (the +-180
@@ -185,7 +185,7 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
 @weather_skill.argument("--bbox", required=True)
 @weather_skill.argument("--date", required=True)
 def fetch(bbox, date, **kwargs):
-    """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
+    """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills standard dataset Zarr."""
     date_iso = date.isoformat()
     area = list(bbox)
 

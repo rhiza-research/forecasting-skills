@@ -50,7 +50,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py --input <in.zarr> --
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr containing a forecast envelope with a `step` dim.
+- `--input`, `-i` — input Zarr containing a forecast dataset with a `step` dim.
 - `--output`, `-o` — output Zarr.
 - `--variable`, `-v` — variable to deaccumulate. If omitted and the input has a
   single data variable, that one is used. If multiple data vars are present,

@@ -1,6 +1,6 @@
 ---
 name: openaq-fetch
-description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3, SO2, CO) for a date range and region, and write a station-schema weather-skills envelope Zarr. Use when a task needs in-situ air-quality and atmospheric-composition data, e.g. to compare against gridded model output.
+description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3, SO2, CO) for a date range and region, and write a point_obs weather-skills standard dataset Zarr. Use when a task needs in-situ air-quality and atmospheric-composition data, e.g. to compare against gridded model output.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Uses the OpenAQ v3 REST API over HTTPS; requires a free OPENAQ_API_KEY in the environment (register at https://explore.openaq.org/register).
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -19,7 +19,7 @@ metadata:
 Downloads ground-based air-quality observations from the OpenAQ v3 API. It finds
 monitoring locations inside the requested bounding box, fetches each matching
 sensor's daily-aggregated values over the date range concurrently, and writes a
-station-schema Zarr store.
+point_obs Zarr store.
 
 ## When to use
 

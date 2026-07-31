@@ -1,6 +1,6 @@
 ---
 name: ghcn-daily-fetch
-description: Fetch NOAA GHCN-Daily global in-situ station observations (precipitation, max/min/avg temperature) for a date range and region, and write a station-schema weather-skills envelope Zarr. Use when a task needs credential-free worldwide daily station data, e.g. to compare against gridded satellite, reanalysis, or forecast data.
+description: Fetch NOAA GHCN-Daily global in-situ station observations (precipitation, max/min/avg temperature) for a date range and region, and write a point_obs weather-skills standard dataset Zarr. Use when a task needs credential-free worldwide daily station data, e.g. to compare against gridded satellite, reanalysis, or forecast data.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads NOAA GHCN-Daily from the public S3 website endpoint (noaa-ghcn-pds.s3.amazonaws.com) over HTTPS; no credentials required.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -16,7 +16,7 @@ from the public, credential-free GHCN-Daily S3 dataset. It reads the station
 metadata file to find stations inside the requested bounding box, downloads each
 candidate station's per-station CSV concurrently, keeps only QC-passed rows for
 the requested elements and date range, scales them to canonical units, and writes
-a station-schema Zarr store.
+a point_obs Zarr store.
 
 The output is a fully CF-1.13 timeSeries Discrete Sampling Geometries (DSG) Zarr
 plus the `weather_skills_history` provenance key — a superset of CF, not a separate format.

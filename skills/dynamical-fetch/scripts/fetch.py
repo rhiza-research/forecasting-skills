@@ -10,7 +10,7 @@
 #   "cf-units>=3.3",
 # ]
 # ///
-"""Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
+"""Fetch a dynamical.org open-catalog dataset and write a weather-skills standard dataset Zarr."""
 
 import sys
 
@@ -22,9 +22,9 @@ from weather_skills_core.units import to_standard_units
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.13"
 
-# Coords dynamical attaches that are not part of the weather-skills envelope: forecast
+# Coords dynamical attaches that are not part of the weather-skills standard dataset: forecast
 # bookkeeping (valid_time, *_forecast_length) and the CRS scalar (spatial_ref).
-# Dropped on the way out so the output carries only envelope coords.
+# Dropped on the way out so the output carries only dataset coords.
 _DROP_COORDS = (
     "valid_time",
     "expected_forecast_length",
@@ -98,7 +98,7 @@ def _bbox_subset(ds, bbox) -> object:
             help="Catalog dataset id (validated against dynamical_catalog.list()).",
         )
 def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
-    """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
+    """Fetch a dynamical.org open-catalog dataset and write a weather-skills standard dataset Zarr."""
     import numpy as np
 
     state = {}

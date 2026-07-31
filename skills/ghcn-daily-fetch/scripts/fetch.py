@@ -12,7 +12,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
+"""Fetch NOAA GHCN-Daily station observations over HTTPS and write a point_obs weather-skills standard dataset Zarr."""
 
 import io
 import sys
@@ -72,7 +72,7 @@ _TIME_CALENDAR = "proleptic_gregorian"
 #   conversion to whole mm / degC is required. This is a value conversion, not a
 #   unit remap.
 #
-# Variable renames (GHCN element code -> canonical envelope variable name, from
+# Variable renames (GHCN element code -> canonical dataset variable name, from
 # the VAR_MAP keys/element fields):
 #   - PRCP -> precip
 #   - TMAX -> tmax
@@ -89,7 +89,7 @@ _TIME_CALENDAR = "proleptic_gregorian"
 #     precipitation"; tmax "daily maximum air temperature"; tmin "daily minimum
 #     air temperature"; tavg "daily mean air temperature").
 #
-# Canonical envelope variable -> (GHCN element, scale, units, standard_name,
+# Canonical dataset variable -> (GHCN element, scale, units, standard_name,
 # cell_method, long_name).
 # GHCN stores PRCP in tenths of mm and TMAX/TMIN/TAVG in tenths of degrees C, so
 # the scale brings raw integers to mm/day and degrees C respectively. `units`
@@ -219,7 +219,7 @@ def _station_frame(station_id: str, elements: dict, start_int: int, end_int: int
     raw = raw[raw["Q_FLAG"].isna()]
     # GHCN-Daily encodes a missing observation as the raw integer sentinel -9999
     # (which can carry an empty Q_FLAG). Drop those rows BEFORE unit scaling so a
-    # missing cell becomes NaN in the envelope rather than being scaled to a
+    # missing cell becomes NaN in the standard dataset rather than being scaled to a
     # spurious -999.9 real observation.
     raw = raw[raw["VALUE"] != _GHCN_MISSING_VALUE]
     if raw.empty:
@@ -300,7 +300,7 @@ def _set_write_encoding(ds) -> None:
             ),
         )
 def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
-    """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
+    """Fetch NOAA GHCN-Daily station observations over HTTPS and write a point_obs weather-skills standard dataset Zarr."""
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     start_int = int(start_time.strftime("%Y%m%d"))

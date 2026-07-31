@@ -1,6 +1,6 @@
 ---
 name: clip-region
-description: Spatially subset a gridded weather-skills envelope Zarr to an explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a custom bounding box before downstream aggregation or plotting. To clip to a country, get its bbox from the resolve-region skill first.
+description: Spatially subset a gridded weather-skills standard dataset Zarr to an explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a custom bounding box before downstream aggregation or plotting. To clip to a country, get its bbox from the resolve-region skill first.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
@@ -16,9 +16,9 @@ Source-agnostic spatial subset using simple lat/lon slicing, driven by an explic
 ## When to use
 
 - Narrowing a continental grid down to one country for plotting or per-country reporting.
-- Applying a custom bbox to any gridded envelope before further processing.
+- Applying a custom bbox to any gridded dataset before further processing.
 
-Does **not** clip station-schema envelopes (station_id-indexed). For stations, filter by country using an `aggregate-*` or custom skill.
+Does **not** clip point_obs datasets (station_id-indexed). For stations, filter by country using an `aggregate-*` or custom skill.
 
 ## Usage
 

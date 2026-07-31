@@ -1,6 +1,6 @@
 ---
 name: cmip6-fetch
-description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipitation) for a date range and region from the public, credential-free Pangeo Google Cloud catalog, and write a weather-skills envelope Zarr. Use when a task needs climate-projection grids (historical or future scenario) for downstream clipping, aggregation, comparison, or plotting.
+description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipitation) for a date range and region from the public, credential-free Pangeo Google Cloud catalog, and write a weather-skills standard dataset Zarr. Use when a task needs climate-projection grids (historical or future scenario) for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads the public Pangeo CMIP6 collection from Google Cloud (gs://cmip6) over anonymous access; no credentials required.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -13,7 +13,7 @@ metadata:
 
 Resolves a single CMIP6 dataset from the [Pangeo CMIP6](https://pangeo-data.github.io/pangeo-cmip6-cloud/)
 catalog on Google Cloud, opens its analysis-ready Zarr store anonymously, subsets
-it by bounding box and time, maps its dimensions onto the weather-skills envelope analysis
+it by bounding box and time, maps its dimensions onto the weather-skills standard dataset analysis
 shape, and writes a consolidated Zarr store. CMIP6 is faceted, so the dataset is
 selected with facet flags (model, experiment, variable, member, table, grid) that
 are validated against the catalog CSV.
@@ -23,7 +23,7 @@ are validated against the catalog CSV.
 - A task needs climate-model projection output — historical runs or future
   scenarios (ssp*) — as gridded data, with no credentials.
 - A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
-  envelope Zarr.
+  standard dataset Zarr.
 
 CMIP6 is model projection, not observation or short-range forecast. Historical
 runs cover 1850–2014 and scenario (`ssp*`) runs continue to 2100, so the natural
@@ -65,12 +65,12 @@ regular 1-D lat/lon grids.
 
 ### Output
 
-A consolidated weather-skills envelope analysis Zarr with a `time` dimension and dims
+A consolidated weather-skills standard dataset analysis Zarr with a `time` dimension and dims
 `(time, latitude, longitude)`, carrying the requested variable.
 
 The output is fully CF-1.13 compliant. CMIP6 source data is already strongly
 CF-compliant, so the transform preserves the source metadata and repairs what
-mapping onto the envelope would otherwise break:
+mapping onto the standard dataset would otherwise break:
 
 - **Global attrs.** The rich CMIP6 globals (`title`, `source`, `institution`,
   `references`, `tracking_id`, etc.) are preserved; `Conventions` is overwritten
@@ -81,7 +81,7 @@ mapping onto the envelope would otherwise break:
 - **Coordinates.** `latitude`/`longitude`/`time` carry CF `standard_name`,
   `units` (`degrees_north`/`degrees_east`), and `axis` (`Y`/`X`/`T`). cf-xarray
   resolves the X/Y/T axes — verified on the way out.
-- **Bounds integrity.** The weather-skills envelope does not carry cell bounds, so the
+- **Bounds integrity.** The weather-skills standard dataset does not carry cell bounds, so the
   `*_bnds` variables are dropped. The `bounds` attr each coordinate would
   otherwise still carry (a dangling CF §7.1 reference to an absent variable) is
   removed, so no coordinate points at a missing variable.

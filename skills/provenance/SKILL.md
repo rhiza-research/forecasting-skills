@@ -1,6 +1,6 @@
 ---
 name: provenance
-description: Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact (an envelope Zarr or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
+description: Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact (a standard dataset Zarr or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py *)
@@ -35,7 +35,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py --input <artifact> [--
 ```
 
 ### Arguments
-- `--input`, `-i` — the artifact to inspect: a weather-skills envelope Zarr (a
+- `--input`, `-i` — the artifact to inspect: a weather-skills standard dataset Zarr (a
   directory) or a plot PNG (a file ending `.png`). Required.
 - `--format` — output view, one of `human` (default), `json`, or `script`.
 - `--check` — validate the `weather_skills_history` schema instead of rendering it.

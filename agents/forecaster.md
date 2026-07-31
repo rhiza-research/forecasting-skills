@@ -36,7 +36,7 @@ Prefer small steps over stuffing every filter into one call:
 - **Variables / dims:** Use `select` (and fetcher `--variable` when the source
   API requires it) before transforms that operate on a single variable or
   slice. Do not expect every transform to re-accept date/region/variable filters.
-- **Plots:** Prefer plotting already-clipped, already-selected envelopes;
+- **Plots:** Prefer plotting already-clipped, already-selected datasets;
   plot style flags stay on the plot skills.
 
 ## Working directory and output files

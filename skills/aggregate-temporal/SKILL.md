@@ -1,6 +1,6 @@
 ---
 name: aggregate-temporal
-description: Roll up a weather-skills envelope Zarr along its time axis (or forecast step axis) into fixed windows (daily, weekly, dekadal, monthly) with a chosen reducer. Use whenever any dataset needs to be resampled to a canonical aggregation period before plotting or comparison.
+description: Roll up a weather-skills standard dataset Zarr along its time axis (or forecast step axis) into fixed windows (daily, weekly, dekadal, monthly) with a chosen reducer. Use whenever any dataset needs to be resampled to a canonical aggregation period before plotting or comparison.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/aggregate.py *)
@@ -12,8 +12,8 @@ metadata:
 # aggregate-temporal
 
 Source-agnostic temporal aggregation. Works on:
-- Observation envelopes with a `time` dim (e.g. CHIRPS, IMERG, TAHMO).
-- Forecast envelopes with a `step` dim (e.g. ECMWF S2S).
+- Observation datasets with a `time` dim (e.g. CHIRPS, IMERG, TAHMO).
+- Forecast datasets with a `step` dim (e.g. ECMWF S2S).
 
 Autodetects which dim is present. For forecasts, aggregates ensemble members (`number`) independently.
 

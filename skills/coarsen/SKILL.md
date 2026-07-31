@@ -1,6 +1,6 @@
 ---
 name: coarsen
-description: Coarsen or align a weather-skills envelope Zarr by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
+description: Coarsen or align a weather-skills standard dataset Zarr by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py *)
@@ -45,7 +45,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --outpu
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr (any gridded envelope).
+- `--input`, `-i` — input Zarr (any gridded dataset).
 - `--output`, `-o` — output Zarr.
 - `--target-resolution` — target grid spacing in degrees.
 - `--offset` — grid offset in degrees; target points fall at `offset + k*resolution`.

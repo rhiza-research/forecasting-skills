@@ -1,6 +1,6 @@
 ---
 name: convert-calendar
-description: Convert a weather-skills envelope Zarr's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields a cftime axis. Dates not representable in the target calendar are dropped.
+description: Convert a weather-skills standard dataset Zarr's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields a cftime axis. Dates not representable in the target calendar are dropped.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py *)
@@ -11,7 +11,7 @@ metadata:
 
 # convert-calendar
 
-Convert the time axis of a weather-skills envelope Zarr to a target CF calendar. CF
+Convert the time axis of a weather-skills standard dataset Zarr to a target CF calendar. CF
 datasets may use different calendars — the standard (proleptic Gregorian)
 calendar of observations, or a model calendar such as `noleap` (no Feb 29) or
 `360_day` (twelve 30-day months). The same wall-clock date maps to a different
@@ -50,7 +50,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py --input <in.zarr
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr (any envelope with a wall-clock `time` axis).
+- `--input`, `-i` — input Zarr (any standard dataset with a wall-clock `time` axis).
 - `--output`, `-o` — output Zarr.
 - `--calendar` — target CF calendar name (`standard`, `proleptic_gregorian`,
   `noleap`, `360_day`, `all_leap`, `julian`, ...).

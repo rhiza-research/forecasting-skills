@@ -12,7 +12,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
+"""Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills standard dataset Zarr."""
 
 import re
 import sys
@@ -52,7 +52,7 @@ _SM_STANDARD_NAME = "volume_fraction_of_condensed_water_in_soil"
 # --- Source -> output transforms ---
 # Pass-through is the default for everything not listed here (values, fill, dtype,
 # time). The divergences this skill introduces between the raw SPL3SMP_E granule
-# and the output envelope are:
+# and the output standard dataset are:
 #
 #   - soil_moisture units: PASS THROUGH VERBATIM. The granule's `units` attribute
 #     (cm3/cm3, a dimensionless volumetric ratio) is read off the dataset and
@@ -447,7 +447,7 @@ def _set_write_encoding(ds) -> None:
             ),
         )
 def fetch(start_time, end_time, bbox, overpass, **kwargs):
-    """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills envelope Zarr."""
+    """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills standard dataset Zarr."""
     import numpy as np
     import xarray as xr
 

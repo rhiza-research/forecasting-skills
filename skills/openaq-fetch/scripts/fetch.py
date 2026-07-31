@@ -12,7 +12,7 @@
 #   "cftime",
 # ]
 # ///
-"""Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr.
+"""Fetch OpenAQ v3 air-quality station observations and write a point_obs weather-skills standard dataset Zarr.
 
 Uses the OpenAQ v3 REST API. The API key comes from the environment: OPENAQ_API_KEY.
 """
@@ -99,7 +99,7 @@ def _rate_limit_wait() -> None:
 _TIME_UNITS = "days since 1970-01-01"
 _TIME_CALENDAR = "proleptic_gregorian"
 
-# OpenAQ parameter names exposed as canonical envelope variables. Units are NOT
+# OpenAQ parameter names exposed as canonical dataset variables. Units are NOT
 # hardcoded — they are forwarded verbatim from each sensor's parameter.units in
 # the API response (µg/m³ for particulates, ppm/ppb for gases, varying by
 # provider) and validated under udunits at write time.
@@ -177,7 +177,7 @@ _MASS_CONCENTRATION_REF = cf_units.Unit("kg m-3")
 #   declaring each daily value as the within-day mean of that sensor's sub-daily
 #   measurements.
 #
-# STATION ENVELOPE ASSEMBLY: the OpenAQ location `id` becomes the `station_id`
+# POINT_OBS DATASET ASSEMBLY: the OpenAQ location `id` becomes the `station_id`
 #   coordinate (cf_role="timeseries_id"); the location's `coordinates.latitude`
 #   and `coordinates.longitude` become the `latitude`/`longitude` station
 #   coordinates; the location `name` becomes the `name` coordinate (falling back
@@ -472,7 +472,7 @@ def _set_write_encoding(ds) -> None:
             ),
         )
 def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
-    """Fetch OpenAQ v3 air-quality station observations and write a station-schema weather-skills envelope Zarr."""
+    """Fetch OpenAQ v3 air-quality station observations and write a point_obs weather-skills standard dataset Zarr."""
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     north, west, south, east = bbox

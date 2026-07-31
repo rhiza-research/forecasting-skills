@@ -5,10 +5,10 @@
 #   "cftime>=1.6",
 # ]
 # ///
-"""Rename one data variable in a weather-skills envelope Zarr to a new name.
+"""Rename one data variable in a weather-skills standard dataset Zarr to a new name.
 
 Renames a single data variable (``--variable``) to ``--to-name`` via xarray's
-``ds.rename``, writing a new envelope with full provenance. Coordinates and
+``ds.rename``, writing a new standard dataset with full provenance. Coordinates and
 dimensions are out of scope; only a data variable is renamed. All untouched
 dims, coords, data variables, and attrs pass through unchanged, and the renamed
 variable keeps all of its own attrs.
@@ -37,7 +37,7 @@ _SKILL_VERSION = "0.1.3"
             help="New variable name; becomes the output variable's name.",
         )
 def rename(ds, variable, to_name, **kwargs):
-    """Rename one data variable in a weather-skills envelope Zarr to a new name."""
+    """Rename one data variable in a weather-skills standard dataset Zarr to a new name."""
     if not to_name.strip():
         raise UsageError("--to-name must be a non-empty variable name.")
 

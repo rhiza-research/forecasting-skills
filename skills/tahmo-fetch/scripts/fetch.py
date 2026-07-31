@@ -13,7 +13,7 @@
 # [tool.uv.sources]
 # tahmo = { git = "https://github.com/rhiza-research/tahmo-api", rev = "8ed3adc22b5b7c53d08753e45676e9d4a0a52ab8" }
 # ///
-"""Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr.
+"""Fetch TAHMO station observations and write a point_obs weather-skills standard dataset Zarr.
 
 Uses the TAHMO Python SDK directly. Credentials come from the environment:
 TAHMO_API_USERNAME and TAHMO_API_PASSWORD.
@@ -66,7 +66,7 @@ COUNTRY_CODE = {
     "Kenya": "KE",
 }
 
-# TAHMO short codes -> canonical variable names used in the envelope.
+# TAHMO short codes -> canonical variable names used in the standard dataset.
 VAR_MAP = {
     "pr": "precip",
     "te": "temperature",
@@ -80,7 +80,7 @@ DAILY_AGG = {
     "humidity": "mean",
     "pressure": "mean",
 }
-# CF metadata per envelope variable as (standard_name, units_override).
+# CF metadata per dataset variable as (standard_name, units_override).
 # Standard names are verified against the CF standard name table v93. Units
 # are pulled live from api.getVariables() so they track whatever TAHMO is
 # actually returning, except for `precip`: the raw TAHMO shortcode reports
@@ -211,7 +211,7 @@ def _ensure_setup(state, countries: list):
             help="Country name (pass once per country)",
         )
 def fetch(start_time, end_time, workers, country, **kwargs):
-    """Fetch TAHMO station observations and write a station-schema weather-skills envelope Zarr."""
+    """Fetch TAHMO station observations and write a point_obs weather-skills standard dataset Zarr."""
     import pandas as pd
     import xarray as xr
 

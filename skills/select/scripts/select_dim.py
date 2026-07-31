@@ -7,15 +7,15 @@
 #   "pandas",
 # ]
 # ///
-"""Select entries along one named dimension of a weather-skills envelope Zarr.
+"""Select entries along one named dimension of a weather-skills standard dataset Zarr.
 
 Picks entries along one ``--dim`` either by integer position (``--index``,
 repeatable, negative positions count from the end) or by coordinate value
 (``--value``, repeatable, parsed against the coord's dtype), writing a new
-envelope. A single selection collapses the dim and also drops every coordinate
+standard dataset. A single selection collapses the dim and also drops every coordinate
 variable the selection leaves scalar (the dim's own coord and any auxiliary
 coord on the collapsed dim), so outputs from different sources align under
-``concat`` (e.g. pick the same forecast week from several model envelopes,
+``concat`` (e.g. pick the same forecast week from several model datasets,
 then merge them along a new ``model`` dim). Multiple selections keep the dim
 with just those entries, in the order given. All untouched dims, coords, data
 variables, and attrs pass through unchanged.
@@ -140,7 +140,7 @@ def _parse_value(raw: str, coord_vals, dim: str):
             "per value). Mutually exclusive with --index.",
         )
 def select(ds, dim, index, value, **kwargs):
-    """Select entries along one named dimension of a weather-skills envelope Zarr."""
+    """Select entries along one named dimension of a weather-skills standard dataset Zarr."""
     import numpy as np
 
     if (index is None) == (value is None):

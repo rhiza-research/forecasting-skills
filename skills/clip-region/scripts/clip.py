@@ -5,7 +5,7 @@
 #   "cftime",
 # ]
 # ///
-"""Spatially subset a gridded weather-skills envelope Zarr."""
+"""Spatially subset a gridded weather-skills standard dataset Zarr."""
 
 from weather_skills_core import weather_skill
 
@@ -20,7 +20,7 @@ _SKILL_VERSION = "0.1.11"
 )
 @weather_skill.argument("--bbox", required=True)
 def clip_region(ds, bbox, **kwargs):
-    """Spatially subset a gridded weather-skills envelope Zarr."""
+    """Spatially subset a gridded weather-skills standard dataset Zarr."""
     from weather_skills_core.dataset import bbox_subset, detect_spatial_dims
 
     lat_dim, lon_dim = detect_spatial_dims(ds)

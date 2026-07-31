@@ -9,7 +9,7 @@
 #   "pandas",
 # ]
 # ///
-"""Temporal aggregation for weather-skills envelope Zarr stores.
+"""Temporal aggregation for weather-skills standard dataset Zarr stores.
 
 Supports a `time` dim (wall-clock) or a `step` dim (forecast lead time).
 For `time`, uses xarray.resample. For `step`, rolls fixed-length windows
@@ -362,7 +362,7 @@ def _aggregate_step(ds, period, method):
             "dropped. Has no effect on the forecast `step` path.",
         )
 def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
-    """Temporal aggregation for weather-skills envelope Zarr stores."""
+    """Temporal aggregation for weather-skills standard dataset Zarr stores."""
     import cf_xarray  # noqa: F401 — registers the .cf accessor
 
     if anchor_end is not None:
@@ -408,7 +408,7 @@ def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
         # CF "T" axis first (finds wall-clock time even when named unusually),
         # then `step` (forecast lead time — timedelta64, not CF T). Only accept
         # the cf-resolved name if it is an actual dimension: on a forecast
-        # envelope `time` is a scalar init-date coordinate, not a dim, so cf
+        # standard dataset `time` is a scalar init-date coordinate, not a dim, so cf
         # returns "time" but the real aggregation axis is `step`.
         try:
             cf_time = ds.cf["time"].name

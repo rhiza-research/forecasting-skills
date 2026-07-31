@@ -1,6 +1,6 @@
 ---
 name: ecmwf-fetch
-description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills envelope Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting. To fetch over a country, get its bbox from the resolve-region skill first.
+description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills standard dataset Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting. To fetch over a country, get its bbox from the resolve-region skill first.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -22,7 +22,7 @@ Retrieves S2S total precipitation from the ECMWF Data Store (ECDS) `s2s-forecast
 ## When to use
 
 - A task asks for a fresh ECMWF S2S forecast for a specific init date.
-- A downstream skill needs the forecast as a weather-skills envelope Zarr (not raw GRIB).
+- A downstream skill needs the forecast as a weather-skills standard dataset Zarr (not raw GRIB).
 
 Not for reanalysis, climatology, or deterministic HRES — this skill is S2S only.
 

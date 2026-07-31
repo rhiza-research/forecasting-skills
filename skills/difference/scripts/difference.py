@@ -7,7 +7,7 @@
 #   "xarray>=2026.4",
 # ]
 # ///
-"""Subtract one weather-skills envelope Zarr from another (A - B).
+"""Subtract one weather-skills standard dataset Zarr from another (A - B).
 
 Takes exactly two inputs: the first is the minuend (A), the second the
 subtrahend (B). Subtraction is xarray-aligned (inner join on shared dims) with
@@ -48,7 +48,7 @@ def _to_signed(da, np):
 )
 @weather_skill.argument("--variable", "-v", action="append")
 def difference(ds_a, ds_b, variable, **kwargs):
-    """Subtract one weather-skills envelope Zarr from another (A - B)."""
+    """Subtract one weather-skills standard dataset Zarr from another (A - B)."""
     import numpy as np
     import xarray as xr
 

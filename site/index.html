@@ -24,7 +24,7 @@
       <a href="#demo">see it run</a>
       <a href="#standards">standards and review</a>
       <a href="#install">runs anywhere</a>
-      <a href="#mechanics">pipeline and envelope</a>
+      <a href="#mechanics">pipeline and standard dataset</a>
       <a href="#skills">skill catalog</a>
       <a href="#governance">governance</a>
     </nav>
@@ -53,11 +53,11 @@
           <div><dt>provenance</dt><dd>weather_skills_history — append-only JSON chain</dd></div>
           <div><dt>standards</dt><dd>CF conventions &#183; Zarr&nbsp;v3</dd></div>
         </dl>
-        <p class="card-foot">Stamped on every envelope Zarr and plot PNG.</p>
+        <p class="card-foot">Stamped on every standard dataset Zarr and plot PNG.</p>
       </figure>
     </div>
     <aside class="notice" role="note">
-      <strong>Early stage.</strong> Not production ready: interfaces, the envelope
+      <strong>Early stage.</strong> Not production ready: interfaces, the standard dataset
       schema, and skill boundaries may change without notice.
     </aside>
   </div>
@@ -118,7 +118,7 @@
         Skills read and write CF-compliant Zarr stores. The CF conventions
         themselves are the contract — not a repo-specific subset — so producers
         must emit valid CF and consumers must read any valid CF representation
-        of the envelope's canonical shapes, including non-standard model calendars.
+        of the standard dataset's canonical shapes, including non-standard model calendars.
       </p>
     </div>
     <div class="trust-card">
@@ -185,34 +185,34 @@ claude plugin install rhiza-forecasting@weather-skills</code></pre>
 <section id="mechanics" class="section">
   <header class="section-head">
     <span class="section-no">04</span>
-    <h2>Pipeline and envelope</h2>
+    <h2>Pipeline and standard dataset</h2>
   </header>
   <p>
     Pipelines chain three kinds of skills: fetchers pull data from a source and write
-    a standard envelope, transforms operate on any envelope, and visualization
+    a standard dataset, transforms operate on any standard dataset, and figure
     skills render the result. A fourth group, agent capabilities, supports
-    pipelines without producing an envelope — resolving a region name to a
+    pipelines without producing a standard dataset — resolving a region name to a
     bounding box or composing results into an email report. A user states the
     goal in natural language and the agent picks and composes skills from the set.
   </p>
   <ol class="flow" role="list" aria-label="Pipeline stages">
     <li class="flow-stage">
       <h3>fetch</h3>
-      <p>source &#8594; envelope</p>
+      <p>source &#8594; standard dataset</p>
       <ul>
         <!-- gen:flow-fetch -->
       </ul>
     </li>
     <li class="flow-stage">
       <h3>transform</h3>
-      <p>envelope &#8594; envelope</p>
+      <p>standard dataset &#8594; standard dataset</p>
       <ul>
         <!-- gen:flow-transform -->
       </ul>
     </li>
     <li class="flow-stage">
-      <h3>visualize</h3>
-      <p>envelope &#8594; PNG</p>
+      <h3>figure</h3>
+      <p>standard dataset &#8594; PNG</p>
       <ul>
         <!-- gen:flow-output -->
       </ul>
@@ -245,7 +245,7 @@ forecasting-skills clip-region \
     --bbox "$KENYA_BBOX" \
     --output /tmp/imerg_kenya.zarr</code></pre>
   <p>
-    The <em>weather-skills envelope</em> is a CF-compliant Zarr v3 store with two
+    The <em>weather-skills standard dataset</em> is a CF-compliant Zarr v3 store with two
     canonical shapes. Consumers rely only on dimensions, coordinates, data
     variables, and <code>weather_skills_*</code> attributes — never on per-variable
     codec encoding — which keeps skills independent across library versions. The
@@ -254,13 +254,13 @@ forecasting-skills clip-region \
   </p>
   <div class="schema-pair">
     <div class="schema">
-      <h3>Gridded envelope</h3>
+      <h3>Gridded dataset</h3>
       <pre><code>(number?, step|time,
  latitude, longitude)</code></pre>
       <p>forecasts, satellite grids, reanalyses</p>
     </div>
     <div class="schema">
-      <h3>Station envelope</h3>
+      <h3>Point observations dataset</h3>
       <pre><code>(time, station_id)
 latitude(station_id)
 longitude(station_id)</code></pre>
@@ -293,7 +293,7 @@ longitude(station_id)</code></pre>
   <p>
     The library will be overseen by a working group of weather and climate data
     practitioners. A submission and review process will define how new skills are
-    proposed, tested against the envelope contract, and admitted to the catalog.
+    proposed, tested against the standard dataset contract, and admitted to the catalog.
   </p>
   <p>
     Until that process is in place, contributions go through the repository directly:

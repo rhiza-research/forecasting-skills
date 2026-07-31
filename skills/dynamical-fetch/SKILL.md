@@ -1,6 +1,6 @@
 ---
 name: dynamical-fetch
-description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills envelope Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
+description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills standard dataset Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -13,7 +13,7 @@ metadata:
 
 Opens a dataset from the [dynamical.org](https://dynamical.org/catalog/) open
 catalog with `dynamical-catalog`, subsets it by bounding box, time, and
-variables, maps its dimensions onto the weather-skills envelope, and writes a
+variables, maps its dimensions onto the weather-skills standard dataset, and writes a
 consolidated Zarr store. One skill covers the whole catalog — the dataset is
 selected with `--dataset` and validated at runtime against
 `dynamical_catalog.list()`.
@@ -24,7 +24,7 @@ selected with `--dataset` and validated at runtime against
   that the source-specific fetchers (ECMWF S2S, CHIRPS, TAHMO) don't provide,
   with no credentials and no API queue.
 - A downstream skill will clip, aggregate, compare, or plot the result as a
-  weather-skills envelope Zarr.
+  weather-skills standard dataset Zarr.
 
 ## Usage
 
@@ -61,7 +61,7 @@ if you pass an unknown one.
 The two HRRR datasets (`noaa-hrrr-forecast-48-hour`, `noaa-hrrr-analysis`) are
 **not supported**: they are on a projected Lambert Conformal Conic grid (1-D
 `y`/`x` in meters with 2-D `latitude(y,x)`/`longitude(y,x)`), which the 1-D
-lat/lon envelope does not model. Selecting one exits non-zero. Converting a
+lat/lon standard dataset does not model. Selecting one exits non-zero. Converting a
 projected grid to a regular lat/lon grid is a reprojection — a grid transform
 out of scope for this fetcher.
 
@@ -80,7 +80,7 @@ out of scope for this fetcher.
 
 ### Output
 
-A consolidated weather-skills envelope Zarr. Forecast datasets carry a scalar `time`
+A consolidated weather-skills standard dataset Zarr. Forecast datasets carry a scalar `time`
 coord (the init date), `step` (forecast lead time, `timedelta64`), and — for
 ensembles — `number` (member 0 is the control). Analysis datasets carry a
 `time` dimension. Source variable units are forwarded verbatim; this fetcher
@@ -118,4 +118,4 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis
 ```
 
 See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the full per-dataset
-dimension list and the dynamical → envelope coordinate mapping.
+dimension list and the dynamical → standard dataset coordinate mapping.

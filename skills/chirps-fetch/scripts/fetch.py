@@ -10,7 +10,7 @@
 #   "rioxarray",
 # ]
 # ///
-"""Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
+"""Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
 
 import os
 import sys
@@ -262,7 +262,7 @@ def _open_day(tif: Path, day: date):
             ),
         )
 def fetch(start_time, end_time, workers, **kwargs):
-    """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills envelope Zarr."""
+    """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
     import requests
 
     start = start_time.isoformat()

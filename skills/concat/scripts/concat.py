@@ -6,7 +6,7 @@
 #   "xarray",
 # ]
 # ///
-"""Concatenate weather-skills envelope Zarr stores along a named dim."""
+"""Concatenate weather-skills standard dataset Zarr stores along a named dim."""
 
 from weather_skills_core import UsageError, weather_skill
 
@@ -34,7 +34,7 @@ def _coerce(values):
 @weather_skill.argument("--dim", required=True)
 @weather_skill.argument("--coords", help="Comma-separated coord values for the new dim")
 def concat(dss, dim, coords, **kwargs):
-    """Concatenate weather-skills envelope Zarr stores along a named dim."""
+    """Concatenate weather-skills standard dataset Zarr stores along a named dim."""
     import xarray as xr
 
     if len(dss) < 2:

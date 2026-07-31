@@ -1,6 +1,6 @@
 ---
 name: reduce
-description: Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic (mean, std, min, max, sum, median) — e.g. ensemble spread as the std across `number`, model disagreement as the std across a model dim, or a time-mean baseline for anomalies. Use whenever a dataset needs a statistical reduction along a named dimension.
+description: Collapse one or more named dimensions of a weather-skills standard dataset Zarr with a statistic (mean, std, min, max, sum, median) — e.g. ensemble spread as the std across `number`, model disagreement as the std across a model dim, or a time-mean baseline for anomalies. Use whenever a dataset needs a statistical reduction along a named dimension.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/reduce.py *)

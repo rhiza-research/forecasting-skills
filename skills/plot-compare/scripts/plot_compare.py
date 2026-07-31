@@ -16,10 +16,10 @@
 #   "cf-units>=3.3",
 # ]
 # ///
-"""Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
+"""Side-by-side multi-panel PNG comparing two weather-skills standard dataset Zarrs.
 
 Top row is dataset A, bottom row is dataset B. When exactly one of A/B
-is a station-schema Zarr, it is placed on the top row to match the
+is a point_obs Zarr, it is placed on the top row to match the
 canonical "stations vs. satellite" presentation. Each row can draw its
 own variable (--variable-a/-b). The color scale is shared across both
 rows when they are the same variable with matching units, and per-row
@@ -328,10 +328,10 @@ def plot_compare(
     output,
     **kwargs,
 ):
-    """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
+    """Side-by-side multi-panel PNG comparing two weather-skills standard dataset Zarrs.
 
     Top row is dataset A, bottom row is dataset B. When exactly one of A/B
-    is a station-schema Zarr, it is placed on the top row to match the
+    is a point_obs Zarr, it is placed on the top row to match the
     canonical "stations vs. satellite" presentation. Each row can draw its
     own variable (--variable-a/-b). The color scale is shared across both
     rows when they are the same variable with matching units, and per-row
@@ -804,7 +804,7 @@ def plot_compare(
     side_a = (ds_a, da_a, td_a, label_a, var_a, _row_units(da_a), scale_a)
     side_b = (ds_b, da_b, td_b, label_b, var_b, _row_units(da_b), scale_b)
 
-    # Decide row layout: when exactly one is station-schema, put it on top.
+    # Decide row layout: when exactly one is point_obs, put it on top.
     if b_station and not a_station:
         top = side_b
         bottom = side_a
@@ -821,7 +821,7 @@ def plot_compare(
 
     # The "gridded base" determines both the admin-polygon clip bbox and
     # the shared spatial extent across both rows. Pick whichever of A/B
-    # is NOT station-schema; if neither is station-schema, default to A.
+    # is NOT point_obs; if neither is point_obs, default to A.
     if a_station and not b_station:
         gridded_ds, gridded_var = ds_b, var_b
     elif b_station and not a_station:

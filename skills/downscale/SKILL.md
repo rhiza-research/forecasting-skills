@@ -1,6 +1,6 @@
 ---
 name: downscale
-description: Downscale a weather-skills envelope Zarr onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
+description: Downscale a weather-skills standard dataset Zarr onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py *)
@@ -52,7 +52,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --out
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr (any gridded envelope).
+- `--input`, `-i` — input Zarr (any gridded dataset).
 - `--output`, `-o` — output Zarr.
 - `--algorithm` — `linear-interpolation` or `q-q`. Required.
 - `--factor`, `-f` — integer refinement factor (>= 1). New spacing = input spacing / factor (factor 1 = identity). Mutually exclusive with `--target-resolution` and `--reference-grid`.

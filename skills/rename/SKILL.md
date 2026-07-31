@@ -1,6 +1,6 @@
 ---
 name: rename
-description: Rename one data variable in a weather-skills envelope Zarr to a new name, writing a new envelope. The renamed variable keeps its values and attributes; all other variables, coordinates, and dimensions pass through unchanged.
+description: Rename one data variable in a weather-skills standard dataset Zarr to a new name, writing a new standard dataset. The renamed variable keeps its values and attributes; all other variables, coordinates, and dimensions pass through unchanged.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/rename.py *)
@@ -34,7 +34,7 @@ where `--input` and `--output` resolve to the same store or one nested inside
 the other.
 
 ### Arguments
-- `--input`, `-i` — input Zarr containing a weather-skills envelope.
+- `--input`, `-i` — input Zarr containing a weather-skills standard dataset.
 - `--output`, `-o` — output Zarr (a distinct path from `--input`).
 - `--to-name` — the new variable name; becomes the output variable's name.
 - `--variable`, `-v` — source data variable to rename. If omitted and the input

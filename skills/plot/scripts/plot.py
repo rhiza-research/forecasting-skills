@@ -15,7 +15,7 @@
 #   "cf-units>=3.3",
 # ]
 # ///
-"""Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
+"""Render a heatmap or timeseries PNG from a weather-skills standard dataset Zarr.
 
 The heatmap mode produces a CartoPy panel layout: one subplot per step
 (up to 4 columns), shared color scale, country/coastline boundaries, and a
@@ -393,7 +393,7 @@ def plot(
     output,
     **kwargs,
 ):
-    """Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
+    """Render a heatmap or timeseries PNG from a weather-skills standard dataset Zarr.
 
     The heatmap mode produces a CartoPy panel layout: one subplot per step
     (up to 4 columns), shared color scale, country/coastline boundaries, and a

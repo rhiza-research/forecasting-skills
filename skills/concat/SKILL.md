@@ -1,6 +1,6 @@
 ---
 name: concat
-description: Concatenate two or more weather-skills envelope Zarr stores along a named dimension, optionally assigning coordinate values to the new axis. Use when combining ensemble members, stitching time windows, or merging per-country fetches into a single dataset.
+description: Concatenate two or more weather-skills standard dataset Zarr stores along a named dimension, optionally assigning coordinate values to the new axis. Use when combining ensemble members, stitching time windows, or merging per-country fetches into a single dataset.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/concat.py *)

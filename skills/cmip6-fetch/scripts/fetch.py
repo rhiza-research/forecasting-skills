@@ -12,7 +12,7 @@
 #   "cf_units",
 # ]
 # ///
-"""Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
+"""Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills standard dataset Zarr."""
 
 import sys
 from datetime import UTC, datetime
@@ -36,7 +36,7 @@ _SKILL_VERSION = "0.1.7"
 _CATALOG_URL = "https://storage.googleapis.com/cmip6/pangeo-cmip6.csv"
 
 # CF Conventions version this fetcher stamps on the output. CMIP6 source stores
-# carry an older inherited value (e.g. "CF-1.7 CMIP-6.0 UGRID-1.0"); the envelope
+# carry an older inherited value (e.g. "CF-1.7 CMIP-6.0 UGRID-1.0"); the standard dataset
 # transform repairs the dataset to the current CF release and re-stamps it.
 _CF_CONVENTIONS = "CF-1.13"
 
@@ -69,7 +69,7 @@ _CF_CONVENTIONS = "CF-1.13"
 #   BOUNDS (structural):
 #     - Every `*_bnds` / `*_bounds` cell-bounds variable is DROPPED, the orphaned
 #       bounds index dim is removed, and each variable's now-dangling `bounds`
-#       attr is STRIPPED (the weather-skills envelope carries no cell bounds).
+#       attr is STRIPPED (the weather-skills standard dataset carries no cell bounds).
 #
 #   standard_name / long_name:
 #     - PRESERVED from source; this skill does not assign them. Coord CF attrs
@@ -191,7 +191,7 @@ def _open_remote(state, model, experiment, variable, member, table, grid) -> dic
 
         # This fetcher handles regular 1-D lat/lon grids only. Ocean/curvilinear
         # CMIP6 grids carry 2-D latitude/longitude over (i, j) index dims, which the
-        # 1-D-lat/lon weather-skills envelope does not model; reprojecting them is a grid
+        # 1-D-lat/lon weather-skills standard dataset does not model; reprojecting them is a grid
         # transform for a dedicated skill, not this fetcher.
         if "lat" not in ds.dims or "lon" not in ds.dims:
             raise UsageError(
@@ -228,7 +228,7 @@ def _ensure_coord_cf_attrs(ds):
 def _drop_bounds(ds):
     """Drop every `*_bnds` bounds variable and the dangling `bounds` attr it leaves.
 
-    The weather-skills envelope does not carry cell bounds. Removing the bounds variables
+    The weather-skills standard dataset does not carry cell bounds. Removing the bounds variables
     without also clearing the coords' `bounds` attrs would leave each coord
     pointing at an absent variable, which is a CF section 7.1 violation
     (cf-xarray's bounds resolution and any CF checker would flag it). This drops
@@ -256,7 +256,7 @@ def _verify_cf_decode(ds, variable: str) -> None:
 
     A write-side guard: if the coord attrs do not let cf-xarray identify the
     longitude (X), latitude (Y), and time (T) axes, the output would not be the
-    CF-navigable store the envelope promises. Fail with an actionable message.
+    CF-navigable store the standard dataset promises. Fail with an actionable message.
     """
     axes = ds.cf.axes
     missing = [name for name in ("X", "Y", "T") if name not in axes]
@@ -293,7 +293,7 @@ def _set_write_encoding(ds, source_calendar, source_time_units, fills) -> None:
             help="CMIP6 grid_label; required only when more than one matches the other facets.",
         )
 def fetch(start_time, end_time, bbox, model, experiment, variable, member, table, grid, **kwargs):
-    """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills envelope Zarr."""
+    """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills standard dataset Zarr."""
     from weather_skills_core.dataset import bbox_subset
 
     state = {}
@@ -309,7 +309,7 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
         )
 
     # Capture the rich CMIP6 global attrs before any selection so they survive
-    # onto the envelope. The transform preserves them, overwrites only
+    # onto the standard dataset. The transform preserves them, overwrites only
     # `Conventions`, and appends a history line.
     source_globals = dict(ds.attrs)
 
@@ -349,7 +349,7 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
         f"{datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')} cmip6-fetch: "
         f"subset {variable} to {start_iso}..{end_iso}"
         + (f" bbox {bbox_label}" if bbox_label else "")
-        + f"; mapped onto the weather-skills envelope and re-stamped {_CF_CONVENTIONS}."
+        + f"; mapped onto the weather-skills standard dataset and re-stamped {_CF_CONVENTIONS}."
     )
     prior_history = source_globals.get("history", "")
     new_globals = dict(source_globals)

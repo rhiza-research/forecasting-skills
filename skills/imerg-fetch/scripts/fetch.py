@@ -12,7 +12,7 @@
 #   "numpy",
 # ]
 # ///
-"""Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
+"""Fetch IMERG live precipitation and write a weather-skills standard dataset Zarr."""
 
 import sys
 import tempfile
@@ -38,7 +38,7 @@ SHORTNAMES = {
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument("--version", default="late", choices=list(SHORTNAMES))
 def fetch(start_time, end_time, version, **kwargs):
-    """Fetch IMERG live precipitation and write a weather-skills envelope Zarr."""
+    """Fetch IMERG live precipitation and write a weather-skills standard dataset Zarr."""
     import earthaccess
     import xarray as xr
 

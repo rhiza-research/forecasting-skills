@@ -8,7 +8,7 @@
 #   "numpy",
 # ]
 # ///
-"""Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only).
+"""Coarsen or align a weather-skills standard dataset Zarr onto a target grid (geometry only).
 
 Generates a target grid at points ``offset + k * resolution`` for integer k,
 clipped to the input's lon/lat range, and interpolates onto it linearly via
@@ -69,7 +69,7 @@ def _target_axis(coord_vals, resolution: float, offset: float):
             help="Grid offset in degrees; target points fall at offset + k*resolution.",
         )
 def coarsen(ds, variable, target_resolution, offset, **kwargs):
-    """Coarsen or align a weather-skills envelope Zarr onto a target grid (geometry only)."""
+    """Coarsen or align a weather-skills standard dataset Zarr onto a target grid (geometry only)."""
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor

@@ -1,6 +1,6 @@
 ---
 name: plot-timeseries
-description: Render a single PNG with one 1D trace per input Zarr overlaid on a shared time axis. Use when you want to compare a variable across multiple weather-skills envelope Zarrs as line traces. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging.
+description: Render a single PNG with one 1D trace per input Zarr overlaid on a shared time axis. Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs as line traces. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py *)
@@ -12,7 +12,7 @@ metadata:
 # plot-timeseries
 
 Source-agnostic multi-input timeseries plotting. Takes one or more weather-skills
-envelope Zarrs and draws each as a 1D line on a single set of axes against
+standard dataset Zarrs and draws each as a 1D line on a single set of axes against
 its time/step coord. Each trace is labeled in the legend by the input
 filename stem.
 

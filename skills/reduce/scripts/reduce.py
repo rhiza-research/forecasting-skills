@@ -5,7 +5,7 @@
 #   "cftime>=1.6",
 # ]
 # ///
-"""Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic.
+"""Collapse one or more named dimensions of a weather-skills standard dataset Zarr with a statistic.
 
 Reduces the selected data variables along the requested dims with one of
 ``mean``/``std``/``min``/``max``/``sum``/``median`` (NaNs are skipped), e.g.
@@ -42,7 +42,7 @@ _SKILL_VERSION = "0.1.7"
             help="Statistic applied along the collapsed dimension(s).",
         )
 def reduce(ds, variable, dim, method, **kwargs):
-    """Collapse one or more named dimensions of a weather-skills envelope Zarr with a statistic."""
+    """Collapse one or more named dimensions of a weather-skills standard dataset Zarr with a statistic."""
 
     # De-duplicate the requested dims preserving first-seen order so a
     # repeated name doesn't reduce twice; each must be an actual dim.

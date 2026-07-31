@@ -1,6 +1,6 @@
 ---
 name: plot
-description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills envelope Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile.
+description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills standard dataset Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
@@ -22,8 +22,8 @@ Source-agnostic single-dataset visualization. Two styles:
 
 ## When to use
 
-- Producing a quick-look forecast map panel for any gridded envelope.
-- Producing a time/step profile for a gridded or station envelope.
+- Producing a quick-look forecast map panel for any gridded dataset.
+- Producing a time/step profile for a gridded or station standard dataset.
 
 For two-dataset comparisons, use the `plot-compare` skill.
 

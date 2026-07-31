@@ -48,13 +48,13 @@ import yaml
 # in `metadata.catalog-group`. The note must be literally true of every
 # member skill; a skill that doesn't fit a note belongs in another group.
 GROUPS: list[tuple[str, str, str | None]] = [
-    ("fetchers", "Fetchers", "ingress — source → envelope"),
-    ("transforms", "Transforms", "envelope → envelope"),
+    ("fetchers", "Fetchers", "ingress — source → standard dataset"),
+    ("transforms", "Transforms", "standard dataset → standard dataset"),
     ("figure", "Figure", "dataset → PNG"),
     (
         "agent-tooling",
         "Agent capabilities",
-        "no envelope output — capabilities the agent uses alongside pipelines",
+        "no dataset output — capabilities the agent uses alongside pipelines",
     ),
 ]
 

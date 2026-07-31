@@ -8,10 +8,10 @@
 # ///
 """Realize a forecast's step axis as wall-clock valid times (time = init + step).
 
-A forecast envelope carries a ``step`` dim (lead time, ``timedelta64``) plus a
+A forecast dataset carries a ``step`` dim (lead time, ``timedelta64``) plus a
 scalar ``time`` coord holding the forecast init date. Time-based consumers
 (observation comparisons, time-axis plots) need a ``time`` dim instead. This
-skill computes ``valid_time = init + step`` and rewrites the envelope with
+skill computes ``valid_time = init + step`` and rewrites the standard dataset with
 ``step`` replaced by a ``time`` dim labeled with those valid times. All data
 variables and other dims (``number``, lat/lon) pass through unchanged; the init
 date stays discoverable via the ``weather_skills_forecast_init`` dataset attr.
