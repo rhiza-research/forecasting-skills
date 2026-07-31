@@ -9,13 +9,12 @@
 > use in any automated workflow you rely on, and do not assume outputs are
 > scientifically validated. Expect breakage.
 
-A set of composable [Agent Skills](https://agentskills.io) for building
-weather/climate data pipelines from an LLM-driven agent. Skills are
-source-specific fetchers (ingress), generic operators that work on a shared
-Zarr-based container (see [`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md)), or capabilities the
-agent uses alongside pipelines.
+Small tools an AI agent can run to fetch weather data, transform it, and make
+plots. Each skill is a command-line script. They share one Zarr file format so
+outputs of one skill can feed into the next — see
+[`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md).
 
-Initiated by Rhiza Research.
+Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 
 ## Skills
 
@@ -229,7 +228,7 @@ picks and composes skills from this set.
 ## Standard dataset contract
 
 Skills share a simple Zarr contract: fixed dimension names (`space`, `time`,
-`init_time`, …) and short types (`observations`, `forecast`, `station`, …).
+`init_time`, …) and short types (`observations`, `forecast`, `point_obs`, …).
 See
 [`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md).
 Fetchers write that shape; other skills only depend on dims, coords, data

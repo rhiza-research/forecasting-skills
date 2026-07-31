@@ -284,7 +284,7 @@ def _set_write_encoding(ds) -> None:
 @weather_skill(
     name="ghcn-daily-fetch",
     version=_SKILL_VERSION,
-    outputs=["station"]
+    outputs=["point_obs"]
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

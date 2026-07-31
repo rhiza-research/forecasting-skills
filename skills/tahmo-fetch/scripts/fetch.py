@@ -191,7 +191,7 @@ def _ensure_setup(state, countries: list):
 @weather_skill(
     name="tahmo-fetch",
     version=_SKILL_VERSION,
-    outputs=["station"]
+    outputs=["point_obs"]
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
