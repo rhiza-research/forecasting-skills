@@ -31,8 +31,8 @@ Marker comments in the template (each must appear exactly once):
     <!-- gen:flow-output -->     example <li> items for the figure stage
 
 Usage:
-    uv run --script tools/build_site.py                  # writes _site/
-    uv run --script tools/build_site.py --output /tmp/site-build
+    uv run tools/build_site.py                  # writes _site/
+    uv run tools/build_site.py --output /tmp/site-build
 """
 
 import argparse

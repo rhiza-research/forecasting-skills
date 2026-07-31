@@ -3,7 +3,7 @@ name: ghcn-daily-fetch
 description: Fetch NOAA GHCN-Daily global in-situ station observations (precipitation, max/min/avg temperature) for a date range and region, and write a point_obs weather-skills standard dataset Zarr. Use when a task needs credential-free worldwide daily station data, e.g. to compare against gridded satellite, reanalysis, or forecast data.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads NOAA GHCN-Daily from the public S3 website endpoint (noaa-ghcn-pds.s3.amazonaws.com) over HTTPS; no credentials required.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.7"
   catalog-group: fetchers
@@ -37,7 +37,7 @@ For African stations with sub-daily sensor data, `tahmo-fetch` is an alternative
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start-time YYYY-MM-DD --end-time YYYY-MM-DD [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start-time YYYY-MM-DD --end-time YYYY-MM-DD [-v VAR ...] -o <path.zarr>
 ```
 
 ### Arguments
@@ -118,10 +118,10 @@ with the `provenance` skill.
 
 ```bash
 # Precip + max temperature for NYC-area stations over three days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-03 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-03 \
   -v precip -v tmax -o /tmp/ghcn.zarr
 
 # Default variables (precip, tmax, tmin) over Kenya for three weeks
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5.5/33.9/-4.7/41.9 --start-time 2024-06-01 --end-time 2024-06-21 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5.5/33.9/-4.7/41.9 --start-time 2024-06-01 --end-time 2024-06-21 \
   -o /tmp/ghcn_kenya.zarr
 ```

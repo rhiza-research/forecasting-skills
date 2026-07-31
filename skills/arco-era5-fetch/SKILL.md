@@ -3,7 +3,7 @@ name: arco-era5-fetch
 description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, pressure, and more) for a date range and region from the public, credential-free Google Cloud Zarr store, and write a weather-skills standard dataset Zarr. Use when a task needs multi-variable gridded reanalysis ground truth for comparison, verification, or downstream clipping/aggregation/plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads the public ARCO-ERA5 analysis-ready Zarr from Google Cloud (gs://gcp-public-data-arco-era5) over anonymous access; no credentials required.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.9"
   catalog-group: fetchers
@@ -31,7 +31,7 @@ Not a forecast — ERA5 is reanalysis. For forecast grids use `ecmwf-fetch` or
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 ```
 
 ### Arguments
@@ -120,21 +120,21 @@ version, also printed by `--help`. Inspect a written output's provenance with th
 `provenance` skill.
 
 The `args` dict stores option names with underscores, not the hyphenated CLI flag
-names. A consumer reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
+names. A consumer reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
 invocation must translate underscore → hyphen.
 
 ## Examples
 
 ```bash
 # 2m temperature over Kenya for two days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-02 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-02 \
   --bbox 7/32/-6/43 -v 2m_temperature -o /tmp/arco.zarr
 
 # One week, two variables
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-05-24 --end-time 2026-05-30 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-05-24 --end-time 2026-05-30 \
   --bbox 23/-20/-37/59 -v 2m_temperature -v total_precipitation -o /tmp/arco_week.zarr
 
 # A pressure-level variable for one day — adds a CF `level` (air_pressure) dim
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-01 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-01 \
   --bbox 7/32/-6/43 -v temperature -o /tmp/arco_level.zarr
 ```

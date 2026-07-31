@@ -3,7 +3,7 @@ name: imerg-fetch
 description: Fetch live IMERG satellite precipitation for a date range and write a weather-skills standard dataset Zarr. Use when a task needs recent half-hourly/daily IMERG rainfall, e.g. for station-vs-satellite comparison or verification.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.14"
   catalog-group: fetchers
@@ -26,7 +26,7 @@ Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr> [--version late|final]
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr> [--version late|final]
 ```
 
 ### Arguments
@@ -71,5 +71,5 @@ records `{start, end, version}`. `version` is the value printed by
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-05-01 --end-time 2026-05-10 --output /tmp/imerg.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-05-01 --end-time 2026-05-10 --output /tmp/imerg.zarr
 ```

@@ -29,7 +29,7 @@ Files that do not decode as UTF-8 are skipped in the text checks with a
 note rather than crashing the run.
 
 Usage:
-    uv run --script tools/check_site_output.py _site
+    uv run tools/check_site_output.py _site
 """
 
 import re

@@ -3,7 +3,7 @@ name: oisst-fetch
 description: Fetch NOAA OISST v2.1 daily sea-surface temperature for a date range and region from NOAA PSL's public OPeNDAP server, and write a weather-skills standard dataset Zarr. Use when a task needs credential-free gridded SST observations, e.g. for ocean analysis or comparison against forecasts/reanalysis.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads NOAA OISST v2.1 from NOAA PSL's OPeNDAP server (psl.noaa.gov) over HTTPS; no credentials required.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.8"
   catalog-group: fetchers
@@ -27,7 +27,7 @@ window rather than whole yearly files, with no credentials.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
 ```
 
 ### Arguments
@@ -111,10 +111,10 @@ by `--help`. Inspect a written output's provenance with the `provenance` skill.
 
 ```bash
 # SST over the seas around East Africa for three days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start-time 2024-06-01 --end-time 2024-06-03 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start-time 2024-06-01 --end-time 2024-06-03 \
   -o /tmp/oisst.zarr
 
 # Three weeks over a bounded region
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start-time 2024-05-12 --end-time 2024-06-01 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start-time 2024-05-12 --end-time 2024-06-01 \
   -o /tmp/oisst_week.zarr
 ```

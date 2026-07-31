@@ -3,7 +3,7 @@ name: tahmo-fetch
 description: Fetch TAHMO station observations for one or more African countries and write a weather-skills standard dataset Zarr (point_obs). Use when a task needs in-situ station rainfall/temperature/humidity/pressure, e.g. to compare against gridded satellite or forecast data.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Installs the TAHMO Python SDK directly from GitHub (git+https://github.com/rhiza-research/tahmo-api) via uv script metadata. Requires TAHMO_API_USERNAME and TAHMO_API_PASSWORD in the environment.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.14"
   catalog-group: fetchers
@@ -27,7 +27,7 @@ Downloads TAHMO station observations via the TAHMO SDK for the requested countri
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya [--country Ghana ...] --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya [--country Ghana ...] --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
@@ -53,12 +53,12 @@ workflow.
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names
 (`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
+reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --country Ghana --start-time 2026-01-01 --end-time 2026-02-15 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --country Kenya --country Ghana --start-time 2026-01-01 --end-time 2026-02-15 \
     --output /tmp/tahmo.zarr
 ```

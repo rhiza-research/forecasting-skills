@@ -3,7 +3,7 @@ name: dynamical-fetch
 description: Fetch a dataset from the dynamical.org open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills standard dataset Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.13"
   catalog-group: fetchers
@@ -30,10 +30,10 @@ selected with `--dataset` and validated at runtime against
 
 ```
 # Forecast datasets — a single init date:
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --date <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --date <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 
 # Analysis datasets — an inclusive date range:
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --start-time <date> --end-time <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --start-time <date> --end-time <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
 ```
 
 ### Supported datasets
@@ -99,21 +99,21 @@ constant in `scripts/fetch.py`, kept in lockstep with `metadata.version` in
 this SKILL.md by the CI version-bump workflow.
 
 The `args` dict stores argparse dest names (underscored), not the hyphenated
-CLI flag names. A consumer reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
+CLI flag names. A consumer reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
 invocation must translate underscore → hyphen.
 
 ## Examples
 
 ```bash
 # GEFS 35-day ensemble, Kenya bbox, one variable
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gefs-forecast-35-day --date 2026-06-01 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gefs-forecast-35-day --date 2026-06-01 \
   --bbox 7/32/-6/43 -v precipitation_surface -o /tmp/gefs.zarr
 
 # GFS deterministic forecast for a specific init date, full global grid
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast --date 2026-06-01 -o /tmp/gfs.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast --date 2026-06-01 -o /tmp/gfs.zarr
 
 # GFS analysis over a date range
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start-time 2026-05-10 --end-time 2026-05-30 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start-time 2026-05-10 --end-time 2026-05-30 \
   --bbox 12/-4/4/2 -o /tmp/gfs_analysis.zarr
 ```
 

@@ -3,7 +3,7 @@ name: convert-calendar
 description: Convert a weather-skills standard dataset Zarr's time axis to a target CF calendar by wrapping xarray's Dataset.convert_calendar. Use to align two datasets onto a common calendar before comparison — e.g. converting a model-calendar forecast (noleap/360_day) to the standard calendar of observations. Converting to a standard calendar yields a datetime64 axis; converting to a model calendar yields a cftime axis. Dates not representable in the target calendar are dropped.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py *)
 metadata:
   version: "0.1.8"
   catalog-group: transforms
@@ -44,7 +44,7 @@ the time axis; it does not resample, reduce, or render.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py --input <in.zarr> --output <out.zarr> \
     --calendar NAME \
     [--time-dim NAME] [--align-on date|year]
 ```
@@ -91,7 +91,7 @@ basename.
 
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `align_on`), not the hyphenated CLI flag names (`--time-dim`, `--align-on`). A
-consumer reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>`
+consumer reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>`
 invocation must translate underscore → hyphen.
 
 ## Examples
@@ -99,7 +99,7 @@ invocation must translate underscore → hyphen.
 ```bash
 # Convert a noleap forecast to the standard calendar so it can be compared
 # against standard-calendar observations.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py \
+uv run ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py \
     -i /tmp/forecast_noleap.zarr -o /tmp/forecast_standard.zarr \
     --calendar standard
 ```
@@ -107,7 +107,7 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py \
 ```bash
 # Convert standard-calendar observations onto a 360_day model calendar.
 # --align-on is required because 360_day is involved.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py \
+uv run ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py \
     -i /tmp/obs.zarr -o /tmp/obs_360.zarr \
     --calendar 360_day --align-on year
 ```

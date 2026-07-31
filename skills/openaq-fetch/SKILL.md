@@ -3,7 +3,7 @@ name: openaq-fetch
 description: Fetch OpenAQ air-quality station observations (PM2.5, PM10, NO2, O3, SO2, CO) for a date range and region, and write a point_obs weather-skills standard dataset Zarr. Use when a task needs in-situ air-quality and atmospheric-composition data, e.g. to compare against gridded model output.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Uses the OpenAQ v3 REST API over HTTPS; requires a free OPENAQ_API_KEY in the environment (register at https://explore.openaq.org/register).
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.8"
   catalog-group: fetchers
@@ -31,7 +31,7 @@ point_obs Zarr store.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox N/W/S/E --start-time YYYY-MM-DD --end-time YYYY-MM-DD [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox N/W/S/E --start-time YYYY-MM-DD --end-time YYYY-MM-DD [-v VAR ...] -o <path.zarr>
 ```
 
 Requires `OPENAQ_API_KEY` in the environment (free; register at
@@ -137,10 +137,10 @@ zarr-writing skills append their own entry. `args` records `bbox`, the sorted
 
 ```bash
 # PM2.5 for NYC-area stations over three days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-03 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-03 \
   -v pm25 -o /tmp/openaq.zarr
 
 # NO2 + O3 over a small bbox for one week
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-07 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-07 \
   -v no2 -v o3 -o /tmp/openaq_gases.zarr
 ```

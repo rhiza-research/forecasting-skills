@@ -3,7 +3,7 @@ name: rename
 description: Rename one data variable in a weather-skills standard dataset Zarr to a new name, writing a new standard dataset. The renamed variable keeps its values and attributes; all other variables, coordinates, and dimensions pass through unchanged.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/rename.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/rename.py *)
 metadata:
   version: "0.1.3"
   catalog-group: transforms
@@ -25,7 +25,7 @@ dimensions are out of scope; only a data variable is renamed.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/rename.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/rename.py --input <in.zarr> --output <out.zarr> \
     --to-name <NAME> [--variable NAME]
 ```
 
@@ -72,7 +72,7 @@ same-named-but-modified input correctly cache-misses; `version` is the
 
 The `args` dict stores argparse dest names (underscored, e.g. `to_name`), not
 the hyphenated CLI flag names (`--to-name`). A consumer reconstructing a
-`uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
+`uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Example
@@ -81,10 +81,10 @@ IMERG names its precipitation variable `precip`; IFS names it
 `precipitation_surface`. Rename each to a shared `precipitation`:
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/rename.py -i /tmp/imerg.zarr -o /tmp/imerg_renamed.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/rename.py -i /tmp/imerg.zarr -o /tmp/imerg_renamed.zarr \
     --variable precip --to-name precipitation
 
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/rename.py -i /tmp/ifs.zarr -o /tmp/ifs_renamed.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/rename.py -i /tmp/ifs.zarr -o /tmp/ifs_renamed.zarr \
     --variable precipitation_surface --to-name precipitation
 ```
 

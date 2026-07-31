@@ -3,7 +3,7 @@ name: submit-feedback
 description: Build a prefilled GitHub new-issue link the user clicks to file feedback under their own GitHub account. You supply the title and body; the skill URL-encodes them and checks that the link fits GitHub's length limit. Use when a user wants to report a bug or suggestion about the skills.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Builds a URL string only; reads no credentials, makes no network request, and writes no file.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/build_url.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/build_url.py *)
 metadata:
   version: "0.1.9"
   catalog-group: agent-tooling
@@ -52,7 +52,7 @@ verifies it fits.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/build_url.py --title <title> (--body <text> | --body-file <path>)
+uv run ${CLAUDE_SKILL_DIR}/scripts/build_url.py --title <title> (--body <text> | --body-file <path>)
 ```
 
 Issues are always filed to the `rhiza-research/forecasting-skills` repository;
@@ -89,7 +89,7 @@ The issue is filed under their own GitHub account, on the target repository.
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/build_url.py \
+uv run ${CLAUDE_SKILL_DIR}/scripts/build_url.py \
     --title "plot produced an empty map for IMERG over Kenya" \
     --body "**What I did:** ran plot on a clipped IMERG zarr.
 

@@ -3,7 +3,7 @@ name: chirps-fetch
 description: Fetch CHIRPS precipitation observations for a date range — the validated final product back to 1998, with a preliminary fallback for very recent days — and write a weather-skills standard dataset Zarr. Use when a task needs CHIRPS rainfall, recent or historical, e.g. to compare against a forecast or station data, or to build a reference period.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public CHIRPS data server (data.chc.ucsb.edu); no credentials required.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.18"
   catalog-group: fetchers
@@ -23,7 +23,7 @@ Coverage starts in 1998 (CHIRPS v3.0 `sat`); dates before 1998 are unavailable a
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr>
 ```
 
 ### Arguments
@@ -60,5 +60,5 @@ output's provenance with the `provenance` skill.
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-02-15 --output /tmp/chirps.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-02-15 --output /tmp/chirps.zarr
 ```

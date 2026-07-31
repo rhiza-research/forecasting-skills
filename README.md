@@ -121,7 +121,7 @@ forecasting-skills                          # list
 forecasting-skills <skill> [args]           # run one
 ```
 
-Each skill's PEP 723 inline dependency block is resolved by `uv run --script`
+Each skill's PEP 723 inline dependency block is resolved by `uv run`
 on each invocation, so the runner itself contributes no Python deps to the
 script's runtime environment.
 

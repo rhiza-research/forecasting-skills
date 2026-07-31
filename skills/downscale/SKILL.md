@@ -3,7 +3,7 @@ name: downscale
 description: Downscale a weather-skills standard dataset Zarr onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py *)
 metadata:
   version: "0.1.11"
   catalog-group: transforms
@@ -44,7 +44,7 @@ Not for: coarsening a grid onto a strictly-coarser resolution — that is the
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --output <out.zarr> \
     --algorithm {linear-interpolation,q-q} \
     (--factor N | --target-resolution DEG | --reference-grid REF.zarr) \
     [--variable NAME] \
@@ -96,25 +96,25 @@ secondary `reference_inputs` hashes are.
 
 ```bash
 # Factor-4 finer, linear interpolation.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_4x.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_4x.zarr \
     --algorithm linear-interpolation --factor 4
 ```
 
 ```bash
 # Onto a finer 0.05° grid, linear interpolation.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/imerg.zarr -o /tmp/imerg_p05.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/imerg.zarr -o /tmp/imerg_p05.zarr \
     --algorithm linear-interpolation --target-resolution 0.05
 ```
 
 ```bash
 # Match the (finer) grid of another dataset.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_on_imerg.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_on_imerg.zarr \
     --algorithm linear-interpolation --reference-grid /tmp/imerg.zarr
 ```
 
 ```bash
 # Downscale ECMWF onto a finer 0.05° grid and q-q map onto ERA5 observations
 # that already sit on that grid.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_p05_qq.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_p05_qq.zarr \
     --algorithm q-q --target-resolution 0.05 --qq-reference /tmp/era5_p05.zarr
 ```

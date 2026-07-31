@@ -3,7 +3,7 @@ name: smap-fetch
 description: Fetch NASA SMAP SPL3SMP_E daily 9 km volumetric soil moisture for a bounded region and short date range via Earthdata, and write a fully CF-1.13 weather-skills standard dataset Zarr. Use when a task needs gridded land-surface soil-moisture observations, e.g. for drought or agricultural analysis, or comparison against models.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   version: "0.1.9"
   catalog-group: fetchers
@@ -34,7 +34,7 @@ skill is built for a bounded `--bbox` over a short window — pass `--bbox`.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
 ```
 
 Requires Earthdata credentials in the environment (`EARTHDATA_USERNAME` /
@@ -129,10 +129,10 @@ trimming.
 
 ```bash
 # Soil moisture over a Horn-of-Africa bbox for two days (AM overpass)
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start-time 2024-06-01 --end-time 2024-06-02 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start-time 2024-06-01 --end-time 2024-06-02 \
   -o /tmp/smap.zarr
 
 # One week ending at a recent date, PM overpass
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start-time 2024-05-26 --end-time 2024-06-01 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start-time 2024-05-26 --end-time 2024-06-01 \
   --overpass PM -o /tmp/smap_pm.zarr
 ```
