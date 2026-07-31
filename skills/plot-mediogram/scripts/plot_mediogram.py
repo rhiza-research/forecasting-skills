@@ -9,7 +9,7 @@
 #   # matplotlib<3.10: keep the plot skills on one tested matplotlib
 #   "matplotlib>=3.8,<3.10",
 #   "numpy",
-#   "cf-units>=3.3",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""

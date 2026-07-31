@@ -1,6 +1,6 @@
 ---
 name: unit-convert
-description: Convert data variables in a weather-skills standard dataset to target units (cf-units), or normalize recognized temp/precip variables to standard display units (degree_Celsius, mm day-1, mm) via --to-standard.
+description: Convert data variables in a weather-skills standard dataset to target units (pint / CF), or normalize recognized temp/precip variables to standard display units (degree_Celsius, mm day-1, mm) via --to-standard.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py *)
@@ -11,8 +11,10 @@ metadata:
 
 # unit-convert
 
-Converts values with **cf-units** (UDUNITS-2), including a liquid-water density
-bridge so precip flux/amount (`kg m-2…`) can become `mm` / `mm day-1`.
+Converts values with **pint** / **pint-xarray** (CF/UDUNITS strings via
+`cf_xarray.units`). Mass precip (`kg m-2`, `kg m-2 s-1`) converts to depth/rate
+(`mm`, `mm day-1`) by dividing or multiplying by liquid-water density
+(1000 kg m-3).
 
 ## When to use
 

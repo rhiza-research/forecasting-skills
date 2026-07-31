@@ -8,7 +8,7 @@
 #   "pandas",
 #   "requests",
 #   "cf_xarray",
-#   "cf_units",
+#   "pint-xarray>=0.6",
 #   "cftime",
 # ]
 # ///
@@ -20,7 +20,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-import cf_units  # noqa: F401  (fail-fast probe; core loads lazily at write time)
+import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import cf_xarray  # noqa: F401  (fail-fast probe; core loads lazily at write time)
 import numpy as np
 import pandas as pd

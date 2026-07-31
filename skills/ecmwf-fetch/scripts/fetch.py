@@ -13,7 +13,7 @@
 #   "eccodeslib",
 #   "zarr",
 #   "numpy",
-#   "cf-units>=3.3",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills standard dataset Zarr."""

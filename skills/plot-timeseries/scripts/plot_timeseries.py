@@ -10,7 +10,7 @@
 #   "numpy",
 #   "xarray",
 #   "zarr",
-#   "cf-units>=3.3",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""

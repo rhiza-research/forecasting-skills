@@ -7,7 +7,7 @@
 #   "gcsfs",
 #   "numpy",
 #   "cf_xarray",
-#   "cf_units",
+#   "pint-xarray>=0.6",
 #   "cftime",
 # ]
 # ///
@@ -72,10 +72,11 @@ def _fix_units(units):
 
 
 def _udunits_valid(units: str) -> bool:
-    import cf_units
+    import cf_xarray.units  # noqa: F401
+    from pint import application_registry as ureg
 
     try:
-        cf_units.Unit(units)
+        ureg.Unit(units)
     except Exception:  # noqa: BLE001
         return False
     return True

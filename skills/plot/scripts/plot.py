@@ -12,7 +12,7 @@
 #   "shapely>=2.1",
 #   "xarray",
 #   "zarr",
-#   "cf-units>=3.3",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """Render a heatmap or timeseries PNG from a weather-skills standard dataset Zarr."""

@@ -8,7 +8,7 @@
 #   "zarr",
 #   "numpy",
 #   "cf_xarray",
-#   "cf_units",
+#   "pint-xarray>=0.6",
 #   "cftime",
 # ]
 # ///
@@ -19,7 +19,7 @@ import sys
 import tempfile
 from datetime import UTC, date, datetime, timedelta
 
-import cf_units  # noqa: F401  (fail-fast probe)
+import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import cf_xarray  # noqa: F401  (fail-fast probe)
 from weather_skills_core import DataError, SkillError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords, udunits_error

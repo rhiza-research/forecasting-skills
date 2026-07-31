@@ -9,7 +9,7 @@
 #   "pandas",
 #   "cftime",
 #   "cf_xarray",
-#   "cf_units",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills standard dataset Zarr."""
@@ -17,7 +17,7 @@
 import sys
 from datetime import UTC, datetime
 
-import cf_units  # noqa: F401  (fail-fast probe)
+import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import cf_xarray  # noqa: F401  (fail-fast probe)
 import gcsfs
 import pandas as pd

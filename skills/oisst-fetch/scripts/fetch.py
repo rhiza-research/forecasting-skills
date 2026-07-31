@@ -7,7 +7,7 @@
 #   "numpy",
 #   "netCDF4",
 #   "cf_xarray",
-#   "cf_units",
+#   "pint-xarray>=0.6",
 #   "cftime",
 # ]
 # ///
@@ -81,7 +81,8 @@ def _strip_dangling_bounds(ds):
 
 def _stamp_cf(ds):
     """Stamp CF-1.13 attrs; validate source sst units are convertible to K."""
-    import cf_units
+    import cf_xarray.units  # noqa: F401
+    from pint import application_registry as ureg
 
     ds.attrs.update(_CF_GLOBAL_ATTRS)
     stamp_cf_coords(
@@ -90,13 +91,13 @@ def _stamp_cf(ds):
 
     src_units = ds["sst"].attrs.get("units")
     try:
-        unit = cf_units.Unit(src_units)
-        valid = (not unit.is_no_unit()) and unit.is_convertible(cf_units.Unit("K"))
-    except (ValueError, TypeError):
+        unit = ureg.Unit(src_units)
+        valid = bool(src_units) and unit.is_compatible_with(ureg.Unit("K"))
+    except (TypeError, ValueError, AttributeError):
         valid = False
     if not valid:
         raise DataError(
-            f"source OISST sst units {src_units!r} are not a udunits temperature "
+            f"source OISST sst units {src_units!r} are not a temperature "
             "unit convertible to K; refusing to stamp CF "
             f"standard_name={_SST_STANDARD_NAME!r}."
         )

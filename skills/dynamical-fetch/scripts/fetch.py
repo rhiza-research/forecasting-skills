@@ -7,7 +7,7 @@
 #   "xarray",
 #   "zarr",
 #   "numpy",
-#   "cf-units>=3.3",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """Fetch a dynamical.org open-catalog dataset and write a weather-skills standard dataset Zarr."""

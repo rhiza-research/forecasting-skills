@@ -8,7 +8,7 @@
 #   "pandas",
 #   "requests",
 #   "cf_xarray",
-#   "cf_units",
+#   "pint-xarray>=0.6",
 #   "cftime",
 # ]
 # ///
@@ -24,12 +24,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-import cf_units
 import cf_xarray  # noqa: F401  (fail-fast probe)
+import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
+from pint import application_registry as ureg
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient, require_env
@@ -77,7 +78,7 @@ _STD_NAME_MOLE = {
     "so2": "mole_fraction_of_sulfur_dioxide_in_air",
     "co": "mole_fraction_of_carbon_monoxide_in_air",
 }
-_MASS_CONCENTRATION_REF = cf_units.Unit("kg m-3")
+_MASS_CONCENTRATION_REF = ureg.Unit("kg m-3")
 
 
 def _rate_limit_wait() -> None:
@@ -204,13 +205,13 @@ def _is_blank_units(units) -> bool:
 
 
 def _unit_family(units: str):
-    """Classify udunits-valid units as mass / mole / None for CF standard_name."""
+    """Classify CF/UDUNITS-valid units as mass / mole / None for CF standard_name."""
     if _is_blank_units(units):
         return None
-    u = cf_units.Unit(units)
-    if u.is_convertible(_MASS_CONCENTRATION_REF):
+    u = ureg.Unit(units)
+    if u.is_compatible_with(_MASS_CONCENTRATION_REF):
         return "mass"
-    if u.is_dimensionless():
+    if u.dimensionless:
         return "mole"
     return None
 

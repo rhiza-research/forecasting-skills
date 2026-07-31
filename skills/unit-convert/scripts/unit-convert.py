@@ -3,7 +3,7 @@
 # dependencies = [
 #   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cftime>=1.6",
-#   "cf-units>=3.3",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """Convert data variable(s) to --to-units, or --to-standard (temp °C, precip mm)."""
@@ -12,7 +12,7 @@ from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.units import (
     PRECIP_AMOUNT_STANDARD_NAME,
     PRECIP_RATE_STANDARD_NAME,
-    convert_values,
+    convert_dataarray,
     to_standard_units,
     units_equal,
 )
@@ -52,8 +52,6 @@ _STANDARD_NAME_BY_UNITS = {
 )
 def unit_convert(ds, variable, to_units, to_standard, standard_name, **kwargs):
     """Convert data variable(s). Omitting --variable converts all (--to-units) or recognized (--to-standard)."""
-    import cf_units
-
     if to_standard and to_units:
         raise UsageError("pass only one of --to-units or --to-standard")
     if not to_standard and not to_units:
@@ -71,10 +69,10 @@ def unit_convert(ds, variable, to_units, to_standard, standard_name, **kwargs):
         if not (isinstance(src_units, str) and src_units.strip()):
             raise UsageError(f"variable '{name}' has no units attr")
         if units_equal(src_units, to_units):
-            converted, dim_changed = da.values, False
+            converted_da, density_converted = da, False
         else:
             try:
-                converted, dim_changed = convert_values(da.values, src_units, to_units)
+                converted_da, density_converted = convert_dataarray(da, to_units)
             except UsageError as e:
                 raise UsageError(
                     f"could not convert units for variable '{name}' "
@@ -85,27 +83,29 @@ def unit_convert(ds, variable, to_units, to_standard, standard_name, **kwargs):
         if standard_name is not None:
             new_name = standard_name if standard_name.strip() else None
         else:
-            looked = _STANDARD_NAME_BY_UNITS.get(to_units.strip())
-            if looked is None:
-                try:
-                    looked = _STANDARD_NAME_BY_UNITS.get(str(cf_units.Unit(to_units)))
-                except ValueError:
-                    looked = None
+            looked = next(
+                (
+                    sn
+                    for key, sn in _STANDARD_NAME_BY_UNITS.items()
+                    if units_equal(to_units, key)
+                ),
+                None,
+            )
             precip = isinstance(source_name, str) and (
                 "precipitation" in source_name.lower() or "rainfall" in source_name.lower()
             )
             if looked is not None and (source_name is None or precip):
                 new_name = looked
-            elif dim_changed:
+            elif density_converted:
                 new_name = None
             else:
                 new_name = source_name
-        attrs = {**da.attrs, "units": to_units}
+        attrs = {**converted_da.attrs, "units": to_units}
         if new_name is None:
             attrs.pop("standard_name", None)
         else:
             attrs["standard_name"] = new_name
-        out[name] = da.copy(data=converted)
+        out[name] = converted_da
         out[name].attrs = attrs
     return out
 

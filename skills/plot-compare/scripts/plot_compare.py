@@ -13,7 +13,7 @@
 #   "shapely>=2.1",
 #   "xarray",
 #   "zarr",
-#   "cf-units>=3.3",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """Side-by-side multi-panel PNG comparing two weather-skills standard dataset Zarrs."""
