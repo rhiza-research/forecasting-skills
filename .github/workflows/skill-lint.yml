@@ -35,7 +35,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
-          CORE: git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator
+          CORE: git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup
         run: |
           set -euo pipefail
           marker='<!-- skill-lint-advisory -->'
