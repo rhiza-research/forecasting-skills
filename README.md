@@ -3,7 +3,7 @@
 > ⚠️ **Under active development — not production ready.**
 >
 > These skills are an early experiment in tool composition for weather/climate
-> data pipelines. Interfaces, envelope schema, and skill boundaries may change
+> data pipelines. Interfaces, dataset schema, and skill boundaries may change
 > without notice. Fetchers hit real APIs and require credentials; middle-
 > pipeline skills have only been smoke-tested on small synthetic data. Do not
 > use in any automated workflow you rely on, and do not assume outputs are
@@ -28,7 +28,7 @@ Initiated by Rhiza Research.
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
 | `dynamical-fetch` | dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses) via `--dataset`, credential-free → Zarr |
 
-### Generic middle (operate on any envelope)
+### Generic middle (operate on any standard dataset)
 | Skill | What it does |
 |---|---|
 | `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) from bundled Natural Earth 1:110m boundaries |
@@ -42,14 +42,14 @@ Initiated by Rhiza Research.
 | `rename` | Rename a data variable to a new name |
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
 | `reduce` | Collapse named dims with a statistic (mean/std/min/max/sum/median) — e.g. ensemble spread as the std across `number`, or a time-mean baseline |
-| `difference` | Subtract one envelope from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
+| `difference` | Subtract one dataset from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
 | `plot` | Heatmap (optionally restricted to a `--bbox` and/or masked to a `--mask-geojson` polygon) or timeseries PNG from one dataset |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
 
 ### Agent capabilities
-Capabilities the agent uses alongside pipelines; none of them produces an
-envelope output.
+Capabilities the agent uses alongside pipelines; none of them produces a
+dataset output.
 
 | Skill | What it does |
 |---|---|
@@ -189,8 +189,8 @@ forecasting-skills plot \
     --output /tmp/weekly.png
 
 forecasting-skills imerg-fetch \
-    --start 2025-12-24 \
-    --end 2026-02-13 \
+    --start-time 2025-12-24 \
+    --end-time 2026-02-13 \
     --output /tmp/imerg.zarr
 forecasting-skills clip-region \
     --input /tmp/imerg.zarr \
@@ -204,8 +204,8 @@ forecasting-skills aggregate-temporal \
 
 forecasting-skills tahmo-fetch \
     --country Kenya \
-    --start 2025-12-24 \
-    --end 2026-02-13 \
+    --start-time 2025-12-24 \
+    --end-time 2026-02-13 \
     --output /tmp/tahmo.zarr
 
 forecasting-skills plot-compare \
@@ -226,21 +226,23 @@ forecasting-skills email-report \
 In practice a user just states the goal in natural language and the agent
 picks and composes skills from this set.
 
-## Envelope contract
+## Standard dataset contract
 
-The generic middle skills rely on a shared Zarr shape — gridded
-`(number?, step|time, latitude, longitude)` or station
-`(time, station_id)` — documented in [`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md). Fetchers
-produce an envelope; consumers only rely on dims, coords, data variables and
-`weather_skills_*` attrs, never on per-variable codec encoding.
+Skills share a simple Zarr contract: fixed dimension names (`space`, `time`,
+`init_time`, …) and short types (`observations`, `forecast`, `station`, …).
+See
+[`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md).
+Fetchers write that shape; other skills only depend on dims, coords, data
+variables, and `weather_skills_*` attrs — not on per-variable encoding.
 
 ## CLI flag conventions
 
 Each skill declares its CLI through the `@weather_skill` decorator from
 `weather_skills_core`, so common parameters (`--input` / `-o`, `--bbox`,
-`--start` / `--end`, etc.) mean the same thing wherever they appear. See
-[`CONVENTIONS.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/CONVENTIONS.md) for the full mapping of concept → canonical
-flag.
+`--start-time` / `--end-time`, etc.) mean the same thing wherever they appear.
+See
+[`CONVENTIONS.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/CONVENTIONS.md)
+for the full mapping of concept → canonical flag.
 
 ## Credentials
 
