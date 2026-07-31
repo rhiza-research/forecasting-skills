@@ -1,12 +1,13 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cftime",
 #   "dynamical-catalog==0.5.0",
 #   "xarray",
 #   "zarr",
 #   "numpy",
+#   "cf-units>=3.3",
 # ]
 # ///
 """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
@@ -15,7 +16,8 @@ import sys
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.dates import np_to_date
-from weather_skills_core.envelope import stamp_cf_attrs
+from weather_skills_core.dataset import stamp_cf_attrs
+from weather_skills_core.units import to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.13"
@@ -166,6 +168,7 @@ def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
         Conventions="CF-1.13",
     )
     stamp_cf_attrs(ds)
+    ds = to_standard_units(ds)
 
     return ds
 

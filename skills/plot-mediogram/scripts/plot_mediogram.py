@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -9,6 +9,7 @@
 #   # matplotlib<3.10: keep the plot skills on one tested matplotlib
 #   "matplotlib>=3.8,<3.10",
 #   "numpy",
+#   "cf-units>=3.3",
 # ]
 # ///
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
@@ -16,7 +17,8 @@
 from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.envelope import auto_variable, cf_dim
+from weather_skills_core.dataset import auto_variable, cf_dim
+from weather_skills_core.units import to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
@@ -79,6 +81,8 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title, output, **kwargs):
             f"forecast: {list(ds_fc.data_vars)}  mclimate: {list(ds_mc.data_vars)}"
         )
 
+    ds_fc = to_standard_units(ds_fc, variables=[variable])
+    ds_mc = to_standard_units(ds_mc, variables=[variable])
     da_fc = ds_fc[variable]
     da_mc = ds_mc[variable]
 

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cftime",
 #   "numpy",
 # ]
@@ -78,7 +78,7 @@ def _source_calendar(time_coord) -> str:
 def convert_calendar(ds, calendar, align_on, time_dim, **kwargs):
     """Convert a weather-skills envelope Zarr's time axis to a target CF calendar."""
     import numpy as np
-    from weather_skills_core.envelope import detect_time_dim
+    from weather_skills_core.dataset import detect_time_dim
 
     # Identify the wall-clock time dim. Honor an explicit --time-dim override,
     # else use cf-xarray's CF "T" axis detection (finds time even when named

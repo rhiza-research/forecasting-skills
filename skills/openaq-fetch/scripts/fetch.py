@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -39,7 +39,7 @@ import pandas as pd
 import requests
 import xarray as xr
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
+from weather_skills_core.dataset import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.util import is_transient
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.

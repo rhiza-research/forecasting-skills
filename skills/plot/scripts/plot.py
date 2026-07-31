@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
@@ -12,6 +12,7 @@
 #   "shapely>=2.1",
 #   "xarray",
 #   "zarr",
+#   "cf-units>=3.3",
 # ]
 # ///
 """Render a heatmap or timeseries PNG from a weather-skills envelope Zarr.
@@ -27,7 +28,8 @@ import sys
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+from weather_skills_core.dataset import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+from weather_skills_core.units import to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.16"
@@ -408,6 +410,7 @@ def plot(
     variable = variable or auto_variable(ds)
     if not variable or variable not in ds:
         raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
+    ds = to_standard_units(ds, variables=[variable])
     da = ds[variable]
     try:
         overrides = _parse_index(index)

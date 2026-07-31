@@ -13,7 +13,7 @@ requirements = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "tahmo", git = "https://github.com/rhiza-research/tahmo-api?rev=8ed3adc22b5b7c53d08753e45676e9d4a0a52ab8" },
-    { name = "weather-skills-core", git = "https://github.com/rhiza-research/weather-skills-core", rev = "cursor/simplify-weather-skill-decorator" },
+    { name = "weather-skills-core", git = "https://github.com/rhiza-research/weather-skills-core", rev = "combine/dim-ontology-cleanup" },
     { name = "xarray" },
     { name = "zarr" },
 ]
@@ -294,7 +294,7 @@ wheels = [
 [[package]]
 name = "weather-skills-core"
 version = "0.1.0"
-source = { git = "https://github.com/rhiza-research/weather-skills-core?rev=cursor/simplify-weather-skill-decorator" }
+source = { git = "https://github.com/rhiza-research/weather-skills-core?rev=combine/dim-ontology-cleanup" }
 dependencies = [
     { name = "cf-xarray" },
     { name = "cftime" },

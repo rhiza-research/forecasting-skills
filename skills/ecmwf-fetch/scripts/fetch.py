@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cftime",
 #   "ecmwf-datastores-client==0.4.2",
 #   "requests",
@@ -13,6 +13,7 @@
 #   "eccodeslib",
 #   "zarr",
 #   "numpy",
+#   "cf-units>=3.3",
 # ]
 # ///
 """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
@@ -24,7 +25,8 @@ import time
 from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.envelope import stamp_cf_attrs
+from weather_skills_core.dataset import stamp_cf_attrs
+from weather_skills_core.units import to_standard_units
 from weather_skills_core.util import require_env
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -298,10 +300,11 @@ def fetch(bbox, date, **kwargs):
         stamp_cf_attrs(ds)
         # Stamp explicit units on tp so downstream consumers don't have to reverse-engineer
         # them from value ranges. GRIB carries `kg m-2` (numerically equivalent to mm depth
-        # over the accumulation period); we forward that quantity rather than convert.
+        # over the accumulation period); normalize to standard mm precip amount.
         ds["tp"].attrs["standard_name"] = "precipitation_amount"
         ds["tp"].attrs["units"] = "kg m-2"
         ds["tp"].attrs["long_name"] = "Total precipitation"
+        ds = to_standard_units(ds, variables=["tp"])
 
         # The decoded dataset is lazily backed by the GRIB files in the
         # temporary directory, which is removed when this block exits; the

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cftime",
 #   "requests",
 #   "xarray",
@@ -21,7 +21,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.envelope import stamp_cf_attrs
+from weather_skills_core.dataset import stamp_cf_attrs
 
 # Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
 # validated archive (per-year folders, 1998-to-present); the PRELIM product is

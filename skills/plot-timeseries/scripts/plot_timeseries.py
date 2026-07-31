@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cf-xarray",
 #   "cftime",
 #   # matplotlib<3.10: keep the plot skills on one tested matplotlib
@@ -10,6 +10,7 @@
 #   "numpy",
 #   "xarray",
 #   "zarr",
+#   "cf-units>=3.3",
 # ]
 # ///
 """Render a multi-input timeseries PNG from one or more weather-skills envelope Zarrs.
@@ -24,7 +25,8 @@ import sys
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.envelope import auto_variable, cf_dim
+from weather_skills_core.dataset import auto_variable, cf_dim
+from weather_skills_core.units import to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"
@@ -109,15 +111,16 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
                 f"variable '{variable}' missing from input {idx + 1}. "
                 f"Available: {list(ds.data_vars)}"
             )
+    datasets = [to_standard_units(ds, variables=[variable]) for ds in datasets]
 
+    unit_vals = []
     seen_units = {}
     for idx, ds in enumerate(datasets):
-        if variable not in ds:
-            continue
         u = ds[variable].attrs.get("units")
-        if isinstance(u, str):
+        if isinstance(u, str) and u.strip():
+            unit_vals.append(u)
             seen_units[_dataset_label(ds, idx)] = u.strip()
-    if len(set(seen_units.values())) > 1:
+    if unit_vals and any(not units_equal(unit_vals[0], u) for u in unit_vals[1:]):
         detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
         print(
             f"Warning: variable '{variable}' has differing units across the "

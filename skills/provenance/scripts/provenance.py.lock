@@ -11,7 +11,7 @@ resolution-markers = [
 requirements = [
     { name = "cftime" },
     { name = "pillow" },
-    { name = "weather-skills-core", git = "https://github.com/rhiza-research/weather-skills-core", rev = "cursor/simplify-weather-skill-decorator" },
+    { name = "weather-skills-core", git = "https://github.com/rhiza-research/weather-skills-core", rev = "combine/dim-ontology-cleanup" },
     { name = "xarray" },
     { name = "zarr" },
 ]
@@ -216,7 +216,7 @@ wheels = [
 [[package]]
 name = "weather-skills-core"
 version = "0.1.0"
-source = { git = "https://github.com/rhiza-research/weather-skills-core?rev=cursor/simplify-weather-skill-decorator" }
+source = { git = "https://github.com/rhiza-research/weather-skills-core?rev=combine/dim-ontology-cleanup" }
 dependencies = [
     { name = "cf-xarray" },
     { name = "cftime" },

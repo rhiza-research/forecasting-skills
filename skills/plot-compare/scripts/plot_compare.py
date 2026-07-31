@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@cursor/simplify-weather-skill-decorator",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
@@ -13,6 +13,7 @@
 #   "shapely>=2.1",
 #   "xarray",
 #   "zarr",
+#   "cf-units>=3.3",
 # ]
 # ///
 """Side-by-side multi-panel PNG comparing two weather-skills envelope Zarrs.
@@ -29,7 +30,8 @@ import sys
 from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.envelope import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+from weather_skills_core.dataset import auto_variable, cf_dim, lat_slice, polygon_from_geojson
+from weather_skills_core.units import to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.16"
@@ -372,6 +374,9 @@ def plot_compare(
                 f"variable '{var}' must exist in input {side}. {side} real data vars: {real_vars}"
             )
 
+    ds_a = to_standard_units(ds_a, variables=[var_a])
+    ds_b = to_standard_units(ds_b, variables=[var_b])
+
     td_a = _pick_time_dim(ds_a, time_dim)
     td_b = _pick_time_dim(ds_b, time_dim)
     if td_a is None or td_b is None:
@@ -580,7 +585,9 @@ def plot_compare(
     units_a = da_a.attrs.get("units")
     units_b = da_b.attrs.get("units")
     units_match = (
-        isinstance(units_a, str) and isinstance(units_b, str) and units_a.strip() == units_b.strip()
+        isinstance(units_a, str)
+        and isinstance(units_b, str)
+        and units_equal(units_a, units_b)
     )
     if shared_scale:
         use_shared_scale = True
