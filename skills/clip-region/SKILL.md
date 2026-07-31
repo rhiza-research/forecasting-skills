@@ -1,6 +1,6 @@
 ---
 name: clip-region
-description: Spatially subset a gridded weather-skills standard dataset Zarr to an explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a custom bounding box before downstream aggregation or plotting. To clip to a country, get its bbox from the resolve-region skill first.
+description: Spatially subset a gridded weather-skills standard dataset Zarr to a lat/lon bbox or named country (--region). Use when you need to restrict any dataset (forecast, satellite, reanalysis) before downstream aggregation or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
@@ -11,7 +11,9 @@ metadata:
 
 # clip-region
 
-Source-agnostic spatial subset using simple lat/lon slicing, driven by an explicit `--bbox`. To clip to a country, resolve its bbox with the `resolve-region` skill and pass that value.
+Source-agnostic spatial subset using simple lat/lon slicing. Pass an explicit
+`--bbox`, or `--region` with an ISO3 code / country name (the decorator fills
+`bbox` and a boundary GeoDataFrame).
 
 ## When to use
 
@@ -25,18 +27,24 @@ Does **not** clip point_obs datasets (station_id-indexed). For stations, filter 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
     --bbox N/W/S/E
+
+uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
+    --region Kenya
 ```
 
 ### Arguments
 - `--input`, `-i` — gridded Zarr.
 - `--output`, `-o` — output Zarr.
-- `--bbox` — required; `N/W/S/E` in decimal degrees. To clip to a country, get its bbox from the `resolve-region` skill and pass the value here.
+- `--bbox` — `N/W/S/E` in decimal degrees (optional if `--region` is set).
+- `--region` — ISO3 code or country name; fills `bbox` automatically. Do not pass with `--bbox`.
 
 ### Longitude convention
 
 Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing, so a global grid stored in the `[0, 360]` convention still intersects bboxes that straddle the prime meridian (e.g. Ghana). Inputs already in `[-180, 180]` pass through unchanged.
 
 ### Output
+
+A spatial subset of the input Zarr with provenance history stamped.
 
 Same dims and variables, reduced to the requested window.
 
@@ -65,7 +73,5 @@ translate underscore → hyphen.
 ## Example
 
 ```bash
-# Get BBOX from the resolve-region skill for your country (e.g. KEN → 5.5/33.9/-4.7/41.9):
-BBOX=5.5/33.9/-4.7/41.9
-uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --bbox "$BBOX"
+uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --region Kenya
 ```

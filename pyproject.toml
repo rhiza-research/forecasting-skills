@@ -20,6 +20,7 @@ dev = [
     "xarray",
     "zarr",
     "cftime",
+    "geopandas>=1.0",
     "weather-skills-core",
 ]
 

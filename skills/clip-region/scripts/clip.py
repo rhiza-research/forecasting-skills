@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core[geo] @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
 #   "cftime",
 #   "numpy",
 #   "xarray",
@@ -19,16 +19,19 @@ _SKILL_VERSION = "0.1.11"
 @weather_skill(
     name="clip-region",
     version=_SKILL_VERSION,
-    inputs=["space"],
-    outputs=["space"],
+    inputs=["spatial"],
+    outputs=["spatial"],
 )
-@weather_skill.argument("--bbox", required=True)
-def clip_region(ds, bbox, **kwargs):
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--region")
+def clip_region(ds, bbox=None, region=None, **kwargs):
     """Spatially subset a gridded weather-skills standard dataset Zarr."""
     import numpy as np
     import xarray as xr
 
-    # Decorator already parsed --bbox into (N, W, S, E) floats.
+    if bbox is None:
+        raise UsageError("pass --bbox N/W/S/E or --region <ISO3|name>.")
+    # Decorator parsed --bbox into (N, W, S, E), or filled it from --region.
     north, west, south, east = bbox
     lat_dim, lon_dim = detect_spatial_dims(ds)
 

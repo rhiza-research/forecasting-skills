@@ -227,8 +227,9 @@ picks and composes skills from this set.
 
 ## Standard dataset contract
 
-Skills share a simple Zarr contract: fixed dimension names (`space`, `time`,
-`init_time`, …) and short types (`observations`, `forecast`, `point_obs`, …).
+Skills share a simple Zarr contract: fixed dimension names (`lat`, `lon`, `time`,
+`init_time`, …) and short types (`spatial`, `observations`, `forecast`,
+`vertical_forecast`, `point_obs`, …).
 See
 [`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md).
 Fetchers write that shape; other skills only depend on dims, coords, data

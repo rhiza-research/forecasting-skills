@@ -35,3 +35,19 @@ def test_clip_empty_bbox_exits_1(tmp_path, clip_region):
     with pytest.raises(SystemExit) as exc:
         run_skill(clip_region, "-i", str(src), "-o", str(out), "--bbox", "50/10/40/12")
     assert exc.value.code == 1
+
+
+def test_clip_region_kenya_fills_bbox(tmp_path, clip_region):
+    # Grid covering East Africa so Kenya's bbox selects cells.
+    src = write_zarr(
+        make_gridded(lats=(-5.0, 0.0, 5.0), lons=(34.0, 38.0, 42.0)),
+        tmp_path / "in.zarr",
+    )
+    out = tmp_path / "out.zarr"
+
+    run_skill(clip_region, "-i", str(src), "-o", str(out), "--region", "Kenya")
+
+    ds = xr.open_zarr(out, consolidated=True)
+    assert ds.sizes["latitude"] >= 1
+    assert ds.sizes["longitude"] >= 1
+    assert load_history(out)[-1]["args"]["region"] == "Kenya"

@@ -47,8 +47,8 @@ def _qmap_1d(model, ref):
 @weather_skill(
     name="downscale",
     version=_SKILL_VERSION,
-    inputs=["space"],
-    outputs=["space"],
+    inputs=["spatial"],
+    outputs=["spatial"],
 )
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
