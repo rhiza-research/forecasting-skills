@@ -17,7 +17,7 @@ import sys
 from datetime import UTC, datetime
 
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.dataset import normalize_longitude
+from weather_skills_core.standard_args import normalize_longitude
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.9"
@@ -253,7 +253,7 @@ def _set_time_encoding(ds, start_time) -> None:
 def fetch(start_time, end_time, bbox, variable, **kwargs):
     """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills standard dataset Zarr."""
     import numpy as np
-    from weather_skills_core.dataset import bbox_subset
+    from weather_skills_core.standard_args import bbox_subset
 
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()

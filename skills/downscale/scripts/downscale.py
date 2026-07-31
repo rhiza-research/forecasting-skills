@@ -134,7 +134,7 @@ def downscale(
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
-    from weather_skills_core.dataset import detect_spatial_dims
+    from weather_skills_core.standard_dataset import detect_spatial_dims
 
     if factor is not None and factor < 1:
         raise UsageError("--factor must be >= 1.")

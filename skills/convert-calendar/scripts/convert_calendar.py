@@ -78,7 +78,7 @@ def _source_calendar(time_coord) -> str:
 def convert_calendar(ds, calendar, align_on, time_dim, **kwargs):
     """Convert a weather-skills standard dataset Zarr's time axis to a target CF calendar."""
     import numpy as np
-    from weather_skills_core.dataset import detect_time_dim
+    from weather_skills_core.standard_dataset import detect_time_dim
 
     # Identify the wall-clock time dim. Honor an explicit --time-dim override,
     # else use cf-xarray's CF "T" axis detection (finds time even when named

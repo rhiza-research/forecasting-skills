@@ -73,7 +73,7 @@ def coarsen(ds, variable, target_resolution, offset, **kwargs):
     import numpy as np
     import xarray as xr
     import xarray_regrid  # noqa: F401 — registers the .regrid accessor
-    from weather_skills_core.dataset import detect_spatial_dims
+    from weather_skills_core.standard_dataset import detect_spatial_dims
 
     if target_resolution <= 0:
         raise UsageError("--target-resolution must be > 0.")

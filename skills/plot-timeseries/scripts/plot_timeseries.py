@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.dataset import auto_variable, cf_dim
+from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.units import to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.

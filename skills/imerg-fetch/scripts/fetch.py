@@ -19,7 +19,7 @@ import tempfile
 from datetime import timedelta
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.dataset import stamp_cf_attrs
+from weather_skills_core.cf import stamp_cf_attrs
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"

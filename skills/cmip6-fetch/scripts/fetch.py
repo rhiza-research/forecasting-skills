@@ -25,7 +25,8 @@ import gcsfs
 import pandas as pd
 import xarray as xr
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.dataset import normalize_longitude, udunits_error
+from weather_skills_core.cf import udunits_error
+from weather_skills_core.standard_args import normalize_longitude
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -294,7 +295,7 @@ def _set_write_encoding(ds, source_calendar, source_time_units, fills) -> None:
         )
 def fetch(start_time, end_time, bbox, model, experiment, variable, member, table, grid, **kwargs):
     """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills standard dataset Zarr."""
-    from weather_skills_core.dataset import bbox_subset
+    from weather_skills_core.standard_args import bbox_subset
 
     state = {}
     state = _open_remote(state, model, experiment, variable, member, table, grid)

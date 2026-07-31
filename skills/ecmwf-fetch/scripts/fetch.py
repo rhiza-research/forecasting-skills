@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.dataset import stamp_cf_attrs
+from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.units import to_standard_units
 from weather_skills_core.util import require_env
 

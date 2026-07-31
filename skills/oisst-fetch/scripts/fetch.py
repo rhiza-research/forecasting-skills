@@ -25,7 +25,8 @@ import sys
 # _stamp_cf.)
 import cf_xarray  # noqa: F401  (loaded lazily by core's cf_axes_missing at write time)
 from weather_skills_core import DataError, SkillError, UsageError, weather_skill
-from weather_skills_core.dataset import cf_axes_missing, normalize_longitude, stamp_cf_coords
+from weather_skills_core.cf import cf_axes_missing, stamp_cf_coords
+from weather_skills_core.standard_args import normalize_longitude
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
