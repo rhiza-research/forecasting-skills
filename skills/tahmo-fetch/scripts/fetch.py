@@ -25,7 +25,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.util import is_transient, require_env
+from weather_skills_core.standard_utils import is_transient, require_env
+
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"

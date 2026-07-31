@@ -27,7 +27,8 @@ from pathlib import Path
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.units import to_standard_units
-from weather_skills_core.util import require_env
+from weather_skills_core.standard_utils import require_env
+
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.12"

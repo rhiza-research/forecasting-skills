@@ -10,6 +10,7 @@
 #   "xarray",
 #   "zarr",
 #   "numpy",
+#   "cf-units>=3.3",
 # ]
 # ///
 """Fetch IMERG live precipitation and write a weather-skills standard dataset Zarr."""
@@ -20,6 +21,7 @@ from datetime import timedelta
 
 from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.units import to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"
@@ -122,7 +124,7 @@ def fetch(start_time, end_time, version, **kwargs):
             long_name="IMERG daily precipitation",
         )
         stamp_cf_attrs(ds)
-        return ds
+        return to_standard_units(ds, variables=["precip"])
 
 if __name__ == "__main__":
     fetch()

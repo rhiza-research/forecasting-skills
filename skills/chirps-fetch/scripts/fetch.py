@@ -8,6 +8,7 @@
 #   "zarr",
 #   "numpy",
 #   "rioxarray",
+#   "cf-units>=3.3",
 # ]
 # ///
 """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
@@ -22,6 +23,7 @@ from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.units import to_standard_units
 
 # Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
 # validated archive (per-year folders, 1998-to-present); the PRELIM product is
@@ -422,7 +424,7 @@ def fetch(start_time, end_time, workers, **kwargs):
         ds.attrs["Conventions"] = "CF-1.13"
         ds.attrs["weather_skills_source"] = "chirps"
         stamp_cf_attrs(ds)
-        return ds
+        return to_standard_units(ds, variables=["precip"])
 
 if __name__ == "__main__":
     fetch()

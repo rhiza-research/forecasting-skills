@@ -40,7 +40,8 @@ import requests
 import xarray as xr
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
-from weather_skills_core.util import is_transient
+from weather_skills_core.standard_utils import is_transient
+
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
