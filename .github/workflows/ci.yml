@@ -28,6 +28,17 @@ jobs:
       - run: uv run --script tools/check_inline_deps.py skills/
       - run: uv run --script tools/check_cftime_deps.py skills/
 
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --group dev
+      - run: uv run pytest
+
   discover:
     runs-on: ubuntu-latest
     timeout-minutes: 2

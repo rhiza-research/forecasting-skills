@@ -13,8 +13,24 @@ cli = "forecasting-skills"
 
 [tool.hatch.build.hooks.skills-runner]
 
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "numpy",
+    "xarray",
+    "zarr",
+    "cftime",
+    "weather-skills-core",
+]
+
 [tool.uv.sources]
 skills-runner = { git = "https://github.com/tescalada/skills-runner" }
+weather-skills-core = { git = "https://github.com/rhiza-research/weather-skills-core", branch = "combine/dim-ontology-cleanup" }
+
+[tool.pytest.ini_options]
+testpaths = ["skills"]
+python_files = ["test_*.py"]
+pythonpath = ["tests"]
 
 [tool.ruff]
 line-length = 100

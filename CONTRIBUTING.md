@@ -21,12 +21,21 @@ contributors never edit either by hand.
 1. Branch off `main`.
 2. Open a PR back into `main`.
 3. CI must pass (the `CI` workflow runs ruff format-check, ruff check, inline-dep
-   validation, and a `--help` invocation per script).
+   validation, pytest for skill correctness tests, and a `--help` invocation per
+   script).
 4. Rebase onto `main` before merging — linear history is required.
 5. Use the GitHub merge button (squash-merge or rebase-merge, per-PR choice).
 
 Authors **must not** edit any `metadata.version` field by hand. The version
 bump is fully owned by the `version-bump` workflow (see below).
+
+## Skill correctness tests
+
+Per-skill tests live in `skills/<name>/tests/` (not under `scripts/`). Shared
+helpers are in `tests/conftest.py`. Run them with
+`uv sync --group dev && uv run pytest`. Test-only edits under a skill directory
+currently trigger a version bump on merge to `main` (same as any other file
+under `skills/<name>/`).
 
 ## Version bumps
 

@@ -1,0 +1,37 @@
+"""Correctness tests for clip-region."""
+
+from pathlib import Path
+
+import pytest
+import xarray as xr
+from conftest import load_skill, make_gridded, run_skill, write_zarr
+from weather_skills_core.provenance import load_history
+
+
+@pytest.fixture(scope="module")
+def clip_region():
+    return load_skill("clip-region", "clip").clip_region
+
+
+def test_clip_bbox_subsets_and_stamps_history(tmp_path, clip_region):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(clip_region, "-i", str(src), "-o", str(out), "--bbox", "2.5/10.5/0.5/12.5")
+
+    assert Path(out).exists()
+    ds = xr.open_zarr(out, consolidated=True)
+    assert list(ds.latitude.values) == [1.0, 2.0]
+    assert list(ds.longitude.values) == [11.0, 12.0]
+    assert ds.sizes["latitude"] < 3
+    assert ds.sizes["longitude"] < 4
+    assert load_history(out)[-1]["skill"] == "clip-region"
+
+
+def test_clip_empty_bbox_exits_1(tmp_path, clip_region):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    with pytest.raises(SystemExit) as exc:
+        run_skill(clip_region, "-i", str(src), "-o", str(out), "--bbox", "50/10/40/12")
+    assert exc.value.code == 1
