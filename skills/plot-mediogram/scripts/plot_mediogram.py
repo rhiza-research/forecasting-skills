@@ -58,7 +58,7 @@ def _inner_stats(values):
     name="plot-mediogram",
     version=_SKILL_VERSION,
     inputs=["any", "any"],
-    outputs=["visualization"]
+    outputs=["figure"]
 )
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--lat", type=float, required=True, help="Point latitude.")

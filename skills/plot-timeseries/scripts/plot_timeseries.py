@@ -57,7 +57,7 @@ def _dataset_label(ds, index):
     name="plot-timeseries",
     version=_SKILL_VERSION,
     inputs=["any+"],
-    outputs=["visualization"]
+    outputs=["figure"]
 )
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(

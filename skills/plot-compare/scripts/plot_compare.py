@@ -250,7 +250,7 @@ def _dataset_label(ds, fallback):
     name="plot-compare",
     version=_SKILL_VERSION,
     inputs=["any", "any"],
-    outputs=["visualization"]
+    outputs=["figure"]
 )
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")

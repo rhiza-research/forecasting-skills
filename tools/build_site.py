@@ -28,7 +28,7 @@ Marker comments in the template (each must appear exactly once):
     <!-- gen:catalog -->         the grouped catalog sections
     <!-- gen:flow-fetch -->      example <li> items for the fetch stage
     <!-- gen:flow-transform -->  example <li> items for the transform stage
-    <!-- gen:flow-output -->     example <li> items for the visualization stage
+    <!-- gen:flow-output -->     example <li> items for the figure stage
 
 Usage:
     uv run --script tools/build_site.py                  # writes _site/
@@ -50,7 +50,7 @@ import yaml
 GROUPS: list[tuple[str, str, str | None]] = [
     ("fetchers", "Fetchers", "ingress — source → envelope"),
     ("transforms", "Transforms", "envelope → envelope"),
-    ("visualization", "Visualization", "envelope → PNG"),
+    ("figure", "Figure", "dataset → PNG"),
     (
         "agent-tooling",
         "Agent capabilities",
@@ -272,8 +272,8 @@ def main() -> int:
         count = sum(len(members) for members in grouped.values())
         fetch_names = [name for name, _, _ in grouped["fetchers"][:3]]
         transform_names = [name for name, _, _ in grouped["transforms"][:3]]
-        output_names = [name for name, _, _ in grouped["visualization"][:3]]
-        output_total = len(grouped["visualization"])
+        output_names = [name for name, _, _ in grouped["figure"][:3]]
+        output_total = len(grouped["figure"])
         template = (site_dir / "index.html").read_text(encoding="utf-8")
         _check_example_names(
             template,
