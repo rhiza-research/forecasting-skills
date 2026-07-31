@@ -15,29 +15,19 @@
 # ///
 """Fetch TAHMO station observations and write a point_obs weather-skills standard dataset Zarr.
 
-Uses the TAHMO Python SDK directly. Credentials come from the environment:
-TAHMO_API_USERNAME and TAHMO_API_PASSWORD.
+Uses the TAHMO Python SDK. Credentials: TAHMO_API_USERNAME and TAHMO_API_PASSWORD.
 """
 
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC, datetime
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.standard_utils import is_transient, require_env
 
-
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"
 
-# Default size of the per-station fetch thread pool. The work is
-# network-I/O-bound (one independent authenticated HTTP request per station),
-# so threads overlap request latency without contending on the GIL. The bound
-# is deliberately conservative: TAHMO's datahub is a research API and excessive
-# concurrency risks 429/throttling. 8 is enough to hide request latency while
-# staying well below levels that typically provoke rate limiting; operators can
-# lower it with --workers if they observe throttling.
 DEFAULT_WORKERS = 8
 
 COUNTRY_CODE = {
@@ -67,26 +57,20 @@ COUNTRY_CODE = {
     "Kenya": "KE",
 }
 
-# TAHMO short codes -> canonical variable names used in the standard dataset.
 VAR_MAP = {
     "pr": "precip",
     "te": "temperature",
     "rh": "humidity",
     "ap": "pressure",
 }
-# How each variable aggregates from sub-daily to daily.
 DAILY_AGG = {
     "precip": "sum",
     "temperature": "mean",
     "humidity": "mean",
     "pressure": "mean",
 }
-# CF metadata per dataset variable as (standard_name, units_override).
-# Standard names are verified against the CF standard name table v93. Units
-# are pulled live from api.getVariables() so they track whatever TAHMO is
-# actually returning, except for `precip`: the raw TAHMO shortcode reports
-# in "mm" per measurement, and our daily sum aggregation produces mm-per-day
-# which is the rate label that pairs with lwe_precipitation_rate.
+# (standard_name, units_override). Units come from api.getVariables() except precip
+# (daily sum of mm measurements -> mm day-1).
 CF_META = {
     "precip": ("lwe_precipitation_rate", "mm day-1"),
     "temperature": ("air_temperature", None),
@@ -94,10 +78,9 @@ CF_META = {
     "pressure": ("air_pressure", None),
 }
 
+
 def _fetch_raw(api, station_id: str, start: str, end: str):
-    """Call getRawData once, retrying a single transient error after a short
-    backoff. Returns the raw DataFrame (or None for genuine no-data). Raises if
-    the error is non-transient or if the retry also fails transiently."""
+    """Call getRawData once, retrying a single transient error after a short backoff."""
     try:
         return api.getRawData(
             station=station_id, startDate=start, endDate=end, dataset="controlled"
@@ -105,28 +88,20 @@ def _fetch_raw(api, station_id: str, start: str, end: str):
     except Exception as exc:
         if not is_transient(exc):
             raise
-        print(
-            f"{station_id}: transient error ({exc}); retrying once",
-            file=sys.stderr,
-        )
+        print(f"{station_id}: transient error ({exc}); retrying once", file=sys.stderr)
         time.sleep(2.0)
         return api.getRawData(
             station=station_id, startDate=start, endDate=end, dataset="controlled"
         )
 
-def _station_frame(api, station_id: str, start: str, end: str):
-    """Return a daily-aggregated DataFrame for one station, or None.
 
-    None means "no usable data for this station" (empty response, no kept
-    variables, etc.) and is a quiet skip. A fetch that errors out — including a
-    transient error that survives one retry — is logged distinctly on stderr as
-    a dropped station so it is never silently lost, then returns None.
-    """
+def _station_frame(api, station_id: str, start: str, end: str):
+    """Return a daily-aggregated DataFrame for one station, or None."""
     import pandas as pd
 
     try:
         raw = _fetch_raw(api, station_id, start, end)
-    except Exception as exc:  # noqa: BLE001 -- per-station fetch: drop the station and warn on any failure
+    except Exception as exc:  # noqa: BLE001
         print(f"{station_id}: DROPPED, fetch failed ({exc})", file=sys.stderr)
         return None
     if raw is None or len(raw) == 0:
@@ -140,7 +115,6 @@ def _station_frame(api, station_id: str, start: str, end: str):
     if raw.empty:
         return None
 
-    # For each (time, variable) pick the best-quality sensor (lowest quality flag).
     raw = raw.sort_values(["time", "variable", "quality"])
     raw = raw.drop_duplicates(["time", "variable"], keep="first")
     wide = raw.pivot(index="time", columns="variable", values="value")
@@ -153,14 +127,9 @@ def _station_frame(api, station_id: str, start: str, end: str):
     daily["station_id"] = station_id
     return daily
 
-def _ensure_setup(state, countries: list):
-    """Authenticate and load the station table + variable metadata, at most once per run.
 
-    ``state`` is the run-scoped per-run state dict shared between
-    `latest` discovery (which must run before the cache key is built) and the
-    main fetch, so a run authenticates at most once. It runs only when first
-    needed: an all-absolute or now-only window that cache-hits performs no auth.
-    """
+def _ensure_setup(state, countries: list):
+    """Authenticate and load stations + variable metadata, at most once per run."""
     import pandas as pd
 
     if "api" not in state:
@@ -185,32 +154,32 @@ def _ensure_setup(state, countries: list):
         stations_local = pd.json_normalize(list(stations_raw.values()), sep="_")
         state["api"] = api_local
         state["stations"] = stations_local
-        # Discover units / description from TAHMO so we don't hard-code them.
         state["var_meta"] = api_local.getVariables()
     return state["api"], state["stations"], state["var_meta"]
+
 
 @weather_skill(
     name="tahmo-fetch",
     version=_SKILL_VERSION,
-    outputs=["point_obs"]
+    outputs=["point_obs"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument(
-            "--workers",
-            type=int,
-            default=DEFAULT_WORKERS,
-            help=(
-                f"Max concurrent per-station fetch threads (default {DEFAULT_WORKERS}). "
-                "Lower this if TAHMO returns 429/throttling errors."
-            ),
-        )
+    "--workers",
+    type=int,
+    default=DEFAULT_WORKERS,
+    help=(
+        f"Max concurrent per-station fetch threads (default {DEFAULT_WORKERS}). "
+        "Lower this if TAHMO returns 429/throttling errors."
+    ),
+)
 @weather_skill.argument(
-            "--country",
-            action="append",
-            required=True,
-            help="Country name (pass once per country)",
-        )
+    "--country",
+    action="append",
+    required=True,
+    help="Country name (pass once per country)",
+)
 def fetch(start_time, end_time, workers, country, **kwargs):
     """Fetch TAHMO station observations and write a point_obs weather-skills standard dataset Zarr."""
     import pandas as pd
@@ -219,14 +188,9 @@ def fetch(start_time, end_time, workers, country, **kwargs):
     start = start_time.isoformat()
     end = end_time.isoformat()
 
-    state = {}
-    api, stations, var_meta = _ensure_setup(state, sorted(country))
+    api, stations, var_meta = _ensure_setup({}, sorted(country))
     countries = list(country)
 
-    # Flatten the selection into one task list of (country, station-row) pairs
-    # across all requested countries, then fetch them concurrently. A single
-    # bounded pool over the flat list keeps all worker slots busy regardless of
-    # how stations are distributed between countries.
     tasks = []
     for country_name in countries:
         code = COUNTRY_CODE[country_name]
@@ -239,31 +203,16 @@ def fetch(start_time, end_time, workers, country, **kwargs):
             tasks.append((country_name, row))
 
     def _fetch_one(country_name, row):
-        """Worker: fetch one station and return its paired (frame, meta_row).
-
-        The frame and meta_row are produced together so that whatever order
-        futures complete in, each station's data stays bound to its own
-        latitude/longitude/country. Returns None when the station has no usable
-        data (or was dropped after a failed fetch) so it can be skipped.
-
-        The single `api` instance is shared across workers. The TAHMO
-        apiWrapper carries no per-call mutable state: setCredentials sets
-        apiKey/apiSecret once, and getRawData/__request only read them, build a
-        fresh requests.get per request (no shared Session), and keep all
-        intermediate state in locals. Concurrent getRawData calls on one
-        instance therefore do not race on shared state.
-        """
         sid = row["code"]
         daily = _station_frame(api, sid, start, end)
         if daily is None:
             return None
-        meta_row = {
+        return daily, {
             "station_id": sid,
             "latitude": float(row["location_latitude"]),
             "longitude": float(row["location_longitude"]),
             "country": country_name,
         }
-        return daily, meta_row
 
     frames = []
     meta_rows = []
@@ -276,11 +225,11 @@ def fetch(start_time, end_time, workers, country, **kwargs):
             country_name, sid = futures[fut]
             try:
                 result = fut.result()
-            except Exception as exc:  # noqa: BLE001 -- isolate per-station failures
-                # A worker that raises (e.g. a station row with a null/NaN
-                # coordinate, or any other unexpected processing error) drops
-                # only that station rather than aborting the whole run.
-                print(f"{country_name} {sid}: DROPPED, worker error ({exc})", file=sys.stderr)
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"{country_name} {sid}: DROPPED, worker error ({exc})",
+                    file=sys.stderr,
+                )
                 continue
             if result is None:
                 continue
@@ -321,15 +270,14 @@ def fetch(start_time, end_time, workers, country, **kwargs):
         description = api_meta.get("description")
         if description:
             attrs["long_name"] = description
-        if attrs:
-            ds[canonical].attrs.update(attrs)
+        ds[canonical].attrs.update(attrs)
     ds.attrs.update(
         featureType="timeSeries",
         Conventions="CF-1.13",
         weather_skills_source="tahmo",
     )
-
     return ds
+
 
 if __name__ == "__main__":
     fetch()

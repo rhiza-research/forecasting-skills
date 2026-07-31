@@ -8,119 +8,76 @@
 #   "numpy",
 # ]
 # ///
-"""Coarsen or align a weather-skills standard dataset Zarr onto a target grid (geometry only).
-
-Generates a target grid at points ``offset + k * resolution`` for integer k,
-clipped to the input's lon/lat range, and interpolates onto it linearly via
-xarray-regrid. This changes grid geometry only and adds no information; it is
-used to coarsen a grid or to align two grids for comparison. ``(0.25, 0.0)``
-aligns with sheerwater's ``global0_25``; ``(0.1, 0.05)`` with ``global0_1``;
-``(0.05, 0.025)`` with ``global0_05``.
-"""
+"""Coarsen/align onto a target grid (geometry only, linear)."""
 
 import math
-import sys
 
 from weather_skills_core import UsageError, weather_skill
+from weather_skills_core.standard_dataset import detect_spatial_dims
+from weather_skills_core.standard_utils import grid_spacing
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.11"
 
-def _grid_spacing(coord_vals) -> float:
+
+def _target_axis(coord_vals, resolution, offset):
     import numpy as np
 
-    coord = np.asarray(coord_vals)
-    if coord.size < 2:
-        raise ValueError(f"Cannot infer spacing for coord with size {coord.size}")
-    return float(abs(np.median(np.diff(coord))))
-
-def _target_axis(coord_vals, resolution: float, offset: float):
-    import numpy as np
-
-    vmin = float(np.min(coord_vals))
-    vmax = float(np.max(coord_vals))
-    # Tolerance on (vmin, vmax) - offset / resolution to keep boundary points
-    # that are on-grid up to floating-point noise.
+    vmin, vmax = float(np.min(coord_vals)), float(np.max(coord_vals))
     eps = 1e-9 * max(1.0, abs(vmin), abs(vmax)) / resolution
     k_min = math.ceil((vmin - offset) / resolution - eps)
     k_max = math.floor((vmax - offset) / resolution + eps)
-    if k_max < k_min:
-        raise ValueError(
-            f"No grid points at offset={offset}, resolution={resolution} "
-            f"fall within range [{vmin}, {vmax}]."
-        )
     target = offset + np.arange(k_min, k_max + 1) * resolution
     if coord_vals[0] > coord_vals[-1]:
         target = target[::-1]
     return target
 
+
 @weather_skill(
     name="coarsen",
     version=_SKILL_VERSION,
     inputs=["space"],
-    outputs=["space"]
+    outputs=["space"],
 )
 @weather_skill.argument("--variable", "-v")
-@weather_skill.argument("--target-resolution", type=float, required=True, help="Target grid spacing in degrees.")
-@weather_skill.argument(
-            "--offset",
-            type=float,
-            required=True,
-            help="Grid offset in degrees; target points fall at offset + k*resolution.",
-        )
+@weather_skill.argument("--target-resolution", type=float, required=True)
+@weather_skill.argument("--offset", type=float, required=True)
 def coarsen(ds, variable, target_resolution, offset, **kwargs):
-    """Coarsen or align a weather-skills standard dataset Zarr onto a target grid (geometry only)."""
+    """Coarsen/align onto a target grid (geometry only, linear)."""
     import numpy as np
     import xarray as xr
-    import xarray_regrid  # noqa: F401 — registers the .regrid accessor
-    from weather_skills_core.standard_dataset import detect_spatial_dims
+    import xarray_regrid  # noqa: F401
 
     if target_resolution <= 0:
-        raise UsageError("--target-resolution must be > 0.")
-
+        raise UsageError("--target-resolution must be > 0")
     lat_dim, lon_dim = detect_spatial_dims(ds)
-
     if variable:
-        if variable not in ds.data_vars:
-            raise UsageError(f"variable '{variable}' not in {list(ds.data_vars)}")
         ds = ds[[variable]]
-
-    # Wrap lon to [-180, 180] before building the target axis so a 0..360 input
-    # grid doesn't produce a target axis spanning ~the whole globe. Mirrors plot.py.
     lon_vals = np.asarray(ds[lon_dim].values)
     if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
         ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
-
-    # Coarsen goes coarser-or-equal. Reject a strictly-finer target on either
-    # axis (target spacing smaller than the input spacing) — that is the
-    # downscale skill's job. Coarser-or-equal passes (equal = no-op/realign).
-    in_lat_res = _grid_spacing(ds[lat_dim].values)
-    in_lon_res = _grid_spacing(ds[lon_dim].values)
-    if target_resolution < in_lat_res or target_resolution < in_lon_res:
-        raise UsageError(
-            f"--target-resolution {target_resolution}° is finer "
-            f"than the input on at least one axis "
-            f"(~{in_lat_res:.4f}°x{in_lon_res:.4f}°). "
-            f"Coarsening goes coarser-or-equal; to make a grid finer and add "
-            f"information use the downscale skill."
-        )
-
-    new_lat = _target_axis(ds[lat_dim].values, target_resolution, offset)
-    new_lon = _target_axis(ds[lon_dim].values, target_resolution, offset)
+    # Reject finer targets (that's downscale)
+    for axis in (lat_dim, lon_dim):
+        if target_resolution < grid_spacing(ds[axis].values):
+            raise UsageError(
+                f"--target-resolution {target_resolution}° finer than input; use downscale"
+            )
     target = xr.Dataset(
         coords={
-            lat_dim: (lat_dim, new_lat, dict(ds[lat_dim].attrs)),
-            lon_dim: (lon_dim, new_lon, dict(ds[lon_dim].attrs)),
+            lat_dim: (
+                lat_dim,
+                _target_axis(ds[lat_dim].values, target_resolution, offset),
+                dict(ds[lat_dim].attrs),
+            ),
+            lon_dim: (
+                lon_dim,
+                _target_axis(ds[lon_dim].values, target_resolution, offset),
+                dict(ds[lon_dim].attrs),
+            ),
         }
     )
-
-    print(
-        f"Coarsening/aligning {lat_dim},{lon_dim} (linear) to "
-        f"resolution={target_resolution} offset={offset}: "
-        f"{ds.sizes[lat_dim]}x{ds.sizes[lon_dim]} -> {len(new_lat)}x{len(new_lon)}",
-        file=sys.stderr,
-    )
     return ds.regrid.linear(target)
+
 
 if __name__ == "__main__":
     coarsen()

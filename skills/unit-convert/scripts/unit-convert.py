@@ -48,13 +48,10 @@ _STANDARD_NAME_BY_UNITS = {
 )
 @weather_skill.argument(
     "--standard-name",
-    help=(
-        "CF standard_name to write on the output variable. Overrides the "
-        "built-in target-units lookup. Ignored with --to-standard."
-    ),
+    help="CF standard_name override. Ignored with --to-standard.",
 )
 def unit_convert(ds, variable, to_units, to_standard, standard_name, **kwargs):
-    """Convert data variable(s). Omitting --variable converts all recognized vars for --to-standard."""
+    """Convert data variable(s). Omitting --variable converts all (--to-units) or recognized (--to-standard)."""
     import cf_units
 
     if to_standard and to_units:
@@ -66,16 +63,7 @@ def unit_convert(ds, variable, to_units, to_standard, standard_name, **kwargs):
         names = [variable] if variable else None
         return to_standard_units(ds, variables=names)
 
-    data_vars = list(ds.data_vars)
-    if variable:
-        if variable not in ds.data_vars:
-            raise UsageError(f"variable '{variable}' not in data_vars {data_vars}.")
-        names = [variable]
-    elif len(data_vars) == 1:
-        names = data_vars
-    else:
-        raise UsageError(f"input has multiple data vars {data_vars}; specify --variable.")
-
+    names = [variable] if variable else list(ds.data_vars)
     out = ds.copy()
     for name in names:
         da = ds[name]

@@ -30,29 +30,30 @@ def _select_point(da, lat, lon):
         raise ValueError(f"Could not identify latitude/longitude in dims {list(da.dims)}.")
     return da.sel({lat_dim: lat, lon_dim: lon}, method="nearest")
 
-def _outer_stats(values):
+def _bxp_stats(values, lo, q1, q3, hi):
     import numpy as np
 
     return {
-        "whislo": float(np.percentile(values, 25)),
-        "q1": float(np.percentile(values, 25)),
+        "whislo": float(np.percentile(values, lo)),
+        "q1": float(np.percentile(values, q1)),
         "med": float(np.percentile(values, 50)),
-        "q3": float(np.percentile(values, 75)),
-        "whishi": float(np.percentile(values, 75)),
+        "q3": float(np.percentile(values, q3)),
+        "whishi": float(np.percentile(values, hi)),
         "fliers": [],
     }
 
-def _inner_stats(values):
-    import numpy as np
-
-    return {
-        "whislo": float(np.percentile(values, 0)),
-        "q1": float(np.percentile(values, 10)),
-        "med": float(np.percentile(values, 50)),
-        "q3": float(np.percentile(values, 90)),
-        "whishi": float(np.percentile(values, 100)),
-        "fliers": [],
-    }
+def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
+    ax.bxp(
+        stats,
+        positions=positions,
+        widths=width,
+        showfliers=False,
+        patch_artist=True,
+        boxprops={"facecolor": facecolor, "alpha": 1},
+        medianprops={"color": "black", "linewidth": 1.5},
+        whiskerprops={"color": "black" if whisker_lw <= 1 else "gray", "linewidth": whisker_lw},
+        capprops={"color": "gray" if cap_alpha == 0 else "black", "linewidth": 1, "alpha": cap_alpha},
+    )
 
 @weather_skill(
     name="plot-mediogram",
@@ -110,78 +111,33 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title, output, **kwargs):
     snapped_lon = float(pt_fc[lon_dim].values) if lon_dim else lon
 
     time_steps = np.arange(n_steps)
-    ensemble_mean = np.mean(fc, axis=0)
-
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    fc_outer = [_outer_stats(fc[:, i]) for i in range(n_steps)]
-    mc_outer = [_outer_stats(mc[:, i]) for i in range(n_steps)]
-    fc_inner = [_inner_stats(fc[:, i]) for i in range(n_steps)]
-    mc_inner = [_inner_stats(mc[:, i]) for i in range(n_steps)]
+    fc_outer = [_bxp_stats(fc[:, i], 25, 25, 75, 75) for i in range(n_steps)]
+    mc_outer = [_bxp_stats(mc[:, i], 25, 25, 75, 75) for i in range(n_steps)]
+    fc_inner = [_bxp_stats(fc[:, i], 0, 10, 90, 100) for i in range(n_steps)]
+    mc_inner = [_bxp_stats(mc[:, i], 0, 10, 90, 100) for i in range(n_steps)]
 
     pos_fc = time_steps - 0.2
     pos_mc = time_steps + 0.2
+    _draw_bxp(ax, fc_inner, pos_fc, 0.2, "cyan", 1, cap_alpha=0)
+    _draw_bxp(ax, mc_inner, pos_mc, 0.2, "red", 1, cap_alpha=0)
+    _draw_bxp(ax, fc_outer, pos_fc, 0.4, "cyan", 2)
+    _draw_bxp(ax, mc_outer, pos_mc, 0.4, "red", 2)
 
-    ax.bxp(
-        fc_inner,
-        positions=pos_fc,
-        widths=0.2,
-        showfliers=False,
-        patch_artist=True,
-        boxprops={"facecolor": "cyan", "alpha": 1},
-        medianprops={"color": "black", "linewidth": 1.5},
-        whiskerprops={"color": "black", "linewidth": 1},
-        capprops={"color": "gray", "linewidth": 1, "alpha": 0},
-    )
-    ax.bxp(
-        mc_inner,
-        positions=pos_mc,
-        widths=0.2,
-        showfliers=False,
-        patch_artist=True,
-        boxprops={"facecolor": "red", "alpha": 1},
-        medianprops={"color": "black", "linewidth": 1.5},
-        whiskerprops={"color": "black", "linewidth": 1},
-        capprops={"color": "gray", "linewidth": 1, "alpha": 0},
-    )
-
-    ax.bxp(
-        fc_outer,
-        positions=pos_fc,
-        widths=0.4,
-        showfliers=False,
-        patch_artist=True,
-        boxprops={"facecolor": "cyan", "alpha": 1},
-        medianprops={"color": "black", "linewidth": 1.5},
-        whiskerprops={"color": "gray", "linewidth": 2},
-        capprops={"color": "black", "linewidth": 1},
-    )
-    ax.bxp(
-        mc_outer,
-        positions=pos_mc,
-        widths=0.4,
-        showfliers=False,
-        patch_artist=True,
-        boxprops={"facecolor": "red", "alpha": 1},
-        medianprops={"color": "black", "linewidth": 1.5},
-        whiskerprops={"color": "gray", "linewidth": 2},
-        capprops={"color": "black", "linewidth": 1},
-    )
-
-    ax.plot(time_steps, ensemble_mean, color="black", linewidth=1.2)
-
+    ax.plot(time_steps, np.mean(fc, axis=0), color="black", linewidth=1.2)
     ax.set_xticks(time_steps)
     ax.set_xticklabels([f"T+{t + 1}" for t in time_steps])
     ax.set_xlabel("Forecast step")
     ax.set_ylabel(variable)
     ax.set_title(title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
     ax.grid(True, linestyle="--", alpha=0.6)
-
-    handles = [
-        Patch(facecolor="cyan", edgecolor="black", label="forecast"),
-        Patch(facecolor="red", edgecolor="black", label="m-climate"),
-    ]
-    ax.legend(handles=handles)
+    ax.legend(
+        handles=[
+            Patch(facecolor="cyan", edgecolor="black", label="forecast"),
+            Patch(facecolor="red", edgecolor="black", label="m-climate"),
+        ]
+    )
 
     fig.tight_layout()
     output = Path(output)

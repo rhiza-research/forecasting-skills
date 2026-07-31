@@ -31,10 +31,11 @@ SHORTNAMES = {
     "final": "GPM_3IMERGDF",
 }
 
+
 @weather_skill(
     name="imerg-fetch",
     version=_SKILL_VERSION,
-    outputs=["observations"]
+    outputs=["observations"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
@@ -42,16 +43,14 @@ SHORTNAMES = {
 def fetch(start_time, end_time, version, **kwargs):
     """Fetch IMERG live precipitation and write a weather-skills standard dataset Zarr."""
     import earthaccess
+    import numpy as np
     import xarray as xr
 
     shortname = SHORTNAMES[version]
     start = start_time.isoformat()
     end = end_time.isoformat()
 
-    print(
-        f"Fetching IMERG {version} ({shortname}) {start} -> {end}",
-        file=sys.stderr,
-    )
+    print(f"Fetching IMERG {version} ({shortname}) {start} -> {end}", file=sys.stderr)
 
     earthaccess.login()
     results = earthaccess.search_data(
@@ -67,11 +66,7 @@ def fetch(start_time, end_time, version, **kwargs):
 
     with tempfile.TemporaryDirectory(prefix="imerg-fetch-") as td:
         files = earthaccess.download(results, local_path=td)
-        ds = xr.open_mfdataset(
-            files,
-            engine="h5netcdf",
-            combine="by_coords",
-        )
+        ds = xr.open_mfdataset(files, engine="h5netcdf", combine="by_coords")
         ds = ds[["precipitation"]].rename({"precipitation": "precip"})
         spatial_rename = {
             src: dst
@@ -81,8 +76,6 @@ def fetch(start_time, end_time, version, **kwargs):
         if spatial_rename:
             ds = ds.rename(spatial_rename)
         ds = ds.sel(time=slice(start, end))
-
-        import numpy as np
 
         present_days = sorted({np.datetime64(t, "D").item() for t in ds["time"].values})
         present_days = [d for d in present_days if start_time <= d <= end_time]
@@ -106,11 +99,10 @@ def fetch(start_time, end_time, version, **kwargs):
                     f"{start}..{end} — server/data gap, not lag. Refusing to write "
                     "a partial zarr with a hole in the middle."
                 )
-            effective_end_iso = last_present.isoformat()
             print(
                 f"WARNING: requested {requested_span} days ({start}..{end}) but only "
                 f"{covered_days} distinct day(s) are present in that span; writing the "
-                f"available days through {effective_end_iso} (trailing days not yet "
+                f"available days through {last_present.isoformat()} (trailing days not yet "
                 "published, or near the dataset start).",
                 file=sys.stderr,
             )
@@ -125,6 +117,7 @@ def fetch(start_time, end_time, version, **kwargs):
         )
         stamp_cf_attrs(ds)
         return to_standard_units(ds, variables=["precip"])
+
 
 if __name__ == "__main__":
     fetch()

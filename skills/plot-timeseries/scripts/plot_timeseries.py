@@ -13,45 +13,18 @@
 #   "cf-units>=3.3",
 # ]
 # ///
-"""Render a multi-input timeseries PNG from one or more weather-skills standard dataset Zarrs.
-
-Each input contributes one 1D line trace on a shared set of axes, plotted
-against its time-like coord. Inputs whose selected variable is not already
-1D must list the dims to reduce via repeated --reduce flags; reductions are
-mean-only and explicit (no silent averaging).
-"""
+"""Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
 
 import sys
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.cf import auto_variable, cf_dim
+from weather_skills_core.cf import auto_variable
+from weather_skills_core.standard_utils import dataset_label, pick_time_dim
 from weather_skills_core.units import to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.14"
-
-def _pick_time_dim(da, override):
-    if override:
-        if override not in da.dims:
-            raise ValueError(f"--time-dim '{override}' not in dims {list(da.dims)}.")
-        return override
-    if "time" in da.dims:
-        return "time"
-    if "step" in da.dims:
-        return "step"
-    cf = cf_dim(da, "time")
-    if cf and cf in da.dims:
-        return cf
-    raise ValueError(
-        f"Could not identify a time-like dim in {list(da.dims)}; pass --time-dim explicitly."
-    )
-
-def _dataset_label(ds, index):
-    src = ds.attrs.get("weather_skills_source")
-    if isinstance(src, str) and src.strip():
-        return Path(src).stem
-    return f"input {index + 1}"
 
 @weather_skill(
     name="plot-timeseries",
@@ -63,34 +36,22 @@ def _dataset_label(ds, index):
 @weather_skill.argument(
             "--time-dim",
             default=None,
-            help="Name of the time-like dim. When omitted, time, then step, "
-            "then the cf-xarray-identified time axis.",
+            help="Time-like dim; default time, then step, then CF time.",
         )
 @weather_skill.argument(
             "--reduce",
             action="append",
             default=[],
-            help="Name of a non-time dim to mean-reduce before plotting. Repeatable.",
+            help="Non-time dim to mean-reduce before plotting. Repeatable.",
         )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
             "--align-day-of-year",
             action="store_true",
-            help=(
-                "Plot each trace against day-of-year (1-366) instead of its absolute "
-                "date, so inputs from different years overlay on a shared x-axis. "
-                "Requires a calendar-date time axis (errors on a non-date axis such "
-                "as a forecast 'step' timedelta)."
-            ),
+            help="Plot against day-of-year (1-366) instead of absolute date.",
         )
 def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_year, output, **kwargs):
-    """Render a multi-input timeseries PNG from one or more weather-skills standard dataset Zarrs.
-
-    Each input contributes one 1D line trace on a shared set of axes, plotted
-    against its time-like coord. Inputs whose selected variable is not already
-    1D must list the dims to reduce via repeated --reduce flags; reductions are
-    mean-only and explicit (no silent averaging).
-    """
+    """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
     if len(datasets) > 26:
         raise UsageError(f"--input must be passed at most 26 times; got {len(datasets)}.")
 
@@ -119,7 +80,7 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
         u = ds[variable].attrs.get("units")
         if isinstance(u, str) and u.strip():
             unit_vals.append(u)
-            seen_units[_dataset_label(ds, idx)] = u.strip()
+            seen_units[dataset_label(ds, f"input {idx + 1}")] = u.strip()
     if unit_vals and any(not units_equal(unit_vals[0], u) for u in unit_vals[1:]):
         detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
         print(
@@ -137,8 +98,8 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
     for idx, ds in enumerate(datasets):
         da = ds[variable]
         try:
-            tdim = _pick_time_dim(da, time_dim)
-        except ValueError as exc:
+            tdim = pick_time_dim(da, time_dim)
+        except UsageError as exc:
             raise UsageError(f"Error (input {idx + 1}): {exc}", prefix=False) from None
 
         applicable = [d for d in reduce if d in da.dims]
@@ -153,25 +114,21 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
                 prefix=False,
             )
 
-        label = _dataset_label(ds, idx)
+        label = dataset_label(ds, f"input {idx + 1}")
         if align_day_of_year:
             try:
                 xvals = da[tdim].dt.dayofyear.values
             except (TypeError, AttributeError):
                 raise UsageError(
                     f"Error (input {idx + 1}): --align-day-of-year needs a calendar-date "
-                    f"time axis, but '{tdim}' is not a date axis (e.g. a forecast "
-                    f"'step' timedelta). Drop the flag or pick a date dim with "
-                    f"--time-dim.",
+                    f"time axis, but '{tdim}' is not a date axis. Drop the flag or pick "
+                    f"a date dim with --time-dim.",
                     prefix=False,
                 ) from None
             if len(xvals) > 1 and np.any(np.diff(xvals) < 0):
                 print(
-                    f"Warning (input {idx + 1}): day-of-year values are non-monotonic "
-                    f"(decrease at some point — a trace crossing a year boundary, "
-                    f"spanning multiple years, or an out-of-order time axis); "
-                    f"rendering anyway, but it may overplot itself on the shared "
-                    f"day-of-year axis.",
+                    f"Warning (input {idx + 1}): day-of-year values are non-monotonic; "
+                    f"rendering anyway.",
                     file=sys.stderr,
                 )
         else:
@@ -184,8 +141,7 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
             first_tdim = tdim
 
     ax.set_xlabel("day of year" if align_day_of_year else (first_tdim or "time"))
-    ylabel = variable if not units else f"{variable} [{units}]"
-    ax.set_ylabel(ylabel)
+    ax.set_ylabel(variable if not units else f"{variable} [{units}]")
     if title:
         ax.set_title(title)
     ax.legend()

@@ -21,7 +21,7 @@ _SKILL_VERSION = "0.1.11"
 @weather_skill.argument("--bbox", required=True)
 def clip_region(ds, bbox, **kwargs):
     """Spatially subset a gridded weather-skills standard dataset Zarr."""
-    from weather_skills_core.standard_args import bbox_subset
+    from weather_skills_core.standard_utils import bbox_subset
     from weather_skills_core.standard_dataset import detect_spatial_dims
 
     lat_dim, lon_dim = detect_spatial_dims(ds)

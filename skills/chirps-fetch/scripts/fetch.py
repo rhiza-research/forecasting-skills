@@ -25,58 +25,29 @@ from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.units import to_standard_units
 
-# Two CHIRPS v3.0 daily `sat` (IMERG-based) products. The FINAL product is the
-# validated archive (per-year folders, 1998-to-present); the PRELIM product is
-# the rolling recent-only feed published ~2 days after each pentad closes. Each
-# requested day prefers final and falls back to prelim (see _download_day_tif),
-# so historical dates resolve from final while the recent tail final has not
-# finalized yet resolves from prelim.
 CHIRPS_FINAL_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/sat"
 CHIRPS_PRELIM_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/prelim/sat"
-# Earliest year the final `sat` product covers; used only for the friendly
-# all-missing diagnostic, not as a hard pre-network gate.
 CHIRPS_FINAL_START_YEAR = 1998
 CHIRPS_NODATA = -9999.0
 HTTP_TIMEOUT = 60
-
-# Default size of the per-day download thread pool. The work is
-# network-I/O-bound (one independent HTTPS GET per day), so threads overlap
-# request latency without contending on the GIL. CHC's data server publishes
-# no concurrency or rate-limit policy, but it can throttle and temporarily
-# block IPs under higher concurrency: pools of 8 concurrent downloads have
-# repeatedly triggered throttling and temporary IP blocks at this host.
-# 2 keeps the request pattern gentle while still overlapping request latency;
-# --workers 1 is the fully serial fallback.
 DEFAULT_WORKERS = 2
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.18"
 
-class DayUnavailable(Exception):
-    """Raised when a day's TIF cannot be retrieved: not yet published (HTTP 404),
-    a transient server (5xx) or network error, or a non-TIFF / truncated / empty
-    body. The post-loop classifier then handles tail-vs-mid-gap.
+_NOT_FOUND = object()
 
-    ``status`` carries the HTTP status code when the failure had one (the 5xx
-    raise site); transport-error, truncated, empty, and non-TIFF failures leave
-    it None. The post-loop classifier uses it to tell an all-days 5xx refusal
-    (server throttling the whole run) apart from genuinely absent data.
-    """
+
+class DayUnavailable(Exception):
+    """Day's TIF unavailable (404, 5xx, truncated/empty/non-TIFF). ``status`` is HTTP code when known."""
 
     def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
 
-class _SessionPool:
-    """Per-thread requests.Session holder.
 
-    requests.Session is not documented thread-safe — its connection pool and
-    cookie jar are not meant to be shared across threads — so each worker
-    thread gets its own Session, created lazily on first use and reused for
-    every subsequent GET on that thread (one TLS handshake per thread rather
-    than one per day). Every created Session is tracked so they can all be
-    closed after the pool drains.
-    """
+class _SessionPool:
+    """Per-thread requests.Session (Session is not thread-safe)."""
 
     def __init__(self):
         self._local = threading.local()
@@ -100,21 +71,9 @@ class _SessionPool:
         for s in sessions:
             s.close()
 
-# Sentinel returned by _get_tif_body when a URL answers 404 (the day is not
-# published at that product) — distinct from None and from a validated body, so
-# the caller can fall back to the other product rather than failing the day.
-_NOT_FOUND = object()
 
 def _get_tif_body(session, url: str):
-    """Fetch one CHIRPS day TIF URL and return its validated bytes.
-
-    Returns ``_NOT_FOUND`` on HTTP 404 (the day is not published at this
-    product, so the caller may try the other product). Raises ``DayUnavailable``
-    for transient failures (transport error, 5xx, truncated/empty/non-TIFF body)
-    so the post-loop tail-vs-mid-gap classifier handles them the same way it
-    handles a missing day. Re-raises for other 4xx (auth/bad request), which
-    indicate a real config problem rather than a not-yet-published day.
-    """
+    """Fetch one day TIF. Returns bytes, ``_NOT_FOUND`` on 404, or raises DayUnavailable."""
     import requests
 
     try:
@@ -133,10 +92,6 @@ def _get_tif_body(session, url: str):
         resp.raise_for_status()
 
     body = resp.content
-    # Guard against a truncated body: when the server reports a length, the
-    # received byte count must match before the file is handed to rioxarray.
-    # A malformed/non-numeric Content-Length is treated as "no declared
-    # length" rather than aborting the whole run with an uncaught ValueError.
     declared = resp.headers.get("Content-Length")
     if declared is not None:
         try:
@@ -149,28 +104,12 @@ def _get_tif_body(session, url: str):
             )
     if not body:
         raise DayUnavailable(f"empty body for {url}")
-
-    # Reject a 200 response whose body is not actually a TIFF (e.g. an HTML
-    # error/landing page): a TIFF/GeoTIFF starts with the little-endian
-    # b"II*\x00" or big-endian b"MM\x00*" signature. Rejecting here makes such
-    # a response a clean DayUnavailable rather than a confusing downstream
-    # rioxarray error after the body has been written and reopened.
     if body[:4] not in (b"II*\x00", b"MM\x00*"):
         raise DayUnavailable(f"non-TIFF body for {url}: leading bytes {body[:4]!r}")
-
     return body
 
-def _http_refusal_message(exc, workers: int) -> str:
-    """Build the abort message for an HTTPError escaping a download worker.
 
-    Always includes status, reason, and URL when a response is attached. The
-    hint is status-aware: 403/429 (and a response-less error) read as rate
-    limiting / a temporary IP block, where waiting and lowering --workers help;
-    any other status reads as a request/auth/layout problem, where retrying
-    will not help. ``resp.reason`` can be None (no reason phrase on the status
-    line), so the detail is rebuilt with whitespace collapsed rather than
-    printing a literal "None" or a double space.
-    """
+def _http_refusal_message(exc, workers: int) -> str:
     resp = exc.response
     if resp is None:
         status = None
@@ -192,17 +131,9 @@ def _http_refusal_message(exc, workers: int) -> str:
         "has not changed."
     )
 
-def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
-    """Fetch one day, preferring the validated final product over prelim.
 
-    Try the final `sat` URL first. ANY final-side failure — a 404 (not finalized
-    yet), a transient 5xx, an auth/throttle 4xx, or a corrupt 200 — falls through
-    to the prelim URL; only if prelim ALSO fails is the day unavailable. This
-    keeps a final-server glitch from dropping a day prelim can serve, or aborting
-    the whole run on a final-only 4xx. The day is written to a temp file named
-    after whichever product served it; the post-loop classifier decides
-    tail-vs-mid-gap from the days that ultimately had no data anywhere.
-    """
+def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
+    """Prefer final product; fall through to prelim on any final-side failure."""
     import requests
 
     final_name = f"chirps-v3.0.sat.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
@@ -210,11 +141,6 @@ def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
     prelim_name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
     prelim_url = f"{CHIRPS_PRELIM_BASE_URL}/{day.year:04d}/{prelim_name}"
 
-    # Final 404 yields the _NOT_FOUND sentinel; any other final-side failure
-    # (DayUnavailable for 5xx/transient/corrupt, HTTPError for other-4xx) is
-    # caught and also routed to the prelim fallback. Prelim's own result then
-    # stands: a prelim failure propagates normally (DayUnavailable -> the day is
-    # classified missing; HTTPError -> a real site-wide config problem aborts).
     try:
         body = _get_tif_body(session, final_url)
     except (DayUnavailable, requests.HTTPError):
@@ -233,6 +159,7 @@ def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
         f.write(body)
     return out
 
+
 def _open_day(tif: Path, day: date):
     import numpy as np
     import rioxarray
@@ -243,26 +170,26 @@ def _open_day(tif: Path, day: date):
     if "spatial_ref" in da.coords:
         da = da.drop_vars("spatial_ref")
     da.attrs = {}
-    da = da.expand_dims(time=[np.datetime64(day.isoformat(), "ns")])
-    return da
+    return da.expand_dims(time=[np.datetime64(day.isoformat(), "ns")])
+
 
 @weather_skill(
     name="chirps-fetch",
     version=_SKILL_VERSION,
-    outputs=["observations"]
+    outputs=["observations"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument(
-            "--workers",
-            type=int,
-            default=DEFAULT_WORKERS,
-            help=(
-                f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
-                "Deliberately conservative: CHC's data server can throttle and "
-                "temporarily block IPs under higher concurrency."
-            ),
-        )
+    "--workers",
+    type=int,
+    default=DEFAULT_WORKERS,
+    help=(
+        f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
+        "Deliberately conservative: CHC's data server can throttle and "
+        "temporarily block IPs under higher concurrency."
+    ),
+)
 def fetch(start_time, end_time, workers, **kwargs):
     """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
     import requests
@@ -276,19 +203,10 @@ def fetch(start_time, end_time, workers, **kwargs):
     ]
     succeeded = []
     missing_days: list[date] = []
-    # HTTP status (or None) of each missing day's DayUnavailable, keyed by day;
-    # lets the all-missing classifier recognize an all-5xx site-wide refusal.
     missing_status: dict[date, int | None] = {}
 
     with tempfile.TemporaryDirectory(prefix="chirps_") as tmpdir:
         tmp = Path(tmpdir)
-        # Only the downloads run concurrently. Each worker returns its day's tif
-        # path on success or signals a missing day via DayUnavailable; the tifs
-        # are opened with _open_day SEQUENTIALLY in the main thread after the
-        # pool drains. The download is the network-I/O bottleneck, while
-        # _open_day is fast and GDAL concurrent-open safety is build-dependent —
-        # so parallelizing only the download captures the win without relying on
-        # unverified concurrent-open behavior.
         sessions = _SessionPool()
 
         def _download(day: date) -> tuple[date, Path]:
@@ -301,16 +219,6 @@ def fetch(start_time, end_time, workers, **kwargs):
                 for fut in as_completed(futures):
                     day = futures[fut]
                     try:
-                        # A DayUnavailable (404/5xx/transient/truncated/non-TIFF)
-                        # marks the day missing. ANY requests.HTTPError escaping
-                        # a worker (today that is the prelim-side non-404 4xx
-                        # raise — a final-side HTTPError is swallowed by the
-                        # prelim fallback — but the clause is not limited to
-                        # that by construction) means the server is refusing
-                        # requests, so the run aborts with a clean message. Any
-                        # other exception is unexpected and is re-raised by
-                        # future.result(), so the run fails loudly rather than
-                        # silently dropping a day or hanging the pool.
                         result_day, tif = fut.result()
                     except DayUnavailable as e:
                         print(
@@ -322,42 +230,22 @@ def fetch(start_time, end_time, workers, **kwargs):
                         missing_status[day] = e.status
                         continue
                     except requests.HTTPError as e:
-                        # Cancel not-yet-started downloads so no new request
-                        # starts while the abort message is built and printed.
                         pool.shutdown(wait=False, cancel_futures=True)
                         print(_http_refusal_message(e, workers), file=sys.stderr)
                         sys.stderr.flush()
-                        # os._exit avoids the ThreadPoolExecutor __exit__ /
-                        # shutdown(wait=True) that a SystemExit would trigger,
-                        # which would block on in-flight requests. The trade-off
-                        # is that it also skips the TemporaryDirectory context
-                        # manager's cleanup, so the temp dir is left on disk for
-                        # the OS's normal temp-cleanup (tmp reaper / reboot) to
-                        # reclaim later, not reclaimed at exit. It equally skips
-                        # every decorator-owned tail: the streaming rollback (a
-                        # no-op here — nothing has been yielded, so no store
-                        # exists yet) and the SkillError-to-stderr mapping. The
-                        # process ends here with exit code 2.
+                        # Skip ThreadPoolExecutor/tempdir cleanup to avoid blocking
+                        # on in-flight requests; OS reclaims the temp dir later.
                         os._exit(2)
                     print(f"  {result_day.isoformat()}", file=sys.stderr)
                     downloaded.append((result_day, tif))
         finally:
             sessions.close_all()
 
-        # Restore day order on both outcome lists. Futures complete in an
-        # arbitrary order, but the classifier below compares `missing_days`
-        # against the day-sorted `expected_tail` as lists and takes
-        # `succeeded_days[-1]` as the last available day, so both must be sorted
-        # to reproduce the serial path's behavior exactly.
         missing_days.sort()
         for day, tif in sorted(downloaded, key=lambda dt: dt[0]):
             succeeded.append((day, _open_day(tif, day)))
 
-        # Classify outcome.
         if not succeeded:
-            # When EVERY missing day failed with a 5xx, the server refused the
-            # whole run (likely throttling) — not a data gap, so say so instead
-            # of the genuinely-absent-data diagnostic below.
             statuses = [missing_status.get(d) for d in missing_days]
             if statuses and all(s is not None and s >= 500 for s in statuses):
                 codes = ", ".join(str(c) for c in sorted(set(statuses)))
@@ -384,9 +272,6 @@ def fetch(start_time, end_time, workers, **kwargs):
         last_succeeded = succeeded_days[-1]
         expected_tail = [d for d in expected_days if d > last_succeeded]
         if missing_days and missing_days != expected_tail:
-            # Mid-range gap: some missing day precedes a succeeded day. The
-            # message is consumed as printed, so it carries no "Error: "
-            # prefix (prefix=False).
             raise UsageError(
                 f"Non-tail missing day(s) {', '.join(d.isoformat() for d in missing_days)} "
                 f"— server-side data gap, not a lag issue. "
@@ -394,18 +279,13 @@ def fetch(start_time, end_time, workers, **kwargs):
                 prefix=False,
             )
 
-        # At this point: either no missing days (full success) or
-        # missing_days is exactly the contiguous tail past last_succeeded.
         effective_end = last_succeeded.isoformat()
         if missing_days:
             print(
                 f"Tail-missing day(s) {', '.join(d.isoformat() for d in missing_days)}; "
                 f"writing partial dataset with effective end {effective_end} "
                 f"(requested --end-time was {end}). "
-                "Consistent with CHIRPS v3.0 preliminary's pentad-based "
-                "schedule (per-day files published 2 days after each pentad "
-                "ends on days 5, 10, 15, 20, 25, and last of month; "
-                "worst-case lag ~7 days).",
+                "Consistent with CHIRPS v3.0 preliminary's pentad-based schedule.",
                 file=sys.stderr,
             )
 
@@ -425,6 +305,7 @@ def fetch(start_time, end_time, workers, **kwargs):
         ds.attrs["weather_skills_source"] = "chirps"
         stamp_cf_attrs(ds)
         return to_standard_units(ds, variables=["precip"])
+
 
 if __name__ == "__main__":
     fetch()
