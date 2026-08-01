@@ -145,7 +145,9 @@ def _collect_skills(skills_dir: Path) -> dict[str, list[tuple[str, str, bool]]]:
     known = {key for key, _, _ in GROUPS}
     grouped: dict[str, list[tuple[str, str, bool]]] = {key: [] for key, _, _ in GROUPS}
     for entry in sorted(skills_dir.iterdir()):
-        if entry.is_dir() and not (entry / "SKILL.md").is_file():
+        if not entry.is_dir() or entry.name.startswith(".") or entry.name == "__pycache__":
+            continue
+        if not (entry / "SKILL.md").is_file():
             raise ValueError(f"{entry}: skill directory has no SKILL.md")
     skill_mds = sorted(skills_dir.glob("*/SKILL.md"), key=lambda p: p.parent.name)
     if not skill_mds:

@@ -42,37 +42,46 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     BBOX=$(forecasting-skills resolve-region "${ISO[$COUNTRY]}" --geojson "$d/boundary.geojson")
 
     forecasting-skills clip-region        -i "$OUT/ecmwf_per_step.zarr" -o "$d/ecmwf.zarr"         --bbox="$BBOX"
-    forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_weekly.zarr"  --period weekly  --method sum
-    forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_dekadal.zarr" --period dekadal --method sum
-    forecasting-skills plot               -i "$d/ecmwf_weekly.zarr"  -o "$d/weekly_precip.png"  --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --bbox="$BBOX"
-    forecasting-skills plot               -i "$d/ecmwf_dekadal.zarr" -o "$d/dekadal_precip.png" --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --bbox="$BBOX"
+    forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_weekly.zarr"  --period weekly  --method mean
+    forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_dekadal.zarr" --period dekadal --method mean
+    forecasting-skills convert-to-totals  -i "$d/ecmwf_weekly.zarr"  -o "$d/ecmwf_weekly_totals.zarr"
+    forecasting-skills convert-to-totals  -i "$d/ecmwf_dekadal.zarr" -o "$d/ecmwf_dekadal_totals.zarr"
+    forecasting-skills plot               -i "$d/ecmwf_weekly_totals.zarr"  -o "$d/weekly_precip.png"  --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --bbox="$BBOX"
+    forecasting-skills plot               -i "$d/ecmwf_dekadal_totals.zarr" -o "$d/dekadal_precip.png" --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --bbox="$BBOX"
     # Upstream daily_download2.0.yml runs a downscale step (dowscale_dekade.py) producing
     # dekadal_precip_downscaled.png. That artifact isn't in the emailed attachments, so
     # we run the downscale + plot here for parity with the workflow steps but the result is
     # not part of the email deliverable.
     forecasting-skills downscale          -i "$d/ecmwf_dekadal.zarr" -o "$d/ecmwf_dekadal_ds.zarr" --method linear-interpolation --target-resolution 0.25 --variable tp
-    forecasting-skills plot               -i "$d/ecmwf_dekadal_ds.zarr" -o "$d/dekadal_precip_ds.png" --variable tp
+    forecasting-skills convert-to-totals  -i "$d/ecmwf_dekadal_ds.zarr" -o "$d/ecmwf_dekadal_ds_totals.zarr"
+    forecasting-skills plot               -i "$d/ecmwf_dekadal_ds_totals.zarr" -o "$d/dekadal_precip_ds.png" --variable tp
 
     forecasting-skills clip-region        -i "$OUT/imerg.zarr"  -o "$d/imerg.zarr"         --bbox="$BBOX"
-    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_weekly.zarr"  --period weekly  --method sum --anchor-end "$END_DATE"
-    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_dekadal.zarr" --period dekadal --method sum --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_weekly.zarr"  --period weekly  --method mean --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_dekadal.zarr" --period dekadal --method mean --anchor-end "$END_DATE"
+    forecasting-skills convert-to-totals  -i "$d/imerg_weekly.zarr"  -o "$d/imerg_weekly_totals.zarr"
+    forecasting-skills convert-to-totals  -i "$d/imerg_dekadal.zarr" -o "$d/imerg_dekadal_totals.zarr"
 
     forecasting-skills clip-region        -i "$OUT/chirps.zarr" -o "$d/chirps.zarr"         --bbox="$BBOX"
-    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_weekly.zarr"  --period weekly  --method sum --anchor-end "$END_DATE"
-    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_dekadal.zarr" --period dekadal --method sum --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_weekly.zarr"  --period weekly  --method mean --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_dekadal.zarr" --period dekadal --method mean --anchor-end "$END_DATE"
+    forecasting-skills convert-to-totals  -i "$d/chirps_weekly.zarr"  -o "$d/chirps_weekly_totals.zarr"
+    forecasting-skills convert-to-totals  -i "$d/chirps_dekadal.zarr" -o "$d/chirps_dekadal_totals.zarr"
 
     forecasting-skills tahmo-fetch --country "$COUNTRY" --start "$START_DATE" --end "$END_DATE" --output "$d/tahmo.zarr"
 
     # plot-compare requires its two inputs to already share a time axis, so the
     # daily station data is pre-aggregated to the same window/anchor/method as
     # the imerg/chirps gridded aggregations before comparing.
-    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_weekly.zarr"  --variable precip --period weekly  --method sum --anchor-end "$END_DATE"
-    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_dekadal.zarr" --variable precip --period dekadal --method sum --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_weekly.zarr"  --variable precip --period weekly  --method mean --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_dekadal.zarr" --variable precip --period dekadal --method mean --anchor-end "$END_DATE"
+    forecasting-skills convert-to-totals  -i "$d/tahmo_weekly.zarr"  -o "$d/tahmo_weekly_totals.zarr"  --variable precip
+    forecasting-skills convert-to-totals  -i "$d/tahmo_dekadal.zarr" -o "$d/tahmo_dekadal_totals.zarr" --variable precip
 
-    forecasting-skills plot-compare -i "$d/tahmo_weekly.zarr"  -i "$d/imerg_weekly.zarr"   --variable precip --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_weekly.png"
-    forecasting-skills plot-compare -i "$d/tahmo_dekadal.zarr" -i "$d/imerg_dekadal.zarr"  --variable precip             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_dekadal.png"
-    forecasting-skills plot-compare -i "$d/tahmo_weekly.zarr"  -i "$d/chirps_weekly.zarr"  --variable precip --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_weekly.png"
-    forecasting-skills plot-compare -i "$d/tahmo_dekadal.zarr" -i "$d/chirps_dekadal.zarr" --variable precip             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_dekadal.png"
+    forecasting-skills plot-compare -i "$d/tahmo_weekly_totals.zarr"  -i "$d/imerg_weekly_totals.zarr"   --variable precip --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_weekly.png"
+    forecasting-skills plot-compare -i "$d/tahmo_dekadal_totals.zarr" -i "$d/imerg_dekadal_totals.zarr"  --variable precip             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_dekadal.png"
+    forecasting-skills plot-compare -i "$d/tahmo_weekly_totals.zarr"  -i "$d/chirps_weekly_totals.zarr"  --variable precip --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_weekly.png"
+    forecasting-skills plot-compare -i "$d/tahmo_dekadal_totals.zarr" -i "$d/chirps_dekadal_totals.zarr" --variable precip             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_dekadal.png"
 
     forecasting-skills email-report \
         --from "$COUNTRY Data Share <demo@example.com>" \

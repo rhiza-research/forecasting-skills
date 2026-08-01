@@ -49,7 +49,7 @@
         <figcaption class="card-label">artifact record</figcaption>
         <dl class="card-fields">
           <div><dt>artifact</dt><dd>weekly.png</dd></div>
-          <div><dt>produced by</dt><dd>ecmwf-fetch &#8594; aggregate-temporal &#8594; plot</dd></div>
+          <div><dt>produced by</dt><dd>ecmwf-fetch &#8594; aggregate-temporal &#8594; convert-to-totals &#8594; plot</dd></div>
           <div><dt>provenance</dt><dd>weather_skills_history — append-only JSON chain</dd></div>
           <div><dt>standards</dt><dd>CF conventions &#183; Zarr&nbsp;v3</dd></div>
         </dl>
@@ -71,7 +71,8 @@
   <p>
     From a plain-language request, the agent picks and composes skills. This is
     a real session, replayed: resolve Senegal's bounding box &#8594; fetch IMERG
-    &#8594; clip to the region &#8594; aggregate to weekly totals &#8594; plot —
+    &#8594; clip to the region &#8594; aggregate to weekly mean rates &#8594;
+    convert to totals &#8594; plot —
     then a follow-up adds The Gambia by merging the mask, no re-fetch needed.
   </p>
   <div class="demo-stage" data-demo-replay aria-label="Replay of an agent session composing weather skills">
@@ -218,7 +219,7 @@ claude plugin install rhiza-forecasting@weather-skills</code></pre>
       </ul>
     </li>
   </ol>
-  <p class="example-label">Example — a forecast for one country fetched, aggregated to weekly totals, and plotted; satellite observations clipped to the same bbox:</p>
+  <p class="example-label">Example — a forecast for one country fetched, aggregated to weekly mean rates, converted to totals, and plotted; satellite observations clipped to the same bbox:</p>
   <pre class="example"><code># Resolve the country bbox once, reuse it across the fetch and the clip.
 KENYA_BBOX=$(forecasting-skills resolve-region KEN)
 
@@ -229,10 +230,13 @@ forecasting-skills ecmwf-fetch \
 forecasting-skills aggregate-temporal \
     --input /tmp/ecmwf.zarr \
     --period weekly \
-    --method sum \
+    --method mean \
     --output /tmp/ecmwf_weekly.zarr
-forecasting-skills plot \
+forecasting-skills convert-to-totals \
     --input /tmp/ecmwf_weekly.zarr \
+    --output /tmp/ecmwf_weekly_totals.zarr
+forecasting-skills plot \
+    --input /tmp/ecmwf_weekly_totals.zarr \
     --variable tp \
     --output /tmp/weekly.png
 

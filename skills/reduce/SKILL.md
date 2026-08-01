@@ -64,8 +64,7 @@ units as the values. `sum` along a dim is the one case where the units
 semantics can change (N summed values in `mm` are a total, not another `mm`
 sample in the same sense); this skill performs no unit math or relabeling
 either way — use `unit-convert` to restamp units when needed. (For temporal
-totals specifically, `aggregate-temporal --method sum` handles the units
-relabel.)
+totals specifically, use `aggregate-temporal` then `convert-to-totals`.)
 
 NaNs are skipped (xarray's default `skipna`). Two method-specific
 conventions follow from that:

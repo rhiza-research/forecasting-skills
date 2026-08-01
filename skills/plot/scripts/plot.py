@@ -270,7 +270,8 @@ def _heatmap(
     name="plot",
     version=_SKILL_VERSION,
     inputs=["any"],
-    outputs=["figure"]
+    outputs=["figure"],
+    allow_precip_totals=True,
 )
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")

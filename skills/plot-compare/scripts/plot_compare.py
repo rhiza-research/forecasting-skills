@@ -174,7 +174,8 @@ def _axis_kind(values):
     name="plot-compare",
     version=_SKILL_VERSION,
     inputs=["any", "any"],
-    outputs=["figure"]
+    outputs=["figure"],
+    allow_precip_totals=True,
 )
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")

@@ -33,8 +33,9 @@ one a calendar `time` axis and the other a forecast `step` axis) or have
 no overlapping bins; in either case it asks you to aggregate to a common
 resolution first. To compare data captured at different cadences (e.g.
 daily station observations against weekly or dekadal gridded
-accumulations), aggregate each input to the same window with the
-`aggregate-temporal` skill before comparing.
+rates), aggregate each input to the same window with the
+`aggregate-temporal` skill before comparing (then `convert-to-totals` if
+you want period amounts on the figure).
 
 Each row can draw a different variable: `--variable-a`/`--variable-b`
 select per-row, with `--variable` as a both-rows shorthand. This lets

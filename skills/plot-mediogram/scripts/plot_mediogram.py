@@ -59,7 +59,8 @@ def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
     name="plot-mediogram",
     version=_SKILL_VERSION,
     inputs=["any", "any"],
-    outputs=["figure"]
+    outputs=["figure"],
+    allow_precip_totals=True,
 )
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--lat", type=float, required=True, help="Point latitude.")

@@ -32,7 +32,8 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 |---|---|
 | `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) from bundled Natural Earth 1:110m boundaries |
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
-| `aggregate-temporal` | Resample along `time` or `step` into daily/weekly/dekadal/monthly windows |
+| `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); stamps `aggregation_period` + `cell_methods` |
+| `convert-to-totals` | Terminal: rate × `aggregation_period` → amount for plotting (refuses rolling Δt < period) |
 | `deaccumulate` | Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) into per-step diffs along the `step` axis |
 | `step-to-time` | Realize a forecast's `step` lead-time axis as wall-clock valid times (`time = init + step`) so it can be compared against time-based observations |
 | `unit-convert` | Convert a variable to target `--to-units` (e.g. precip flux `kg m-2 s-1` → depth rate `mm/day` via ÷ liquid-water density) |
@@ -180,10 +181,13 @@ forecasting-skills ecmwf-fetch \
 forecasting-skills aggregate-temporal \
     --input /tmp/ecmwf.zarr \
     --period weekly \
-    --method sum \
+    --method mean \
     --output /tmp/ecmwf_weekly.zarr
-forecasting-skills plot \
+forecasting-skills convert-to-totals \
     --input /tmp/ecmwf_weekly.zarr \
+    --output /tmp/ecmwf_weekly_totals.zarr
+forecasting-skills plot \
+    --input /tmp/ecmwf_weekly_totals.zarr \
     --variable tp \
     --output /tmp/weekly.png
 
@@ -198,8 +202,11 @@ forecasting-skills clip-region \
 forecasting-skills aggregate-temporal \
     --input /tmp/imerg_kenya.zarr \
     --period dekadal \
-    --method sum \
+    --method mean \
     --output /tmp/imerg_dekadal.zarr
+forecasting-skills convert-to-totals \
+    --input /tmp/imerg_dekadal.zarr \
+    --output /tmp/imerg_dekadal_totals.zarr
 
 forecasting-skills tahmo-fetch \
     --country Kenya \
@@ -209,7 +216,7 @@ forecasting-skills tahmo-fetch \
 
 forecasting-skills plot-compare \
     -i /tmp/tahmo.zarr \
-    -i /tmp/imerg_dekadal.zarr \
+    -i /tmp/imerg_dekadal_totals.zarr \
     --variable precip \
     --output /tmp/sat_vs_stations.png
 

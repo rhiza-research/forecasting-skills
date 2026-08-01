@@ -1,6 +1,6 @@
 ---
 name: deaccumulate
-description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step differences, so each step value represents the period since the previous step rather than the accumulation since initialization.
+description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step rates (precip → mm day-1), so each step is the period since the previous step rather than the accumulation since initialization.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py *)
@@ -60,8 +60,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py --input <in.zarr> --output <o
 
 Same dims and coords as the input EXCEPT the `step` axis is one shorter: the
 first input step is dropped, and the remaining step coord values are
-preserved. Values are `arr[i+1] - arr[i]` clipped at zero. The variable's
-attrs are preserved.
+preserved. Values are `arr[i+1] - arr[i]` clipped at zero. For precip amount
+inputs, the increment is divided by the step interval and stamped as
+`mm day-1` (`lwe_precipitation_rate`). Other variables keep their input attrs.
 
 If the input lacks a `step` dim, or has multiple data vars and no
 `--variable`, the skill exits with code 2 and a clear message.
@@ -88,15 +89,14 @@ translate underscore → hyphen.
 
 ## Composition with aggregate-temporal
 
-Per-step differences are additive across consecutive intervals, so running
-`aggregate-temporal --method sum` on a deaccumulated forecast produces
-correct per-window totals (e.g. weekly or dekadal precipitation). Running
-`aggregate-temporal --method sum` directly on an accumulated variable
-double-counts the earlier steps and inflates totals.
+Deaccumulation turns cumulative precip into **per-step rates** (`mm day-1`).
+Aggregate those rates with `aggregate-temporal --method mean` (or min/max),
+then run `convert-to-totals` when you need period amounts for plotting.
+Do not aggregate a still-accumulated variable — deaccumulate first.
 
-`deaccumulate` is also useful standalone: per-period differences can be plotted
-directly, or compared to per-period observations (e.g. IMERG, CHIRPS, station
-data) without an extra aggregation step.
+`deaccumulate` is also useful standalone: per-step rates can be compared to
+daily rate observations (e.g. IMERG, CHIRPS, station data) without further
+aggregation.
 
 ## Examples
 

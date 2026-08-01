@@ -46,8 +46,9 @@ _TIME_CALENDAR = "proleptic_gregorian"
 
 # canonical -> (GHCN element, scale, units, standard_name, cell_method, long_name).
 # Scale converts tenths-of-mm / tenths-of-degC to mm/day and degC.
+# Precip is stamped as a daily rate (no cell_methods sum — that marks convert-to-totals).
 VAR_MAP = {
-    "precip": ("PRCP", 0.1, "mm/day", "lwe_precipitation_rate", "time: sum", "daily total precipitation"),
+    "precip": ("PRCP", 0.1, "mm/day", "lwe_precipitation_rate", None, "daily precipitation rate"),
     "tmax": ("TMAX", 0.1, "degC", "air_temperature", "time: maximum", "daily maximum air temperature"),
     "tmin": ("TMIN", 0.1, "degC", "air_temperature", "time: minimum", "daily minimum air temperature"),
     "tavg": ("TAVG", 0.1, "degC", "air_temperature", "time: mean", "daily mean air temperature"),
@@ -148,8 +149,9 @@ def _var_attrs(ds) -> dict:
             "standard_name": std_name,
             "long_name": long_name,
             "units": units,
-            "cell_methods": cell_method,
         }
+        if cell_method:
+            attrs[canonical]["cell_methods"] = cell_method
     return attrs
 
 

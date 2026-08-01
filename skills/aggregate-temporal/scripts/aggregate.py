@@ -7,13 +7,21 @@
 #   "xarray",
 #   "numpy",
 #   "pandas",
+#   "pint-xarray>=0.6",
 # ]
 # ///
-"""Temporal aggregation: calendar resample or step buckets."""
+"""Temporal aggregation: calendar resample or step buckets (rates; mean/min/max)."""
 
 import datetime as _dt
 
 from weather_skills_core import UsageError, weather_skill
+from weather_skills_core.units import (
+    AGGREGATION_PERIOD_ATTR,
+    PERIOD_TO_AGGREGATION,
+    format_cell_methods,
+    format_duration,
+    infer_timestep,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.13"
@@ -21,16 +29,11 @@ _SKILL_VERSION = "0.1.13"
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
 ANCHOR_PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10, "monthly": 30}
-_TEMP_UNITS = {
-    "k", "degk", "degc", "celsius", "degree_celsius", "degrees_celsius", "degreec", "°c",
-    "degf", "degree_fahrenheit", "degrees_fahrenheit", "fahrenheit", "°f",
-}
-_DEPTH = {"mm": "mm", "kg m**-2": "kg m**-2", "kg m-2": "kg m**-2", "kg m^-2": "kg m**-2"}
-_RATE_TO_AMOUNT = {"lwe_precipitation_rate": "lwe_thickness_of_precipitation_amount"}
+_METHOD_TO_CF = {"mean": "mean", "max": "maximum", "min": "minimum"}
 
 
 def _reduce(grouped, method, dim=None):
-    fn = {"sum": grouped.sum, "mean": grouped.mean, "max": grouped.max, "min": grouped.min}[method]
+    fn = {"mean": grouped.mean, "max": grouped.max, "min": grouped.min}[method]
     return fn(dim=dim, keep_attrs=True) if dim is not None else fn(keep_attrs=True)
 
 
@@ -111,6 +114,16 @@ def _aggregate_step(ds, period, method):
     return xr.concat(chunks, dim="step").assign_coords(step=labels)
 
 
+def _stamp_aggregation_metadata(out, dim, period, method, interval):
+    agg_period = PERIOD_TO_AGGREGATION[period]
+    cf_method = _METHOD_TO_CF[method]
+    cm = format_cell_methods(dim, cf_method, interval=interval)
+    for name in out.data_vars:
+        attrs = {**out[name].attrs, AGGREGATION_PERIOD_ATTR: agg_period, "cell_methods": cm}
+        out[name].attrs = attrs
+    return out
+
+
 @weather_skill(
     name="aggregate-temporal",
     version=_SKILL_VERSION,
@@ -121,11 +134,11 @@ def _aggregate_step(ds, period, method):
 @weather_skill.argument(
     "--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"]
 )
-@weather_skill.argument("--method", default="sum", choices=["sum", "mean", "max", "min"])
+@weather_skill.argument("--method", default="mean", choices=["mean", "max", "min"])
 @weather_skill.argument("--time-dim", default=None)
 @weather_skill.argument("--anchor-end", default=None)
 def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
-    """Temporal aggregation: calendar resample or step buckets."""
+    """Temporal aggregation of rates: calendar resample or step buckets."""
     import cf_xarray  # noqa: F401
     import pandas as pd
 
@@ -152,22 +165,11 @@ def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
         else:
             raise UsageError(f"no time/step dim in {list(ds.dims)}; pass --time-dim")
 
-    # Sum of intensive quantities is silently meaningless
-    if method == "sum":
-        for var in ds.data_vars:
-            sn = ds[var].attrs.get("standard_name")
-            u = ds[var].attrs.get("units")
-            name = sn.strip().lower() if isinstance(sn, str) else ""
-            units = u.strip().lower() if isinstance(u, str) else ""
-            intensive = (
-                name == "air_temperature"
-                or name.endswith("_temperature")
-                or units in _TEMP_UNITS
-                or (units in {"pa", "hpa", "mbar", "bar"} and "pressure" in name)
-                or units in {"%", "percent"}
-            )
-            if intensive:
-                raise UsageError(f"variable '{var}' is intensive; refuse --method sum")
+    interval = None
+    try:
+        interval = format_duration(infer_timestep(ds, dim))
+    except UsageError:
+        pass
 
     if dim == "step":
         out = _aggregate_step(ds, period, method)
@@ -176,29 +178,7 @@ def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
     else:
         out = _reduce(ds.resample({dim: RESAMPLE_FREQ[period]}), method)
 
-    # Relabel mm/day → mm after sum (otherwise units lie)
-    if method == "sum":
-        for var in out.data_vars:
-            units = out[var].attrs.get("units")
-            sn = out[var].attrs.get("standard_name")
-            if not isinstance(units, str) or not units.strip():
-                continue
-            u = units.strip()
-            if "/" in u:
-                head, _, tail = u.rpartition("/")
-                ok = {"day", "days", "d"}
-            else:
-                head, _, tail = u.rpartition(" ")
-                ok = {"day-1", "d-1", "day**-1", "d**-1"}
-            depth = _DEPTH.get(head.strip().lower()) if tail.strip().lower() in ok else None
-            if depth is None:
-                continue
-            out[var].attrs["units"] = depth
-            if isinstance(sn, str) and sn.strip() in _RATE_TO_AMOUNT:
-                out[var].attrs["standard_name"] = _RATE_TO_AMOUNT[sn.strip()]
-            elif isinstance(sn, str) and sn.strip().lower().endswith(("_rate", "_flux")):
-                out[var].attrs.pop("standard_name", None)
-    return out
+    return _stamp_aggregation_metadata(out, dim, period, method, interval)
 
 
 if __name__ == "__main__":

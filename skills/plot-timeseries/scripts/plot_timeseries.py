@@ -30,7 +30,8 @@ _SKILL_VERSION = "0.1.14"
     name="plot-timeseries",
     version=_SKILL_VERSION,
     inputs=["any+"],
-    outputs=["figure"]
+    outputs=["figure"],
+    allow_precip_totals=True,
 )
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
