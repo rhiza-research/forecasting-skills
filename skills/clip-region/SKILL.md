@@ -1,6 +1,6 @@
 ---
 name: clip-region
-description: Spatially subset a gridded weather-skills standard dataset Zarr to a lat/lon bbox or named country (--region). Use when you need to restrict any dataset (forecast, satellite, reanalysis) before downstream aggregation or plotting.
+description: Spatially subset a weather-skills standard dataset Zarr to a lat/lon bbox, named country (--region), or GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
@@ -11,16 +11,14 @@ metadata:
 
 # clip-region
 
-Source-agnostic spatial subset using simple lat/lon slicing. Pass an explicit
-`--bbox`, or `--region` with an ISO3 code / country name (the decorator fills
-`bbox` and a boundary GeoDataFrame).
+Source-agnostic spatial subset. Pass an explicit `--bbox`, `--region` (ISO3 /
+country name; decorator fills `bbox`), or `--geojson` polygon.
 
 ## When to use
 
 - Narrowing a continental grid down to one country for plotting or per-country reporting.
+- Clipping a gridded or station dataset to a custom polygon.
 - Applying a custom bbox to any gridded dataset before further processing.
-
-Does **not** clip point_obs datasets (station_id-indexed). For stations, filter by country using an `aggregate-*` or custom skill.
 
 ## Usage
 
@@ -30,23 +28,26 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr>
 
 uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
     --region Kenya
+
+uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
+    --geojson boundary.geojson [--keep-outside]
 ```
 
 ### Arguments
-- `--input`, `-i` — gridded Zarr.
+- `--input`, `-i` — input Zarr (gridded/spatial or point_obs).
 - `--output`, `-o` — output Zarr.
 - `--bbox` — `N/W/S/E` in decimal degrees (optional if `--region` is set).
-- `--region` — ISO3 code or country name; fills `bbox` automatically. Do not pass with `--bbox`.
+- `--region` — ISO3 code or country name; fills `bbox` automatically. Do not pass with `--bbox` or `--geojson`.
+- `--geojson` — path to a GeoJSON Feature/FeatureCollection/geometry. Mutex with `--bbox`/`--region`.
+- `--keep-outside` — with `--geojson` only: set values outside the polygon to NaN instead of dropping cells/stations.
 
 ### Longitude convention
 
-Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing, so a global grid stored in the `[0, 360]` convention still intersects bboxes that straddle the prime meridian (e.g. Ghana). Inputs already in `[-180, 180]` pass through unchanged.
+Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before clipping, so a global grid stored in the `[0, 360]` convention still intersects bboxes/polygons that use negative lon.
 
 ### Output
 
 A spatial subset of the input Zarr with provenance history stamped.
-
-Same dims and variables, reduced to the requested window.
 
 ### Provenance
 
@@ -56,18 +57,12 @@ upstream input's `weather_skills_history` (default `[]` and stderr warning if ab
 and appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
-stored bytes, so a renamed-but-unchanged input still cache-hits and a
-same-named-but-modified input correctly cache-misses; `version` is the
-`_SKILL_VERSION` constant in `scripts/clip.py`, kept in lockstep with
-`metadata.version` in this SKILL.md by the CI version-bump workflow.
-Cache-hit comparison reads the existing output's
-`weather_skills_history`: a hit requires the upstream entries to match and the last
-entry's `skill`, `args`, and `input` to match the proposed new entry.
+stored bytes; `version` is the `_SKILL_VERSION` constant in `scripts/clip.py`, kept
+in lockstep with `metadata.version` in this SKILL.md by the CI version-bump workflow.
 
-The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
-(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
+The `args` dict stores argparse dest names (underscored), not the hyphenated CLI
+flag names. A consumer reconstructing a
+`uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Example

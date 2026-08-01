@@ -10,11 +10,12 @@
 #   "pint-xarray>=0.6",
 # ]
 # ///
-"""Temporal aggregation: calendar resample or step buckets (rates; mean/min/max)."""
+"""Temporal aggregation: calendar resample, rolling window, or step buckets (rates)."""
 
 import datetime as _dt
 
 from weather_skills_core import UsageError, weather_skill
+from weather_skills_core.standard_utils import roll_and_agg
 from weather_skills_core.units import (
     AGGREGATION_PERIOD_ATTR,
     PERIOD_TO_AGGREGATION,
@@ -114,14 +115,26 @@ def _aggregate_step(ds, period, method):
     return xr.concat(chunks, dim="step").assign_coords(step=labels)
 
 
-def _stamp_aggregation_metadata(out, dim, period, method, interval):
-    agg_period = PERIOD_TO_AGGREGATION[period]
+def _stamp_attrs(out, dim, agg_period, method, interval):
     cf_method = _METHOD_TO_CF[method]
     cm = format_cell_methods(dim, cf_method, interval=interval)
     for name in out.data_vars:
         attrs = {**out[name].attrs, AGGREGATION_PERIOD_ATTR: agg_period, "cell_methods": cm}
         out[name].attrs = attrs
     return out
+
+
+def _rolling_aggregation_period(ds, dim, window, interval):
+    """Pint duration for a rolling window of ``window`` input steps."""
+    if interval is not None:
+        try:
+            from weather_skills_core.units import parse_aggregation_period
+
+            step = parse_aggregation_period(interval)
+            return format_duration(step * window)
+        except UsageError:
+            pass
+    return f"{window} day"
 
 
 @weather_skill(
@@ -132,16 +145,38 @@ def _stamp_aggregation_metadata(out, dim, period, method, interval):
 )
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
-    "--period", required=True, choices=["daily", "weekly", "dekadal", "monthly"]
+    "--period", default=None, choices=["daily", "weekly", "dekadal", "monthly"]
+)
+@weather_skill.argument(
+    "--window",
+    type=int,
+    default=None,
+    help="Rolling window in axis steps (mutex with --period).",
+)
+@weather_skill.argument("--align", default="left", choices=["left", "right", "center"])
+@weather_skill.argument(
+    "--stride",
+    default=None,
+    help="With --window: int step or stride_dates string (day/week/Monday/...).",
 )
 @weather_skill.argument("--method", default="mean", choices=["mean", "max", "min"])
 @weather_skill.argument("--time-dim", default=None)
 @weather_skill.argument("--anchor-end", default=None)
-def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
-    """Temporal aggregation of rates: calendar resample or step buckets."""
+def aggregate(
+    ds, variable, time_dim, period, window, align, stride, method, anchor_end, **kwargs
+):
+    """Temporal aggregation of rates: calendar resample, rolling, or step buckets."""
     import cf_xarray  # noqa: F401
     import pandas as pd
 
+    if (period is None) == (window is None):
+        raise UsageError("exactly one of --period or --window is required")
+    if window is not None and anchor_end is not None:
+        raise UsageError("--anchor-end cannot be combined with --window")
+    if window is None and stride is not None:
+        raise UsageError("--stride requires --window")
+    if window is None and align != "left":
+        raise UsageError("--align requires --window")
     if anchor_end is not None:
         try:
             _dt.date.fromisoformat(anchor_end)
@@ -171,6 +206,18 @@ def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
     except UsageError:
         pass
 
+    stride_val = stride
+    if stride is not None:
+        try:
+            stride_val = int(stride)
+        except ValueError:
+            pass
+
+    if window is not None:
+        out = roll_and_agg(ds, window, dim, method, align=align, stride=stride_val)
+        agg_period = _rolling_aggregation_period(ds, dim, window, interval)
+        return _stamp_attrs(out, dim, agg_period, method, interval)
+
     if dim == "step":
         out = _aggregate_step(ds, period, method)
     elif anchor_end is not None:
@@ -178,7 +225,7 @@ def aggregate(ds, variable, time_dim, period, method, anchor_end, **kwargs):
     else:
         out = _reduce(ds.resample({dim: RESAMPLE_FREQ[period]}), method)
 
-    return _stamp_aggregation_metadata(out, dim, period, method, interval)
+    return _stamp_attrs(out, dim, PERIOD_TO_AGGREGATION[period], method, interval)
 
 
 if __name__ == "__main__":

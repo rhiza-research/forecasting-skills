@@ -23,7 +23,7 @@ def make_gridded(
     """Small gridded Dataset with CF-style lat/lon/time coords."""
     times = np.arange(np.datetime64(start), np.datetime64(start) + np.timedelta64(n_time, "D"))
     data = np.full((n_time, len(lats), len(lons)), fill)
-    return xr.Dataset(
+    ds = xr.Dataset(
         {name: (("time", "latitude", "longitude"), data)},
         coords={
             "time": times.astype("datetime64[ns]"),
@@ -31,6 +31,11 @@ def make_gridded(
             "longitude": list(lons),
         },
     )
+    ds[name].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
+    ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
+    ds["time"].attrs.update(standard_name="time", axis="T")
+    return ds
 
 
 def write_zarr(ds, path):

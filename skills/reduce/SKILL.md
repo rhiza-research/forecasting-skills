@@ -33,7 +33,7 @@ NaNs are skipped (xarray's default `skipna`).
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py --input <in.zarr> --output <out.zarr> \
     --dim DIM [--dim DIM ...] --method mean|std|min|max|sum|median \
-    [--variable VAR ...]
+    [--variable VAR ...] [--lat-weighted]
 ```
 
 The output must be a distinct store from the input; the skill rejects a run
@@ -54,6 +54,8 @@ where `--input` and `--output` resolve to the same path.
   variables pass through unchanged (a stderr note lists them); reducing a
   default selection where no data variable carries any requested dim exits
   non-zero.
+- `--lat-weighted` — with `--method mean`, apply cosine-latitude weights when
+  collapsing the latitude dim (must include that dim in `--dim`).
 
 ### Method and units
 

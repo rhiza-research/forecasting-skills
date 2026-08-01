@@ -1,5 +1,6 @@
 """Correctness tests for clip-region."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -51,3 +52,24 @@ def test_clip_region_kenya_fills_bbox(tmp_path, clip_region):
     assert ds.sizes["latitude"] >= 1
     assert ds.sizes["longitude"] >= 1
     assert load_history(out)[-1]["args"]["region"] == "Kenya"
+
+
+def test_clip_geojson_polygon(tmp_path, clip_region):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    geo = tmp_path / "box.geojson"
+    # Polygon covering lon 10.5–12.5, lat 0.5–2.5 (cells at 11,12 and lat 1,2).
+    geo.write_text(
+        json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [
+                    [[10.5, 0.5], [12.5, 0.5], [12.5, 2.5], [10.5, 2.5], [10.5, 0.5]]
+                ],
+            }
+        )
+    )
+    out = tmp_path / "out.zarr"
+    run_skill(clip_region, "-i", str(src), "-o", str(out), "--geojson", str(geo))
+    ds = xr.open_zarr(out, consolidated=True)
+    assert list(ds.latitude.values) == [1.0, 2.0]
+    assert list(ds.longitude.values) == [11.0, 12.0]

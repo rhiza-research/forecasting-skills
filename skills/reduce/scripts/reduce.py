@@ -7,7 +7,9 @@
 # ///
 """Collapse named dims with a statistic."""
 
-from weather_skills_core import weather_skill
+from weather_skills_core import UsageError, weather_skill
+from weather_skills_core.standard_dataset import detect_spatial_dims
+from weather_skills_core.standard_utils import latitude_weights
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -31,9 +33,22 @@ _SKILL_VERSION = "0.1.7"
     required=True,
     choices=["mean", "std", "min", "max", "sum", "median"],
 )
-def reduce(ds, variable, dim, method, **kwargs):
+@weather_skill.argument(
+    "--lat-weighted",
+    action="store_true",
+    help="cos(lat) weights for --method mean over latitude.",
+)
+def reduce(ds, variable, dim, method, lat_weighted, **kwargs):
     """Collapse named dims with a statistic."""
     dims = list(dict.fromkeys(dim))
+    lat_dim = None
+    if lat_weighted:
+        if method != "mean":
+            raise UsageError("--lat-weighted requires --method mean")
+        lat_dim, _ = detect_spatial_dims(ds)
+        if lat_dim not in dims:
+            raise UsageError(f"--lat-weighted needs --dim {lat_dim}")
+
     # No --variable: whole dataset (vars without the dim are skipped by rdims).
     selected = list(dict.fromkeys(variable)) if variable else list(ds.data_vars)
     out = ds.copy()
@@ -49,6 +64,10 @@ def reduce(ds, variable, dim, method, **kwargs):
             out[var] = da.sum(dim=rdims, keep_attrs=True, min_count=1)
         elif method == "std":
             out[var] = da.std(dim=rdims, keep_attrs=True, ddof=1)
+        elif method == "mean" and lat_weighted and lat_dim in rdims:
+            out[var] = da.weighted(latitude_weights(ds[lat_dim])).mean(
+                dim=rdims, keep_attrs=True
+            )
         else:
             out[var] = getattr(da, method)(dim=rdims, keep_attrs=True)
 
