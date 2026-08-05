@@ -11,8 +11,7 @@
 from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.units import (
     AGGREGATION_PERIOD_ATTR,
-    PRECIP_AMOUNT_STANDARD_NAME,
-    PRECIP_AMOUNT_UNITS,
+    STANDARD,
     assert_timestep_ge_aggregation_period,
     classify_variable,
     format_cell_methods,
@@ -76,7 +75,7 @@ def convert_to_totals(ds, variable, aggregation_period, time_dim, **kwargs):
         total = rate_to_total(da, period)
         plain = total.pint.dequantify() if total.pint.units is not None else total
         attrs = {**da.attrs, **plain.attrs}
-        attrs["units"] = plain.attrs.get("units", PRECIP_AMOUNT_UNITS)
+        attrs["units"] = plain.attrs.get("units", STANDARD["precip_amount"]["units"])
         units = variable_units(da) or da.attrs.get("units")
         kind = classify_variable(
             name, units=units, standard_name=da.attrs.get("standard_name")
@@ -85,8 +84,8 @@ def convert_to_totals(ds, variable, aggregation_period, time_dim, **kwargs):
             isinstance(name, str)
             and any(h in name.lower() for h in ("precip", "rain", "tp", "pr"))
         ):
-            attrs["units"] = PRECIP_AMOUNT_UNITS
-            attrs["standard_name"] = PRECIP_AMOUNT_STANDARD_NAME
+            attrs["units"] = STANDARD["precip_amount"]["units"]
+            attrs["standard_name"] = STANDARD["precip_amount"]["standard_name"]
         attrs["cell_methods"] = format_cell_methods(dim, "sum")
         attrs.pop(AGGREGATION_PERIOD_ATTR, None)
         out[name] = plain

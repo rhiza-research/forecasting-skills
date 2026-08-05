@@ -10,8 +10,7 @@
 
 from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.units import (
-    PRECIP_AMOUNT_STANDARD_NAME,
-    PRECIP_STANDARD_NAME,
+    STANDARD,
     convert_dataarray,
     to_standard_units,
     units_equal,
@@ -21,9 +20,9 @@ from weather_skills_core.units import (
 _SKILL_VERSION = "0.1.8"
 
 _STANDARD_NAME_BY_UNITS = {
-    "mm/day": PRECIP_STANDARD_NAME,
-    "mm day-1": PRECIP_STANDARD_NAME,
-    "mm": PRECIP_AMOUNT_STANDARD_NAME,
+    "mm/day": STANDARD["precip"]["standard_name"],
+    "mm day-1": STANDARD["precip"]["standard_name"],
+    "mm": STANDARD["precip_amount"]["standard_name"],
     "kg m-2 s-1": "precipitation_flux",
     "kg m**-2 s**-1": "precipitation_flux",
 }
