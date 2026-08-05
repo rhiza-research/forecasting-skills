@@ -14,8 +14,8 @@ import re
 from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.units import (
     PRECIP_AMOUNT_UNITS,
-    PRECIP_RATE_STANDARD_NAME,
-    PRECIP_RATE_UNITS,
+    PRECIP_STANDARD_NAME,
+    PRECIP_UNITS,
     classify_variable,
     convert_values,
     kind_from_units,
@@ -97,8 +97,8 @@ def deaccumulate(ds, variable, **kwargs):
             mm, _ = convert_values(diffs, src_units, PRECIP_AMOUNT_UNITS)
             rate = mm / _broadcast_along_step(delta_days, sliced.dims)
             diffed = sliced.copy(data=rate)
-            attrs["units"] = PRECIP_RATE_UNITS
-            attrs["standard_name"] = PRECIP_RATE_STANDARD_NAME
+            attrs["units"] = PRECIP_UNITS
+            attrs["standard_name"] = PRECIP_STANDARD_NAME
         else:
             diffed = sliced.copy(data=diffs)
         diffed.attrs = attrs

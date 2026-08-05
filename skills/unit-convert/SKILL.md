@@ -20,7 +20,7 @@ Converts values with **pint** / **pint-xarray** (CF/UDUNITS strings via
 
 - Put two stores on one units basis before compare/concat/plot.
 - Normalize temp/precip to the weather-skills display standard with `--to-standard`
-  (temp → `degree_Celsius`, precip rate/flux → `mm day-1`, precip amount → `mm`).
+  (temp → `degree_Celsius`, precip → `mm day-1`, precip amount → `mm`).
 
 Plots already call `to_standard_units` before rendering; use this skill when you
 need a converted Zarr on disk.

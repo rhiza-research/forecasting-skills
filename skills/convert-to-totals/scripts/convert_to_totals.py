@@ -81,7 +81,7 @@ def convert_to_totals(ds, variable, aggregation_period, time_dim, **kwargs):
         kind = classify_variable(
             name, units=units, standard_name=da.attrs.get("standard_name")
         )
-        if kind in ("precip_rate", "precip_amount") or (
+        if kind in ("precip", "precip_amount") or (
             isinstance(name, str)
             and any(h in name.lower() for h in ("precip", "rain", "tp", "pr"))
         ):
