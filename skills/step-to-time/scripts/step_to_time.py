@@ -1,14 +1,16 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 # ]
 # ///
 """Realize forecast step as wall-clock time (time = init + step)."""
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.8"
@@ -17,9 +19,8 @@ _SKILL_VERSION = "0.1.8"
 @weather_skill(
     name="step-to-time",
     version=_SKILL_VERSION,
-    inputs=["forecast"],
-    outputs=["observations"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('forecast'), required=True, dest='ds')
 def step_to_time(ds, **kwargs):
     """Realize forecast step as wall-clock time (time = init + step)."""
     import cftime

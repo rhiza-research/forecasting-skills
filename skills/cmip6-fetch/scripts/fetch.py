@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "xarray",
 #   "zarr",
 #   "gcsfs",
@@ -22,6 +22,8 @@ import cf_xarray  # noqa: F401  (fail-fast probe)
 import gcsfs
 import pandas as pd
 import xarray as xr
+from pathlib import Path
+
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs, udunits_error
 from weather_skills_core.standard_utils import (
@@ -148,7 +150,6 @@ def _drop_bounds(ds):
 @weather_skill(
     name="cmip6-fetch",
     version=_SKILL_VERSION,
-    outputs=["observations"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

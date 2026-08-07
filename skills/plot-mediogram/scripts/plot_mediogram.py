@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -16,7 +16,7 @@
 
 from pathlib import Path
 
-from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core import Dataset, DataError, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.units import to_standard_units
 
@@ -58,16 +58,18 @@ def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
 @weather_skill(
     name="plot-mediogram",
     version=_SKILL_VERSION,
-    inputs=["any", "any"],
-    outputs=["figure"],
     allow_precip_totals=True,
 )
+@weather_skill.argument("-i", "--input", type=Dataset("any"), action="append", required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--lat", type=float, required=True, help="Point latitude.")
 @weather_skill.argument("--lon", type=float, required=True, help="Point longitude.")
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
-def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title, output, **kwargs):
+def plot_mediogram(input, variable, lat, lon, title, output, **kwargs):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
+    if len(input) != 2:
+        raise UsageError(f"expected exactly two --input paths, got {len(input)}")
+    ds_fc, ds_mc = input
     import matplotlib
 
     matplotlib.use("Agg")

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cf-xarray",
 #   "cftime",
 #   # matplotlib<3.10: keep the plot skills on one tested matplotlib
@@ -18,7 +18,7 @@
 import sys
 from pathlib import Path
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable
 from weather_skills_core.standard_utils import dataset_label, pick_time_dim
 from weather_skills_core.units import to_standard_units, units_equal
@@ -29,10 +29,9 @@ _SKILL_VERSION = "0.1.14"
 @weather_skill(
     name="plot-timeseries",
     version=_SKILL_VERSION,
-    inputs=["any+"],
-    outputs=["figure"],
     allow_precip_totals=True,
 )
+@weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True, dest='datasets')
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
             "--time-dim",

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 #   "pandas",
@@ -11,7 +11,9 @@
 
 import re
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.6"
@@ -52,9 +54,8 @@ def _parse_value(raw, coord_vals, dim):
 @weather_skill(
     name="select",
     version=_SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--dim", required=True)
 @weather_skill.argument("--index", action="append", help="Integer position (repeatable).")
 @weather_skill.argument("--value", action="append", help="Coord value (repeatable).")

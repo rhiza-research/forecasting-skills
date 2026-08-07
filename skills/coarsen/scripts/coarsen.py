@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "xarray",
 #   "xarray-regrid",
@@ -12,7 +12,9 @@
 
 import math
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims
 from weather_skills_core.standard_utils import grid_spacing
 
@@ -36,9 +38,8 @@ def _target_axis(coord_vals, resolution, offset):
 @weather_skill(
     name="coarsen",
     version=_SKILL_VERSION,
-    inputs=["spatial"],
-    outputs=["spatial"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('spatial'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--target-resolution", type=float, required=True)
 @weather_skill.argument("--offset", type=float, required=True)

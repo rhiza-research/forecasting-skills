@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "xarray",
 #   "zarr",
 #   "gcsfs",
@@ -15,6 +15,8 @@
 
 import sys
 from datetime import UTC, datetime
+
+from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.standard_utils import (
@@ -129,7 +131,6 @@ def _stamp_coord_attrs(ds) -> None:
 @weather_skill(
     name="arco-era5-fetch",
     version=_SKILL_VERSION,
-    outputs=["observations"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

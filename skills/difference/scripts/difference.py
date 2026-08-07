@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 #   "xarray>=2026.4",
@@ -9,7 +9,9 @@
 # ///
 """Subtract A − B (xarray-aligned)."""
 
-from weather_skills_core import weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.7"
@@ -20,12 +22,14 @@ _WIDEN = {1: "int16", 2: "int32", 4: "int64"}
 @weather_skill(
     name="difference",
     version=_SKILL_VERSION,
-    inputs=["any", "any"],
-    outputs=["any"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset("any"), action="append", required=True)
 @weather_skill.argument("--variable", "-v", action="append")
-def difference(ds_a, ds_b, variable, **kwargs):
+def difference(input, variable, output, **kwargs):
     """Subtract A − B (xarray-aligned)."""
+    if len(input) != 2:
+        raise UsageError(f"expected exactly two --input paths, got {len(input)}")
+    ds_a, ds_b = input
     import numpy as np
     import xarray as xr
 

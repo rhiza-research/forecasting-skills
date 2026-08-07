@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 # ]
 # ///
 """Resolve an ISO 3166-1 alpha-3 country code to a bbox and optional boundary polygon."""
@@ -104,7 +104,8 @@ def _bbox_from_geometry(geometry):
 
 @weather_skill(
     name="resolve-region",
-    version=_SKILL_VERSION
+    version=_SKILL_VERSION,
+    output=False,
 )
 @weather_skill.argument("code", help="ISO 3166-1 alpha-3 country code (uppercase), e.g. KEN")
 @weather_skill.argument(

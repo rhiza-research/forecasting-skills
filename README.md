@@ -26,6 +26,7 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 | `imerg-fetch` | IMERG satellite precipitation (late release) → Zarr |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
 | `dynamical-fetch` | dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses) via `--dataset`, credential-free → Zarr |
+| `kenya-forecast-fetch` | Kenya forecasts archive raw Zarr grids (`gs://kenya-forecasting-data/<date>/data/`) → standard dataset (compose with `plot` for figures) |
 
 ### Generic middle (operate on any standard dataset)
 | Skill | What it does |
@@ -46,6 +47,7 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 | `plot` | Heatmap (optionally restricted to a `--bbox` and/or masked to a `--mask-geojson` polygon) or timeseries PNG from one dataset |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
+| `kenya-forecast-png` | Pre-rendered KMSA / Sheerwater Kenya forecast product PNGs from the public kenya-forecasts archive (credential-free) |
 
 ### Agent capabilities
 Capabilities the agent uses alongside pipelines; none of them produces a

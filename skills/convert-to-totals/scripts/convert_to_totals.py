@@ -1,14 +1,16 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
 #   "pint-xarray>=0.6",
 # ]
 # ///
 """Convert rate variables to period totals using aggregation_period (terminal for plots)."""
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.units import (
     AGGREGATION_PERIOD_ATTR,
     STANDARD,
@@ -44,9 +46,8 @@ def _resolve_dim(ds, time_dim):
 @weather_skill(
     name="convert-to-totals",
     version=_SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
     "--aggregation-period",

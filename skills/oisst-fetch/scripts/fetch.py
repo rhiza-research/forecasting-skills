@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -16,6 +16,8 @@
 import sys
 
 import cf_xarray  # noqa: F401  (fail-fast probe; core loads it lazily at write time)
+from pathlib import Path
+
 from weather_skills_core import DataError, SkillError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords
 from weather_skills_core.standard_utils import (
@@ -132,7 +134,6 @@ def _is_transport_failure(exc: Exception) -> bool:
 @weather_skill(
     name="oisst-fetch",
     version=_SKILL_VERSION,
-    outputs=["observations"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

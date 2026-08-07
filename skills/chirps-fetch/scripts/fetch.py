@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "requests",
 #   "xarray",
@@ -176,7 +176,6 @@ def _open_day(tif: Path, day: date):
 @weather_skill(
     name="chirps-fetch",
     version=_SKILL_VERSION,
-    outputs=["observations"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

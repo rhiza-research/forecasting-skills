@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cartopy",
 #   "cf-xarray",
 #   "cftime",
@@ -22,7 +22,7 @@ import re
 import sys
 from pathlib import Path
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import lat_slice, polygon_from_geojson
 from weather_skills_core.units import to_standard_units
@@ -269,10 +269,9 @@ def _heatmap(
 @weather_skill(
     name="plot",
     version=_SKILL_VERSION,
-    inputs=["any"],
-    outputs=["figure"],
     allow_precip_totals=True,
 )
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--style", choices=["heatmap", "timeseries"], default="heatmap")

@@ -1,13 +1,15 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
 # ]
 # ///
 """Rename one data variable (omit --variable after select left a single var)."""
 
-from weather_skills_core import weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.3"
@@ -16,9 +18,8 @@ _SKILL_VERSION = "0.1.3"
 @weather_skill(
     name="rename",
     version=_SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--to-name", required=True, help="New variable name.")
 def rename(ds, variable, to_name, **kwargs):

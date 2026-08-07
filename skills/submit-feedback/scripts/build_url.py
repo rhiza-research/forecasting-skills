@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 # ]
 # ///
 """Build a length-checked prefilled GitHub "new issue" URL for filing feedback."""
@@ -33,7 +33,8 @@ def build_url(title: str, body: str) -> str:
 
 @weather_skill(
     name="submit-feedback",
-    version=_SKILL_VERSION
+    version=_SKILL_VERSION,
+    output=False,
 )
 @weather_skill.argument("--title", required=True, help="Issue title; must not be empty.")
 @weather_skill.argument("--body", help="Issue body as a markdown string.")

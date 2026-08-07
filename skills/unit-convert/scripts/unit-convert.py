@@ -1,14 +1,16 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
 #   "pint-xarray>=0.6",
 # ]
 # ///
 """Convert data variable(s) to --to-units, or --to-standard (temp °C, precip mm)."""
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.units import (
     STANDARD,
     convert_dataarray,
@@ -31,9 +33,8 @@ _STANDARD_NAME_BY_UNITS = {
 @weather_skill(
     name="unit-convert",
     version=_SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
     "--to-units",

@@ -1,0 +1,39 @@
+"""Correctness tests for step-to-time."""
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+import xarray as xr
+from conftest import load_skill, make_forecast, run_skill, write_zarr
+from weather_skills_core.provenance import load_history
+
+
+@pytest.fixture(scope="module")
+def step_to_time():
+    return load_skill("step-to-time", "step_to_time").step_to_time
+
+
+def _forecast_without_precip_totals(**kwargs):
+    ds = make_forecast(name="t2m", **kwargs)
+    ds["t2m"].attrs.update(units="K", standard_name="air_temperature", long_name="Temperature")
+    return ds
+
+
+def test_step_to_time_replaces_step_dim(tmp_path, step_to_time):
+    src = write_zarr(_forecast_without_precip_totals(n_step=3, init="2026-01-01"), tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(step_to_time, "-i", str(src), "-o", str(out))
+
+    assert Path(out).exists()
+    ds = xr.open_zarr(out, consolidated=True)
+    assert "step" not in ds.dims
+    assert "time" in ds.dims
+    assert ds.sizes["time"] == 3
+    expected = np.array(
+        ["2026-01-02", "2026-01-03", "2026-01-04"],
+        dtype="datetime64[ns]",
+    )
+    assert np.array_equal(ds["time"].values.astype("datetime64[D]"), expected.astype("datetime64[D]"))
+    assert load_history(out)[-1]["skill"] == "step-to-time"

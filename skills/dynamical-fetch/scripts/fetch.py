@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "dynamical-catalog==0.5.0",
 #   "xarray",
@@ -13,6 +13,8 @@
 """Fetch a dynamical.org open-catalog dataset and write a weather-skills standard dataset Zarr."""
 
 import sys
+
+from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
@@ -68,7 +70,6 @@ def _open_dataset(state, dataset) -> dict:
 @weather_skill(
     name="dynamical-fetch",
     version=_SKILL_VERSION,
-    outputs=[["observations", "forecast", "ensemble_forecast"]],
 )
 @weather_skill.argument("--date")
 @weather_skill.argument("--start-time")

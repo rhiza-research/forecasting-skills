@@ -1,14 +1,16 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "xarray",
 # ]
 # ///
 """Concatenate Zarr stores along a named dim."""
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.1.10"
@@ -30,9 +32,8 @@ def _coerce(values):
 @weather_skill(
     name="concat",
     version=_SKILL_VERSION,
-    inputs=["any+"],
-    outputs=["any"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True, dest='dss')
 @weather_skill.argument("--dim", required=True)
 @weather_skill.argument("--coords", help="Comma-separated coord values for the new dim")
 def concat(dss, dim, coords, **kwargs):

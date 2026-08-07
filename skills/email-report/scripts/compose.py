@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 # ]
 # ///
 """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""
@@ -29,7 +29,6 @@ _SKILL_VERSION = "0.1.8"
 @weather_skill.argument("--body")
 @weather_skill.argument("--body-file")
 @weather_skill.argument("--attach", nargs="*", default=[])
-@weather_skill.argument("-o", "--output", required=True)
 def compose(sender, to, cc, reply_to, subject, body, body_file, attach, output, **kwargs):
     """Compose an RFC 5322 email and write it to disk as a .eml file. No SMTP."""
     if (body is None) == (body_file is None):

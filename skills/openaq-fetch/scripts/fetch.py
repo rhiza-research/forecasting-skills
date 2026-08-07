@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -31,6 +31,8 @@ import pandas as pd
 import requests
 import xarray as xr
 from pint import application_registry as ureg
+from pathlib import Path
+
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient, require_env
@@ -252,7 +254,6 @@ def _var_attrs(ds, units_by_param: dict) -> dict:
 @weather_skill(
     name="openaq-fetch",
     version=_SKILL_VERSION,
-    outputs=["point_obs"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "xarray",
 #   "zarr",
@@ -335,7 +335,8 @@ def _render_script(data: dict) -> None:
 
 @weather_skill(
     name="provenance",
-    version=_SKILL_VERSION
+    version=_SKILL_VERSION,
+    output=False,
 )
 @weather_skill.argument(
             "-i",

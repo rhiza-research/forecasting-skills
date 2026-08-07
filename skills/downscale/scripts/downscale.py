@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "xarray",
 #   "xarray-regrid",
@@ -10,7 +10,9 @@
 # ///
 """Downscale onto a finer grid (linear or empirical q-q)."""
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims, detect_time_dim
 from weather_skills_core.standard_utils import grid_spacing
 
@@ -47,9 +49,8 @@ def _qmap_1d(model, ref):
 @weather_skill(
     name="downscale",
     version=_SKILL_VERSION,
-    inputs=["spatial"],
-    outputs=["spatial"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('spatial'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
     "--algorithm",

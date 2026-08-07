@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "xarray",
 #   "zarr",
@@ -21,6 +21,8 @@ Uses the TAHMO Python SDK. Credentials: TAHMO_API_USERNAME and TAHMO_API_PASSWOR
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.standard_utils import is_transient, require_env
@@ -161,7 +163,6 @@ def _ensure_setup(state, countries: list):
 @weather_skill(
     name="tahmo-fetch",
     version=_SKILL_VERSION,
-    outputs=["point_obs"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

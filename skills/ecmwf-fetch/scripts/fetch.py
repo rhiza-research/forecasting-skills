@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "ecmwf-datastores-client==0.4.2",
 #   "requests",
@@ -132,7 +132,6 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
 @weather_skill(
     name="ecmwf-fetch",
     version=_SKILL_VERSION,
-    outputs=[["forecast", "ensemble_forecast"]],
 )
 @weather_skill.argument("--bbox", required=True)
 @weather_skill.argument("--date", required=True)

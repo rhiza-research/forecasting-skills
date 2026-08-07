@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -13,8 +13,9 @@
 """Temporal aggregation: calendar resample, rolling window, or step buckets (rates)."""
 
 import datetime as _dt
+from pathlib import Path
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_utils import roll_and_agg
 from weather_skills_core.units import (
     AGGREGATION_PERIOD_ATTR,
@@ -140,8 +141,13 @@ def _rolling_aggregation_period(ds, dim, window, interval):
 @weather_skill(
     name="aggregate-temporal",
     version=_SKILL_VERSION,
-    inputs=[["time", "prediction_timedelta"]],
-    outputs=["any"],
+)
+@weather_skill.argument(
+    "-i",
+    "--input",
+    type=Dataset(["time", "prediction_timedelta"]),
+    required=True,
+    dest="ds",
 )
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
@@ -163,7 +169,7 @@ def _rolling_aggregation_period(ds, dim, window, interval):
 @weather_skill.argument("--time-dim", default=None)
 @weather_skill.argument("--anchor-end", default=None)
 def aggregate(
-    ds, variable, time_dim, period, window, align, stride, method, anchor_end, **kwargs
+    ds, output, variable, time_dim, period, window, align, stride, method, anchor_end, **kwargs
 ):
     """Temporal aggregation of rates: calendar resample, rolling, or step buckets."""
     import cf_xarray  # noqa: F401

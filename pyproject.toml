@@ -22,16 +22,30 @@ dev = [
     "cftime",
     "geopandas>=1.0",
     "weather-skills-core",
+    # Skill-script imports exercised by per-skill tests (mocked network).
+    "requests",
+    "earthaccess",
+    "dynamical-catalog==0.5.0",
+    "gcsfs",
+    "xarray-regrid",
+    "matplotlib>=3.8,<3.10",
+    "cartopy",
+    "nc-time-axis",
+    "pillow",
 ]
 
 [tool.uv.sources]
 skills-runner = { git = "https://github.com/tescalada/skills-runner" }
-weather-skills-core = { git = "https://github.com/rhiza-research/weather-skills-core", branch = "combine/dim-ontology-cleanup" }
+weather-skills-core = { git = "https://github.com/rhiza-research/weather-skills-core", branch = "combine-dim-ontology-cleanup" }
 
 [tool.pytest.ini_options]
 testpaths = ["skills"]
 python_files = ["test_*.py"]
 pythonpath = ["tests"]
+filterwarnings = [
+    "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification",
+    "ignore:Import\\(s\\) unavailable to set up matplotlib support",
+]
 
 [tool.ruff]
 line-length = 100

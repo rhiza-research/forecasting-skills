@@ -1,13 +1,15 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
 # ]
 # ///
 """Collapse named dims with a statistic."""
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims
 from weather_skills_core.standard_utils import latitude_weights
 
@@ -18,9 +20,8 @@ _SKILL_VERSION = "0.1.7"
 @weather_skill(
     name="reduce",
     version=_SKILL_VERSION,
-    inputs=["any"],
-    outputs=["any"],
 )
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
     "--dim",

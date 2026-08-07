@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "earthaccess",
 #   "h5py",
 #   "xarray",
@@ -21,6 +21,8 @@ from datetime import UTC, date, datetime, timedelta
 
 import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import cf_xarray  # noqa: F401  (fail-fast probe)
+from pathlib import Path
+
 from weather_skills_core import DataError, SkillError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords, udunits_error
 from weather_skills_core.standard_utils import (
@@ -231,7 +233,6 @@ def _stamp_cf(ds) -> None:
 @weather_skill(
     name="smap-fetch",
     version=_SKILL_VERSION,
-    outputs=["observations"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

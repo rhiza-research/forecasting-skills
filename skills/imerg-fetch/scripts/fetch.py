@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime",
 #   "earthaccess",
 #   "h5netcdf",
@@ -19,6 +19,8 @@ import sys
 import tempfile
 from datetime import timedelta
 
+from pathlib import Path
+
 from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.units import to_standard_units
@@ -35,7 +37,6 @@ SHORTNAMES = {
 @weather_skill(
     name="imerg-fetch",
     version=_SKILL_VERSION,
-    outputs=["observations"],
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)

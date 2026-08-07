@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine/dim-ontology-cleanup",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 #   "pint-xarray>=0.6",
@@ -11,7 +11,9 @@
 
 import re
 
-from weather_skills_core import UsageError, weather_skill
+from pathlib import Path
+
+from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.units import (
     STANDARD,
     classify_variable,
@@ -56,10 +58,9 @@ def _broadcast_along_step(delta_days, dims):
 @weather_skill(
     name="deaccumulate",
     version=_SKILL_VERSION,
-    inputs=["forecast"],
-    outputs=["forecast"],
     allow_precip_totals=True,
 )
+@weather_skill.argument("-i", "--input", type=Dataset('forecast'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")
 def deaccumulate(ds, variable, **kwargs):
     """Per-step diff along forecast step. Precip amounts become mm day-1 rates."""
