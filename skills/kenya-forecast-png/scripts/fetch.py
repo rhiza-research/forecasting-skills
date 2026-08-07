@@ -151,7 +151,6 @@ def _download(key: str, dest: Path) -> None:
 @weather_skill(
     name="kenya-forecast-png",
     version=_SKILL_VERSION,
-    outputs=["figure"],
 )
 @weather_skill.argument("--date")
 @weather_skill.argument(

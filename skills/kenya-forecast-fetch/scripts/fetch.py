@@ -172,7 +172,6 @@ def _open_remote(key: str):
 @weather_skill(
     name="kenya-forecast-fetch",
     version=_SKILL_VERSION,
-    outputs=["any"],
 )
 @weather_skill.argument(
     "--dataset",
