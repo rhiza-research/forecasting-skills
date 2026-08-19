@@ -21,7 +21,7 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
 - Turning daily rates into weekly/dekadal/monthly **mean** (or min/max) rates.
 - Rolling N-step means (`--window`) with optional `--align` / `--stride`.
 - Selecting weekly or dekadal subsets of a forecast initialized at multiple steps.
-- For period **totals** (`mm`), run `convert-to-totals` afterward (non-overlapping bins only; rolling series with Δt &lt; `aggregation_period` are refused).
+- For period **totals** (`mm`), run `convert-to-totals` afterward (non-overlapping bins only; rolling series with Δt &lt; `aggregation_period` are refused). A single remaining bin is allowed.
 
 ## Usage
 

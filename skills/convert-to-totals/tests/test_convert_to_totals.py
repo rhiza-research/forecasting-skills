@@ -47,3 +47,17 @@ def test_convert_to_totals_cli_override(tmp_path, convert_to_totals):
 
     result = xr.open_zarr(out, consolidated=True)
     assert result["precip"].values == pytest.approx(5.0)
+
+
+def test_convert_to_totals_singleton_time(tmp_path, convert_to_totals):
+    """A single aggregated bin (e.g. one weekly mean) converts without a spacing gate."""
+    ds = make_gridded(n_time=1, fill=2.0)
+    ds["precip"].attrs[AGGREGATION_PERIOD_ATTR] = "7 day"
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(convert_to_totals, "-i", str(src), "-o", str(out))
+
+    result = xr.open_zarr(out, consolidated=True)
+    assert result["precip"].attrs["units"] == "mm"
+    assert result["precip"].values == pytest.approx(14.0)

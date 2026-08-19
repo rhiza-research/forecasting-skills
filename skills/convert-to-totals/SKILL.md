@@ -38,9 +38,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/convert_to_totals.py \
 
 ### Gate
 
-Requires sample spacing on the time/step axis **≥** `aggregation_period`.
-End-over-end weekly means (Δt = 7 day, period = 7 day) are allowed. Daily
-series of rolling 7-day means (Δt = 1 day, period = 7 day) are refused.
+When spacing can be inferred (≥ 2 points), requires sample spacing on the
+time/step axis **≥** `aggregation_period`. End-over-end weekly means
+(Δt = 7 day, period = 7 day) are allowed. Daily series of rolling 7-day
+means (Δt = 1 day, period = 7 day) are refused. A **single** time/step
+point (one aggregated bin) is allowed — spacing cannot be inferred, and
+one sample cannot overcount.
 
 ### Output metadata
 
