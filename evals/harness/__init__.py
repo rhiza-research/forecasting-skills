@@ -1,1 +1,0 @@
-"""Eval harness package."""

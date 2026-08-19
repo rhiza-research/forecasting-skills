@@ -60,12 +60,10 @@ dataset output.
 
 ## Prompt-based composition evals
 
-Offline scenarios that exercise skill **composition** (fixtures + golden path or
-a model agent) live under [`evals/`](evals/README.md):
+See [`evals/README.md`](evals/README.md). Offline golden path:
 
 ```bash
-python evals/run_eval.py --agent script          # CI-safe golden compositions
-python evals/run_eval.py --list
+python evals/run_eval.py --agent script
 ```
 
 ## Install
