@@ -39,9 +39,9 @@ skills-runner = { git = "https://github.com/tescalada/skills-runner" }
 weather-skills-core = { git = "https://github.com/rhiza-research/weather-skills-core", branch = "combine-dim-ontology-cleanup" }
 
 [tool.pytest.ini_options]
-testpaths = ["skills"]
+testpaths = ["skills", "evals/tests"]
 python_files = ["test_*.py"]
-pythonpath = ["tests"]
+pythonpath = ["tests", "."]
 filterwarnings = [
     "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification",
     "ignore:Import\\(s\\) unavailable to set up matplotlib support",

@@ -39,6 +39,17 @@ jobs:
       - run: uv sync --group dev
       - run: uv run pytest
 
+  composition-evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --group dev
+      - run: uv run python evals/run_eval.py --agent script
+
   discover:
     runs-on: ubuntu-latest
     timeout-minutes: 2

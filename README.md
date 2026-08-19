@@ -58,6 +58,16 @@ dataset output.
 | `email-report` | Compose an RFC 5322 `.eml` with attachments. **Mocks SMTP — writes to disk, does not send.** |
 | `submit-feedback` | Build a length-checked prefilled GitHub new-issue URL the user clicks to file feedback under their own account. Holds no token, makes no network call, creates no issue itself. |
 
+## Prompt-based composition evals
+
+Offline scenarios that exercise skill **composition** (fixtures + golden path or
+a model agent) live under [`evals/`](evals/README.md):
+
+```bash
+python evals/run_eval.py --agent script          # CI-safe golden compositions
+python evals/run_eval.py --list
+```
+
 ## Install
 
 These skills live at <https://github.com/rhiza-research/forecasting-skills>.
