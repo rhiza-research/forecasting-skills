@@ -63,7 +63,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> \
 
 Output dims follow the classic forecast shape: scalar `time` (init) + `step`
 (+ `number` for ensembles) + `latitude`/`longitude`. Precipitation variables
-arrive as **amounts** (`precipitation_amount`, `mm` / `kg m-2`); use
+arrive as **amounts** (`lwe_thickness_of_precipitation_amount`, `mm`); use
 `deaccumulate` when you need per-step rates for middle-pipeline skills that
 expect `mm day-1`.
 

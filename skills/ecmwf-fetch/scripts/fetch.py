@@ -234,7 +234,7 @@ def fetch(bbox, date, **kwargs):
         ds = xr.concat([pf, cf], dim="number").sortby("number")
         ds.attrs.update(Conventions="CF-1.13", weather_skills_source="ecmwf-s2s")
         stamp_cf_attrs(ds)
-        # GRIB carries kg m-2 (numerically mm depth); normalize to standard precip amount.
+        # GRIB carries kg m-2 (numerically mm depth); standardize display to mm.
         ds["tp"].attrs["standard_name"] = "precipitation_amount"
         ds["tp"].attrs["units"] = "kg m-2"
         ds["tp"].attrs["long_name"] = "Total precipitation"

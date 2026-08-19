@@ -57,14 +57,14 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills plot               -i "$d/ecmwf_dekadal_ds_totals.zarr" -o "$d/dekadal_precip_ds.png" --variable tp
 
     forecasting-skills clip-region        -i "$OUT/imerg.zarr"  -o "$d/imerg.zarr"         --bbox="$BBOX"
-    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_weekly.zarr"  --period weekly  --method mean --anchor-end "$END_DATE"
-    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_dekadal.zarr" --period dekadal --method mean --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_weekly.zarr"  --period weekly  --method mean --end-time "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/imerg.zarr"    -o "$d/imerg_dekadal.zarr" --period dekadal --method mean --end-time "$END_DATE"
     forecasting-skills convert-to-totals  -i "$d/imerg_weekly.zarr"  -o "$d/imerg_weekly_totals.zarr"
     forecasting-skills convert-to-totals  -i "$d/imerg_dekadal.zarr" -o "$d/imerg_dekadal_totals.zarr"
 
     forecasting-skills clip-region        -i "$OUT/chirps.zarr" -o "$d/chirps.zarr"         --bbox="$BBOX"
-    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_weekly.zarr"  --period weekly  --method mean --anchor-end "$END_DATE"
-    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_dekadal.zarr" --period dekadal --method mean --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_weekly.zarr"  --period weekly  --method mean --end-time "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/chirps.zarr"   -o "$d/chirps_dekadal.zarr" --period dekadal --method mean --end-time "$END_DATE"
     forecasting-skills convert-to-totals  -i "$d/chirps_weekly.zarr"  -o "$d/chirps_weekly_totals.zarr"
     forecasting-skills convert-to-totals  -i "$d/chirps_dekadal.zarr" -o "$d/chirps_dekadal_totals.zarr"
 
@@ -73,8 +73,8 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     # plot-compare requires its two inputs to already share a time axis, so the
     # daily station data is pre-aggregated to the same window/anchor/method as
     # the imerg/chirps gridded aggregations before comparing.
-    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_weekly.zarr"  --variable precip --period weekly  --method mean --anchor-end "$END_DATE"
-    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_dekadal.zarr" --variable precip --period dekadal --method mean --anchor-end "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_weekly.zarr"  --variable precip --period weekly  --method mean --end-time "$END_DATE"
+    forecasting-skills aggregate-temporal -i "$d/tahmo.zarr" -o "$d/tahmo_dekadal.zarr" --variable precip --period dekadal --method mean --end-time "$END_DATE"
     forecasting-skills convert-to-totals  -i "$d/tahmo_weekly.zarr"  -o "$d/tahmo_weekly_totals.zarr"  --variable precip
     forecasting-skills convert-to-totals  -i "$d/tahmo_dekadal.zarr" -o "$d/tahmo_dekadal_totals.zarr" --variable precip
 

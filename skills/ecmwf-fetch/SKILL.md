@@ -45,7 +45,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
 
 ### Output
 
-A Zarr store with data variable `tp` (total precipitation, `kg m⁻²` — numerically equivalent to mm depth over the accumulation period) and dims `(number, step, latitude, longitude)`. `number=0` is the control; `number=1..100` are perturbed members. Stamped with `weather_skills_source=ecmwf-s2s`.
+A Zarr store with data variable `tp` (total precipitation amount, `mm`) and dims `(number, step, latitude, longitude)`. `number=0` is the control; `number=1..100` are perturbed members. Stamped with `weather_skills_source=ecmwf-s2s`.
 
 ### Provenance
 

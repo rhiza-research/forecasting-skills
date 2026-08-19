@@ -133,30 +133,6 @@ def _resolve_date(date, dataset: str) -> str:
     )
 
 
-def _fix_grib_units(ds):
-    """Normalize GRIB-style ``kg m**-2`` unit strings for pint / CF."""
-    for name in list(ds.data_vars) + list(ds.coords):
-        units = ds[name].attrs.get("units")
-        if isinstance(units, str) and "**" in units:
-            ds[name].attrs["units"] = units.replace("**", "")
-    return ds
-
-
-def _stamp_precip_amounts(ds):
-    """Mark depth/mass precip as amounts so ``to_standard_units`` does not treat ``tp`` as a rate."""
-    from weather_skills_core.units import kind_from_units
-
-    for name in ds.data_vars:
-        units = ds[name].attrs.get("units")
-        if not isinstance(units, str):
-            continue
-        if kind_from_units(units) == "precip_amount":
-            ds[name].attrs.setdefault("standard_name", "precipitation_amount")
-            if "long_name" not in ds[name].attrs:
-                ds[name].attrs["long_name"] = "Total precipitation"
-    return ds
-
-
 def _open_remote(key: str):
     import xarray as xr
 
@@ -218,7 +194,6 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
     if bbox is not None:
         ds = bbox_subset(ds, bbox)
 
-    ds = _stamp_precip_amounts(_fix_grib_units(ds))
     # Materialize while the remote store is open so to_zarr does not re-fetch.
     ds = ds.load()
     ds.attrs.update(

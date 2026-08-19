@@ -48,8 +48,8 @@ is the argparse namespace minus the `--input`/`--output` path strings;
 `version` is the `_SKILL_VERSION` constant in `scripts/fetch.py`.
 
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
-(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
+`target_resolution`, `end_time`), not the hyphenated CLI flag names
+(`--time-dim`, `--target-resolution`, `--end-time`). A consumer
 reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 

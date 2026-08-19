@@ -31,6 +31,28 @@ def test_fetch_writes_zarr_and_stamps_history(tmp_path, fetch_mod, monkeypatch):
     assert history[-1]["skill"] == "kenya-forecast-fetch"
 
 
+def test_fetch_overwrites_rate_standard_name_on_amount_units(tmp_path, fetch_mod, monkeypatch):
+    """Archive grids may stamp lwe_precipitation_rate on kg m-2 amounts."""
+    out = tmp_path / "kenya_tp_amount.zarr"
+    remote = make_forecast(name="tp", members=2)
+    remote["tp"].attrs.update(
+        units="kg m-2",
+        standard_name="lwe_precipitation_rate",
+    )
+
+    monkeypatch.setattr(fetch_mod, "_list_init_dates", lambda: ["2026-08-17"])
+    monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: True)
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: remote.copy(deep=True))
+
+    run_skill(fetch_mod.fetch, "--dataset", "precip", "--date", "2026-08-17", "-o", str(out))
+
+    with xr.open_zarr(out, consolidated=True) as ds:
+        assert "precipitation_amount" in ds["tp"].attrs["standard_name"] or ds[
+            "tp"
+        ].attrs["standard_name"].endswith("precipitation_amount")
+        assert ds["tp"].attrs["units"] == "mm"
+
+
 def test_fetch_honors_date_variable_and_bbox(tmp_path, fetch_mod, monkeypatch):
     out = tmp_path / "kenya_u.zarr"
     remote = make_forecast(name="u10", members=2, fill=3.0)
