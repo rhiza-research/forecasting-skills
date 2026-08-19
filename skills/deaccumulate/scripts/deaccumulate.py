@@ -23,7 +23,7 @@ from weather_skills_core.units import (
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.12"
+_SKILL_VERSION = "0.0.1"
 
 _TIME = r"(?:second|sec|minute|min|hour|hr|day|s|h|d)"
 _RATE_RE = re.compile(

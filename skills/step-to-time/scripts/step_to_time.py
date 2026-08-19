@@ -13,12 +13,13 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.0.1"
 
 
 @weather_skill(
     name="step-to-time",
     version=_SKILL_VERSION,
+    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('forecast'), required=True, dest='ds')
 def step_to_time(ds, **kwargs):

@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/concat.py *)
 metadata:
-  version: "0.1.10"
   catalog-group: transforms
 ---
 
@@ -58,9 +57,7 @@ output is fully reproducible from its own provenance. The output's top-level
 `weather_skills_history` is a single linear array: the first input's chain followed by
 this concat entry, matching the attr passthrough already done on the dataset.
 `args` is the argparse namespace minus the `--input`/`--output` path strings;
-`version` is the `_SKILL_VERSION` constant in `scripts/concat.py`, kept in
-lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow. Each input's `hash` is a sha256 over its stored bytes, so
+`version` is the `_SKILL_VERSION` constant in `scripts/concat.py`. Each input's `hash` is a sha256 over its stored bytes, so
 renamed-but-unchanged inputs still match and same-named-but-modified inputs
 do not.
 

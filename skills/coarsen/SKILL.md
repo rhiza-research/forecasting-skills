@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py *)
 metadata:
-  version: "0.1.11"
   catalog-group: transforms
 ---
 
@@ -70,8 +69,7 @@ and appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
 stored bytes; `version` is the `_SKILL_VERSION` constant in
-`scripts/coarsen.py`, kept in lockstep with `metadata.version` in this SKILL.md
-by the CI version-bump workflow. Cache-hit comparison reads the existing
+`scripts/coarsen.py`. Cache-hit comparison reads the existing
 output's `weather_skills_history`: a hit requires the upstream chain to match and the
 last entry's `skill`, `version`, `args`, and `input.basename` to match the
 proposed new entry; on a hit the script returns without recomputing. The

@@ -34,3 +34,20 @@ def test_rename_explicit_variable(tmp_path, rename):
 
     ds = xr.open_zarr(out, consolidated=True)
     assert "rain" in ds.data_vars
+
+
+def test_rename_accepts_precip_totals(tmp_path, rename):
+    ds = make_gridded()
+    ds["precip"].attrs.update(
+        units="mm",
+        standard_name="lwe_thickness_of_precipitation_amount",
+        cell_methods="time: sum",
+    )
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(rename, "-i", str(src), "-o", str(out), "--to-name", "rain")
+
+    result = xr.open_zarr(out, consolidated=True)
+    assert "rain" in result.data_vars
+    assert "sum" in result["rain"].attrs["cell_methods"]

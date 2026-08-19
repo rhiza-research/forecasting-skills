@@ -21,7 +21,7 @@ from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.units import to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.11"
+_SKILL_VERSION = "0.0.1"
 
 def _select_point(da, lat, lon):
     lat_dim = cf_dim(da, "latitude")

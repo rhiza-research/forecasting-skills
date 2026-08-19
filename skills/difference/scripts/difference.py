@@ -14,7 +14,7 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.0.1"
 
 _WIDEN = {1: "int16", 2: "int32", 4: "int64"}
 

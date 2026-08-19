@@ -19,7 +19,7 @@ from weather_skills_core.units import (
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.0.1"
 
 _STANDARD_NAME_BY_UNITS = {
     "mm/day": STANDARD["precip"]["standard_name"],
@@ -33,6 +33,7 @@ _STANDARD_NAME_BY_UNITS = {
 @weather_skill(
     name="unit-convert",
     version=_SKILL_VERSION,
+    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")

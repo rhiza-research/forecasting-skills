@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py *)
 metadata:
-  version: "0.1.11"
   catalog-group: transforms
 ---
 
@@ -83,8 +82,7 @@ recorded under their argparse dest names (underscored). `input` is a
 field: a list of `{basename, hash}` dicts content-hashing each supplied
 reference zarr's stored bytes, so editing a reference in place (same path,
 changed content) invalidates the cache and forces a recompute. `version` is
-the `_SKILL_VERSION` constant in `scripts/downscale.py`, kept in lockstep
-with `metadata.version` in this SKILL.md by the CI version-bump workflow.
+the `_SKILL_VERSION` constant in `scripts/downscale.py`.
 Cache-hit comparison reads the existing output's `weather_skills_history`: a hit requires
 the upstream chain to match and the last entry's `skill`, `version`, `args`,
 `input.basename`, and `reference_inputs` to match the proposed new entry; on a

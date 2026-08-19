@@ -33,7 +33,7 @@ HTTP_TIMEOUT = 60
 DEFAULT_WORKERS = 2
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.18"
+_SKILL_VERSION = "0.0.1"
 
 _NOT_FOUND = object()
 

@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.13"
   catalog-group: fetchers
   openclaw:
     requires:
@@ -33,14 +32,14 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
 ```
 
 ### Arguments
-- `--date` — forecast init date. Absolute ISO date `YYYY-MM-DD`. ECMWF S2S runs
-  init on fixed days (Mondays and Thursdays); requesting a date that is not a
-  published init exits non-zero with a clear "no data for this init (it may not
-  be a valid S2S init day)" message. Recent ECMWF S2S real-time data is
-  access-restricted (embargoed) for a variable window; if the requested init
-  falls inside the embargo, the error says so explicitly and suggests an older
-  init date. Transport and auth failures are surfaced as clear errors — not raw
-  tracebacks.
+- `--date` — forecast init date. Absolute ISO date `YYYY-MM-DD`. Real-time
+  ECMWF S2S has run **daily** (00 UTC) since IFS Cycle 48r1 (2023-06-27);
+  before that it was Mondays and Thursdays only. Requesting a date with no
+  published init exits non-zero with a clear "no data for this init" message.
+  Recent ECMWF S2S real-time data is access-restricted (embargoed) for a
+  variable window; if the requested init falls inside the embargo, the error
+  says so explicitly and suggests an older init date. Transport and auth
+  failures are surfaced as clear errors — not raw tracebacks.
 - `--bbox` — required; `N/W/S/E` decimal degrees. The retrieval area (smaller bbox = faster retrieval). To fetch over a country, get its bbox from the `resolve-region` skill and pass the value here.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 

@@ -269,7 +269,7 @@ implementations are the right trade at this scale.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the publishing model (`main` is the
 consumer-facing branch — every merge is a release), the PR workflow, and the
-version-bump conventions (per-skill `metadata.version` driven by `release: major`
+version-bump conventions (per-skill `_SKILL_VERSION` in scripts, driven by `release: major`
 / `release: minor` PR labels, with patch as the default).
 
 ## License

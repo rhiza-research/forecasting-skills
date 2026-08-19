@@ -24,7 +24,7 @@ from weather_skills_core.standard_utils import dataset_label, pick_time_dim
 from weather_skills_core.units import to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.14"
+_SKILL_VERSION = "0.0.1"
 
 @weather_skill(
     name="plot-timeseries",

@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py *)
 metadata:
-  version: "0.1.12"
   catalog-group: transforms
 ---
 
@@ -77,9 +76,7 @@ and appends its own entry. `args` is the argparse namespace minus the
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
 stored bytes, so a renamed-but-unchanged input still cache-hits and a
 same-named-but-modified input correctly cache-misses; `version` is the
-`_SKILL_VERSION` constant in `scripts/deaccumulate.py`, kept in
-lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow.
+`_SKILL_VERSION` constant in `scripts/deaccumulate.py`.
 
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names

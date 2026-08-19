@@ -7,14 +7,11 @@ published — there is no separate release, dev, or deploy branch. Downstream
 consumers (rhiza-agents, skillkit, the demo's `uv tool install ../`, standalone
 single-file copies) read from `main`, so every merge to `main` is a release.
 
-Each `skills/<name>/SKILL.md` carries a `metadata.version` field in its YAML
-frontmatter (nested under the top-level `metadata:` key per the Agent Skills
-specification). That field is the authoritative identity of a published
-skill and the value that downstream cache invalidation keys on. Each script
-carries a `_SKILL_VERSION` constant near the top of the file; the
-version-bump workflow rewrites both the SKILL.md
-`metadata.version` and the `_SKILL_VERSION` literal in lockstep, so
-contributors never edit either by hand.
+Each skill script carries a module-level `_SKILL_VERSION` constant near the
+top of the file. That constant is the sole source of skill version identity —
+it is stamped into provenance and shown in `--help`. SKILL.md does **not**
+carry a version field. The version-bump workflow rewrites `_SKILL_VERSION` on
+merge to `main`, so contributors never edit it by hand.
 
 ## PR workflow
 
@@ -26,7 +23,7 @@ contributors never edit either by hand.
 4. Rebase onto `main` before merging — linear history is required.
 5. Use the GitHub merge button (squash-merge or rebase-merge, per-PR choice).
 
-Authors **must not** edit any `metadata.version` field by hand. The version
+Authors **must not** edit any `_SKILL_VERSION` constant by hand. The version
 bump is fully owned by the `version-bump` workflow (see below).
 
 ## Skill correctness tests
@@ -111,10 +108,10 @@ Settings → Branches → Branch protection rules.
 
 ### Reverting a bad release
 
-`git revert <bump-commit>` rolls SKILL.md (and `_SKILL_VERSION` literals
-in scripts) back to their previous values, but consumers that already cached
-the bad version under its old identity won't see the revert — same-identity
-state stays cached. To truly roll back a release, do this:
+`git revert <bump-commit>` rolls `_SKILL_VERSION` literals in scripts back
+to their previous values, but consumers that already cached the bad version
+under its old identity won't see the revert — same-identity state stays
+cached. To truly roll back a release, do this:
 
 1. Open a PR that reverts the bump commit (or directly revert it on `main` if
    branch protection allows).
@@ -122,7 +119,7 @@ state stays cached. To truly roll back a release, do this:
    `skills/<name>/` (a doc tweak, a no-op edit, anything the diff observes).
    That change re-triggers the version-bump workflow, which emits a fresh
    bump commit producing a version HIGHER than the bad one.
-3. Downstream consumers keyed on `metadata.version` invalidate their cache
+3. Downstream consumers keyed on `_SKILL_VERSION` invalidate their cache
    and pick up the corrected state under the new identity.
 
 Don't try to repeat the bad version. A same-version revert doesn't invalidate
@@ -178,8 +175,8 @@ proceeds as if nothing were published, stamping `<today>.0`. A hard failure
 there would abort identically on every subsequent run until someone repaired the
 branch by hand, so an unreadable manifest cannot wedge publishing.
 
-The plugin version is independent of the `metadata.version` fields in
-`skills/<name>/SKILL.md`. It is not derived from any skill version or from a
+The plugin version is independent of the per-skill `_SKILL_VERSION` constants.
+It is not derived from any skill version or from a
 PR's `release:` label. It identifies a published snapshot of the whole payload;
 each skill version identifies that one skill.
 

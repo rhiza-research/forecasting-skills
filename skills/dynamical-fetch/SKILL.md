@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.13"
   catalog-group: fetchers
 ---
 
@@ -95,8 +94,7 @@ length-1 array with `skill="dynamical-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` is the argparse namespace
 minus the `--output` path string, with the resolved concrete date(s)
 substituted for any relative token. `version` is the `_SKILL_VERSION`
-constant in `scripts/fetch.py`, kept in lockstep with `metadata.version` in
-this SKILL.md by the CI version-bump workflow.
+constant in `scripts/fetch.py`.
 
 The `args` dict stores argparse dest names (underscored), not the hyphenated
 CLI flag names. A consumer reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`

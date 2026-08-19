@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Installs the TAHMO Python SDK directly from GitHub (git+https://github.com/rhiza-research/tahmo-api) via uv script metadata. Requires TAHMO_API_USERNAME and TAHMO_API_PASSWORD in the environment.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.14"
   catalog-group: fetchers
   openclaw:
     requires:
@@ -46,9 +45,7 @@ The output stamps a JSON-encoded `weather_skills_history` attr: an append-only a
 per-step entries `{skill, version, args, input}`. For a fetcher this is a
 length-1 array; downstream zarr-writing skills append their own entry. `args`
 is the argparse namespace minus the `--input`/`--output` path strings;
-`version` is the `_SKILL_VERSION` constant in `scripts/fetch.py`, kept
-in lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow.
+`version` is the `_SKILL_VERSION` constant in `scripts/fetch.py`.
 
 The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
 `target_resolution`, `anchor_end`), not the hyphenated CLI flag names

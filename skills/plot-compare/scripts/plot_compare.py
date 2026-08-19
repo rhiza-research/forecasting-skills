@@ -27,7 +27,7 @@ from weather_skills_core.standard_utils import dataset_label, lat_slice, pick_ti
 from weather_skills_core.units import to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.16"
+_SKILL_VERSION = "0.0.1"
 
 PRECIP_COLORS = [
     "#bdbdbd", "wheat", "lightgreen", "green", "lightblue",

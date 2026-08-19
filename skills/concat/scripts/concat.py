@@ -13,7 +13,7 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.0.1"
 
 
 def _coerce(values):
@@ -32,6 +32,7 @@ def _coerce(values):
 @weather_skill(
     name="concat",
     version=_SKILL_VERSION,
+    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True, dest='dss')
 @weather_skill.argument("--dim", required=True)

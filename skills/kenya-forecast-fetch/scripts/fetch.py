@@ -25,7 +25,7 @@ from weather_skills_core.standard_utils import bbox_subset
 from weather_skills_core.units import to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.0"
+_SKILL_VERSION = "0.0.1"
 
 _BUCKET = "kenya-forecasting-data"
 _GCS_API = f"https://storage.googleapis.com/storage/v1/b/{_BUCKET}/o"

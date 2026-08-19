@@ -73,3 +73,20 @@ def test_clip_geojson_polygon(tmp_path, clip_region):
     ds = xr.open_zarr(out, consolidated=True)
     assert list(ds.latitude.values) == [1.0, 2.0]
     assert list(ds.longitude.values) == [11.0, 12.0]
+
+
+def test_clip_accepts_precip_totals(tmp_path, clip_region):
+    ds = make_gridded()
+    ds["precip"].attrs.update(
+        units="mm",
+        standard_name="lwe_thickness_of_precipitation_amount",
+        cell_methods="time: sum",
+    )
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(clip_region, "-i", str(src), "-o", str(out), "--bbox", "2.5/10.5/0.5/12.5")
+
+    result = xr.open_zarr(out, consolidated=True)
+    assert "sum" in result["precip"].attrs["cell_methods"]
+    assert list(result.latitude.values) == [1.0, 2.0]

@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
 metadata:
-  version: "0.1.11"
   catalog-group: transforms
 ---
 
@@ -57,8 +56,7 @@ upstream input's `weather_skills_history` (default `[]` and stderr warning if ab
 and appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
-stored bytes; `version` is the `_SKILL_VERSION` constant in `scripts/clip.py`, kept
-in lockstep with `metadata.version` in this SKILL.md by the CI version-bump workflow.
+stored bytes; `version` is the `_SKILL_VERSION` constant in `scripts/clip.py`.
 
 The `args` dict stores argparse dest names (underscored), not the hyphenated CLI
 flag names. A consumer reconstructing a

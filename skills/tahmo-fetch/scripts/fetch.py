@@ -28,7 +28,7 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.standard_utils import is_transient, require_env
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.14"
+_SKILL_VERSION = "0.0.1"
 
 DEFAULT_WORKERS = 8
 

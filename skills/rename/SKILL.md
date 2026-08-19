@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/rename.py *)
 metadata:
-  version: "0.1.3"
   catalog-group: transforms
 ---
 
@@ -67,8 +66,7 @@ absent) and appends its own entry. `args` is the argparse namespace minus the
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its stored
 bytes, so a renamed-but-unchanged input still cache-hits and a
 same-named-but-modified input correctly cache-misses; `version` is the
-`_SKILL_VERSION` constant in `scripts/rename.py`, kept in lockstep with
-`metadata.version` in this SKILL.md by the CI version-bump workflow.
+`_SKILL_VERSION` constant in `scripts/rename.py`.
 
 The `args` dict stores argparse dest names (underscored, e.g. `to_name`), not
 the hyphenated CLI flag names (`--to-name`). A consumer reconstructing a

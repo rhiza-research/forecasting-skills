@@ -30,7 +30,7 @@ from weather_skills_core.standard_utils import require_env
 from weather_skills_core.units import to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.0.1"
 
 _PROBE_POLL_SECONDS = 30
 _PROBE_POLL_MAX_SECONDS = 3600
@@ -191,8 +191,9 @@ def fetch(bbox, date, **kwargs):
                     ) from None
                 raise DataError(
                     f"ECDS reported no data for init {date_iso} ({exc}); "
-                    "it may not be a valid S2S init day. ECMWF S2S runs init on "
-                    "fixed days — pass a known S2S init date."
+                    "there may be no published S2S real-time forecast for that date "
+                    "(daily since 2023-06-27; Mondays/Thursdays only before then), "
+                    "or the init is not yet available — try another date."
                 ) from None
             except Exception as exc:  # noqa: BLE001
                 if _is_s2s_embargo_error(exc):

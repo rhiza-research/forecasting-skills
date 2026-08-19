@@ -33,7 +33,7 @@ from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.0.1"
 
 _BASE_URL = "https://noaa-ghcn-pds.s3.amazonaws.com"
 _STATIONS_URL = f"{_BASE_URL}/ghcnd-stations.txt"

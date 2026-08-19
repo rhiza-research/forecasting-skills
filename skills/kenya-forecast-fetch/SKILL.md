@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Opens public consolidated Zarr over HTTPS from Google Cloud Storage bucket kenya-forecasting-data; no credentials required. Older init folders may only have GRIB/NetCDF under data/ — this skill requires Zarr.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.0"
   catalog-group: fetchers
 ---
 

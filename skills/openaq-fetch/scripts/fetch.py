@@ -38,7 +38,7 @@ from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient, require_env
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.8"
+_SKILL_VERSION = "0.0.1"
 
 _API_BASE = "https://api.openaq.org/v3"
 HTTP_TIMEOUT = 60

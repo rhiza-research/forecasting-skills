@@ -17,7 +17,7 @@ from weather_skills_core.standard_dataset import detect_spatial_dims, detect_tim
 from weather_skills_core.standard_utils import grid_spacing
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.11"
+_SKILL_VERSION = "0.0.1"
 
 
 def _spacing(ds, dim):
@@ -49,6 +49,7 @@ def _qmap_1d(model, ref):
 @weather_skill(
     name="downscale",
     version=_SKILL_VERSION,
+    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('spatial'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")

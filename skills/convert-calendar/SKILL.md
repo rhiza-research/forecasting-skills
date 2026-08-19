@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/convert_calendar.py *)
 metadata:
-  version: "0.1.8"
   catalog-group: transforms
 ---
 
@@ -80,9 +79,7 @@ appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings (so `calendar`, `time_dim`, `align_on`);
 `input` is a `{basename, hash}` dict — `basename` is the upstream zarr's
 filename and `hash` is a sha256 of its stored bytes; `version` is the
-`_SKILL_VERSION` constant in `scripts/convert_calendar.py`, kept in
-lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow. Cache-hit comparison reads the existing output's `weather_skills_history`: a
+`_SKILL_VERSION` constant in `scripts/convert_calendar.py`. Cache-hit comparison reads the existing output's `weather_skills_history`: a
 hit requires the upstream chain to match and the last entry's `skill`,
 `version`, `args`, and `input.basename` to match the proposed new entry; on a
 hit the script returns without recomputing. The `input.hash` is not part of the

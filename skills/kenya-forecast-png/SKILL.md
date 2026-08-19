@@ -5,7 +5,6 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public Google Cloud Storage bucket kenya-forecasting-data; no credentials required.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.0"
   catalog-group: figure
 ---
 

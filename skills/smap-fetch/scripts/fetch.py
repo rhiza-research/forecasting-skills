@@ -32,7 +32,7 @@ from weather_skills_core.standard_utils import (
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.9"
+_SKILL_VERSION = "0.0.1"
 
 _SHORT_NAME = "SPL3SMP_E"
 _FILL = -9999.0

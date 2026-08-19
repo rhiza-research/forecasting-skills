@@ -20,6 +20,13 @@ Both the control and perturbed retrievals target the `s2s-forecasts` collection 
 
 `forecast_type=perturbed_forecast` returns all 100 ensemble members in one retrieval — there is no per-member subsetting field on this collection.
 
+## Init schedule
+
+Real-time ECMWF S2S forecasts run **daily** at 00 UTC since IFS Cycle 48r1
+(2023-06-27). Before that date, real-time inits were Mondays and Thursdays
+only. (Re-forecast / hindcast calendars are separate and are not fetched by
+this skill.)
+
 ## Named regions
 
 | Region | Bbox N/W/S/E |

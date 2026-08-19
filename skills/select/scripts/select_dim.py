@@ -16,7 +16,7 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.6"
+_SKILL_VERSION = "0.0.1"
 
 _INDEX_RE = re.compile(r"-?[0-9]+")
 _NUM_INT_RE = re.compile(r"-?[0-9]+")
@@ -54,6 +54,7 @@ def _parse_value(raw, coord_vals, dim):
 @weather_skill(
     name="select",
     version=_SKILL_VERSION,
+    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--dim", required=True)
