@@ -219,10 +219,15 @@ def test_english_phrase_is_usage_error(resolve_time):
     assert exc.value.code == 2
 
 
-def test_unknown_product_is_usage_error(resolve_time):
+def test_unknown_product_is_usage_error(capsys, resolve_time):
     with pytest.raises(SystemExit) as exc:
         run_skill(resolve_time, "latest", "--product", "no-such-fetch", "--as-of", AS_OF)
     assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "no-such-fetch" in err
+    assert "chirps-fetch" not in err
+    assert "ecmwf-fetch" not in err
+    assert "dynamical-fetch" not in err
 
 
 def test_list_products(capsys, resolve_time):
@@ -232,8 +237,6 @@ def test_list_products(capsys, resolve_time):
     assert "pentad" in out
     assert "dynamical-fetch:noaa-gfs-forecast" in out
     assert "dynamical-fetch:noaa-gfs-analysis" in out
-    products = load_skill("resolve-time", "resolve").load_products()
-    assert "dynamical-fetch" not in products
 
 
 def test_live_catalog_loads_sibling_skills():
@@ -243,19 +246,27 @@ def test_live_catalog_loads_sibling_skills():
     products = load_products(skills)
     assert "chirps-fetch" in products
     assert products["chirps-fetch"].schedule == "pentad"
+    assert "dynamical-fetch" not in products
+    assert "dynamical-fetch:noaa-gfs-forecast" in products
 
 
 def test_dynamical_forecast_latest_is_date(capsys, resolve_time):
-    out, _ = _flags(
-        capsys,
-        resolve_time,
-        "latest",
-        "--product",
+    for product in (
         "dynamical-fetch:noaa-gfs-forecast",
-        "--as-of",
-        AS_OF,
-    )
-    assert out == "--date 2026-08-19"
+        "dynamical-fetch:noaa-gefs-forecast-35-day",
+        "dynamical-fetch:ecmwf-aifs-ens-forecast",
+        "dynamical-fetch:ecmwf-aifs-single-forecast",
+    ):
+        out, _ = _flags(
+            capsys,
+            resolve_time,
+            "latest",
+            "--product",
+            product,
+            "--as-of",
+            AS_OF,
+        )
+        assert out == "--date 2026-08-20", product
 
 
 def test_dynamical_forecast_range_query_is_usage_error(resolve_time):

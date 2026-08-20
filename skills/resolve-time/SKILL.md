@@ -23,9 +23,8 @@ this first, then pass the printed flags through.
 
 - The user asked for "the last two weeks", "today", "latest", "yesterday",
   "this month", or any other relative / rolling window.
-- You are about to call a fetcher and need to know how far from realtime that
-  product actually is (CHIRPS pentad lag, ECMWF S2S 2-day embargo, IMERG late
-  ~4 days, ERA5 ~5 days, …).
+- You are about to call a fetcher and need the window clipped to that
+  product's availability (declared on the fetcher's SKILL.md).
 - You need today's date as a real calendar value, not a guess.
 
 ## Division of labor
@@ -73,23 +72,25 @@ TIME=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py last-2w --product chirps-fe
 # Latest GFS forecast init from dynamical.org (not bare dynamical-fetch):
 INIT=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py latest \
     --product dynamical-fetch:noaa-gfs-forecast --as-of 2026-08-20)
-# INIT is --date 2026-08-19
+# INIT is --date 2026-08-20
 ```
 
 ### Arguments
 
 - `query` (positional) — token from the table above. Not English.
-- `--product` — catalog key: the fetcher skill (`chirps-fetch`, `ecmwf-fetch`)
-  or `skill:dataset` when one skill serves several clocks
-  (`dynamical-fetch:noaa-gfs-forecast`, `imerg-fetch:final`). Optional: omit
-  only when no fetcher follows (then `latest` is today's UTC date and there
-  is no lag). `--list-products` prints the catalog. Bare `dynamical-fetch`
-  is an error that lists the dataset keys.
+- `--product` — the next fetcher (`chirps-fetch`, `ecmwf-fetch`) or
+  `skill:dataset` when that fetcher has more than one clock
+  (`dynamical-fetch:noaa-gfs-forecast`, `imerg-fetch:final`). Omit only when
+  no fetcher follows (`latest` is then today's UTC date). Bare
+  `dynamical-fetch` is an error that names that skill's datasets — not a
+  catalog of every fetcher.
 - `--as-of` — clock date `YYYY-MM-DD`. Default: today's date in UTC. Pass it
   to reproduce a window or to honor an explicit "as of Friday".
 - `--emit` — `flags` (default; splice onto the next skill), `iso`
   (`YYYY-MM-DD` or `START/END`), or `json`.
-- `--list-products` — print the embargo catalog and exit.
+- `--list-products` — print the live catalog (shape and lag from each
+  fetcher SKILL.md) and exit. Optional inspection; not required before a
+  resolve.
 
 ### Output
 
@@ -127,17 +128,13 @@ they snap to `available_through`.
 
 ## Product lags
 
-These are conservative "available through" values so the next fetch does not
-open on a missing tail. They are not a live inventory of the remote store.
+Each fetcher declares its own clock on `metadata.availability` in its SKILL.md
+(core owns the calendar math). Pass that skill as `--product`. `--list-products`
+is a generated view of those files — not a second table to maintain.
 
-Each fetcher declares the lag on `metadata.availability` in its SKILL.md
-(core owns the calendar math). This skill reads those files from the sibling
-skills directory at runtime — run `--list-products` for the catalog. Do not
-copy the table here; it would drift.
-
-`--list-products` prints skill name, shape, and lag. An absolute range that
-overruns `available_through` is clipped (stderr says so). A range that starts
-after coverage ends, or before coverage begins and collapses, exits 2.
+An absolute range that overruns `available_through` is clipped (stderr says
+so). A range that starts after coverage ends, or before coverage begins and
+collapses, exits 2.
 
 ## Examples
 
