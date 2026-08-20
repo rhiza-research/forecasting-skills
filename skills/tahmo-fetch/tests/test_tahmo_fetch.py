@@ -95,4 +95,5 @@ def test_fetch_writes_point_obs_zarr(tmp_path, mod, fetch):
     assert Path(out).exists()
     ds = xr.open_zarr(out, consolidated=True)
     assert "precip" in ds
+    assert ds["precip"].attrs.get("data_interval") == "1 day"
     assert load_history(out)[-1]["skill"] == "tahmo-fetch"

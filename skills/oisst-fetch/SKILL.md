@@ -109,11 +109,11 @@ by `--help`. Inspect a written output's provenance with the `provenance` skill.
 ## Examples
 
 ```bash
-# SST over the seas around East Africa for three days
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start-time 2024-06-01 --end-time 2024-06-03 \
+# SST over a coastal bbox for three days (dummy bbox; use resolve-region for a real one)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5/34/-5/42 --start-time 2024-06-01 --end-time 2024-06-03 \
   -o /tmp/oisst.zarr
 
 # Three weeks over a bounded region
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 7/32/-6/43 --start-time 2024-05-12 --end-time 2024-06-01 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5/34/-5/42 --start-time 2024-05-12 --end-time 2024-06-01 \
   -o /tmp/oisst_week.zarr
 ```

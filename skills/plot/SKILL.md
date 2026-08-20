@@ -131,8 +131,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ec
 
 Country-shaped map masked to a boundary polygon:
 ```bash
+# After resolve-region writes --geojson /tmp/kenya.geojson (dummy bbox below):
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/chirps_kenya.zarr -o /tmp/kenya.png \
-    --variable precip --bbox 5.0/33.9/-4.7/41.9 --mask-geojson /tmp/kenya.geojson
+    --variable precip --bbox 5/34/-5/42 --mask-geojson /tmp/kenya.geojson
 ```
 
 Time series:

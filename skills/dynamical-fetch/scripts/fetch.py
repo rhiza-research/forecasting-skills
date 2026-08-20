@@ -19,7 +19,7 @@ from pathlib import Path
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.standard_utils import bbox_subset, np_to_date
-from weather_skills_core.units import to_standard_units
+from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -166,7 +166,7 @@ def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
             out = to_standard_units(out, variables=[name])
         except UsageError:
             continue
-    return out
+    return stamp_data_interval(out)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 ---
 name: aggregate-temporal
-description: Roll up a weather-skills standard dataset Zarr along its time axis (or forecast step axis) into fixed windows (daily, weekly, dekadal, monthly, or a pint duration like '21 day') or a rolling --window, with mean/min/max. Stamps aggregation_period and CF cell_methods. Rates in and rates out — use convert-to-totals for period amounts (refuses overlapping rolling series).
+description: Roll up a weather-skills standard dataset Zarr along its time axis (or forecast step axis) into fixed windows (daily, weekly, dekadal, monthly, or a pint duration like '21 day') or a rolling --window, with mean/min/max. Keeps data_interval; stamps aggregation_period, aggregation_coverage, and CF cell_methods. Rates in and rates out — use convert-to-totals for period amounts (refuses overlapping rolling series; select non-overlapping times first).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py *)
@@ -22,7 +22,7 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
   **mean** (or min/max) rates (`--period weekly` or `--period '21 day'`).
 - Rolling N-step means (`--window`) with optional `--align` / `--stride`.
 - Selecting weekly or dekadal subsets of a forecast initialized at multiple steps.
-- For period **totals** (`mm`), run `convert-to-totals` afterward (non-overlapping bins only; rolling series with Δt &lt; `aggregation_period` are refused). A single remaining bin is allowed.
+- For period **totals** (`mm`), run `convert-to-totals` afterward (non-overlapping bins only; rolling series with Δt &lt; `aggregation_period` are refused — `select` the times you want first). A single remaining bin is allowed. Incomplete bins dropped by default; pass `--keep-partial` so `aggregation_coverage` &lt; 1 is available for `--min-coverage`.
 
 ## Usage
 
@@ -55,17 +55,23 @@ Exactly one of `--period` or `--window` is required.
 - `--time-dim` — override; by default uses `time` if present, else `step`.
 - `--end-time` — with `--period` on a `time` axis: date the final bin ends on (bins walk backward). Same standard flag as fetchers. No effect on `step` or `--window`.
 - `--start-time` — with `--period` and `--end-time`: optional earliest coverage floor. Requires `--end-time`.
-- `--keep-partial` — with `--period` (forward resample and `--end-time`): keep incomplete bins (e.g. a trailing week with fewer than 7 daily samples). **Default drops them** and prints a stderr note, so a partial mean is not later scaled to a full `aggregation_period` by `convert-to-totals`. No effect on `--window` or `step` (those paths already omit incomplete windows).
+- `--keep-partial` — with `--period` (forward resample and `--end-time`): keep incomplete bins (e.g. a trailing week with fewer than 7 daily samples) and stamp `aggregation_coverage` &lt; 1. **Default drops them**. Convert-to-totals then applies `--min-coverage` (default 1.0). No effect on `--window` or `step` (those paths already omit incomplete windows).
 
 ### Metadata stamped
 
 On each aggregated data variable:
 
+- `data_interval` — native sample spacing from the fetch (kept; not the window).
 - `aggregation_period` — pint duration for the window (`1 day`, `7 day`,
   `1 dekad`, `1 month`, `21 day`, or e.g. `7 day` for `--window 7` on daily
   data) used later by `convert-to-totals`.
 - `cell_methods` — CF statistic, e.g. `time: mean (interval: 1 day)`.
   `interval:` is the **input** sample spacing when it can be inferred.
+
+On the time/step axis:
+
+- `aggregation_coverage` — completeness of each interval vs `data_interval`
+  (0–1). Expected count = `aggregation_period / data_interval`.
 
 Rate `units` are unchanged (still `mm day-1`, etc.).
 

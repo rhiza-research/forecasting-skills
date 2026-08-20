@@ -28,6 +28,11 @@ through unchanged. Works on gridded and point_obs datasets alike.
 - To pull a single ensemble member, forecast step, timestamp, or station out
   of a larger standard dataset.
 - To subset a dimension to a handful of entries in a chosen order.
+- Before `convert-to-totals`, when the time/step axis still overlaps
+  (rolling `--window`, or more intervals than you want as independent
+  totals). Pick a non-overlapping subset (`--dim time` or `--dim step`,
+  `--index` or `--value`); convert-to-totals refuses overlapping labels
+  rather than silently thinning the axis.
 
 ## Usage
 

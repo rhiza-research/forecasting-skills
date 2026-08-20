@@ -19,8 +19,12 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_utils import roll_and_agg
 from weather_skills_core.units import (
+    AGGREGATION_COVERAGE_COORD,
     AGGREGATION_PERIOD_ATTR,
+    DATA_INTERVAL_ATTR,
     PERIOD_TO_AGGREGATION,
+    data_interval_of,
+    expected_samples_in_period,
     format_cell_methods,
     format_duration,
     infer_timestep,
@@ -69,6 +73,38 @@ def _resolve_period(period: str) -> dict:
     }
 
 
+def _native_interval(ds, dim) -> str | None:
+    stamped = data_interval_of(ds)
+    if stamped:
+        return stamped
+    try:
+        return format_duration(infer_timestep(ds, dim))
+    except UsageError:
+        return None
+
+
+def _coverage_fraction(n_present: int, expected: int) -> float:
+    if expected <= 0:
+        return 1.0
+    return min(1.0, n_present / expected)
+
+
+def _assign_coverage(out, dim, coverages):
+    import numpy as np
+
+    if out.sizes.get(dim, 0) == 0:
+        return out
+    values = np.asarray(coverages, dtype=float)
+    out = out.assign_coords({AGGREGATION_COVERAGE_COORD: (dim, values)})
+    out[AGGREGATION_COVERAGE_COORD].attrs.update(
+        long_name="fraction of native samples present in the interval",
+        units="1",
+        valid_min=0.0,
+        valid_max=1.0,
+    )
+    return out
+
+
 def _reduce(grouped, method, dim=None):
     fn = {"mean": grouped.mean, "max": grouped.max, "min": grouped.min}[method]
     return fn(dim=dim, keep_attrs=True) if dim is not None else fn(keep_attrs=True)
@@ -104,6 +140,25 @@ def _expected_samples(
     return max(1, int(round(days / timestep_days)))
 
 
+def _expected_from_interval(spec, label, native_interval, timestep_days: float) -> int:
+    if native_interval:
+        try:
+            if spec["key"] == "monthly":
+                import pandas as pd
+
+                days = int(pd.Timestamp(label).days_in_month)
+                period = f"{days} day"
+            else:
+                period = spec["agg"]
+            return expected_samples_in_period(period, native_interval)
+        except UsageError:
+            pass
+    period_days = None if spec["key"] == "monthly" else spec["anchor_days"]
+    return _expected_samples(
+        spec["key"], label, timestep_days, period_days=period_days
+    )
+
+
 def _aggregate_time_resample(ds, dim, spec, method, *, keep_partial: bool):
     """Forward calendar resample; drop incomplete bins unless ``keep_partial``."""
     import numpy as np
@@ -111,23 +166,22 @@ def _aggregate_time_resample(ds, dim, spec, method, *, keep_partial: bool):
 
     freq = spec["freq"]
     timestep_days = _timestep_days(ds, dim)
+    native_interval = _native_interval(ds, dim)
     resampler = ds.resample({dim: freq})
     n = ds.sizes[dim]
-    chunks, labels = [], []
+    chunks, labels, coverages = [], [], []
     dropped = 0
     for label, group in resampler.groups.items():
         indices = _group_indices(group, n)
         if not indices:
             continue
-        period_days = None if spec["key"] == "monthly" else spec["anchor_days"]
-        expected = _expected_samples(
-            spec["key"], label, timestep_days, period_days=period_days
-        )
+        expected = _expected_from_interval(spec, label, native_interval, timestep_days)
         if not keep_partial and len(indices) < expected:
             dropped += 1
             continue
         chunks.append(_reduce(ds.isel({dim: indices}), method=method, dim=dim))
         labels.append(np.datetime64(label) if not hasattr(label, "calendar") else label)
+        coverages.append(_coverage_fraction(len(indices), expected))
     if dropped:
         print(
             f"dropped {dropped} incomplete {spec['key']} bin(s); "
@@ -136,7 +190,8 @@ def _aggregate_time_resample(ds, dim, spec, method, *, keep_partial: bool):
         )
     if not chunks:
         return ds.isel({dim: slice(0, 0)})
-    return xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+    out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+    return _assign_coverage(out, dim, coverages)
 
 
 def _aggregate_time_anchored(
@@ -195,6 +250,7 @@ def _aggregate_time_anchored(
         label = lambda edge: np.datetime64(edge)  # noqa: E731
 
     timestep_days = _timestep_days(ds, dim)
+    native_interval = _native_interval(ds, dim)
     bins, r = [], right
     # Stop once the right edge is at/before the first sample — do not require
     # left >= data_min, or a bin that still holds data is never created.
@@ -203,20 +259,19 @@ def _aggregate_time_anchored(
         bins.append((left, r))
         r = left
     bins.reverse()
-    chunks, labels = [], []
+    chunks, labels, coverages = [], [], []
     dropped = 0
     for left, right in bins:
         keep = np.nonzero((raw > left) & (raw <= right))[0]
         if keep.size == 0:
             continue
-        expected = _expected_samples(
-            spec["key"], right, timestep_days, period_days=period_days
-        )
+        expected = _expected_from_interval(spec, right, native_interval, timestep_days)
         if not keep_partial and keep.size < expected:
             dropped += 1
             continue
         chunks.append(_reduce(ds.isel({dim: keep}), method=method, dim=dim))
         labels.append(label(right))
+        coverages.append(_coverage_fraction(keep.size, expected))
     if dropped:
         print(
             f"dropped {dropped} incomplete {spec['key']} bin(s); "
@@ -225,7 +280,8 @@ def _aggregate_time_anchored(
         )
     if not chunks:
         return ds.isel({dim: slice(0, 0)})
-    return xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+    out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+    return _assign_coverage(out, dim, coverages)
 
 
 def _aggregate_step(ds, spec, method):
@@ -239,7 +295,9 @@ def _aggregate_step(ds, spec, method):
     steps = ds["step"].values
     max_step = steps.max()
     edges = np.arange(0, max_step + window, window, dtype=steps.dtype)
-    chunks, labels = [], []
+    native_interval = _native_interval(ds, "step")
+    timestep_days = _timestep_days(ds, "step")
+    chunks, labels, coverages = [], [], []
     for left in edges[:-1]:
         right = left + window
         if right > max_step:
@@ -247,16 +305,25 @@ def _aggregate_step(ds, spec, method):
         mask = (steps > left) & (steps <= right)
         if not mask.any():
             continue
+        n_present = int(mask.sum())
+        expected = _expected_from_interval(spec, right, native_interval, timestep_days)
         chunks.append(_reduce(ds.isel(step=np.where(mask)[0]), method=method, dim="step"))
         labels.append(left + window)
-    return xr.concat(chunks, dim="step").assign_coords(step=labels)
+        coverages.append(_coverage_fraction(n_present, expected))
+    if not chunks:
+        return ds.isel(step=slice(0, 0))
+    out = xr.concat(chunks, dim="step").assign_coords(step=labels)
+    return _assign_coverage(out, "step", coverages)
 
 
-def _stamp_attrs(out, dim, agg_period, method, interval):
+def _stamp_attrs(out, dim, agg_period, method, interval, *, data_interval=None):
     cf_method = _METHOD_TO_CF[method]
     cm = format_cell_methods(dim, cf_method, interval=interval)
     for name in out.data_vars:
         attrs = {**out[name].attrs, AGGREGATION_PERIOD_ATTR: agg_period, "cell_methods": cm}
+        native = attrs.get(DATA_INTERVAL_ATTR) or data_interval
+        if native:
+            attrs[DATA_INTERVAL_ATTR] = native
         out[name].attrs = attrs
     return out
 
@@ -375,9 +442,11 @@ def aggregate(
         else:
             raise UsageError(f"no time/step dim in {list(ds.dims)}; pass --time-dim")
 
-    interval = None
+    native_interval = _native_interval(ds, dim)
+    interval = native_interval
     try:
-        interval = format_duration(infer_timestep(ds, dim))
+        if interval is None:
+            interval = format_duration(infer_timestep(ds, dim))
     except UsageError:
         pass
 
@@ -390,8 +459,13 @@ def aggregate(
 
     if window is not None:
         out = roll_and_agg(ds, window, dim, method, align=align, stride=stride_val)
+        n = out.sizes.get(dim, 0)
+        if n:
+            out = _assign_coverage(out, dim, [1.0] * n)
         agg_period = _rolling_aggregation_period(ds, dim, window, interval)
-        return _stamp_attrs(out, dim, agg_period, method, interval)
+        return _stamp_attrs(
+            out, dim, agg_period, method, interval, data_interval=native_interval
+        )
 
     spec = _resolve_period(period)
     if dim == "step":
@@ -423,7 +497,9 @@ def aggregate(
             ds, dim, spec, method, keep_partial=keep_partial
         )
 
-    return _stamp_attrs(out, dim, spec["agg"], method, interval)
+    return _stamp_attrs(
+        out, dim, spec["agg"], method, interval, data_interval=native_interval
+    )
 
 
 if __name__ == "__main__":

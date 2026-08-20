@@ -31,11 +31,12 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 ### Generic middle (operate on any standard dataset)
 | Skill | What it does |
 |---|---|
-| `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) from bundled Natural Earth 1:110m boundaries |
+| `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code or sub-national region to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) |
+| `resolve-time` | Resolve relative dates ("the last two weeks", `latest`, `now-3d`) to `--start-time`/`--end-time` or `--date`, applying each fetcher's embargo / publication lag |
 | `inspect-zarr` | Print dimension sizes, coordinate values, and a data-variable summary of a Zarr (stdout only) |
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
-| `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); stamps `aggregation_period` + `cell_methods` |
-| `convert-to-totals` | Terminal: rate × `aggregation_period` → amount for plotting (refuses rolling Δt < period) |
+| `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); keeps `data_interval`; stamps `aggregation_period` + `aggregation_coverage` + `cell_methods` |
+| `convert-to-totals` | Terminal: rate × stamped `aggregation_period` → amount (100% coverage default; refuses overlapping Δt < period — `select` first) |
 | `deaccumulate` | Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) into per-step diffs along the `step` axis |
 | `step-to-time` | Realize a forecast's `step` lead-time axis as wall-clock valid times (`time = init + step`) so it can be compared against time-based observations |
 | `unit-convert` | Convert a variable to target `--to-units` (e.g. precip flux `kg m-2 s-1` → depth rate `mm/day` via ÷ liquid-water density) |
@@ -56,6 +57,7 @@ dataset output.
 
 | Skill | What it does |
 |---|---|
+| `resolve-time` | Resolve relative dates to absolute `--start-time`/`--end-time` or `--date`, including product embargoes. |
 | `inspect-zarr` | Print dims, coordinate values, and data-variable summary of a Zarr (stdout; no write). |
 | `provenance` | Inspect `weather_skills_history` on a Zarr or plot PNG (lineage, JSON, or reproduction script). |
 | `email-report` | Compose an RFC 5322 `.eml` with attachments. **Mocks SMTP — writes to disk, does not send.** |
@@ -176,12 +178,10 @@ satellite validation for one country, using the `forecasting-skills` CLI from
 the Install section above:
 
 ```bash
-# Resolve the country bbox once, reuse it across the fetch and the clip.
-KENYA_BBOX=$(forecasting-skills resolve-region KEN)
-
+# Over Kenya — dummy bbox 5/34/-5/42; resolve-region prints the real N/W/S/E.
 forecasting-skills ecmwf-fetch \
     --date 2026-02-13 \
-    --bbox "$KENYA_BBOX" \
+    --bbox 5/34/-5/42 \
     --output /tmp/ecmwf.zarr
 forecasting-skills aggregate-temporal \
     --input /tmp/ecmwf.zarr \
@@ -202,7 +202,7 @@ forecasting-skills imerg-fetch \
     --output /tmp/imerg.zarr
 forecasting-skills clip-region \
     --input /tmp/imerg.zarr \
-    --bbox "$KENYA_BBOX" \
+    --bbox 5/34/-5/42 \
     --output /tmp/imerg_kenya.zarr
 forecasting-skills aggregate-temporal \
     --input /tmp/imerg_kenya.zarr \

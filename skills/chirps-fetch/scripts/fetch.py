@@ -23,7 +23,7 @@ from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
-from weather_skills_core.units import to_standard_units
+from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 CHIRPS_FINAL_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/sat"
 CHIRPS_PRELIM_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/prelim/sat"
@@ -303,7 +303,8 @@ def fetch(start_time, end_time, workers, **kwargs):
         ds.attrs["Conventions"] = "CF-1.13"
         ds.attrs["weather_skills_source"] = "chirps"
         stamp_cf_attrs(ds)
-        return to_standard_units(ds, variables=["precip"])
+        ds = to_standard_units(ds, variables=["precip"])
+        return stamp_data_interval(ds, period="1 day")
 
 
 if __name__ == "__main__":

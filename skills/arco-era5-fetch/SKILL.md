@@ -125,15 +125,15 @@ invocation must translate underscore → hyphen.
 ## Examples
 
 ```bash
-# 2m temperature over Kenya for two days
+# 2m temperature over a country for two days (dummy bbox; use resolve-region for a real one)
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-02 \
-  --bbox 7/32/-6/43 -v 2m_temperature -o /tmp/arco.zarr
+  --bbox 5/34/-5/42 -v 2m_temperature -o /tmp/arco.zarr
 
-# One week, two variables
+# One week, two variables, continental Africa (custom bbox)
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-05-24 --end-time 2026-05-30 \
   --bbox 23/-20/-37/59 -v 2m_temperature -v total_precipitation -o /tmp/arco_week.zarr
 
 # A pressure-level variable for one day — adds a CF `level` (air_pressure) dim
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-01 \
-  --bbox 7/32/-6/43 -v temperature -o /tmp/arco_level.zarr
+  --bbox 5/34/-5/42 -v temperature -o /tmp/arco_level.zarr
 ```

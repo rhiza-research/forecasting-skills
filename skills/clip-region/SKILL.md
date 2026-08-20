@@ -1,6 +1,6 @@
 ---
 name: clip-region
-description: Spatially subset a weather-skills standard dataset Zarr to a lat/lon bbox, named country (--region), or GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting.
+description: Spatially subset a weather-skills standard dataset Zarr to a lat/lon bbox or GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting. Named places: get a bbox (or polygon) from the resolve-region skill first.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
@@ -10,9 +10,9 @@ metadata:
 
 # clip-region
 
-Source-agnostic spatial subset. Pass an explicit `--bbox`, `--region` (ISO3,
-country name, or sub-national `country-admin1` / `country-admin1-admin2`;
-decorator fills `bbox`), or `--geojson` polygon.
+Source-agnostic spatial subset. Pass an explicit `--bbox` or a `--geojson`
+polygon. For a named country or county, run the `resolve-region` skill first
+and pass its printed bbox (or the GeoJSON file it writes).
 
 ## When to use
 
@@ -27,21 +27,17 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr>
     --bbox N/W/S/E
 
 uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
-    --region Kenya
-
-uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
     --geojson boundary.geojson [--keep-outside]
 ```
 
 ### Arguments
 - `--input`, `-i` — input Zarr (gridded/spatial or point_obs).
 - `--output`, `-o` — output Zarr.
-- `--bbox` — `N/W/S/E` in decimal degrees (optional if `--region` is set).
-- `--region` — ISO3 code, country name, or sub-national region (`kenya-nairobi`);
-  fills `bbox` automatically. Do not pass with `--bbox` or `--geojson`. For a
-  polygon clip (county boundary, not just the bbox), resolve the region to
-  GeoJSON first and pass `--geojson`.
-- `--geojson` — path to a GeoJSON Feature/FeatureCollection/geometry. Mutex with `--bbox`/`--region`.
+- `--bbox` — `N/W/S/E` in decimal degrees. Mutex with `--geojson`. Named
+  places: compose with the `resolve-region` skill and pass the printed value.
+- `--geojson` — path to a GeoJSON Feature/FeatureCollection/geometry. Mutex
+  with `--bbox`. For a country or county polygon, write it with
+  `resolve-region --geojson`.
 - `--keep-outside` — with `--geojson` only: set values outside the polygon to NaN instead of dropping cells/stations.
 
 ### Longitude convention
@@ -70,5 +66,6 @@ translate underscore → hyphen.
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --region Kenya
+# Named places: run resolve-region first, then pass the printed N/W/S/E:
+uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --bbox 5/34/-5/42
 ```

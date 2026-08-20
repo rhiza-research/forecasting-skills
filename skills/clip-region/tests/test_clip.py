@@ -38,20 +38,23 @@ def test_clip_empty_bbox_exits_1(tmp_path, clip_region):
     assert exc.value.code == 1
 
 
-def test_clip_region_kenya_fills_bbox(tmp_path, clip_region):
-    # Grid covering East Africa so Kenya's bbox selects cells.
+def test_clip_kenya_bbox_from_resolve(tmp_path, clip_region):
+    # Compose the same way an agent would: resolve-region library → --bbox.
+    from weather_skills_core.region import bbox_from_geometry, lookup_region
+
+    n, w, s, e = bbox_from_geometry(lookup_region("KEN")["geometry"])
     src = write_zarr(
         make_gridded(lats=(-5.0, 0.0, 5.0), lons=(34.0, 38.0, 42.0)),
         tmp_path / "in.zarr",
     )
     out = tmp_path / "out.zarr"
 
-    run_skill(clip_region, "-i", str(src), "-o", str(out), "--region", "Kenya")
+    run_skill(clip_region, "-i", str(src), "-o", str(out), "--bbox", f"{n}/{w}/{s}/{e}")
 
     ds = xr.open_zarr(out, consolidated=True)
     assert ds.sizes["latitude"] >= 1
     assert ds.sizes["longitude"] >= 1
-    assert load_history(out)[-1]["args"]["region"] == "Kenya"
+    assert load_history(out)[-1]["args"]["bbox"] == f"{n}/{w}/{s}/{e}"
 
 
 def test_clip_geojson_polygon(tmp_path, clip_region):

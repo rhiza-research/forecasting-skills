@@ -26,6 +26,7 @@ from weather_skills_core.standard_utils import (
     normalize_longitude,
     verify_cf_decode,
 )
+from weather_skills_core.units import stamp_data_interval
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -209,7 +210,7 @@ def fetch(start_time, end_time, bbox, **kwargs):
         fills={"sst": np.float32("nan")},
     )
     verify_cf_decode(ds)
-    return ds
+    return stamp_data_interval(ds, period="1 day")
 
 
 if __name__ == "__main__":

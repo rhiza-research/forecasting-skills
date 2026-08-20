@@ -24,7 +24,8 @@ the grid itself.
 - Reading lat/lon/time (or `step` / `number`) values before `select`,
   `clip-region`, `aggregate-temporal`, or `plot`.
 - Confirming units on data variables after `unit-convert` or
-  `convert-to-totals`.
+  `convert-to-totals`, and whether `data_interval` / `aggregation_period` /
+  `aggregation_coverage` are present.
 
 ## Usage
 

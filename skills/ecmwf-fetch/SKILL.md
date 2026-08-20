@@ -60,13 +60,13 @@ records the run's flag values under underscored names (e.g. a flag
 ## Examples
 
 ```bash
+# Continental Africa (custom bbox — not a country lookup)
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/59 --output /tmp/ecmwf.zarr
 ```
 
 ```bash
-# Fetch over a country: get its bbox from the resolve-region skill (e.g. KEN → 5.5/33.9/-4.7/41.9)
-BBOX=5.5/33.9/-4.7/41.9
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox "$BBOX" --output /tmp/ecmwf_kenya.zarr
+# Named country: run resolve-region first, then pass the printed N/W/S/E:
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 --output /tmp/ecmwf_kenya.zarr
 ```
 
 See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the exact ECDS request parameters and how retrieval time scales with area.

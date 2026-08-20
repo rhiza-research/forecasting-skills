@@ -57,6 +57,7 @@ def test_fetch_writes_zarr_with_mocked_remote(tmp_path, mod, fetch):
     assert Path(out).exists()
     ds = xr.open_zarr(out, consolidated=True)
     assert "tas" in ds
+    assert ds["tas"].attrs.get("data_interval") == "1 day"
     assert load_history(out)[-1]["skill"] == "cmip6-fetch"
 
 

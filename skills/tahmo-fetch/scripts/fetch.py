@@ -26,6 +26,7 @@ from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.standard_utils import is_transient, require_env
+from weather_skills_core.units import stamp_data_interval
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -277,7 +278,7 @@ def fetch(start_time, end_time, workers, country, **kwargs):
         Conventions="CF-1.13",
         weather_skills_source="tahmo",
     )
-    return ds
+    return stamp_data_interval(ds, period="1 day")
 
 
 if __name__ == "__main__":

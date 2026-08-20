@@ -72,7 +72,8 @@ out of scope for this fetcher.
 - `--start-time`, `--end-time` — inclusive date range (**analysis datasets only**). Absolute ISO dates `YYYY-MM-DD`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. The slice follows each
   axis's own order, so any region works regardless of how a dataset stores
-  latitude. Omit to fetch the dataset's full native grid.
+  latitude. Omit to fetch the dataset's full native grid. Named places: compose
+  with the `resolve-region` skill.
 - `--variable`, `-v` — restrict to one data variable; repeat once per variable
   (`-v temperature_2m -v precipitation_surface`). Omit to fetch all variables.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
@@ -103,16 +104,16 @@ invocation must translate underscore → hyphen.
 ## Examples
 
 ```bash
-# GEFS 35-day ensemble, Kenya bbox, one variable
+# GEFS 35-day ensemble over a country (dummy bbox; use resolve-region for a real one)
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gefs-forecast-35-day --date 2026-06-01 \
-  --bbox 7/32/-6/43 -v precipitation_surface -o /tmp/gefs.zarr
+  --bbox 5/34/-5/42 -v precipitation_surface -o /tmp/gefs.zarr
 
 # GFS deterministic forecast for a specific init date, full global grid
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast --date 2026-06-01 -o /tmp/gfs.zarr
 
 # GFS analysis over a date range
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start-time 2026-05-10 --end-time 2026-05-30 \
-  --bbox 12/-4/4/2 -o /tmp/gfs_analysis.zarr
+  --bbox 5/34/-5/42 -o /tmp/gfs_analysis.zarr
 ```
 
 See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the full per-dataset

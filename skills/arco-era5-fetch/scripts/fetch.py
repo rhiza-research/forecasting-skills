@@ -25,6 +25,12 @@ from weather_skills_core.standard_utils import (
     normalize_longitude,
     verify_cf_decode,
 )
+from weather_skills_core.units import (
+    precip_amounts_to_rates,
+    precip_convertible_names,
+    stamp_data_interval,
+    to_standard_units,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -213,7 +219,11 @@ def fetch(start_time, end_time, bbox, variable, **kwargs):
         time_units=f"hours since {start_time.isoformat()} 00:00:00",
         time_calendar="proleptic_gregorian",
     )
-    return ds
+    precip = precip_convertible_names(ds)
+    if precip:
+        ds = to_standard_units(ds, variables=precip)
+        ds = precip_amounts_to_rates(ds, interval="1 hour")
+    return stamp_data_interval(ds, period="1 hour")
 
 
 if __name__ == "__main__":

@@ -70,3 +70,4 @@ def test_fetch_writes_zarr_with_mocked_earthaccess(tmp_path, mod, fetch):
     assert Path(out).exists()
     ds = xr.open_zarr(out, consolidated=True)
     assert "soil_moisture" in ds
+    assert ds["soil_moisture"].attrs.get("data_interval") == "1 day"

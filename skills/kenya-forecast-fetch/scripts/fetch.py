@@ -22,7 +22,12 @@ import urllib.request
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.standard_utils import bbox_subset
-from weather_skills_core.units import to_standard_units
+from weather_skills_core.units import (
+    precip_amounts_to_rates,
+    stamp_data_interval,
+    stamp_precip_amounts,
+    to_standard_units,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -201,7 +206,10 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
         weather_skills_source=f"kenya-forecasting-data:{key}",
     )
     stamp_cf_attrs(ds)
-    return to_standard_units(ds)
+    stamp_precip_amounts(ds)
+    ds = to_standard_units(ds)
+    ds = precip_amounts_to_rates(ds)
+    return stamp_data_interval(ds)
 
 
 if __name__ == "__main__":

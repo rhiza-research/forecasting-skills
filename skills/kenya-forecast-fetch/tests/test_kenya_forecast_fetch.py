@@ -26,6 +26,9 @@ def test_fetch_writes_zarr_and_stamps_history(tmp_path, fetch_mod, monkeypatch):
     assert Path(out).exists()
     with xr.open_zarr(out, consolidated=True) as ds:
         assert "tp" in ds.data_vars
+        assert ds["tp"].attrs["units"] == "mm day-1"
+        assert ds["tp"].attrs.get("data_interval")
+        assert "aggregation_period" not in ds["tp"].attrs
         assert "kenya-forecasting-data:" in ds.attrs.get("weather_skills_source", "")
     history = load_history(out)
     assert history[-1]["skill"] == "kenya-forecast-fetch"
@@ -47,10 +50,12 @@ def test_fetch_overwrites_rate_standard_name_on_amount_units(tmp_path, fetch_mod
     run_skill(fetch_mod.fetch, "--dataset", "precip", "--date", "2026-08-17", "-o", str(out))
 
     with xr.open_zarr(out, consolidated=True) as ds:
-        assert "precipitation_amount" in ds["tp"].attrs["standard_name"] or ds[
-            "tp"
-        ].attrs["standard_name"].endswith("precipitation_amount")
-        assert ds["tp"].attrs["units"] == "mm"
+        assert "precipitation_amount" not in ds["tp"].attrs["standard_name"]
+        assert ds["tp"].attrs["standard_name"] == "lwe_precipitation_rate"
+        assert ds["tp"].attrs["units"] == "mm day-1"
+        assert ds["tp"].attrs.get("data_interval")
+        assert "aggregation_period" not in ds["tp"].attrs
+        assert "aggregation_coverage" not in ds.coords
 
 
 def test_fetch_honors_date_variable_and_bbox(tmp_path, fetch_mod, monkeypatch):

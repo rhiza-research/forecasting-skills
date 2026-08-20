@@ -56,11 +56,14 @@ def test_forecast_fetch_writes_zarr(tmp_path, mod, fetch):
     assert Path(out).exists()
     written = xr.open_zarr(out, consolidated=True)
     assert "tp" in written
+    assert written["tp"].attrs.get("data_interval") == "1 day"
     assert load_history(out)[-1]["skill"] == "dynamical-fetch"
 
 
 def _imerg_like_analysis_ds():
-    times = np.array([np.datetime64("2026-01-01"), np.datetime64("2026-01-02")])
+    times = np.array(
+        [np.datetime64("2026-01-01T00:00"), np.datetime64("2026-01-01T00:30")]
+    )
     lats = [1.0, 2.0]
     lons = [10.0, 11.0]
     return xr.Dataset(
@@ -100,6 +103,9 @@ def test_imerg_quality_index_does_not_block_standard_units(tmp_path, mod, fetch)
     written = xr.open_zarr(out, consolidated=True)
     assert written["precipitation_quality_index_surface"].attrs["units"] == "1"
     assert written["precipitation_surface"].attrs["units"] == "mm day-1"
+    assert written["precipitation_surface"].attrs["data_interval"] == "30 minute"
+    assert "aggregation_period" not in written["precipitation_surface"].attrs
+    assert "aggregation_coverage" not in written.coords
 
 
 def test_forecast_missing_date_exits_2(tmp_path, mod, fetch):

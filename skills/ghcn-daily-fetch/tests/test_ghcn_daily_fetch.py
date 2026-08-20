@@ -57,4 +57,5 @@ def test_fetch_writes_point_obs_zarr(tmp_path, mod, fetch):
     ds = xr.open_zarr(out, consolidated=True)
     assert "precip" in ds
     assert "station_id" in ds.dims
+    assert ds["precip"].attrs.get("data_interval") == "1 day"
     assert load_history(out)[-1]["skill"] == "ghcn-daily-fetch"

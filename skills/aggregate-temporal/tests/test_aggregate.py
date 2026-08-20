@@ -34,6 +34,7 @@ def test_aggregate_weekly_mean(tmp_path, aggregate):
     assert ds.sizes["time"] == 2
     assert float(ds["precip"].values.flat[0]) == pytest.approx(2.0)
     assert ds["precip"].attrs.get("aggregation_period") == "7 day"
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(1.0)
     assert load_history(out)[-1]["skill"] == "aggregate-temporal"
 
 
@@ -149,6 +150,29 @@ def test_aggregate_duration_21_day(tmp_path, aggregate):
     assert ds.sizes["time"] == 1
     assert float(ds["precip"].values.flat[0]) == pytest.approx(3.0)
     assert ds["precip"].attrs.get("aggregation_period") == "21 day"
+
+
+def test_aggregate_21_day_partial_stamps_coverage(tmp_path, aggregate):
+    """19 of 21 daily samples → coverage ~0.9 when --keep-partial is set."""
+    src = write_zarr(make_gridded(n_time=19, fill=3.0), tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(
+        aggregate,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--period",
+        "21 day",
+        "--keep-partial",
+    )
+
+    ds = xr.open_zarr(out, consolidated=True)
+    assert ds.sizes["time"] == 1
+    assert ds["precip"].attrs.get("aggregation_period") == "21 day"
+    assert ds["precip"].attrs.get("data_interval") == "1 day"
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(19 / 21)
 
 
 def test_aggregate_requires_period_or_window(tmp_path, aggregate):

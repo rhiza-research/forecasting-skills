@@ -40,4 +40,5 @@ def test_fetch_writes_zarr_with_mocked_opendap(tmp_path, fetch):
     assert Path(out).exists()
     ds = xr.open_zarr(out, consolidated=True)
     assert "sst" in ds
+    assert ds["sst"].attrs.get("data_interval") == "1 day"
     assert load_history(out)[-1]["skill"] == "oisst-fetch"

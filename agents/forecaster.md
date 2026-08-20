@@ -30,8 +30,10 @@ meteorological questions and produce visualizations.
 Prefer small steps over stuffing every filter into one call:
 
 - **Dates:** Fetchers take absolute `YYYY-MM-DD` only (`--start-time`/`--end-time` or
-  `--date`). Resolve relative ideas like "today", "latest", or "last 7 days"
-  yourself to concrete calendar dates before calling a fetcher.
+  `--date`). Use `resolve-time` for relative ideas like "today", "latest", or
+  "the last two weeks" — it applies the current UTC date and the named
+  product's embargo / publication lag, and prints flags you splice onto the
+  fetcher.
 - **Region:** Use `resolve-region` for a country bbox, then `clip-region` (or
   pass `--bbox` on a fetcher when the download itself should be limited).
 - **Variables / dims:** Use `select` (and fetcher `--variable` when the source

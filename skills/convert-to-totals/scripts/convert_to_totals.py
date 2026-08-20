@@ -6,16 +6,18 @@
 #   "pint-xarray>=0.6",
 # ]
 # ///
-"""Convert rate variables to period totals using aggregation_period (terminal for plots)."""
+"""Convert rate variables to period totals using stamped aggregation_period."""
 
 from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.units import (
+    AGGREGATION_COVERAGE_COORD,
     AGGREGATION_PERIOD_ATTR,
     STANDARD,
     assert_timestep_ge_aggregation_period,
     classify_variable,
+    filter_min_coverage,
     format_cell_methods,
     rate_to_total,
     variable_units,
@@ -50,27 +52,29 @@ def _resolve_dim(ds, time_dim):
 @weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
-    "--aggregation-period",
-    default=None,
-    help="Override aggregation_period (pint duration, e.g. '7 day').",
+    "--min-coverage",
+    type=float,
+    default=1.0,
+    help="Drop intervals whose aggregation_coverage is below this (0–1). Default 1.0.",
 )
 @weather_skill.argument("--time-dim", default=None)
-def convert_to_totals(ds, variable, aggregation_period, time_dim, **kwargs):
-    """Multiply rates by aggregation_period → amounts. Terminal before plot."""
+def convert_to_totals(ds, variable, min_coverage, time_dim, **kwargs):
+    """Multiply rates by stamped aggregation_period → amounts. Terminal before plot."""
     dim = _resolve_dim(ds, time_dim)
     names = list(dict.fromkeys(variable)) if variable is not None else list(ds.data_vars)
     for name in names:
         if name not in ds.data_vars:
             raise UsageError(f"variable {name!r} not in dataset (have {list(ds.data_vars)})")
 
+    ds = filter_min_coverage(ds, dim, min_coverage)
     out = ds.copy(deep=False)
     for name in names:
         da = ds[name]
-        period = aggregation_period or da.attrs.get(AGGREGATION_PERIOD_ATTR)
+        period = da.attrs.get(AGGREGATION_PERIOD_ATTR)
         if not (isinstance(period, str) and period.strip()):
             raise UsageError(
                 f"variable {name!r} has no {AGGREGATION_PERIOD_ATTR!r}; "
-                "pass --aggregation-period or run aggregate-temporal first"
+                "run aggregate-temporal first"
             )
         assert_timestep_ge_aggregation_period(ds, dim, period)
         total = rate_to_total(da, period)
@@ -91,6 +95,8 @@ def convert_to_totals(ds, variable, aggregation_period, time_dim, **kwargs):
         attrs.pop(AGGREGATION_PERIOD_ATTR, None)
         out[name] = plain
         out[name].attrs = attrs
+    if AGGREGATION_COVERAGE_COORD in out.coords:
+        out = out.drop_vars(AGGREGATION_COVERAGE_COORD)
     return out
 
 

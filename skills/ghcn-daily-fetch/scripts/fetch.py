@@ -31,6 +31,7 @@ from pathlib import Path
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient
+from weather_skills_core.units import precip_amounts_to_rates, stamp_data_interval
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -292,7 +293,8 @@ def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
         time_calendar=_TIME_CALENDAR,
         fills={v: np.float64(np.nan) for v in ds.data_vars},
     )
-    return ds
+    ds = precip_amounts_to_rates(ds, interval="1 day")
+    return stamp_data_interval(ds, period="1 day")
 
 
 if __name__ == "__main__":

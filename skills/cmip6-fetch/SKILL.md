@@ -129,10 +129,10 @@ Inspect a written output's provenance with the `provenance` skill.
 ## Examples
 
 ```bash
-# GFDL-CM4 historical near-surface air temperature over East Africa,
-# a multi-decade monthly slice
+# GFDL-CM4 historical near-surface air temperature over a country
+# (dummy bbox; use resolve-region for a real one), a multi-decade monthly slice
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
-  --table Amon --start-time 1980-01-01 --end-time 2014-12-31 --bbox 7/32/-6/43 -o /tmp/cmip6_hist.zarr
+  --table Amon --start-time 1980-01-01 --end-time 2014-12-31 --bbox 5/34/-5/42 -o /tmp/cmip6_hist.zarr
 
 # Full historical monthly record (1850–2014), global grid
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \

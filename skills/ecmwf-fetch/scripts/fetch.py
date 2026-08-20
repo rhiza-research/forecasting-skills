@@ -27,7 +27,11 @@ from pathlib import Path
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.standard_utils import require_env
-from weather_skills_core.units import to_standard_units
+from weather_skills_core.units import (
+    precip_amounts_to_rates,
+    stamp_data_interval,
+    to_standard_units,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -239,6 +243,8 @@ def fetch(bbox, date, **kwargs):
         ds["tp"].attrs["units"] = "kg m-2"
         ds["tp"].attrs["long_name"] = "Total precipitation"
         ds = to_standard_units(ds, variables=["tp"])
+        ds = precip_amounts_to_rates(ds)
+        ds = stamp_data_interval(ds)
         # Materialize while GRIB files in the temp dir still exist.
         ds = ds.load()
 

@@ -120,7 +120,8 @@ with the `provenance` skill.
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 41/-74/40/-73 --start-time 2024-06-01 --end-time 2024-06-03 \
   -v precip -v tmax -o /tmp/ghcn.zarr
 
-# Default variables (precip, tmax, tmin) over Kenya for three weeks
-uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5.5/33.9/-4.7/41.9 --start-time 2024-06-01 --end-time 2024-06-21 \
+# Default variables (precip, tmax, tmin) over a country for three weeks
+# (dummy bbox; use resolve-region for a real one)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 5/34/-5/42 --start-time 2024-06-01 --end-time 2024-06-21 \
   -o /tmp/ghcn_kenya.zarr
 ```
