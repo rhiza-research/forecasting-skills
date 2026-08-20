@@ -6,6 +6,11 @@ compatibility: Requires Python 3.12 and uv. Installs the TAHMO Python SDK direct
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: lag
+    lag_days: 1
+    note: TAHMO stations; allow a 1-day trailing gap
   openclaw:
     requires:
       env:

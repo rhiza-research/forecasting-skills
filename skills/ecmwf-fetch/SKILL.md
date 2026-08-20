@@ -1,11 +1,17 @@
 ---
 name: ecmwf-fetch
-description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills standard dataset Zarr. Real-time S2S has a 2-day embargo — request an init at least 2 days old. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting. To fetch over a country, get its bbox from the resolve-region skill first.
+description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills standard dataset Zarr. Real-time S2S has a 2-day embargo — request an init at least 2 days old. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting. `tp` is cumulative since init — run deaccumulate before aggregating or comparing to per-period obs. To fetch over a country, get its bbox from the resolve-region skill first.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: date
+    policy: embargo
+    schedule: ecmwf-s2s
+    earliest: 2015-01-01
+    note: ECMWF S2S real-time 2-day embargo; daily inits since 2023-06-27
   openclaw:
     requires:
       env:
@@ -46,7 +52,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --o
 
 ### Output
 
-A Zarr store with data variable `tp` (total precipitation amount, `mm`) and dims `(number, step, latitude, longitude)`. `number=0` is the control; `number=1..100` are perturbed members. Stamped with `weather_skills_source=ecmwf-s2s`.
+A Zarr store with data variable `tp` (total precipitation amount, `mm`, **accumulated since init**) and dims `(number, step, latitude, longitude)`. `number=0` is the control; `number=1..100` are perturbed members. Run `deaccumulate` before `aggregate-temporal` or comparison to rate obs. Stamped with `weather_skills_source=ecmwf-s2s`.
 
 ### Provenance
 

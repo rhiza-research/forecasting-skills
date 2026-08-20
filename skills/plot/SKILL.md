@@ -17,7 +17,11 @@ Source-agnostic single-dataset visualization. Two styles:
   horizontal colorbar spanning all panels at the bottom. Ensemble members
   (`number` dim) are averaged before plotting. Use `--index` to override the
   default reduction for any other extra dim.
-- `timeseries` — 1D profile. Averages across all non-time dims.
+- `timeseries` — 1D profile. Averages across all non-time dims. A forecast
+  cube (`step` lead times + scalar init `time`) is plotted against **valid
+  time** (`init + step`) with calendar dates on the x-axis, not raw lead-time
+  nanoseconds. An analysis / obs cube with a `time` dim is plotted against
+  that axis as-is.
 
 ## When to use
 
@@ -41,7 +45,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 - `--input`, `-i` — Zarr input.
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable.
-- `--style` — `heatmap` (default) or `timeseries`.
+- `--style` — `heatmap` (default) or `timeseries`. Timeseries of a forecast
+  (`step` + scalar init) uses valid times on the x-axis.
 - `--colormap` — either a matplotlib colormap name (default `viridis`) or a
   comma-separated list of colors to interpolate between (e.g.
   `white,wheat,green`). Named matplotlib colormaps cannot contain commas, so

@@ -6,6 +6,17 @@ compatibility: Requires Python 3.12 and uv. Authenticates to NASA Earthdata via 
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: lag
+    lag_days: 4
+    earliest: 2000-06-01
+    note: IMERG late ~4 days behind realtime
+    variants:
+      late: {}
+      final:
+        lag_days: 110
+        note: IMERG final ~3.5 months behind realtime
   openclaw:
     requires:
       env:

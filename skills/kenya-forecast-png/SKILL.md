@@ -6,6 +6,11 @@ compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public G
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: figure
+  availability:
+    shape: date
+    policy: none
+    lag_days: 0
+    note: Kenya forecast PNGs; no realtime embargo
 ---
 
 # kenya-forecast-png

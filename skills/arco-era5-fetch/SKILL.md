@@ -6,6 +6,12 @@ compatibility: Requires Python 3.12 and uv. Reads the public ARCO-ERA5 analysis-
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: lag
+    lag_days: 5
+    earliest: 1940-01-01
+    note: ERA5 / ARCO-ERA5 ~5 days behind realtime
 ---
 
 # arco-era5-fetch

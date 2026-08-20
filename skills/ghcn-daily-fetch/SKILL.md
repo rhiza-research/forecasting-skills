@@ -6,6 +6,11 @@ compatibility: Requires Python 3.12 and uv. Reads NOAA GHCN-Daily from the publi
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: lag
+    lag_days: 2
+    note: GHCN-Daily publication lag of a day or two
 ---
 
 # ghcn-daily-fetch

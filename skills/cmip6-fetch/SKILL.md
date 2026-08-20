@@ -6,6 +6,11 @@ compatibility: Requires Python 3.12 and uv. Reads the public Pangeo CMIP6 collec
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: none
+    earliest: 1850-01-01
+    note: CMIP6 projections; no realtime cap (future dates allowed)
 ---
 
 # cmip6-fetch

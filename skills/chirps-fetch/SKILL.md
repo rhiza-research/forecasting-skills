@@ -6,6 +6,12 @@ compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public C
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: lag
+    schedule: pentad
+    earliest: 1998-01-01
+    note: CHIRPS v3.0 preliminary pentad schedule (2 days after pentad close)
 ---
 
 # chirps-fetch

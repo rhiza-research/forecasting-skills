@@ -1,6 +1,6 @@
 ---
 name: deaccumulate
-description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step rates (precip → mm day-1), so each step is the period since the previous step rather than the accumulation since initialization.
+description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step rates (precip → mm day-1). Use after ecmwf-fetch, not after dynamical-fetch: `precipitation_surface` is already a rate and this skill will refuse it.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py *)
@@ -17,11 +17,18 @@ per-step increments via `arr[i+1] - arr[i]`, clipped at zero.
 
 ## When to use
 
-- Any cumulative-since-init forecast variable that needs to be plotted,
-  compared against per-period observations, or further aggregated into longer
-  windows.
-- Common examples: ECMWF S2S total precipitation (`tp`), surface net solar
-  radiation, evaporation, SWE.
+- After `ecmwf-fetch`: S2S `tp` is accumulated since init. Deaccumulate before
+  plotting, comparing to per-period obs, or aggregating into longer windows.
+- Other cumulative-since-init forecast fields (surface radiation, evaporation,
+  SWE) that grow along `step`.
+
+## When not to use
+
+- **`dynamical-fetch` `precipitation_surface`** (GEFS, GFS, IFS-ENS, AIFS) —
+  already a rate (`kg m-2 s-1` / `mm day-1`). The skill refuses it. For period
+  amounts, run `aggregate-temporal` then `convert-to-totals`.
+- CHIRPS, IMERG, station precip, and any variable whose `units` are per-time
+  (`mm/day`, `kg m-2 s-1`) or whose `standard_name` ends in `_rate` / `_flux`.
 
 ## Input precondition
 
@@ -36,7 +43,7 @@ the variable's metadata before differencing:
   (e.g. `lwe_precipitation_rate`, `precipitation_flux`). Such inputs are
   per-time rates and are already per-period; differencing them produces
   meaningless values. A daily `mm/day` product (e.g. CHIRPS or IMERG) must not
-  be deaccumulated.
+  be deaccumulated. Same for dynamical.org `precipitation_surface`.
 - When the variable has neither `units` nor `standard_name`, the skill cannot
   validate the input. It prints a stderr warning and proceeds, so an
   accumulated input that lacks a `units` attr still works.
@@ -90,6 +97,8 @@ Deaccumulation turns cumulative precip into **per-step rates** (`mm day-1`).
 Aggregate those rates with `aggregate-temporal --method mean` (or min/max),
 then run `convert-to-totals` when you need period amounts for plotting.
 Do not aggregate a still-accumulated variable — deaccumulate first.
+Do not deaccumulate a dynamical-fetch precip cube — it is already a rate;
+aggregate those rates, then `convert-to-totals` if you need `mm`.
 
 `deaccumulate` is also useful standalone: per-step rates can be compared to
 daily rate observations (e.g. IMERG, CHIRPS, station data) without further

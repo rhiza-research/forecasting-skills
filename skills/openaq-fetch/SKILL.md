@@ -6,6 +6,11 @@ compatibility: Requires Python 3.12 and uv. Uses the OpenAQ v3 REST API over HTT
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: lag
+    lag_days: 1
+    note: OpenAQ thin trailing tail of unreported days
   openclaw:
     requires:
       env:

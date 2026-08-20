@@ -6,6 +6,12 @@ compatibility: Requires Python 3.12 and uv. Authenticates to NASA Earthdata via 
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: lag
+    lag_days: 2
+    earliest: 2015-03-31
+    note: SMAP SPL3SMP_E typical 2-day publication lag
   openclaw:
     requires:
       env:

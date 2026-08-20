@@ -6,6 +6,12 @@ compatibility: Requires Python 3.12 and uv. Reads NOAA OISST v2.1 from NOAA PSL'
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: range
+    policy: lag
+    lag_days: 1
+    earliest: 1981-09-01
+    note: OISST v2.1 ~1 day behind realtime
 ---
 
 # oisst-fetch

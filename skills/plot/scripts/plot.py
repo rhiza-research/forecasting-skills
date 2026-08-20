@@ -123,6 +123,24 @@ def _format_step(value):
         return f"+{days}d"
     return str(value)
 
+
+def _timeseries_axis(da, sdim):
+    """X coord and xlabel. Forecast ``step`` (timedelta) + scalar init → valid times."""
+    import numpy as np
+
+    if sdim != "step" or "time" not in da.coords:
+        return da[sdim].values, sdim
+    time_coord = da["time"]
+    if getattr(time_coord, "ndim", 1) != 0:
+        return da[sdim].values, sdim
+    steps = np.asarray(da["step"].values)
+    if steps.dtype.kind != "m":
+        return da[sdim].values, sdim
+    init = np.asarray(time_coord.values)
+    if init.dtype.kind != "M":
+        return da[sdim].values, sdim
+    return (init + steps).astype("datetime64[ns]"), "valid time"
+
 def _panel_title(da, sdim, step_value, all_steps):
     """'<start> until <end>' from time + step; else '<sdim>=<step>'."""
     import numpy as np
@@ -479,9 +497,18 @@ def plot(
         if sdim is None:
             raise UsageError(f"timeseries needs 'step' or 'time'; got {list(da.dims)}.")
         reduce_dims = [d for d in da.dims if d != sdim]
-        da.mean(reduce_dims).plot(ax=ax)
-        ax.set_xlabel(sdim)
+        reduced = da.mean(reduce_dims, keep_attrs=True)
+        xvals, xlabel = _timeseries_axis(reduced, sdim)
+        ax.plot(xvals, reduced.values)
+        ylabel = reduced.attrs.get("long_name") or variable
+        units = reduced.attrs.get("units")
+        if units:
+            ylabel = f"{ylabel} [{units}]"
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
         ax.set_title(title or f"{variable} ({style})")
+        if xlabel == "valid time":
+            fig.autofmt_xdate()
         fig.tight_layout()
 
     output = Path(output)

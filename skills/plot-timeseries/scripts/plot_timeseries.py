@@ -94,6 +94,7 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
     fig, ax = plt.subplots(figsize=(10, 6))
     units = None
     first_tdim = None
+    axis_label = None
 
     for idx, ds in enumerate(datasets):
         da = ds[variable]
@@ -115,6 +116,7 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
             )
 
         label = dataset_label(ds, f"input {idx + 1}")
+        xlabel = tdim
         if align_day_of_year:
             try:
                 xvals = da[tdim].dt.dayofyear.values
@@ -131,16 +133,30 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
                     f"rendering anyway.",
                     file=sys.stderr,
                 )
+            xlabel = "day of year"
         else:
             xvals = da[tdim].values
+            if (
+                tdim == "step"
+                and np.issubdtype(np.asarray(xvals).dtype, np.timedelta64)
+                and "time" in ds.coords
+                and ds["time"].ndim == 0
+                and np.asarray(ds["time"].values).dtype.kind == "M"
+            ):
+                xvals = (np.asarray(ds["time"].values) + np.asarray(xvals)).astype(
+                    "datetime64[ns]"
+                )
+                xlabel = "valid time"
         ax.plot(xvals, da.values, label=label)
 
         if units is None:
             units = da.attrs.get("units")
         if first_tdim is None:
             first_tdim = tdim
+        if axis_label is None:
+            axis_label = xlabel
 
-    ax.set_xlabel("day of year" if align_day_of_year else (first_tdim or "time"))
+    ax.set_xlabel(axis_label or first_tdim or "time")
     ax.set_ylabel(variable if not units else f"{variable} [{units}]")
     if title:
         ax.set_title(title)

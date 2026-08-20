@@ -20,6 +20,11 @@ It plots data that is already 1D (only a time-like dim left after picking
 via repeated `--reduce DIM` flags. There is no silent averaging of
 unspecified dims, and no reference / climatology overlay support.
 
+A forecast input whose axis is `step` (timedelta lead times) plus a scalar
+init `time` is plotted against **valid time** (`init + step`) so the x-axis
+shows calendar dates, not raw nanoseconds. Run `step-to-time` first if you
+need a real `time` dim for other skills (difference, plot-compare).
+
 For a single-input quick-look, use the `plot` skill with
 `--style timeseries`, which averages across all non-time dims by default
 (no `--reduce` flags needed).

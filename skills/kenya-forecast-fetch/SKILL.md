@@ -6,6 +6,11 @@ compatibility: Requires Python 3.12 and uv. Opens public consolidated Zarr over 
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
+  availability:
+    shape: date
+    policy: none
+    lag_days: 0
+    note: Kenya forecasts archive; no realtime embargo
 ---
 
 # kenya-forecast-fetch
