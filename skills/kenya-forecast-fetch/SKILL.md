@@ -81,13 +81,23 @@ expect `mm day-1`.
 - `--variable`, `-v` — restrict to named data variables (repeatable).
 - `--output`, `-o` — output Zarr path.
 
-### Example: fetch then plot
+### Example: match the precomputed weekly precip PNG
+
+The archive grid is daily S2S `tp`. The product figure
+(`kenya-forecast-png` `weekly_precip.png`) is six weekly totals on the Kenya
+product extent `7/32/-6/43`, drawn with plot's default precip palette.
+Replicate it with weekly aggregation + totals, then plot (no `--colormap`):
 
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset precip \
-    --date 2026-08-04 -v tp -o /tmp/kenya_tp.zarr
+    --date 2026-08-18 -v tp -o /tmp/kenya_tp.zarr
 
-# Heatmap: ensemble-mean panels (plot averages `number`); restrict to one lead:
-uv run skills/plot/scripts/plot.py -i /tmp/kenya_tp.zarr -v tp \
-    --index step=7 -o /tmp/kenya_tp_week1.png
+uv run skills/aggregate-temporal/scripts/aggregate.py \
+    -i /tmp/kenya_tp.zarr -o /tmp/kenya_weekly.zarr --period weekly
+
+uv run skills/convert-to-totals/scripts/convert_to_totals.py \
+    -i /tmp/kenya_weekly.zarr -o /tmp/kenya_weekly_mm.zarr
+
+uv run skills/plot/scripts/plot.py -i /tmp/kenya_weekly_mm.zarr -v tp \
+    --bbox 7/32/-6/43 -o /tmp/kenya_weekly.png
 ```

@@ -46,8 +46,8 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills aggregate-temporal -i "$d/ecmwf.zarr"    -o "$d/ecmwf_dekadal.zarr" --period dekadal --method mean
     forecasting-skills convert-to-totals  -i "$d/ecmwf_weekly.zarr"  -o "$d/ecmwf_weekly_totals.zarr"
     forecasting-skills convert-to-totals  -i "$d/ecmwf_dekadal.zarr" -o "$d/ecmwf_dekadal_totals.zarr"
-    forecasting-skills plot               -i "$d/ecmwf_weekly_totals.zarr"  -o "$d/weekly_precip.png"  --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --bbox="$BBOX"
-    forecasting-skills plot               -i "$d/ecmwf_dekadal_totals.zarr" -o "$d/dekadal_precip.png" --variable tp --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple --bbox="$BBOX"
+    forecasting-skills plot               -i "$d/ecmwf_weekly_totals.zarr"  -o "$d/weekly_precip.png"  --variable tp --bbox="$BBOX"
+    forecasting-skills plot               -i "$d/ecmwf_dekadal_totals.zarr" -o "$d/dekadal_precip.png" --variable tp --bbox="$BBOX"
     # Upstream daily_download2.0.yml runs a downscale step (dowscale_dekade.py) producing
     # dekadal_precip_downscaled.png. That artifact isn't in the emailed attachments, so
     # we run the downscale + plot here for parity with the workflow steps but the result is

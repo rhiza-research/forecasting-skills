@@ -52,3 +52,34 @@ def test_timeseries_forecast_writes_png(tmp_path, plot_fn):
     run_skill(plot_fn, "-i", str(src), "-o", str(out), "--style", "timeseries")
     assert Path(out).exists()
     assert out.stat().st_size > 0
+
+
+def test_precip_default_colormap_is_kenya_palette():
+    from matplotlib.colors import LinearSegmentedColormap
+
+    plot_mod = load_skill("plot", "plot")
+    da = make_forecast()["tp"]
+    da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
+    cmap = plot_mod._heatmap_cmap(da, None)
+    assert isinstance(cmap, LinearSegmentedColormap)
+    assert cmap.name == "wgbrp"
+    assert cmap(0.0)[:3] == pytest.approx((1.0, 1.0, 1.0), abs=0.02)
+
+    rate = make_gridded()["precip"]
+    cmap_rate = plot_mod._heatmap_cmap(rate, None)
+    assert isinstance(cmap_rate, LinearSegmentedColormap)
+    assert cmap_rate.name == "wgbrp"
+
+
+def test_non_precip_default_colormap_is_viridis():
+    plot_mod = load_skill("plot", "plot")
+    da = make_gridded(name="t2m")["t2m"]
+    da.attrs.update(units="degree_Celsius", standard_name="air_temperature")
+    assert plot_mod._heatmap_cmap(da, None) == "viridis"
+
+
+def test_explicit_colormap_overrides_precip_default():
+    plot_mod = load_skill("plot", "plot")
+    da = make_forecast()["tp"]
+    da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
+    assert plot_mod._heatmap_cmap(da, "magma") == "magma"

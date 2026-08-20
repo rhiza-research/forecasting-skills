@@ -16,7 +16,10 @@ Source-agnostic single-dataset visualization. Two styles:
   step (up to 4 columns; rows added as needed) with a shared color scale and a
   horizontal colorbar spanning all panels at the bottom. Ensemble members
   (`number` dim) are averaged before plotting. Use `--index` to override the
-  default reduction for any other extra dim.
+  default reduction for any other extra dim. Precipitation variables default
+  to the Kenya / ECMWF-S2S product palette (white–wheat–green–blue–yellow–
+  orange–red–purple), matching `kenya-forecast-png` weekly/dekadal precip
+  maps; other variables default to `viridis`.
 - `timeseries` — 1D profile. Averages across all non-time dims. A forecast
   cube (`step` lead times + scalar init `time`) is plotted against **valid
   time** (`init + step`) with calendar dates on the x-axis, not raw lead-time
@@ -47,10 +50,13 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 - `--variable`, `-v` — variable name. Defaults to the first data variable.
 - `--style` — `heatmap` (default) or `timeseries`. Timeseries of a forecast
   (`step` + scalar init) uses valid times on the x-axis.
-- `--colormap` — either a matplotlib colormap name (default `viridis`) or a
-  comma-separated list of colors to interpolate between (e.g.
-  `white,wheat,green`). Named matplotlib colormaps cannot contain commas, so
-  the presence of a comma unambiguously selects the custom-list form.
+- `--colormap` — either a matplotlib colormap name or a comma-separated
+  list of colors to interpolate between (e.g. `white,wheat,green`). Named
+  matplotlib colormaps cannot contain commas, so the presence of a comma
+  unambiguously selects the custom-list form. When omitted, precipitation
+  (rate or amount) uses the Kenya / ECMWF-S2S product palette
+  (`white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple`);
+  every other variable uses `viridis`.
 - `--title` — optional plot title.
 - `--index` — dim selections like `step=3,number=0`. A dim may take several
   comma-separated positions, e.g. `step=0,1,2`, which keeps the dim with just
@@ -93,8 +99,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 ### Output
 
 A PNG at `--output`. The colorbar label resolves from variable attrs:
-`long_name` → `GRIB_name` → bare variable name → `"value"`, suffixed
-with `[units]` when the `units` attr is present.
+`GRIB_name` → `long_name` → bare variable name → `"value"`, suffixed
+with `[units]` when the `units` attr is present (Kenya product maps label
+`Total Precipitation [mm]` after `convert-to-totals`; numerically the same
+as the archive PNG's `kg m**-2`).
 
 ### Provenance
 
@@ -113,17 +121,16 @@ exiftool out.png
 
 ## Examples
 
-Multi-step forecast panel:
+Multi-step forecast panel (precip uses the Kenya/S2S palette by default):
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
+    --variable tp --style heatmap --title "S2S precip"
+```
+
+Override the palette (e.g. magma):
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
     --variable tp --style heatmap --colormap magma --title "S2S precip"
-```
-
-Multi-step forecast panel with a custom precipitation palette:
-```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
-    --variable tp --style heatmap \
-    --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple
 ```
 
 Single-step map with cities and an explicit extent:
