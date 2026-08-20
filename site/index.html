@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>weather-skills.org — curated weather and climate data skills for AI agents</title>
-<meta name="description" content="Curated, standards-compliant weather and climate data skills for AI agents: CF-compliant Zarr with an auditable provenance chain on every artifact.">
+<meta name="description" content="Weather skills turn scientific weather-data pipelines into fixed, reviewable tools for agentic AI. Every output carries provenance: a record of which skill, version, and arguments produced it.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -40,9 +40,16 @@
         <p class="kicker">A curated skill library for weather and climate data</p>
         <h1>Let your AI assistant fetch, transform, and visualize weather <span class="no-break">data —</span> <span class="h1-hook">with provenance <span class="no-break">you can audit.</span></span></h1>
         <p class="lede">
-          Curated, standards-compliant <a href="https://agentskills.io">Agent Skills</a>
-          that run in any AI environment with a code-execution runtime and uv.
-          Initiated by Rhiza Research. A community working group will steward the catalog.
+          Weather skills turn scientific weather-data pipelines into fixed,
+          reviewable tools that are meant for
+          <a href="https://agentskills.io">agentic AI</a>.
+          They run in any AI environment with a code-execution runtime and uv.
+          Each output file carries <strong>provenance</strong>: a record of
+          which skill, version, and arguments produced it, so someone else can
+          rerun or check the chain. The skill is the script that was checked
+          in; nothing is generated at runtime unless you want it to be.
+          Initiated by Rhiza Research. A community working group will steward
+          the catalog.
         </p>
       </div>
       <figure class="artifact-card">
@@ -60,6 +67,12 @@
       <strong>Early stage.</strong> Not production ready: interfaces, the standard dataset
       schema, and skill boundaries may change without notice.
     </aside>
+    <aside class="notice" role="note">
+      This site is for people who use the skills. If you write them, start at
+      the
+      <a href="https://github.com/rhiza-research/weather-skills-core">weather-skills-core</a>
+      README.
+    </aside>
   </div>
 </section>
 
@@ -69,11 +82,12 @@
     <h2>See it run</h2>
   </header>
   <p>
-    From a plain-language request, the agent picks and composes skills. This is
-    a real session, replayed: resolve Senegal's bounding box &#8594; fetch IMERG
-    &#8594; clip to the region &#8594; aggregate to weekly mean rates &#8594;
-    convert to totals &#8594; plot —
-    then a follow-up adds The Gambia by merging the mask, no re-fetch needed.
+    From a plain-language request, the agent picks skills and runs them in
+    order. This is a real session, replayed: first call resolve-region to
+    print Senegal's bounding box &#8594; fetch IMERG &#8594; clip to the
+    region &#8594; aggregate to weekly mean rates &#8594; convert to totals
+    &#8594; plot — then a follow-up adds The Gambia by merging the mask, no
+    re-fetch needed.
   </p>
   <div class="demo-stage" data-demo-replay aria-label="Replay of an agent session composing weather skills">
     <div class="demo-screen">
@@ -125,12 +139,15 @@
     <div class="trust-card">
       <h3>Auditable provenance</h3>
       <p>
-        Every zarr-writing skill appends to <code>weather_skills_history</code>,
-        an append-only JSON chain recording the skill, its version, its arguments,
-        and a hash of its input. Plot PNGs embed the same chain in their metadata
-        and, when the chain is intact, a corner provenance-verified mark.
-        The <code>provenance</code> skill renders any chain as a human-readable
-        lineage, the raw JSON, or a runnable reproduction script.
+        Provenance is a record of which skill, version, and arguments produced
+        a file, so a colleague can rerun or check the chain. Every
+        zarr-writing skill appends that record to
+        <code>weather_skills_history</code>, an append-only JSON chain that
+        also stores a hash of each input. Plot PNGs embed the same chain in
+        their metadata and, when the chain is intact, a corner
+        provenance-verified mark. The <code>provenance</code> skill renders
+        any chain as a human-readable lineage, the raw JSON, or a runnable
+        reproduction script.
       </p>
     </div>
   </div>
@@ -144,7 +161,8 @@
   <p>
     Skills are plain Python scripts whose inline dependency blocks are resolved by
     <code>uv run</code> on each invocation, so any AI environment with a
-    code-execution runtime can invoke them. The skills live at
+    code-execution runtime can invoke them. Nothing is generated at runtime
+    unless you want it to be. The skills live at
     <a href="https://github.com/rhiza-research/forecasting-skills">github.com/rhiza-research/forecasting-skills</a>;
     pick the install path that matches your environment.
   </p>
@@ -194,8 +212,9 @@ claude plugin install rhiza-forecasting@weather-skills</code></pre>
     a standard dataset, transforms operate on any standard dataset, and figure
     skills render the result. A fourth group, agent capabilities, supports
     pipelines without producing a standard dataset — resolving a region name to a
-    bounding box or composing results into an email report. A user states the
-    goal in natural language and the agent picks and composes skills from the set.
+    bounding box or inspecting provenance. A user states the
+    goal in natural language and the agent picks skills from the set and
+    runs them in order.
   </p>
   <ol class="flow" role="list" aria-label="Pipeline stages">
     <li class="flow-stage">
@@ -220,8 +239,8 @@ claude plugin install rhiza-forecasting@weather-skills</code></pre>
       </ul>
     </li>
   </ol>
-  <p class="example-label">Example — a forecast for one country fetched, aggregated to weekly mean rates, converted to totals, and plotted; satellite observations clipped to the same bbox:</p>
-  <pre class="example"><code># Resolve the country bbox once, reuse it across the fetch and the clip.
+  <p class="example-label">Example — first call resolve-region to print the <code>N/W/S/E</code> bbox, then pass it to fetch and clip. A forecast is aggregated to weekly mean rates, converted to totals, and plotted; satellite observations are clipped to the same bbox:</p>
+  <pre class="example"><code># First call resolve-region to print the bbox; reuse it on fetch and clip.
 KENYA_BBOX=$(forecasting-skills resolve-region KEN)
 
 forecasting-skills ecmwf-fetch \
@@ -255,13 +274,17 @@ forecasting-skills clip-region \
     (<code>lat</code>, <code>lon</code>, <code>time</code>,
     <code>init_time</code>, <code>prediction_timedelta</code>,
     <code>member</code>, <code>point_id</code>, &#8230;)
-    or as short types that stand for a fixed set of those dimensions.
-    CF spellings such as <code>latitude</code>, <code>step</code>,
-    <code>number</code>, and <code>station_id</code> alias onto the same names.
-    Consumers rely only on dimensions, coordinates, data
-    variables, and <code>weather_skills_*</code> attributes — never on per-variable
-    codec encoding — which keeps skills independent across library versions. The
-    full contract is documented in
+    or as a <strong>type</strong> — a named bundle of those dimensions.
+    <code>forecast</code> means the Zarr must have <code>lat</code>,
+    <code>lon</code>, <code>init_time</code>, and
+    <code>prediction_timedelta</code>; <code>spatial</code> means
+    <code>lat</code> and <code>lon</code>. Incoming datasets often use other
+    names for the same axes (<code>step</code> for
+    <code>prediction_timedelta</code>, <code>number</code> for
+    <code>member</code>); those count. Consumers rely only on dimensions,
+    coordinates, data variables, and <code>weather_skills_*</code> attributes
+    — never on per-variable codec encoding — which keeps skills independent
+    across library versions. The full contract is documented in
     <a href="https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md">STANDARD_DATASET.md</a>.
   </p>
   <div class="schema-pair">
@@ -283,10 +306,19 @@ prediction_timedelta</code></pre>
     </div>
   </div>
   <p>
-    Accumulated variables travel the pipeline as rates (precipitation as
-    <code>mm day-1</code>). After <code>aggregate-temporal</code> stamps
-    <code>aggregation_period</code>, <code>convert-to-totals</code> turns those
-    rates into period amounts for plotting.
+    Units live on each data variable as a CF <code>units</code> string that
+    must be <strong>pintable</strong> — parseable by pint / UDUNITS. Known
+    kinds convert to a <strong>standard unit</strong>: temperature as
+    <code>degree_Celsius</code>, precipitation rate as
+    <code>mm day-1</code>, precipitation amount as <code>mm</code>. For
+    accumulated variables such as precipitation, fetch writes a
+    <strong>rate</strong>, not a period total. A <strong>total</strong> is
+    the rate multiplied by a stamped <code>aggregation_period</code>
+    (<code>convert-to-totals</code>). Those totals helpers refuse inputs that
+    are already amounts, so multiplying by the period cannot double-count.
+    See
+    <a href="https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/UNITS.md">UNITS.md</a>
+    for the full units contract.
   </p>
 </section>
 
