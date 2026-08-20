@@ -157,7 +157,16 @@ def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
         Conventions="CF-1.13",
     )
     stamp_cf_attrs(ds)
-    return to_standard_units(ds)
+    # Catalog datasets mix precip with dimensionless companions (e.g. IMERG
+    # precipitation_quality_index_surface, units "1"). Convert each variable
+    # independently so one inconvertible field does not abort the fetch.
+    out = ds
+    for name in list(ds.data_vars):
+        try:
+            out = to_standard_units(out, variables=[name])
+        except UsageError:
+            continue
+    return out
 
 
 if __name__ == "__main__":
