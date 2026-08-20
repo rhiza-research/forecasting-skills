@@ -17,7 +17,7 @@ from weather_skills_core.standard_dataset import detect_spatial_dims
 from weather_skills_core.standard_utils import grid_spacing
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 
 def _target_axis(coord_vals, resolution, offset):

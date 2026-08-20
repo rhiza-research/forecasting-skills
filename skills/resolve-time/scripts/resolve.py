@@ -16,7 +16,7 @@ from weather_skills_core import UsageError, weather_skill
 from weather_skills_core.standard_utils import parse_date
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 _LAST_RE = re.compile(r"^last-(\d+)([dwmy])$")
 _NOW_RE = re.compile(r"^now-(\d+)([dwmy])$")

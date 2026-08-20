@@ -19,7 +19,7 @@ from weather_skills_core.region import (
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 
 @weather_skill(

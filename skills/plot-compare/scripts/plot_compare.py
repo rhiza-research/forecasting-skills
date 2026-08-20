@@ -32,7 +32,7 @@ from weather_skills_core.standard_utils import (
 from weather_skills_core.units import precip_for_display, to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 PRECIP_COLORS = [
     "#bdbdbd",

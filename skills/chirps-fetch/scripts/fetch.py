@@ -34,7 +34,7 @@ HTTP_TIMEOUT = 60
 DEFAULT_WORKERS = 2
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 _NOT_FOUND = object()
 _TIF_NAME_RE = re.compile(r"chirps-v3\.0\.(?:prelim|sat)\.(\d{4})\.(\d{2})\.(\d{2})\.tif")

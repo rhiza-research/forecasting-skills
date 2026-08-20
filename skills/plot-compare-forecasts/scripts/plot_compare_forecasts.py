@@ -38,7 +38,7 @@ from weather_skills_core.units import (
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 # ECMWF-S2S4AFRICA / Kenya product palette (same as plot).
 PRECIP_COLORS = [

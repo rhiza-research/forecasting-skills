@@ -32,7 +32,7 @@ from weather_skills_core.standard_utils import apply_write_encoding, is_transien
 from weather_skills_core.units import precip_amounts_to_rates, stamp_data_interval
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 _BASE_URL = "https://noaa-ghcn-pds.s3.amazonaws.com"
 _STATIONS_URL = f"{_BASE_URL}/ghcnd-stations.txt"

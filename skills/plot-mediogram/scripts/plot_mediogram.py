@@ -21,7 +21,7 @@ from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.units import precip_for_display, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 
 def _select_point(da, lat, lon):

@@ -21,7 +21,7 @@ from weather_skills_core.standard_utils import bbox_subset, np_to_date
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.2"
 
 # Forecast bookkeeping / CRS scalar coords dropped from the standard output.
 _DROP_COORDS = (
