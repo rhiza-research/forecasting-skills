@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 from conftest import load_skill, make_gridded, run_skill, write_zarr
 from weather_skills_core.provenance import load_history
+from weather_skills_core.units import units_equal
 
 
 @pytest.fixture(scope="module")
@@ -33,7 +34,7 @@ def test_coarsen_reduces_spatial_dims(tmp_path, coarsen):
     ds = xr.open_zarr(out, consolidated=True)
     assert ds.sizes["latitude"] < 3
     assert ds.sizes["longitude"] < 4
-    assert ds["precip"].attrs.get("units") == "mm day-1"
+    assert units_equal(ds["precip"].attrs.get("units"), "mm day-1")
     assert load_history(out)[-1]["skill"] == "coarsen"
 
 
