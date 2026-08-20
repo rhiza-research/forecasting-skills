@@ -242,14 +242,6 @@ def test_default_as_of_is_utc_today(capsys, resolve_time, mod, monkeypatch):
     assert out == "--date 2026-08-20"
 
 
-def test_chirps_pentad_best_case_two_day_lag(mod):
-    assert mod.chirps_available_through(date(2026, 8, 22)) == date(2026, 8, 20)
-
-
-def test_chirps_month_end_pentad(mod):
-    assert mod.chirps_available_through(date(2026, 9, 2)) == date(2026, 8, 31)
-
-
 def test_add_months_clamps_end_of_month(mod):
     assert mod.add_months(date(2026, 3, 31), -1) == date(2026, 2, 28)
 

@@ -126,24 +126,14 @@ they snap to `available_through`.
 These are conservative "available through" values so the next fetch does not
 open on a missing tail. They are not a live inventory of the remote store.
 
-| `--product` | Shape | Availability |
-|---|---|---|
-| `chirps-fetch` | range | Pentad schedule: files 2 days after each pentad closes (5, 10, 15, 20, 25, last of month). Best 2d, worst ~7d. Coverage from 1998. |
-| `imerg-fetch` / `:late` | range | ~4 days. Coverage from 2000-06. |
-| `imerg-fetch:final` | range | ~3.5 months (110d). |
-| `ecmwf-fetch` | date | 2-day real-time embargo. Daily 00 UTC inits since 2023-06-27; Mon/Thu only before that. |
-| `arco-era5-fetch` | range | ~5 days. Coverage from 1940. |
-| `ghcn-daily-fetch` | range | 2 days. |
-| `oisst-fetch` | range | 1 day. Coverage from 1981-09. |
-| `smap-fetch` | range | 2 days. Coverage from 2015-03-31. |
-| `tahmo-fetch` / `openaq-fetch` | range | 1 day. |
-| `dynamical-fetch` | either | 1-day conservative lag (dataset-dependent). Forecast-shaped queries emit `--date`; range queries emit `--start-time`/`--end-time`. |
-| `kenya-forecast-fetch` / `-png` | date | No embargo (`latest` = `as_of`). |
-| `cmip6-fetch` | range | No realtime cap; future dates are kept. Coverage from 1850. |
+Each fetcher declares the lag on `metadata.availability` in its SKILL.md
+(core owns the calendar math). This skill reads a generated snapshot of that
+frontmatter — run `--list-products` for the live catalog. Do not copy the
+table here; it would drift.
 
-`--list-products` reprints this catalog. An absolute range that overruns
-`available_through` is clipped (stderr says so). A range that starts after
-coverage ends, or before coverage begins and collapses, exits 2.
+`--list-products` prints skill name, shape, and lag. An absolute range that
+overruns `available_through` is clipped (stderr says so). A range that starts
+after coverage ends, or before coverage begins and collapses, exits 2.
 
 ## Examples
 

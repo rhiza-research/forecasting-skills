@@ -12,8 +12,15 @@ import re
 import sys
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
+from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
+from weather_skills_core.availability import (
+    Availability,
+    available_through as spec_available_through,
+    ecmwf_s2s_valid_init,
+)
 from weather_skills_core.standard_utils import parse_date
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -33,8 +40,7 @@ _QUERY_HELP = (
     'Map English like "the last two weeks" to last-2w — do not pass free text.'
 )
 
-# S2S real-time inits are daily from IFS Cycle 48r1; Mon/Thu only before that.
-_ECMWF_DAILY_SINCE = date(2023, 6, 27)
+_CATALOG_PATH = Path(__file__).resolve().parent.parent / "assets" / "products.json"
 
 
 def _utc_today() -> date:
@@ -61,34 +67,6 @@ def month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
 
 
-def _is_chirps_pentad_end(d: date) -> bool:
-    last = calendar.monthrange(d.year, d.month)[1]
-    return d.day in {5, 10, 15, 20, 25, last}
-
-
-def chirps_available_through(as_of: date) -> date:
-    """Last CHIRPS preliminary day typically on the server.
-
-    Pentads close on the 5th, 10th, 15th, 20th, 25th, and last day of the month.
-    Per-day files appear 2 days after that close (best-case lag 2 days; worst
-    case ~7 days — the day after a pentad, waiting for the next batch).
-    """
-    d = as_of - timedelta(days=2)
-    while not _is_chirps_pentad_end(d):
-        d -= timedelta(days=1)
-    return d
-
-
-def ecmwf_available_through(as_of: date) -> date:
-    """Latest S2S init outside the 2-day real-time embargo (Mon/Thu before 2023-06-27)."""
-    d = as_of - timedelta(days=2)
-    if d >= _ECMWF_DAILY_SINCE:
-        return d
-    while d.weekday() not in (0, 3):  # Monday, Thursday
-        d -= timedelta(days=1)
-    return d
-
-
 def _rolling_start(end: date, n: int, unit: str) -> date:
     if unit == "d":
         return end - timedelta(days=n - 1)
@@ -111,144 +89,41 @@ def _offset_from(origin: date, n: int, unit: str) -> date:
 
 @dataclass(frozen=True)
 class Product:
+    """A catalog entry: skill key plus core Availability spec."""
+
     key: str
-    shape: str  # "date" | "range" | "either"
-    note: str
-    lag_days: int | None = 0  # None = no realtime cap (future dates stay)
-    earliest: date | None = None
-    available: object | None = None  # (as_of: date) -> date
+    spec: Availability
+
+    @property
+    def shape(self) -> str:
+        return self.spec.shape
+
+    @property
+    def note(self) -> str:
+        return self.spec.note
+
+    @property
+    def earliest(self) -> date | None:
+        return self.spec.earliest
 
 
-def _p(key, shape, note, lag_days=0, earliest=None, available=None):
-    return Product(key, shape, note, lag_days, earliest, available)
-
-
-# Conservative availability so a resolved window is one the fetcher can fill.
-# Keys are skill names; `:variant` distinguishes product flavors.
-PRODUCTS: dict[str, Product] = {
-    p.key: p
-    for p in (
-        _p(
-            "chirps-fetch",
-            "range",
-            "CHIRPS v3.0 preliminary pentad schedule (2 days after pentad close)",
-            earliest=date(1998, 1, 1),
-            available=chirps_available_through,
-        ),
-        _p(
-            "imerg-fetch",
-            "range",
-            "IMERG late ~4 days behind realtime",
-            lag_days=4,
-            earliest=date(2000, 6, 1),
-        ),
-        _p(
-            "imerg-fetch:late",
-            "range",
-            "IMERG late ~4 days behind realtime",
-            lag_days=4,
-            earliest=date(2000, 6, 1),
-        ),
-        _p(
-            "imerg-fetch:final",
-            "range",
-            "IMERG final ~3.5 months behind realtime",
-            lag_days=110,
-            earliest=date(2000, 6, 1),
-        ),
-        _p(
-            "ecmwf-fetch",
-            "date",
-            "ECMWF S2S real-time 2-day embargo; daily inits since 2023-06-27",
-            earliest=date(2015, 1, 1),
-            available=ecmwf_available_through,
-        ),
-        _p(
-            "ghcn-daily-fetch",
-            "range",
-            "GHCN-Daily publication lag of a day or two",
-            lag_days=2,
-        ),
-        _p(
-            "oisst-fetch",
-            "range",
-            "OISST v2.1 ~1 day behind realtime",
-            lag_days=1,
-            earliest=date(1981, 9, 1),
-        ),
-        _p(
-            "smap-fetch",
-            "range",
-            "SMAP SPL3SMP_E typical 2-day publication lag",
-            lag_days=2,
-            earliest=date(2015, 3, 31),
-        ),
-        _p(
-            "tahmo-fetch",
-            "range",
-            "TAHMO stations; allow a 1-day trailing gap",
-            lag_days=1,
-        ),
-        _p(
-            "arco-era5-fetch",
-            "range",
-            "ERA5 / ARCO-ERA5 ~5 days behind realtime",
-            lag_days=5,
-            earliest=date(1940, 1, 1),
-        ),
-        _p(
-            "openaq-fetch",
-            "range",
-            "OpenAQ thin trailing tail of unreported days",
-            lag_days=1,
-        ),
-        _p(
-            "kenya-forecast-fetch",
-            "date",
-            "Kenya forecasts archive; no realtime embargo",
-        ),
-        _p(
-            "kenya-forecast-png",
-            "date",
-            "Kenya forecast PNGs; no realtime embargo",
-        ),
-        _p(
-            "cmip6-fetch",
-            "range",
-            "CMIP6 projections; no realtime cap (future dates allowed)",
-            lag_days=None,
-            earliest=date(1850, 1, 1),
-        ),
-        _p(
-            "dynamical-fetch",
-            "either",
-            "dynamical.org catalog; ~1 day conservative lag (dataset-dependent)",
-            lag_days=1,
-        ),
-        _p(
-            "dynamical-fetch:nasa-imerg-analysis-late",
-            "range",
-            "dynamical.org IMERG late analysis",
-            lag_days=1,
-            earliest=date(2000, 6, 1),
-        ),
-        _p(
-            "dynamical-fetch:nasa-imerg-analysis-early",
-            "range",
-            "dynamical.org IMERG early analysis",
-            lag_days=1,
-            earliest=date(2000, 6, 1),
-        ),
-    )
-}
+@lru_cache(maxsize=1)
+def load_products() -> dict[str, Product]:
+    """Load the generated snapshot bundled next to this skill."""
+    raw = json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
+    mapping = raw.get("products")
+    if not isinstance(mapping, dict):
+        raise UsageError(f"{_CATALOG_PATH} is missing a products mapping.")
+    return {key: Product(key, Availability.from_dict(spec)) for key, spec in mapping.items()}
 
 
 def lookup_product(key: str | None) -> Product | None:
     if key is None:
         return None
-    product = PRODUCTS.get(key)
+    products = load_products()
+    product = products.get(key)
     if product is None:
-        known = ", ".join(sorted(PRODUCTS))
+        known = ", ".join(sorted(products))
         raise UsageError(f"unknown --product {key!r}. Known products: {known}.")
     return product
 
@@ -257,11 +132,7 @@ def available_through(product: Product | None, as_of: date) -> date | None:
     """Latest date the product can fill, or None when there is no realtime cap."""
     if product is None:
         return as_of
-    if product.available is not None:
-        return product.available(as_of)
-    if product.lag_days is None:
-        return None
-    return as_of - timedelta(days=product.lag_days)
+    return spec_available_through(product.spec, as_of)
 
 
 def _rolling_end(product: Product | None, as_of: date) -> date:
@@ -311,10 +182,9 @@ def _clip(
 
     if (
         product is not None
-        and product.available is ecmwf_available_through
+        and product.spec.schedule == "ecmwf-s2s"
         and start == end
-        and start < _ECMWF_DAILY_SINCE
-        and start.weekday() not in (0, 3)
+        and not ecmwf_s2s_valid_init(start)
     ):
         raise UsageError(
             f"{start.isoformat()} is not an ECMWF S2S real-time init "
@@ -563,17 +433,18 @@ def format_json(resolved: Resolved, product: Product | None) -> str:
 
 
 def list_products_text() -> str:
+    products = load_products()
     lines = [f"{'PRODUCT':<42} {'SHAPE':<8} LAG / NOTE"]
-    for key in sorted(PRODUCTS):
-        p = PRODUCTS[key]
-        if p.available is chirps_available_through:
+    for key in sorted(products):
+        p = products[key]
+        if p.spec.schedule == "pentad":
             lag = "pentad (~2-7d)"
-        elif p.available is ecmwf_available_through:
+        elif p.spec.schedule == "ecmwf-s2s":
             lag = "2d embargo"
-        elif p.lag_days is None:
+        elif p.spec.lag_days is None:
             lag = "none (future ok)"
         else:
-            lag = f"{p.lag_days}d"
+            lag = f"{p.spec.lag_days}d"
         lines.append(f"{p.key:<42} {p.shape:<8} {lag} — {p.note}")
     return "\n".join(lines)
 

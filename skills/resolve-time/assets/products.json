@@ -1,0 +1,117 @@
+{
+  "generated_by": "tools/build_availability.py",
+  "products": {
+    "arco-era5-fetch": {
+      "earliest": "1940-01-01",
+      "lag_days": 5,
+      "note": "ERA5 / ARCO-ERA5 ~5 days behind realtime",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "chirps-fetch": {
+      "earliest": "1998-01-01",
+      "note": "CHIRPS v3.0 preliminary pentad schedule (2 days after pentad close)",
+      "policy": "lag",
+      "schedule": "pentad",
+      "shape": "range"
+    },
+    "cmip6-fetch": {
+      "earliest": "1850-01-01",
+      "note": "CMIP6 projections; no realtime cap (future dates allowed)",
+      "policy": "none",
+      "shape": "range"
+    },
+    "dynamical-fetch": {
+      "lag_days": 1,
+      "note": "dynamical.org catalog; ~1 day conservative lag (dataset-dependent)",
+      "policy": "lag",
+      "shape": "either"
+    },
+    "dynamical-fetch:nasa-imerg-analysis-early": {
+      "earliest": "2000-06-01",
+      "lag_days": 1,
+      "note": "dynamical.org IMERG early analysis",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "dynamical-fetch:nasa-imerg-analysis-late": {
+      "earliest": "2000-06-01",
+      "lag_days": 1,
+      "note": "dynamical.org IMERG late analysis",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "ecmwf-fetch": {
+      "earliest": "2015-01-01",
+      "note": "ECMWF S2S real-time 2-day embargo; daily inits since 2023-06-27",
+      "policy": "embargo",
+      "schedule": "ecmwf-s2s",
+      "shape": "date"
+    },
+    "ghcn-daily-fetch": {
+      "lag_days": 2,
+      "note": "GHCN-Daily publication lag of a day or two",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "imerg-fetch": {
+      "earliest": "2000-06-01",
+      "lag_days": 4,
+      "note": "IMERG late ~4 days behind realtime",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "imerg-fetch:final": {
+      "earliest": "2000-06-01",
+      "lag_days": 110,
+      "note": "IMERG final ~3.5 months behind realtime",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "imerg-fetch:late": {
+      "earliest": "2000-06-01",
+      "lag_days": 4,
+      "note": "IMERG late ~4 days behind realtime",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "kenya-forecast-fetch": {
+      "lag_days": 0,
+      "note": "Kenya forecasts archive; no realtime embargo",
+      "policy": "none",
+      "shape": "date"
+    },
+    "kenya-forecast-png": {
+      "lag_days": 0,
+      "note": "Kenya forecast PNGs; no realtime embargo",
+      "policy": "none",
+      "shape": "date"
+    },
+    "oisst-fetch": {
+      "earliest": "1981-09-01",
+      "lag_days": 1,
+      "note": "OISST v2.1 ~1 day behind realtime",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "openaq-fetch": {
+      "lag_days": 1,
+      "note": "OpenAQ thin trailing tail of unreported days",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "smap-fetch": {
+      "earliest": "2015-03-31",
+      "lag_days": 2,
+      "note": "SMAP SPL3SMP_E typical 2-day publication lag",
+      "policy": "lag",
+      "shape": "range"
+    },
+    "tahmo-fetch": {
+      "lag_days": 1,
+      "note": "TAHMO stations; allow a 1-day trailing gap",
+      "policy": "lag",
+      "shape": "range"
+    }
+  }
+}
