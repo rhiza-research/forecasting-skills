@@ -44,8 +44,10 @@ archive's pre-rendered product PNGs, use `kenya-forecast-png`.
   pilot archive (no ECDS queue).
 - Downstream analysis or custom plots from those grids.
 
-Prefer `ecmwf-fetch` / `dynamical-fetch` when you need a live global fetch or an
-init date whose `data/` folder only has legacy GRIB/NetCDF (no `.zarr`).
+Prefer `dynamical-fetch` when you need a live global GEFS / IFS / GFS fetch.
+Use this skill for Kenya-region grids already published in the pilot archive
+(no ECDS queue). Prefer `ecmwf-fetch` only for S2S, or when an init date's
+`data/` folder only has legacy GRIB/NetCDF (no `.zarr`).
 
 ## Usage
 

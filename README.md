@@ -12,20 +12,25 @@
 Small tools an AI agent can run to fetch weather data, transform it, and make
 plots. Each skill is a command-line script. They share one Zarr file format so
 outputs of one skill can feed into the next — see
-[`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md).
+[`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/docs/weather-skill-authoring/references/STANDARD_DATASET.md).
 
 Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 
 ## Skills
 
 ### Fetchers (ingress — source-specific)
+
+Prefer `dynamical-fetch` when the dynamical.org catalog has the dataset
+(GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, analyses, IMERG). Use a
+credentialed or source-specific fetcher only when it does not.
+
 | Skill | What it does |
 |---|---|
-| `ecmwf-fetch` | ECMWF S2S ensemble forecast (cf + pf; default `tp`, also `t2m` and other surface fields) over a `--bbox` (use `resolve-region` for a country's bbox) via ECDS → Zarr |
+| `dynamical-fetch` | **Preferred when the catalog has it.** dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses) via `--dataset`, credential-free → Zarr |
+| `ecmwf-fetch` | ECMWF **S2S** ensemble (cf + pf; default `tp`, also `t2m`, `sst`, ocean, pressure levels) over a `--bbox` via ECDS → Zarr. Prefer `dynamical-fetch` for medium-range IFS-ENS / AIFS. |
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
-| `imerg-fetch` | IMERG satellite precipitation (late release) → Zarr |
+| `imerg-fetch` | IMERG daily satellite precipitation (late/final) → Zarr. Prefer `dynamical-fetch` `nasa-imerg-analysis-*` for half-hourly. |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
-| `dynamical-fetch` | dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses) via `--dataset`, credential-free → Zarr |
 | `kenya-forecast-fetch` | Kenya forecasts archive raw Zarr grids (`gs://kenya-forecasting-data/<date>/data/`) → standard dataset (compose with `plot` for figures) |
 
 ### Generic middle (operate on any standard dataset)
@@ -235,7 +240,7 @@ Skills share a simple Zarr contract: fixed dimension names (`lat`, `lon`, `time`
 `init_time`, …) and short types (`spatial`, `observations`, `forecast`,
 `vertical_forecast`, `point_obs`, …).
 See
-[`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md).
+[`STANDARD_DATASET.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/docs/weather-skill-authoring/references/STANDARD_DATASET.md).
 Fetchers write that shape; other skills only depend on dims, coords, data
 variables, and `weather_skills_*` attrs — not on per-variable encoding.
 
@@ -245,7 +250,7 @@ Each skill declares its CLI through the `@weather_skill` decorator from
 `weather_skills_core`, so common parameters (`--input` / `-o`, `--bbox`,
 `--start-time` / `--end-time`, etc.) mean the same thing wherever they appear.
 See
-[`CONVENTIONS.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/CONVENTIONS.md)
+[`CONVENTIONS.md`](https://github.com/rhiza-research/weather-skills-core/blob/main/docs/weather-skill-authoring/references/CONVENTIONS.md)
 for the full mapping of concept → canonical flag.
 
 ## Credentials

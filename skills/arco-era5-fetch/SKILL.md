@@ -30,8 +30,8 @@ Cloud access — no credentials and no API queue.
 - A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
   standard dataset Zarr.
 
-Not a forecast — ERA5 is reanalysis. For forecast grids use `ecmwf-fetch` or
-`dynamical-fetch`.
+Not a forecast — ERA5 is reanalysis. For forecast grids prefer
+`dynamical-fetch`; use `ecmwf-fetch` only for ECMWF S2S.
 
 ## Usage
 

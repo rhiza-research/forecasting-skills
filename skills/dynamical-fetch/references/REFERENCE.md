@@ -1,5 +1,8 @@
 # dynamical-fetch reference
 
+Default forecast/analysis fetcher when the catalog has the product. Use
+`ecmwf-fetch` only for ECMWF S2S.
+
 ## Library
 
 Datasets are opened with [`dynamical-catalog`](https://github.com/dynamical-org/dynamical-catalog):
@@ -62,12 +65,25 @@ analysis.
 | `ensemble_member` | `number` dim | renamed; member 0 = control |
 | `latitude` / `longitude` | `latitude` / `longitude` | unchanged (1-D) |
 | `time` (analysis) | `time` dim | sliced to `--start-time`/`--end-time`, kept |
-| data variables | data variables | known precip → `mm day-1`; known air temp → `degree_Celsius` |
+| `*_Nhpa` data variables | prefix + `vertical` dim | stacked; `vertical` is pressure in hPa (`positive=down`). Height-above-ground fields (`temperature_2m`, `wind_u_80m`) are not stacked. |
+| other data variables | data variables | known precip → `mm day-1`; known air temp → `degree_Celsius` |
 
 Forecast `--date` selects the **00 UTC** initialization of the resolved date
 (`init_time == <date>T00:00:00`); all supported forecast datasets publish a 00
 UTC cycle. A date with no matching init exits 1 and prints the available init
 range.
+
+The catalog does not store a native vertical axis. Pressure-level fields are
+separate 2-D variables, stacked here onto `vertical`:
+
+| Dataset | Pressure-level fields |
+|---|---|
+| `ecmwf-ifs-ens-forecast-15-day-0-25-degree`, `ecmwf-aifs-ens-forecast`, `ecmwf-aifs-single-forecast` | `temperature_{850,925}hpa`, `geopotential_height_{500,850,925}hpa` |
+| `noaa-gefs-forecast-35-day`, `noaa-gefs-analysis` | `geopotential_height_500hpa` only |
+| `noaa-gfs-forecast`, `noaa-gfs-analysis`, `dwd-icon-eu-forecast-5-day`, IMERG, MRMS | none |
+
+`-v t` / `-v gh` (or the prefixes `temperature` / `geopotential_height`) expand
+to every `*_Nhpa` field of that prefix. `temperature_2m` is not included.
 
 ## Projected (HRRR) grids
 

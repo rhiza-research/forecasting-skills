@@ -32,6 +32,7 @@ from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import require_env
 from weather_skills_core.units import (
+    convert_dataarray,
     precip_amounts_to_rates,
     stamp_data_interval,
     to_standard_units,
@@ -55,19 +56,42 @@ _EMBARGO_CHAIN_MAX_DEPTH = 8
 
 # Keep dim-like coords; drop GRIB filter scalars that collide across parameters.
 _KEEP_COORDS = frozenset(
-    {"time", "step", "latitude", "longitude", "number", "valid_time", "lat", "lon"}
+    {
+        "time",
+        "step",
+        "latitude",
+        "longitude",
+        "number",
+        "valid_time",
+        "lat",
+        "lon",
+        "vertical",
+        "isobaricInhPa",
+        "isobaricInPa",
+        "level",
+        "theta",
+    }
 )
+
+PRESSURE_LEVELS_10 = ("1000", "925", "850", "700", "500", "300", "200", "100", "50", "10")
+PRESSURE_LEVELS_7 = ("1000", "925", "850", "700", "500", "300", "200")
 
 
 class _Var(NamedTuple):
     ecds: str
     family: str  # instant = integer hours; daily = 24 h averaging windows
+    level_type: str = "single_level"
+    levels: tuple[str, ...] = ()
+    level_key: str = "pressure_level"
+    control_only: bool = False
 
 
-# Most-used first. `-v` / Zarr / metadata.variables tokens — not ARCO or ECDS spellings.
+# Most-used first, then the rest of S2S single-level + ocean. `-v` / Zarr
+# tokens are cfgrib short names (sst, not ARCO 2m_temperature).
 VARIABLES: dict[str, _Var] = {
     "tp": _Var("total_precipitation", "instant"),
     "t2m": _Var("2_m_temperature", "daily"),
+    "sst": _Var("sea_surface_temperature", "daily"),
     "d2m": _Var("2_m_dewpoint_temperature", "daily"),
     "mx2t6": _Var("maximum_2_m_temperature_in_the_last_6_hours", "instant"),
     "mn2t6": _Var("minimum_2_m_temperature_in_the_last_6_hours", "instant"),
@@ -76,31 +100,116 @@ VARIABLES: dict[str, _Var] = {
     "msl": _Var("mean_sea_level_pressure", "instant"),
     "cape": _Var("convective_available_potential_energy", "daily"),
     "tcw": _Var("total_column_water", "daily"),
+    "gh": _Var(
+        "geopotential_height",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_10,
+        control_only=True,
+    ),
+    "t": _Var(
+        "temperature", "instant", "pressure_level", PRESSURE_LEVELS_10, control_only=True
+    ),
+    "u": _Var(
+        "u_component_of_wind",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_10,
+        control_only=True,
+    ),
+    "v": _Var(
+        "v_component_of_wind",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_10,
+        control_only=True,
+    ),
+    "w": _Var(
+        "vertical_velocity",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_10,
+        control_only=True,
+    ),
+    "q": _Var(
+        "specific_humidity",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_7,
+        control_only=True,
+    ),
+    "pv": _Var(
+        "potential_vorticity",
+        "instant",
+        "potential_temperature",
+        ("320",),
+        "potential_temperature",
+        True,
+    ),
+    "skt": _Var("skin_temperature", "daily"),
+    "tcc": _Var("total_cloud_cover", "daily"),
+    "sp": _Var("surface_pressure", "instant"),
+    "lsm": _Var("land_sea_mask", "instant"),
+    "orog": _Var("orography", "instant"),
+    "slt": _Var("soil_type", "instant"),
+    "sd": _Var("snow_depth_water_equivalent", "daily"),
+    "rsn": _Var("snow_density", "daily"),
+    "asn": _Var("snow_albedo", "daily"),
+    "sm20": _Var("soil_moisture_top_20_cm", "daily"),
+    "sm100": _Var("soil_moisture_top_100_cm", "daily"),
+    "st20": _Var("soil_temperature_top_20_cm", "daily"),
+    "st100": _Var("soil_temperature_top_100_cm", "daily"),
+    "ci": _Var("sea_ice_area_fraction", "daily"),
+    "sshf": _Var("surface_sensible_heat_flux", "instant"),
+    "slhf": _Var("surface_latent_heat_flux", "instant"),
+    "ssr": _Var("surface_net_solar_radiation", "instant"),
+    "ssrd": _Var("surface_solar_radiation_downwards", "instant"),
+    "str": _Var("surface_net_thermal_radiation", "instant"),
+    "strd": _Var("surface_thermal_radiation_downwards", "instant"),
+    "ttr": _Var("top_net_thermal_radiation", "instant"),
+    "cp": _Var("convective_precipitation", "instant"),
+    "sf": _Var("snow_fall_water_equivalent", "instant"),
+    "ewss": _Var("eastward_turbulent_surface_stress", "instant"),
+    "nsss": _Var("northward_turbulent_surface_stress", "instant"),
+    "ro": _Var("water_runoff_and_drainage", "instant"),
+    "sro": _Var("surface_runoff", "instant"),
+    "t20d": _Var("depth_of_20_C_isotherm", "daily"),
+    "sav300": _Var("mean_sea_water_practical_salinity_in_the_upper_300_m", "daily"),
+    "mswpt300": _Var("mean_sea_water_potential_temperature_in_the_upper_300_m", "daily"),
+    "mlotst010": _Var(
+        "ocean_mixed_layer_thickness_defined_by_sigma_theta_0_01_kg_m_3", "daily"
+    ),
+    "ocu": _Var("u_component_of_surface_current", "daily"),
+    "ocv": _Var("v_component_of_surface_current", "daily"),
+    "sithick": _Var("sea_ice_thickness", "daily"),
+    "zos": _Var("sea_surface_height", "daily"),
+    "sos": _Var("sea_surface_pratical_salinity", "daily"),  # ECDS spelling
 }
 DEFAULT_VARIABLES = ["tp"]
 
-# cfgrib shortName / cfVarName → canonical `-v` name.
-_GRIB_ALIASES = {
-    "tp": "tp",
-    "t2m": "t2m",
+# cfgrib / S2S abbreviations that are not the canonical `-v` token.
+_GRIB_EXTRAS = {
     "2t": "t2m",
-    "d2m": "d2m",
     "2d": "d2m",
-    "mx2t6": "mx2t6",
-    "mn2t6": "mn2t6",
-    "u10": "u10",
     "10u": "u10",
-    "v10": "v10",
     "10v": "v10",
-    "msl": "msl",
-    "cape": "cape",
-    "tcw": "tcw",
+    "wtmp": "sst",
+    "z": "gh",
 }
+_GRIB_ALIASES = {name: name for name in VARIABLES} | _GRIB_EXTRAS
+
+# Kelvin fields `to_standard_units` does not treat as air temperature.
+_KELVIN_TEMPS = frozenset(
+    {"sst", "skt", "d2m", "mx2t6", "mn2t6", "st20", "st100", "mswpt300", "t"}
+)
 
 
 def _canonical_name(token: str) -> str | None:
     if token in VARIABLES:
         return token
+    extra = _GRIB_EXTRAS.get(token)
+    if extra is not None:
+        return extra
     for short, spec in VARIABLES.items():
         if token == spec.ecds:
             return short
@@ -125,11 +234,24 @@ def _resolve_variables(raw: list[str] | None) -> list[str]:
     return resolved
 
 
-def _group_by_family(names: list[str]) -> list[tuple[str, list[str]]]:
-    groups: dict[str, list[str]] = {}
+def _request_group_key(name: str) -> tuple:
+    spec = VARIABLES[name]
+    return (spec.family, spec.level_type, spec.levels, spec.control_only)
+
+
+def _group_for_request(names: list[str]) -> list[tuple[tuple, list[str]]]:
+    """Split variables so each ECDS request has one leadtime family and level set."""
+    groups: dict[tuple, list[str]] = {}
     for name in names:
-        groups.setdefault(VARIABLES[name].family, []).append(name)
+        groups.setdefault(_request_group_key(name), []).append(name)
     return list(groups.items())
+
+
+def _group_slug(key: tuple) -> str:
+    family, level_type, levels, control_only = key
+    nlev = f"{len(levels)}lev" if levels else "sfc"
+    extra = "cfonly" if control_only else "ens"
+    return f"{family}_{level_type}_{nlev}_{extra}"
 
 
 def _daily_leadtimes(hours: list[str]) -> list[str]:
@@ -179,10 +301,17 @@ def _build_request(
         raise ValueError("internal: one leadtime family per ECDS request")
     family = next(iter(families))
     leadtimes = LEADTIME_HOURS if family == "instant" else _daily_leadtimes(LEADTIME_HOURS)
+    level_types = {VARIABLES[name].level_type for name in names}
+    if len(level_types) != 1:
+        raise ValueError("internal: one level_type per ECDS request")
+    level_sets = {VARIABLES[name].levels for name in names}
+    if len(level_sets) != 1:
+        raise ValueError("internal: one level list per ECDS request")
+    spec0 = VARIABLES[names[0]]
     d = dt.date.fromisoformat(date_iso)
-    return {
+    req = {
         "origin": "ecmwf",
-        "level_type": "single_level",
+        "level_type": spec0.level_type,
         "variable": [VARIABLES[name].ecds for name in names],
         "year": [str(d.year)],
         "month": [f"{d.month:02d}"],
@@ -193,6 +322,9 @@ def _build_request(
         "area": area,
         "data_format": "grib",
     }
+    if spec0.levels:
+        req[spec0.level_key] = list(spec0.levels)
+    return req
 
 
 def _split_wrapped_area(area: list[float]) -> list[list[float]]:
@@ -244,6 +376,31 @@ def _open_grib(path: Path):
     return xr.merge(cleaned, compat="override", combine_attrs="override")
 
 
+def _promote_vertical(ds):
+    """Rename cfgrib pressure/theta coords onto the ontology ``vertical`` dim."""
+    if "vertical" in ds.dims:
+        return ds
+    for name, units, standard_name in (
+        ("isobaricInhPa", "hPa", "air_pressure"),
+        ("isobaricInPa", "Pa", "air_pressure"),
+        ("theta", "K", "air_potential_temperature"),
+        ("level", None, None),
+    ):
+        if name not in ds.coords and name not in ds.dims:
+            continue
+        if name not in ds.dims:
+            ds = ds.expand_dims(name)
+        ds = ds.rename({name: "vertical"})
+        if units:
+            ds["vertical"].attrs.setdefault("units", units)
+        if standard_name:
+            ds["vertical"].attrs.setdefault("standard_name", standard_name)
+            ds["vertical"].attrs.setdefault("positive", "down")
+        ds["vertical"].attrs.setdefault("axis", "Z")
+        return ds
+    return ds
+
+
 def _rename_to_short(ds, requested: list[str]):
     """Map cfgrib names onto canonical `-v` tokens and keep only those fields."""
     rename = {}
@@ -265,6 +422,15 @@ def _rename_to_short(ds, requested: list[str]):
     return ds[requested]
 
 
+def _to_celsius(da):
+    units = str(da.attrs.get("units") or "")
+    if units in {"degree_Celsius", "degC", "celsius"}:
+        return da
+    converted, _ = convert_dataarray(da, "degree_Celsius")
+    converted.attrs["units"] = "degree_Celsius"
+    return converted
+
+
 def _standardize(ds):
     """CF attrs + standard units. S2S ``tp`` is cumulative; convert to a rate."""
     stamp_cf_attrs(ds)
@@ -273,6 +439,9 @@ def _standardize(ds):
         ds["tp"].attrs["units"] = "kg m-2"
         ds["tp"].attrs["long_name"] = "Total precipitation"
     ds = to_standard_units(ds)
+    for name in _KELVIN_TEMPS:
+        if name in ds.data_vars:
+            ds[name] = _to_celsius(ds[name])
     ds = precip_amounts_to_rates(ds)
     return stamp_data_interval(ds)
 
@@ -302,9 +471,9 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
     "-v",
     action="append",
     help=(
-        "S2S field to retrieve (repeatable). Most used first: tp, t2m. "
-        "Default tp. Names are cfgrib short names, not ARCO 2m_temperature "
-        "or ECDS 2_m_temperature."
+        "S2S field to retrieve (repeatable). Most used first: tp, t2m, sst. "
+        "Pressure-level: gh, t, u, v, w, q. Default tp. Names are cfgrib short "
+        "names (sst, t, not ARCO 2m_temperature)."
     ),
 )
 @weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
@@ -337,23 +506,25 @@ def fetch(bbox, date, variable, **kwargs):
         tmp = Path(tmpdir)
         sub_areas = _split_wrapped_area(area)
         client = Client()
-        groups = _group_by_family(names)
+        groups = _group_for_request(names)
 
         legs = []
-        for family, family_vars in groups:
-            for forecast_type, short in (
-                ("control_forecast", "cf"),
-                ("perturbed_forecast", "pf"),
-            ):
+        for key, group_vars in groups:
+            slug = _group_slug(key)
+            control_only = key[3]
+            forecast_types = [("control_forecast", "cf")]
+            if not control_only:
+                forecast_types.append(("perturbed_forecast", "pf"))
+            for forecast_type, short in forecast_types:
                 for i, sub in enumerate(sub_areas):
                     legs.append(
                         {
-                            "family": family,
-                            "family_vars": family_vars,
+                            "key": key,
+                            "group_vars": group_vars,
                             "forecast_type": forecast_type,
                             "short": short,
                             "area": sub,
-                            "grib": tmp / f"{short}_{family}_{i}.grib",
+                            "grib": tmp / f"{short}_{slug}_{i}.grib",
                             "remote": None,
                         }
                     )
@@ -362,7 +533,7 @@ def fetch(bbox, date, variable, **kwargs):
         try:
             for leg in legs:
                 req = _build_request(
-                    date_iso, leg["area"], leg["forecast_type"], leg["family_vars"]
+                    date_iso, leg["area"], leg["forecast_type"], leg["group_vars"]
                 )
                 leg["remote"] = _submit(client, req)
         except DataError:
@@ -415,21 +586,24 @@ def fetch(bbox, date, variable, **kwargs):
 
         print("Decoding GRIB and writing Zarr...", file=sys.stderr)
         family_ensembles = []
-        for family, family_vars in groups:
+        for key, group_vars in groups:
             cf_parts = [
                 _open_grib(leg["grib"])
                 for leg in legs
-                if leg["family"] == family and leg["forecast_type"] == "control_forecast"
+                if leg["key"] == key and leg["forecast_type"] == "control_forecast"
             ]
             pf_parts = [
                 _open_grib(leg["grib"])
                 for leg in legs
-                if leg["family"] == family and leg["forecast_type"] == "perturbed_forecast"
+                if leg["key"] == key and leg["forecast_type"] == "perturbed_forecast"
             ]
-            cf = _concat_lon(cf_parts).assign_coords(number=0)
-            pf = _concat_lon(pf_parts)
-            ens = xr.concat([pf, cf], dim="number").sortby("number")
-            family_ensembles.append(_rename_to_short(ens, family_vars))
+            cf = _promote_vertical(_concat_lon(cf_parts).assign_coords(number=0))
+            if pf_parts:
+                pf = _promote_vertical(_concat_lon(pf_parts))
+                ens = xr.concat([pf, cf], dim="number").sortby("number")
+            else:
+                ens = cf
+            family_ensembles.append(_rename_to_short(ens, group_vars))
         ds = (
             family_ensembles[0]
             if len(family_ensembles) == 1

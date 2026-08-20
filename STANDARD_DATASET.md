@@ -7,4 +7,4 @@ every standard-dataset Zarr and figure PNG carries.
 
 The enforced definition of the standard dataset, its attributes, and the
 `weather_skills_history` schema lives in weather-skills-core:
-[skills/weather-skill-authoring/references/STANDARD_DATASET.md](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md).
+[docs/weather-skill-authoring/references/STANDARD_DATASET.md](https://github.com/rhiza-research/weather-skills-core/blob/main/docs/weather-skill-authoring/references/STANDARD_DATASET.md).

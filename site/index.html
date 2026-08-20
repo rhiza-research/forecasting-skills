@@ -285,7 +285,7 @@ forecasting-skills clip-region \
     coordinates, data variables, and <code>weather_skills_*</code> attributes
     — never on per-variable codec encoding — which keeps skills independent
     across library versions. The full contract is documented in
-    <a href="https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/STANDARD_DATASET.md">STANDARD_DATASET.md</a>.
+    <a href="https://github.com/rhiza-research/weather-skills-core/blob/main/docs/weather-skill-authoring/references/STANDARD_DATASET.md">STANDARD_DATASET.md</a>.
   </p>
   <div class="schema-pair">
     <div class="schema">
@@ -317,7 +317,7 @@ prediction_timedelta</code></pre>
     (<code>convert-to-totals</code>). Those totals helpers refuse inputs that
     are already amounts, so multiplying by the period cannot double-count.
     See
-    <a href="https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/UNITS.md">UNITS.md</a>
+    <a href="https://github.com/rhiza-research/weather-skills-core/blob/main/docs/weather-skill-authoring/references/UNITS.md">UNITS.md</a>
     for the full units contract.
   </p>
 </section>
@@ -333,6 +333,10 @@ prediction_timedelta</code></pre>
     environment variables; each skill's
     <a href="https://github.com/rhiza-research/forecasting-skills/tree/main/skills">compatibility notes</a>
     name the specific variables.
+    Prefer <code>dynamical-fetch</code> when the dynamical.org catalog has the
+    dataset (GFS, GEFS, ECMWF IFS-ENS, AIFS, and others) — it needs no
+    credentials. Use <code>ecmwf-fetch</code> for ECMWF S2S, and other
+    source-specific fetchers when the catalog does not carry the product.
   </p>
 
   <!-- gen:catalog -->

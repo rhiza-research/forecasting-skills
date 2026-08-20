@@ -6,4 +6,4 @@ skills shares one canonical name. Date flags take absolute `YYYY-MM-DD` only;
 resolve relative dates before calling a skill.
 
 The canonical, enforced mapping of concept to flag name lives in weather-skills-core:
-[skills/weather-skill-authoring/references/CONVENTIONS.md](https://github.com/rhiza-research/weather-skills-core/blob/main/skills/weather-skill-authoring/references/CONVENTIONS.md).
+[docs/weather-skill-authoring/references/CONVENTIONS.md](https://github.com/rhiza-research/weather-skills-core/blob/main/docs/weather-skill-authoring/references/CONVENTIONS.md).

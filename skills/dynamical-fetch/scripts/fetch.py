@@ -12,6 +12,7 @@
 # ///
 """Fetch a dynamical.org open-catalog dataset and write a weather-skills standard dataset Zarr."""
 
+import re
 import sys
 
 from pathlib import Path
@@ -32,6 +33,89 @@ _DROP_COORDS = (
     "ingested_forecast_length",
     "spatial_ref",
 )
+
+# Catalog stores selected pressure-level fields as separate 2-D variables
+# (`temperature_850hpa`). Stack those onto the ontology `vertical` dim.
+_HPA_RE = re.compile(r"^(.+)_(\d+)hpa$")
+_HPA_ALIASES = {"t": "temperature", "gh": "geopotential_height"}
+
+
+def _hpa_by_prefix(data_vars) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {}
+    for name in data_vars:
+        match = _HPA_RE.match(name)
+        if match:
+            groups.setdefault(match.group(1), []).append(name)
+    return groups
+
+
+def _resolve_variables(requested, data_vars, dataset: str):
+    """Map `-v` tokens onto catalog names.
+
+    Catalog-exact names pass through. A prefix (`temperature`) or short alias
+    (`t`, `gh`) expands to every `*_Nhpa` field of that prefix — not to
+    height-above-ground companions like `temperature_2m`.
+    """
+    if not requested:
+        return None
+    name_set = set(data_vars)
+    hpa = _hpa_by_prefix(data_vars)
+    resolved: list[str] = []
+    seen: set[str] = set()
+    missing: list[str] = []
+    for token in requested:
+        prefix = _HPA_ALIASES.get(token, token)
+        if token in name_set:
+            if token not in seen:
+                resolved.append(token)
+                seen.add(token)
+            continue
+        kids = hpa.get(prefix)
+        if kids:
+            for kid in sorted(kids, key=lambda n: -int(_HPA_RE.match(n).group(2))):
+                if kid not in seen:
+                    resolved.append(kid)
+                    seen.add(kid)
+            continue
+        missing.append(token)
+    if missing:
+        raise UsageError(
+            f"variable(s) not in {dataset}: {', '.join(missing)}.\n"
+            f"Available: {', '.join(sorted(data_vars))}"
+        )
+    return resolved
+
+
+def _stack_pressure_levels(ds):
+    """Combine `*_Nhpa` variables into one field with a `vertical` (hPa) dim."""
+    import xarray as xr
+
+    groups: dict[str, list[tuple[int, str]]] = {}
+    for name in ds.data_vars:
+        match = _HPA_RE.match(name)
+        if match:
+            groups.setdefault(match.group(1), []).append((int(match.group(2)), name))
+    if not groups:
+        return ds
+
+    drop = [name for items in groups.values() for _, name in items]
+    pieces = [ds.drop_vars(drop)]
+    for prefix, items in groups.items():
+        items = sorted(items, key=lambda it: -it[0])
+        stacked = xr.concat(
+            [ds[name].expand_dims(vertical=[float(hpa)]) for hpa, name in items],
+            dim="vertical",
+        )
+        stacked.name = prefix
+        stacked["vertical"].attrs.update(
+            units="hPa",
+            standard_name="air_pressure",
+            long_name="pressure",
+            positive="down",
+            axis="Z",
+        )
+        pieces.append(stacked.to_dataset())
+    return xr.merge(pieces)
 
 
 def _open_dataset(state, dataset) -> dict:
@@ -155,13 +239,8 @@ def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
         ds = ds.drop_vars([c for c in _DROP_COORDS if c in ds.coords])
 
     if variable:
-        missing = [v for v in variable if v not in ds.data_vars]
-        if missing:
-            raise UsageError(
-                f"variable(s) not in {dataset}: {', '.join(missing)}.\n"
-                f"Available: {', '.join(sorted(ds.data_vars))}"
-            )
-        ds = ds[variable]
+        ds = ds[_resolve_variables(variable, ds.data_vars, dataset)]
+    ds = _stack_pressure_levels(ds)
 
     print(f"Fetching dynamical:{dataset} (shape={shape})", file=sys.stderr)
 

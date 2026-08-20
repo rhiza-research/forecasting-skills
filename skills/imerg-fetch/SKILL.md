@@ -24,6 +24,10 @@ Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess
 
 - Need recent IMERG rainfall for a forecast-verification or station-comparison task.
 
+Prefer `dynamical-fetch` `--dataset nasa-imerg-analysis-early` or
+`nasa-imerg-analysis-late` when half-hourly IMERG is enough (credential-free).
+This skill is **daily** late/final via Earthdata.
+
 ## Usage
 
 ```
