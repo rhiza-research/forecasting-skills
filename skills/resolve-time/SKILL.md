@@ -34,7 +34,9 @@ This script does **not** parse free-text English. Mapping a phrase to a query
 token is the agent's job — the model is good at that. The script does the
 deterministic calendar math, the UTC clock, and the product embargo.
 
-Map the phrase, then call `resolve.py <TOKEN> --product <skill>`:
+Map the phrase, then call `resolve.py <TOKEN> --product <skill>` (or
+`skill:dataset` when the fetcher has more than one time shape, e.g.
+`dynamical-fetch:noaa-gfs-forecast`):
 
 | Phrase | Token |
 |---|---|
@@ -68,19 +70,21 @@ TIME=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py last-2w --product chirps-fe
     --as-of 2026-08-20)
 # TIME is --start-time 2026-08-02 --end-time 2026-08-15
 
-# Latest ECMWF S2S init outside the 2-day embargo:
-INIT=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py latest --product ecmwf-fetch \
-    --as-of 2026-08-20)
-# INIT is --date 2026-08-18
+# Latest GFS forecast init from dynamical.org (not bare dynamical-fetch):
+INIT=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py latest \
+    --product dynamical-fetch:noaa-gfs-forecast --as-of 2026-08-20)
+# INIT is --date 2026-08-19
 ```
 
 ### Arguments
 
 - `query` (positional) — token from the table above. Not English.
-- `--product` — fetcher skill name (`chirps-fetch`, `ecmwf-fetch`,
-  `imerg-fetch`, `imerg-fetch:final`, `arco-era5-fetch`, …). Optional: omit
+- `--product` — catalog key: the fetcher skill (`chirps-fetch`, `ecmwf-fetch`)
+  or `skill:dataset` when one skill serves several clocks
+  (`dynamical-fetch:noaa-gfs-forecast`, `imerg-fetch:final`). Optional: omit
   only when no fetcher follows (then `latest` is today's UTC date and there
-  is no lag). `--list-products` prints the catalog.
+  is no lag). `--list-products` prints the catalog. Bare `dynamical-fetch`
+  is an error that lists the dataset keys.
 - `--as-of` — clock date `YYYY-MM-DD`. Default: today's date in UTC. Pass it
   to reproduce a window or to honor an explicit "as of Friday".
 - `--emit` — `flags` (default; splice onto the next skill), `iso`
@@ -127,9 +131,9 @@ These are conservative "available through" values so the next fetch does not
 open on a missing tail. They are not a live inventory of the remote store.
 
 Each fetcher declares the lag on `metadata.availability` in its SKILL.md
-(core owns the calendar math). This skill reads a generated snapshot of that
-frontmatter — run `--list-products` for the live catalog. Do not copy the
-table here; it would drift.
+(core owns the calendar math). This skill reads those files from the sibling
+skills directory at runtime — run `--list-products` for the catalog. Do not
+copy the table here; it would drift.
 
 `--list-products` prints skill name, shape, and lag. An absolute range that
 overruns `available_through` is clipped (stderr says so). A range that starts
@@ -141,8 +145,9 @@ after coverage ends, or before coverage begins and collapses, exits 2.
 # Last two weeks of CHIRPS (pentad-aware); splice stdout onto chirps-fetch:
 TIME=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py last-2w --product chirps-fetch)
 
-# Latest allowed S2S init; splice stdout onto ecmwf-fetch:
-INIT=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py latest --product ecmwf-fetch)
+# Latest GFS forecast init; splice stdout onto dynamical-fetch --dataset:
+INIT=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py latest \
+    --product dynamical-fetch:noaa-gfs-forecast)
 
 # Pin the clock (tests / "as of 1 August"):
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py last-7d --product imerg-fetch \

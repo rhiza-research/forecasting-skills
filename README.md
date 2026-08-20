@@ -48,6 +48,7 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 | `difference` | Subtract one dataset from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
 | `plot` | Heatmap (optionally restricted to a `--bbox` and/or masked to a `--mask-geojson` polygon) or timeseries PNG from one dataset |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
+| `plot-compare-forecasts` | N-dataset comparison grid (rows = forecasts and/or gridded obs; columns = union of times); missing times are blank `n/a` cells |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
 | `kenya-forecast-png` | Pre-rendered KMSA / Sheerwater Kenya forecast product PNGs from the public kenya-forecasts archive (credential-free) |
 

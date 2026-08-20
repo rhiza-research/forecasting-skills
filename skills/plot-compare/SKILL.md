@@ -70,6 +70,9 @@ end − bin_width + 1 day. Matches `aggregate-temporal` and
 - Validating a satellite product against station observations for a country.
 - Comparing two forecasts (e.g. model A vs. model B) on the same axes.
 
+For N gridded datasets as a valid-time grid with blank cells where a
+dataset has no matching time, use `plot-compare-forecasts`.
+
 ## Usage
 
 ```

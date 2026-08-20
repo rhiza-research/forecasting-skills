@@ -29,6 +29,7 @@ from weather_skills_core.units import (
     format_duration,
     infer_timestep,
     parse_aggregation_period,
+    stamp_data_interval,
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -149,7 +150,11 @@ def _weighted_mean(ds, dim, indices, weights):
     return (sub * wda).sum(dim=dim, skipna=True, keep_attrs=True) / wda.sum()
 
 
-def _aggregate_from_bounds(ds, dim, spec, method, bins, *, keep_partial: bool):
+def _empty_bins_message(spec, dim):
+    return f"no {spec['key']} bins contained samples on {dim}"
+
+
+def _aggregate_from_bounds(ds, dim, spec, method, bins):
     """Duration-weight samples into ``bins`` of ``(left, right, label)``."""
     import numpy as np
     import xarray as xr
@@ -159,7 +164,6 @@ def _aggregate_from_bounds(ds, dim, spec, method, bins, *, keep_partial: bool):
     ends = _as_ns(bounds[:, 1])
     work = _drop_bounds(ds, dim)
     chunks, labels, coverages = [], [], []
-    dropped = 0
     for left, right, label in bins:
         left_ns = int(np.asarray(_as_ns(left)).reshape(-1)[0])
         right_ns = int(np.asarray(_as_ns(right)).reshape(-1)[0])
@@ -173,23 +177,14 @@ def _aggregate_from_bounds(ds, dim, spec, method, bins, *, keep_partial: bool):
             continue
         covered = float(overlap[idx].sum())
         coverage = min(1.0, covered / period_ns)
-        if not keep_partial and coverage < 1.0 - 1e-9:
-            dropped += 1
-            continue
         if method == "mean":
             chunks.append(_weighted_mean(work, dim, idx, overlap[idx]))
         else:
             chunks.append(_reduce(work.isel({dim: idx}), method=method, dim=dim))
         labels.append(label)
         coverages.append(coverage)
-    if dropped:
-        print(
-            f"dropped {dropped} incomplete {spec['key']} bin(s); "
-            "pass --keep-partial to retain",
-            file=sys.stderr,
-        )
     if not chunks:
-        return ds.isel({dim: slice(0, 0)})
+        raise UsageError(_empty_bins_message(spec, dim))
     out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
     return _assign_coverage(out, dim, coverages)
 
@@ -270,8 +265,8 @@ def _expected_from_interval(spec, label, native_interval, timestep_days: float) 
     )
 
 
-def _aggregate_time_resample(ds, dim, spec, method, *, keep_partial: bool):
-    """Forward calendar resample; drop incomplete bins unless ``keep_partial``."""
+def _aggregate_time_resample(ds, dim, spec, method):
+    """Forward calendar resample; stamp ``aggregation_coverage`` on every bin with samples."""
     import numpy as np
     import xarray as xr
 
@@ -291,48 +286,33 @@ def _aggregate_time_resample(ds, dim, spec, method, *, keep_partial: bool):
                 left = np.datetime64(label)
                 right = left + np.timedelta64(spec["anchor_days"], "D")
             bins.append((left, right, left if hasattr(label, "calendar") else np.datetime64(label)))
-        return _aggregate_from_bounds(
-            ds, dim, spec, method, bins, keep_partial=keep_partial
-        )
+        return _aggregate_from_bounds(ds, dim, spec, method, bins)
 
     timestep_days = _timestep_days(ds, dim)
     native_interval = _coverage_cell(ds)
     resampler = ds.resample({dim: freq})
     n = ds.sizes[dim]
     chunks, labels, coverages = [], [], []
-    dropped = 0
     for label, group in resampler.groups.items():
         indices = _group_indices(group, n)
         if not indices:
             continue
         expected = _expected_from_interval(spec, label, native_interval, timestep_days)
-        if not keep_partial and len(indices) < expected:
-            dropped += 1
-            continue
         chunks.append(_reduce(ds.isel({dim: indices}), method=method, dim=dim))
         labels.append(np.datetime64(label) if not hasattr(label, "calendar") else label)
         coverages.append(_coverage_fraction(len(indices), expected))
-    if dropped:
-        print(
-            f"dropped {dropped} incomplete {spec['key']} bin(s); "
-            "pass --keep-partial to retain",
-            file=sys.stderr,
-        )
     if not chunks:
-        return ds.isel({dim: slice(0, 0)})
+        raise UsageError(_empty_bins_message(spec, dim))
     out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
     return _assign_coverage(out, dim, coverages)
 
 
-def _aggregate_time_anchored(
-    ds, dim, spec, method, end_time, *, keep_partial: bool, start_time=None
-):
+def _aggregate_time_anchored(ds, dim, spec, method, end_time, *, start_time=None):
     """Backward fixed-width bins ending at ``end_time``.
 
     Walks while the bin's right edge is still after the effective data start,
-    then keeps bins that contain samples. Incomplete bins (fewer samples than
-    a full period) are dropped unless ``keep_partial``. Optional ``start_time``
-    raises the earliest coverage floor.
+    then keeps bins that contain samples and stamps ``aggregation_coverage``.
+    Optional ``start_time`` raises the earliest coverage floor.
     """
     import numpy as np
     import xarray as xr
@@ -340,7 +320,7 @@ def _aggregate_time_anchored(
     period_days = spec["anchor_days"]
     raw = np.asarray(ds[dim].values)
     if raw.size == 0:
-        return ds.isel({dim: slice(0, 0)})
+        raise UsageError(_empty_bins_message(spec, dim))
     if raw.dtype.kind == "O" and hasattr(raw.flat[0], "calendar"):
         import cftime
 
@@ -391,35 +371,23 @@ def _aggregate_time_anchored(
     bins.reverse()
     if _cf_bounds(ds, dim) is not None:
         bound_bins = [(left, right, label(right)) for left, right in bins]
-        return _aggregate_from_bounds(
-            ds, dim, spec, method, bound_bins, keep_partial=keep_partial
-        )
+        return _aggregate_from_bounds(ds, dim, spec, method, bound_bins)
     chunks, labels, coverages = [], [], []
-    dropped = 0
     for left, right in bins:
         keep = np.nonzero((raw > left) & (raw <= right))[0]
         if keep.size == 0:
             continue
         expected = _expected_from_interval(spec, right, native_interval, timestep_days)
-        if not keep_partial and keep.size < expected:
-            dropped += 1
-            continue
         chunks.append(_reduce(ds.isel({dim: keep}), method=method, dim=dim))
         labels.append(label(right))
         coverages.append(_coverage_fraction(keep.size, expected))
-    if dropped:
-        print(
-            f"dropped {dropped} incomplete {spec['key']} bin(s); "
-            "pass --keep-partial to retain",
-            file=sys.stderr,
-        )
     if not chunks:
-        return ds.isel({dim: slice(0, 0)})
+        raise UsageError(_empty_bins_message(spec, dim))
     out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
     return _assign_coverage(out, dim, coverages)
 
 
-def _aggregate_step(ds, spec, method, *, keep_partial: bool):
+def _aggregate_step(ds, spec, method):
     import numpy as np
     import pandas as pd
     import xarray as xr
@@ -435,19 +403,13 @@ def _aggregate_step(ds, spec, method, *, keep_partial: bool):
         bins = []
         for left in edges[:-1]:
             right = left + window
-            if right > max_step and not keep_partial:
-                continue
             bins.append((left, right, left + window))
-        return _aggregate_from_bounds(
-            ds, "step", spec, method, bins, keep_partial=keep_partial
-        )
+        return _aggregate_from_bounds(ds, "step", spec, method, bins)
     native_interval = _coverage_cell(ds)
     timestep_days = _timestep_days(ds, "step")
     chunks, labels, coverages = [], [], []
     for left in edges[:-1]:
         right = left + window
-        if right > max_step:
-            continue
         mask = (steps > left) & (steps <= right)
         if not mask.any():
             continue
@@ -457,7 +419,7 @@ def _aggregate_step(ds, spec, method, *, keep_partial: bool):
         labels.append(left + window)
         coverages.append(_coverage_fraction(n_present, expected))
     if not chunks:
-        return ds.isel(step=slice(0, 0))
+        raise UsageError(_empty_bins_message(spec, "step"))
     out = xr.concat(chunks, dim="step").assign_coords(step=labels)
     return _assign_coverage(out, "step", coverages)
 
@@ -531,15 +493,6 @@ def _rolling_aggregation_period(ds, dim, window, interval):
     default=None,
     help="With --period and --end-time: optional earliest coverage floor.",
 )
-@weather_skill.argument(
-    "--keep-partial",
-    action="store_true",
-    help=(
-        "Keep incomplete calendar bins (e.g. a trailing week with fewer than "
-        "7 daily samples). Default drops them so convert-to-totals does not "
-        "scale a partial mean up to a full aggregation_period."
-    ),
-)
 def aggregate(
     ds,
     output,
@@ -552,7 +505,6 @@ def aggregate(
     method,
     end_time,
     start_time,
-    keep_partial,
     **kwargs,
 ):
     """Temporal aggregation of rates: calendar resample, rolling, or step buckets."""
@@ -564,8 +516,6 @@ def aggregate(
         raise UsageError("--start-time/--end-time cannot be combined with --window")
     if start_time is not None and end_time is None:
         raise UsageError("--start-time requires --end-time")
-    if window is not None and keep_partial:
-        raise UsageError("--keep-partial applies to --period only, not --window")
     if window is None and stride is not None:
         raise UsageError("--stride requires --window")
     if window is None and align != "left":
@@ -589,6 +539,12 @@ def aggregate(
             raise UsageError(f"no time/step dim in {list(ds.dims)}; pass --time-dim")
 
     has_bounds = _cf_bounds(ds, dim) is not None
+    if not has_bounds:
+        try:
+            ds = stamp_data_interval(ds, dim=dim)
+        except UsageError:
+            pass
+        has_bounds = _cf_bounds(ds, dim) is not None
     native_interval = None if has_bounds else _native_interval(ds, dim)
     interval = native_interval
     if not has_bounds:
@@ -621,13 +577,7 @@ def aggregate(
 
     spec = _resolve_period(period)
     if dim == "step":
-        out = _aggregate_step(ds, spec, method, keep_partial=keep_partial)
-        if keep_partial and not has_bounds:
-            print(
-                "--keep-partial has no effect on step aggregation "
-                "(incomplete step bins are never emitted)",
-                file=sys.stderr,
-            )
+        out = _aggregate_step(ds, spec, method)
         if end_time is not None or start_time is not None:
             print(
                 "--start-time/--end-time have no effect on step aggregation",
@@ -640,13 +590,10 @@ def aggregate(
             spec,
             method,
             end_time,
-            keep_partial=keep_partial,
             start_time=start_time,
         )
     else:
-        out = _aggregate_time_resample(
-            ds, dim, spec, method, keep_partial=keep_partial
-        )
+        out = _aggregate_time_resample(ds, dim, spec, method)
 
     return _stamp_attrs(
         out, dim, spec["agg"], method, interval, data_interval=native_interval

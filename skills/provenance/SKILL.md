@@ -78,9 +78,9 @@ nothing needs to be installed first — `uvx` fetches the CLI on demand.
   `--input`; intermediates write to `stepN.zarr` and the final step writes the
   artifact's own name.
 - A two-input plot (`plot-compare`, `plot-mediogram`) or any multi-branch PNG
-  reproduces each input branch to a distinctly-named file, then emits one final
-  plot command that takes every branch's output as an input (e.g.
-  `plot-compare --input a.zarr --input b.zarr`).
+  (`plot-compare-forecasts`, …) reproduces each input branch to a distinctly-named
+  file, then emits one final plot command that takes every branch's output as
+  an input (e.g. `plot-compare --input a.zarr --input b.zarr`).
 - A `concat` zarr records each input's full chain under the concat entry, so it
   reproduces every input branch (labeled `a`, `b`, … by input order) to its own
   `{letter}.zarr`, then emits one final `concat` command that threads every

@@ -1,6 +1,6 @@
 ---
 name: resolve-region
-description: Resolve an ISO 3166-1 alpha-3 country code, a sub-national region (state, province, county), or a leftover landmark name to a lat/lon bbox and optionally a boundary polygon GeoJSON. Use when you need to turn a country, county, or named place into a `--bbox N/W/S/E` value (or a polygon mask) for clip-region, ecmwf-fetch, plot, or plot-compare. Prefer ISO3 / country-admin1 keys; Nominatim is the fallback for landmarks.
+description: Resolve an ISO 3166-1 alpha-3 country code, a Natural Earth multi-country region (East Africa, Western Africa), a sub-national region (state, province, county), or a leftover landmark name to a lat/lon bbox and optionally a boundary polygon GeoJSON. Use when you need to turn a country, county, or named place into a `--bbox N/W/S/E` value (or a polygon mask) for clip-region, ecmwf-fetch, plot, or plot-compare. Prefer ISO3 / country-admin1 / Natural Earth region names; Nominatim is the fallback for landmarks.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py *)
@@ -10,41 +10,49 @@ metadata:
 
 # resolve-region
 
-Look up a bounding box and boundary polygon for a country, a sub-national
-administrative unit, or a leftover place name (landmark, city that is not an
-admin key). The script prints a `N/W/S/E` bbox suitable for the `--bbox` flag
-of the other skills, and can optionally write the boundary polygon as a GeoJSON
-file for use as a `--mask-geojson` / `--geojson` polygon mask.
+Look up a bounding box and boundary polygon for a country, a named
+multi-country region, a sub-national administrative unit, or a leftover place
+name (landmark, city that is not an admin key). The script prints a `N/W/S/E`
+bbox suitable for the `--bbox` flag of the other skills, and can optionally
+write the boundary polygon as a GeoJSON file for use as a `--mask-geojson` /
+`--geojson` polygon mask.
 
 Countries come from a bundled Natural Earth 1:110m admin-0 dataset, keyed by
-ISO 3166-1 alpha-3 (`iso3`). States, provinces, and counties come from
+ISO 3166-1 alpha-3 (`iso3`). Multi-country names dissolve those countries by
+Natural Earth's continent / UN subregion / World Bank region labels. States,
+provinces, and counties come from
 [geoBoundaries](https://www.geoboundaries.org) `gbOpen` (ADM1 / ADM2), fetched
-on demand per country via the public API. Queries that are not an ISO3 code or
-admin key fall through to [OSM Nominatim](https://nominatim.org) (`limit=1`).
+on demand per country via the public API. Queries that are not an ISO3 code,
+Natural Earth region, or admin key fall through to
+[OSM Nominatim](https://nominatim.org) (`limit=1`).
 
 ## When to use
 
 - Turning a country into a `--bbox` value for `clip-region`, `ecmwf-fetch`,
   `plot`, or `plot-compare`.
+- Turning a Natural Earth multi-country region (East Africa, Western Africa)
+  into a bbox without hitting Nominatim.
 - Turning a county / state / province into a bbox or a boundary polygon.
 - Turning a landmark (Mount Kenya, a lake, a city that is not an admin unit)
-  into a bbox when you do not have an ISO3 / `country-admin1` key.
+  into a bbox when you do not have an ISO3 / `country-admin1` / named-region key.
 - Producing a boundary polygon (`--geojson`) to feed `plot-compare`'s
   `--mask-geojson` or `clip-region`'s `--geojson` so grid cells outside the
   region are masked.
 
-Prefer ISO3 and hierarchical admin keys when you have them — those lookups are
-offline (countries) or geoBoundaries (ADM1/ADM2) and do not hit Nominatim.
+Prefer ISO3, named regions, and hierarchical admin keys when you have them —
+those lookups are offline and do not hit Nominatim.
 
 ## Division of labor
 
-The agent maps a country to uppercase ISO3 and a county to a hierarchical
-admin key. This script does that deterministic geometry lookup first.
-Leftover free text that is **not** an ISO3-shaped token and **not** a
+The agent maps a country to uppercase ISO3, a multi-country domain to a named
+region (`East Africa`), and a county to a hierarchical admin key. This script
+does that deterministic geometry lookup first. Leftover free text that is
+**not** an ISO3-shaped token, **not** a named region, and **not** a
 `country-admin…` key is sent to Nominatim (one search, first hit). Misspelled
 admin keys (`kenya-nairbi`) error instead of guessing via OSM. Disambiguate
 landmarks by passing a more specific string (`Mount Kenya, Kenya`), not extra
-flags.
+flags. Do **not** send "East Africa" to Nominatim — OSM's first hit is a
+POI, not the geographic region.
 
 ### Countries
 
@@ -82,6 +90,23 @@ hyphens (`kenya-elgeyo-marakwet` is ADM1 Elgeyo-Marakwet, not admin-2). The
 script matches the full remainder against ADM1 `shapeName`, then ADM2
 `shapeName`, then `admin1-admin2` using ADM1 as a prefix.
 
+### Named regions (Natural Earth groupings)
+
+Pass the region as written (`East Africa`, `Western Africa`,
+`Sub-Saharan Africa`). The script dissolves the bundled Natural Earth 1:110m
+countries by `SUBREGION` / `CONTINENT` / `REGION_UN` / `REGION_WB` **before**
+Nominatim. OSM's first hit for "East Africa" is a POI, not the geographic
+region.
+
+Directional short forms map onto Natural Earth's labels when they do not
+collide with a primary name: `East Africa` → `Eastern Africa`,
+`West Africa` → `Western Africa`, `Central Africa` → `Middle Africa`.
+Country names still win (`South Africa` is ZAF, not Southern Africa).
+
+`--geojson` writes the member-country MultiPolygon. `level` is `region`.
+This is the Natural Earth / UN-style Eastern Africa (includes Madagascar,
+Mozambique, Zambia), not a custom forecast box.
+
 ### Landmarks (Nominatim fallback)
 
 Pass the place as written (`Mount Kenya`, `Lake Victoria, Kenya`). Do not
@@ -110,6 +135,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN
 
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN-nairobi
+uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "East Africa"
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Mount Kenya, Kenya"
 ```
 
@@ -122,9 +148,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi --geojson /tmp/nairo
 
 ### Arguments
 
-- `code` (positional) — uppercase ISO3 (`KEN`), a sub-national region
-  (`kenya-nairobi`, `KEN-nairobi`, `kenya-nairobi-westlands`), or a leftover
-  landmark (`Mount Kenya, Kenya`).
+- `code` (positional) — uppercase ISO3 (`KEN`), a named region (`East Africa`),
+  a sub-national region (`kenya-nairobi`, `KEN-nairobi`,
+  `kenya-nairobi-westlands`), or a leftover landmark (`Mount Kenya, Kenya`).
 - `--geojson` — optional path; writes the boundary polygon as a
   single-feature GeoJSON `FeatureCollection` (in addition to printing the bbox).
   Nominatim polygons are used when OSM returns Polygon/MultiPolygon; otherwise
@@ -135,9 +161,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi --geojson /tmp/nairo
 - stdout: one line, `N/W/S/E` (max lat / min lon / min lat / max lon) in decimal
   degrees — the value shape consumed by `--bbox` on the other skills.
 - `--geojson PATH`: a GeoJSON `FeatureCollection` with the one matching feature.
-  Properties: `iso3`, `name`, `region_name`, `level` (`country` / `admin_1` /
-  `admin_2` / `nominatim`), `country`. Nominatim hits also have `display_name`
-  and `bbox` (`N, W, S, E`); `iso3` / `country` may be null.
+  Properties: `iso3`, `name`, `region_name`, `level` (`country` / `region` /
+  `admin_1` / `admin_2` / `nominatim`), `country`. Named regions and Nominatim
+  hits also have `bbox` (`N, W, S, E`); `iso3` / `country` may be null.
 
 Unknown codes, lowercase 3-letter tokens, and alpha-2 codes exit non-zero with
 an explanation on stderr. Unknown sub-national names do too (the parent country
@@ -167,6 +193,9 @@ BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN)
 # Resolve a Kenyan county (geoBoundaries ADM1) and mask with its polygon:
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi --geojson /tmp/nairobi.json
 
+# Named multi-country region (Natural Earth Eastern Africa; not Nominatim):
+BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "East Africa")
+
 # Landmark bbox (Nominatim). stderr shows the OSM display_name:
 BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Mount Kenya, Kenya")
 
@@ -186,6 +215,10 @@ correct ISO alpha-3 for the cases NE-internal codes get wrong (e.g. `PSE` for
 Palestine, not NE's `PSX`). `ISO_A3` has five `-99` gaps, filled at build time
 with a fixed patch: France → `FRA`, Norway → `NOR`, Kosovo → `XKX`, N. Cyprus →
 `CYN`, Somaliland → `SOL`.
+
+**Named regions.** Natural Earth continent / UN subregion / World Bank region
+labels, joined to the bundled countries (offline). `East Africa` is the
+`Eastern Africa` subregion, not a Nominatim POI.
 
 **Sub-national.** [geoBoundaries](https://www.geoboundaries.org) `gbOpen` ADM1
 and ADM2, CC BY 4.0 (attribution). Looked up through

@@ -36,6 +36,9 @@ For a single-input quick-look, use the `plot` skill with
 - Plotting a single dataset as a 1D timeseries when you want explicit
   control over which dims are reduced.
 
+For maps of N forecasts (or forecasts vs gridded obs) over time, use
+`plot-compare-forecasts`.
+
 ## Usage
 
 ```

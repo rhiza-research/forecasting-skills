@@ -42,6 +42,8 @@ def step_to_time(ds, **kwargs):
         init_iso = str(np.datetime_as_string(init.values.astype("datetime64[s]")))
     drop = ["time"] + (["valid_time"] if "valid_time" in ds.variables else [])
     bound_name = ds["step"].attrs.get("bounds") if "step" in ds.coords else None
+    if not (isinstance(bound_name, str) and bound_name in ds) and "step_bounds" in ds:
+        bound_name = "step_bounds"
     out = ds.drop_vars(drop).rename({"step": "time"}).assign_coords(time=("time", valid))
     out["time"].attrs.setdefault("standard_name", "time")
     out["time"].attrs.setdefault("axis", "T")

@@ -39,41 +39,22 @@ def test_aggregate_weekly_mean(tmp_path, aggregate):
     assert load_history(out)[-1]["skill"] == "aggregate-temporal"
 
 
-def test_aggregate_drops_incomplete_trailing_week(tmp_path, aggregate, capsys):
-    """15 daily samples → 2 full weeks; trailing 1-day bin dropped by default."""
+def test_aggregate_keeps_incomplete_trailing_week(tmp_path, aggregate, capsys):
+    """15 daily samples → 3 weeks; last bin is kept and stamped coverage 1/7."""
     src = write_zarr(make_gridded(n_time=15, fill=2.0), tmp_path / "in.zarr")
     out = tmp_path / "out.zarr"
 
     run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
 
     ds = xr.open_zarr(out, consolidated=True)
-    assert ds.sizes["time"] == 2
-    err = capsys.readouterr().err
-    assert "dropped 1 incomplete weekly bin" in err
-    assert "--keep-partial" in err
-
-
-def test_aggregate_keep_partial_retains_trailing_week(tmp_path, aggregate):
-    src = write_zarr(make_gridded(n_time=15, fill=2.0), tmp_path / "in.zarr")
-    out = tmp_path / "out.zarr"
-
-    run_skill(
-        aggregate,
-        "-i",
-        str(src),
-        "-o",
-        str(out),
-        "--period",
-        "weekly",
-        "--keep-partial",
-    )
-
-    ds = xr.open_zarr(out, consolidated=True)
     assert ds.sizes["time"] == 3
+    assert float(ds["aggregation_coverage"].values[-1]) == pytest.approx(1 / 7)
+    err = capsys.readouterr().err
+    assert "dropped" not in err
 
 
-def test_aggregate_drops_incomplete_trailing_month(tmp_path, aggregate):
-    # Jan (31) + Feb 1..10 → drop incomplete February.
+def test_aggregate_keeps_incomplete_trailing_month(tmp_path, aggregate):
+    # Jan (31) + Feb 1..10 → keep February with coverage 10/28 (2026 is not a leap year).
     src = write_zarr(
         make_gridded(n_time=41, fill=1.0, start="2026-01-01"),
         tmp_path / "in.zarr",
@@ -83,8 +64,11 @@ def test_aggregate_drops_incomplete_trailing_month(tmp_path, aggregate):
     run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "monthly")
 
     ds = xr.open_zarr(out, consolidated=True)
-    assert ds.sizes["time"] == 1
+    assert ds.sizes["time"] == 2
     assert str(ds.time.values[0])[:10] == "2026-01-01"
+    assert str(ds.time.values[1])[:10] == "2026-02-01"
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(1.0)
+    assert float(ds["aggregation_coverage"].values[1]) == pytest.approx(10 / 28)
 
 
 def test_aggregate_end_time_weekly_two_bins(tmp_path, aggregate):
@@ -113,8 +97,8 @@ def test_aggregate_end_time_weekly_two_bins(tmp_path, aggregate):
     assert labels == ["2026-08-23", "2026-08-30"]
 
 
-def test_aggregate_end_time_drops_incomplete_leading(tmp_path, aggregate, capsys):
-    """Series starting mid-bin: leading short week dropped unless --keep-partial."""
+def test_aggregate_end_time_keeps_incomplete_leading(tmp_path, aggregate, capsys):
+    """Series starting mid-bin: leading short week is kept and stamped coverage < 1."""
     # 2026-08-20 .. 2026-08-30 (11 days): full week ending 30, partial week ending 23.
     src = write_zarr(
         make_gridded(n_time=11, fill=1.0, start="2026-08-20"),
@@ -135,9 +119,11 @@ def test_aggregate_end_time_drops_incomplete_leading(tmp_path, aggregate, capsys
     )
 
     ds = xr.open_zarr(out, consolidated=True)
-    assert ds.sizes["time"] == 1
-    assert str(ds.time.values[0])[:10] == "2026-08-30"
-    assert "dropped 1 incomplete weekly bin" in capsys.readouterr().err
+    labels = [str(t)[:10] for t in ds.time.values]
+    assert labels == ["2026-08-23", "2026-08-30"]
+    assert float(ds["aggregation_coverage"].values[0]) < 1.0
+    assert float(ds["aggregation_coverage"].values[1]) == pytest.approx(1.0)
+    assert "dropped" not in capsys.readouterr().err
 
 
 def test_aggregate_duration_21_day(tmp_path, aggregate):
@@ -154,7 +140,7 @@ def test_aggregate_duration_21_day(tmp_path, aggregate):
 
 
 def test_aggregate_21_day_partial_stamps_coverage(tmp_path, aggregate):
-    """19 of 21 daily samples → coverage ~0.9 when --keep-partial is set."""
+    """19 of 21 daily samples → one bin with coverage 19/21."""
     src = write_zarr(make_gridded(n_time=19, fill=3.0), tmp_path / "in.zarr")
     out = tmp_path / "out.zarr"
 
@@ -166,7 +152,6 @@ def test_aggregate_21_day_partial_stamps_coverage(tmp_path, aggregate):
         str(out),
         "--period",
         "21 day",
-        "--keep-partial",
     )
 
     ds = xr.open_zarr(out, consolidated=True)
@@ -236,16 +221,22 @@ def test_irregular_weekly_totals_match_tp_differences(tmp_path, aggregate):
     assert rates_ds["tp"].attrs.get("data_interval") is None
 
     weekly_ds = xr.open_zarr(weekly, consolidated=True)
-    idx = {
+    weekly_idx = {
         int(np.asarray(s).astype("timedelta64[D]").astype(int)): i
         for i, s in enumerate(weekly_ds.step.values)
     }
-    assert 21 in idx
-    assert float(weekly_ds["aggregation_coverage"].values[idx[21]]) == pytest.approx(1.0)
+    assert 21 in weekly_idx
+    assert float(weekly_ds["aggregation_coverage"].values[weekly_idx[21]]) == pytest.approx(1.0)
 
     out = xr.open_zarr(totals, consolidated=True)
+    # convert-to-totals --min-coverage 1.0 may drop incomplete weeks, so index the output.
+    out_idx = {
+        int(np.asarray(s).astype("timedelta64[D]").astype(int)): i
+        for i, s in enumerate(out.step.values)
+    }
+    assert 21 in out_idx
     # Week 3 is (14d, 21d] = tp[21] - tp[14]
-    assert float(out["tp"].values[idx[21]].flat[0]) == pytest.approx(
+    assert float(out["tp"].values[out_idx[21]].flat[0]) == pytest.approx(
         accum[days.index(21)] - accum[days.index(14)]
     )
 
@@ -273,3 +264,79 @@ def test_reaggregate_weekly_to_21_day_expects_three_weeks(tmp_path, aggregate):
     ds = xr.open_zarr(out, consolidated=True)
     assert ds.sizes["time"] == 1
     assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(1.0)
+
+
+def test_aggregate_all_incomplete_weeks_kept(tmp_path, aggregate):
+    """Three daily samples still form one weekly bin; coverage is 3/7."""
+    src = write_zarr(make_gridded(n_time=3, fill=1.0), tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
+    ds = xr.open_zarr(out, consolidated=True)
+    assert ds.sizes["time"] == 1
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(3 / 7)
+
+
+def test_convert_default_drops_incomplete_weeks_kept_by_aggregate(tmp_path, aggregate):
+    """aggregate keeps the trailing 1-day week; convert-to-totals default drops it."""
+    from conftest import load_skill
+
+    convert = load_skill("convert-to-totals", "convert_to_totals").convert_to_totals
+    src = write_zarr(make_gridded(n_time=15, fill=2.0), tmp_path / "in.zarr")
+    weekly = tmp_path / "weekly.zarr"
+    totals = tmp_path / "totals.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(weekly), "--period", "weekly")
+    run_skill(convert, "-i", str(weekly), "-o", str(totals))
+
+    weekly_ds = xr.open_zarr(weekly, consolidated=True)
+    totals_ds = xr.open_zarr(totals, consolidated=True)
+    assert weekly_ds.sizes["time"] == 3
+    assert totals_ds.sizes["time"] == 2
+    assert float(weekly_ds["aggregation_coverage"].values[-1]) == pytest.approx(1 / 7)
+
+
+def _gefs_like_mixed_step():
+    h3 = np.arange(3, 241, 3)
+    h6 = np.arange(246, 841, 6)
+    hours = np.concatenate([h3, h6])
+    steps = hours.astype("timedelta64[h]").astype("timedelta64[ns]")
+    ds = xr.Dataset(
+        {
+            "precipitation_surface": (
+                ("step", "latitude", "longitude"),
+                np.ones((hours.size, 1, 1)),
+                {"units": "mm day-1", "standard_name": "lwe_precipitation_rate", "data_interval": "3 hour"},
+            )
+        },
+        coords={
+            "step": steps,
+            "time": np.datetime64("2026-08-18", "ns"),
+            "latitude": [1.0],
+            "longitude": [10.0],
+        },
+    )
+    ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
+    ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
+    ds["step"].attrs.update(standard_name="forecast_period")
+    ds["time"].attrs.update(standard_name="time", axis="T")
+    return ds
+
+
+def test_gefs_like_mixed_step_weekly_then_totals(tmp_path, aggregate):
+    from conftest import load_skill
+
+    step_to_time = load_skill("step-to-time", "step_to_time").step_to_time
+    convert = load_skill("convert-to-totals", "convert_to_totals").convert_to_totals
+    src = write_zarr(_gefs_like_mixed_step(), tmp_path / "gefs.zarr")
+    as_time = tmp_path / "gefs_time.zarr"
+    weekly = tmp_path / "gefs_weekly.zarr"
+    totals = tmp_path / "gefs_weekly_mm.zarr"
+
+    run_skill(step_to_time, "-i", str(src), "-o", str(as_time))
+    run_skill(aggregate, "-i", str(as_time), "-o", str(weekly), "--period", "weekly")
+    run_skill(convert, "-i", str(weekly), "-o", str(totals))
+
+    weekly_ds = xr.open_zarr(weekly, consolidated=True)
+    out = xr.open_zarr(totals, consolidated=True)
+    assert weekly_ds.sizes["time"] >= out.sizes["time"] >= 1
+    assert "aggregation_coverage" in weekly_ds.coords
+    assert out["precipitation_surface"].attrs["units"] == "mm"

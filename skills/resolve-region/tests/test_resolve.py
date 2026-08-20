@@ -185,6 +185,33 @@ def test_unknown_iso3_does_not_geocode(resolve_region, monkeypatch):
     assert exc.value.code == 1
 
 
+def test_east_africa_prints_ne_subregion_bbox(capsys, resolve_region, monkeypatch):
+    def _fail_nominatim(query):
+        raise AssertionError(f"Nominatim should not run for East Africa; got {query!r}")
+
+    monkeypatch.setattr("weather_skills_core.region._load_nominatim", _fail_nominatim)
+
+    run_skill(resolve_region, "East Africa")
+    n, w, s, e = (float(x) for x in capsys.readouterr().out.strip().split("/"))
+    assert s < -20
+    assert n > 10
+    assert w < 30 < e
+    assert w < 38 < e
+
+
+def test_eastern_africa_matches_east_africa(capsys, resolve_region, monkeypatch):
+    def _fail_nominatim(query):
+        raise AssertionError(f"Nominatim should not run for Eastern Africa; got {query!r}")
+
+    monkeypatch.setattr("weather_skills_core.region._load_nominatim", _fail_nominatim)
+
+    run_skill(resolve_region, "East Africa")
+    east = capsys.readouterr().out.strip()
+    run_skill(resolve_region, "Eastern Africa")
+    eastern = capsys.readouterr().out.strip()
+    assert east == eastern
+
+
 def test_landmark_geojson_write(tmp_path, resolve_mod, monkeypatch):
     from weather_skills_core.region import _nominatim_collection
 

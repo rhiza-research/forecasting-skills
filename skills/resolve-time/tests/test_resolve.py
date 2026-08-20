@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from conftest import load_skill, run_skill
@@ -229,6 +230,64 @@ def test_list_products(capsys, resolve_time):
     assert "chirps-fetch" in out
     assert "ecmwf-fetch" in out
     assert "pentad" in out
+    assert "dynamical-fetch:noaa-gfs-forecast" in out
+    assert "dynamical-fetch:noaa-gfs-analysis" in out
+    products = load_skill("resolve-time", "resolve").load_products()
+    assert "dynamical-fetch" not in products
+
+
+def test_live_catalog_loads_sibling_skills():
+    from weather_skills_core.availability import load_products
+
+    skills = Path(__file__).resolve().parents[2]
+    products = load_products(skills)
+    assert "chirps-fetch" in products
+    assert products["chirps-fetch"].schedule == "pentad"
+
+
+def test_dynamical_forecast_latest_is_date(capsys, resolve_time):
+    out, _ = _flags(
+        capsys,
+        resolve_time,
+        "latest",
+        "--product",
+        "dynamical-fetch:noaa-gfs-forecast",
+        "--as-of",
+        AS_OF,
+    )
+    assert out == "--date 2026-08-19"
+
+
+def test_dynamical_forecast_range_query_is_usage_error(resolve_time):
+    with pytest.raises(SystemExit) as exc:
+        run_skill(
+            resolve_time,
+            "last-2w",
+            "--product",
+            "dynamical-fetch:noaa-gfs-forecast",
+            "--as-of",
+            AS_OF,
+        )
+    assert exc.value.code == 2
+
+
+def test_dynamical_analysis_range_flags(capsys, resolve_time):
+    out, _ = _flags(
+        capsys,
+        resolve_time,
+        "last-2w",
+        "--product",
+        "dynamical-fetch:noaa-gfs-analysis",
+        "--as-of",
+        AS_OF,
+    )
+    assert out == "--start-time 2026-08-06 --end-time 2026-08-19"
+
+
+def test_bare_dynamical_fetch_lists_datasets(resolve_time):
+    with pytest.raises(SystemExit) as exc:
+        run_skill(resolve_time, "latest", "--product", "dynamical-fetch", "--as-of", AS_OF)
+    assert exc.value.code == 2
 
 
 def test_default_as_of_is_utc_today(capsys, resolve_time, mod, monkeypatch):

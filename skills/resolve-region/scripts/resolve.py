@@ -4,7 +4,7 @@
 #   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 # ]
 # ///
-"""Resolve a country, admin unit, or Nominatim landmark to a bbox and optional polygon."""
+"""Resolve a country, named region, admin unit, or Nominatim landmark to a bbox and optional polygon."""
 
 import json
 import sys
@@ -30,8 +30,9 @@ _SKILL_VERSION = "0.0.1"
 @weather_skill.argument(
     "code",
     help=(
-        "ISO3 country code (uppercase, e.g. KEN), sub-national region "
-        "(kenya-nairobi), or leftover place name (Mount Kenya, Kenya)"
+        "ISO3 country code (uppercase, e.g. KEN), named region (East Africa), "
+        "sub-national region (kenya-nairobi), or leftover place name "
+        "(Mount Kenya, Kenya)"
     ),
 )
 @weather_skill.argument(
@@ -39,11 +40,12 @@ _SKILL_VERSION = "0.0.1"
     help="Optional path: write the boundary polygon as GeoJSON",
 )
 def resolve_region(code, geojson, **kwargs):
-    """Resolve a country, admin unit, or Nominatim landmark to a bbox and optional polygon."""
+    """Resolve a country, named region, admin unit, or Nominatim landmark to a bbox and optional polygon."""
     text = code.strip()
     if not text:
         raise UsageError(
-            "pass an ISO3 code (e.g. KEN), a sub-national region (e.g. kenya-nairobi), "
+            "pass an ISO3 code (e.g. KEN), a named region (e.g. East Africa), "
+            "a sub-national region (e.g. kenya-nairobi), "
             "or a landmark (e.g. 'Mount Kenya, Kenya')."
         )
     if len(text) == 3 and text.isalpha() and text != text.upper():

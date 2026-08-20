@@ -7,19 +7,34 @@ allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
   availability:
-    shape: either
+    shape: date
     policy: lag
     lag_days: 1
-    note: dynamical.org catalog; ~1 day conservative lag (dataset-dependent)
+    note: dynamical.org forecast; ~1 day conservative lag
     variants:
-      nasa-imerg-analysis-late:
+      noaa-gefs-forecast-35-day: {}
+      ecmwf-ifs-ens-forecast-15-day-0-25-degree: {}
+      ecmwf-aifs-ens-forecast: {}
+      noaa-gfs-forecast: {}
+      ecmwf-aifs-single-forecast: {}
+      dwd-icon-eu-forecast-5-day: {}
+      noaa-gfs-analysis:
         shape: range
-        earliest: 2000-06-01
-        note: dynamical.org IMERG late analysis
+        note: dynamical.org GFS analysis
+      noaa-gefs-analysis:
+        shape: range
+        note: dynamical.org GEFS analysis
+      noaa-mrms-conus-analysis-hourly:
+        shape: range
+        note: dynamical.org MRMS CONUS hourly analysis
       nasa-imerg-analysis-early:
         shape: range
         earliest: 2000-06-01
         note: dynamical.org IMERG early analysis
+      nasa-imerg-analysis-late:
+        shape: range
+        earliest: 2000-06-01
+        note: dynamical.org IMERG late analysis
   variables:
     - precipitation_surface
     - temperature_2m
@@ -100,6 +115,8 @@ out of scope for this fetcher.
 
 - `--dataset` — catalog dataset id from the table above (validated against
   `dynamical_catalog.list()`; an unknown id prints the available list and exits).
+  Relative dates: `resolve-time --product dynamical-fetch:<this-id>` (not bare
+  `dynamical-fetch`).
 - `--date` — forecast init date (**forecast datasets only**). Absolute ISO date `YYYY-MM-DD`. Selects the **00 UTC** initialization.
 - `--start-time`, `--end-time` — inclusive date range (**analysis datasets only**). Absolute ISO dates `YYYY-MM-DD`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. The slice follows each

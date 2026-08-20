@@ -31,7 +31,9 @@ Source-agnostic single-dataset visualization. Two styles:
 - Producing a quick-look forecast map panel for any gridded dataset.
 - Producing a time/step profile for a gridded or station standard dataset.
 
-For two-dataset comparisons, use the `plot-compare` skill.
+For two-dataset comparisons, use the `plot-compare` skill. For N gridded
+datasets as a valid-time grid with blank cells where a dataset has no time,
+use `plot-compare-forecasts`.
 
 ## Usage
 

@@ -22,7 +22,7 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
   **mean** (or min/max) rates (`--period weekly` or `--period '21 day'`).
 - Rolling N-step means (`--window`) with optional `--align` / `--stride`.
 - Selecting weekly or dekadal subsets of a forecast initialized at multiple steps.
-- For period **totals** (`mm`), run `convert-to-totals` afterward (non-overlapping bins only; rolling series with Δt &lt; `aggregation_period` are refused — `select` the times you want first). A single remaining bin is allowed. Incomplete bins dropped by default; pass `--keep-partial` so `aggregation_coverage` &lt; 1 is available for `--min-coverage`.
+- For period **totals** (`mm`), run `convert-to-totals` afterward (non-overlapping bins only; rolling series with Δt &lt; `aggregation_period` are refused — `select` the times you want first). A single remaining bin is allowed. Incomplete bins are kept and stamped with `aggregation_coverage` &lt; 1; convert-to-totals `--min-coverage` (default 1.0) drops them.
 
 ## Usage
 
@@ -30,7 +30,7 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
 uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
     --period daily|weekly|dekadal|monthly|'21 day' [--method mean|max|min] \
     [--variable VAR ...] [--time-dim DIM] \
-    [--start-time YYYY-MM-DD] [--end-time YYYY-MM-DD] [--keep-partial]
+    [--start-time YYYY-MM-DD] [--end-time YYYY-MM-DD]
 
 uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
     --window N [--align left|right|center] [--stride STEP] \
@@ -48,6 +48,7 @@ Exactly one of `--period` or `--window` is required.
   Mutex with `--window`. Use a duration when you need a window the named
   periods do not cover (e.g. 21-day totals from half-hourly IMERG).
 - `--window` — rolling window length in axis steps. Mutex with `--period`.
+  Refused when the input has CF `{dim}_bounds` (use `--period`).
 - `--align` — with `--window`: label placement `left` (default), `right`, or `center`.
 - `--stride` — with `--window`: integer subsample step, or a date stride (`day`, `week`, `month`, `year`, or weekday names like `Monday`).
 - `--method` — reducer: `mean` (default), `max`, `min`. There is no `sum`; totals are a separate skill.
@@ -55,8 +56,6 @@ Exactly one of `--period` or `--window` is required.
 - `--time-dim` — override; by default uses `time` if present, else `step`.
 - `--end-time` — with `--period` on a `time` axis: date the final bin ends on (bins walk backward). Same standard flag as fetchers. No effect on `step` or `--window`.
 - `--start-time` — with `--period` and `--end-time`: optional earliest coverage floor. Requires `--end-time`.
-- `--keep-partial` — with `--period` (forward resample, `--end-time`, and irregular `step` with CF bounds): keep incomplete bins and stamp `aggregation_coverage` &lt; 1. **Default drops them**. Convert-to-totals then applies `--min-coverage` (default 1.0). No effect on `--window`. Uniform `step` buckets still omit trailing incomplete windows.
-- `--window` — index-length rolling. Refused when the input has CF `{dim}_bounds` (use `--period`).
 
 ### Metadata stamped
 
@@ -72,9 +71,10 @@ On each aggregated data variable:
 On the time/step axis:
 
 - `aggregation_coverage` — completeness of each interval vs native cells
-  (0–1). Uniform: expected count = `aggregation_period / data_interval` (or
-  vs the input `aggregation_period` on a re-aggregate). Irregular CF bounds:
-  covered duration / window.
+  (0–1). Incomplete bins are kept. Uniform: expected count =
+  `aggregation_period / data_interval` (or vs the input `aggregation_period`
+  on a re-aggregate). Irregular CF bounds: covered duration / window.
+  convert-to-totals `--min-coverage` (default 1.0) drops incomplete bins.
 
 Inputs with CF `{dim}_bounds` are duration-weighted (`sum(rate × dt) / sum(dt)`), so a 1-day cell and a 5-day cell in the same week are not equal-weighted. `--window` is a step count and is refused on those axes.
 

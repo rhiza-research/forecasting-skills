@@ -2,6 +2,7 @@
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
+#   "pyyaml>=6",
 # ]
 # ///
 """Resolve a relative date query to absolute --start-time/--end-time or --date."""
@@ -16,8 +17,14 @@ from functools import lru_cache
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.availability import Availability, ecmwf_s2s_valid_init
+from weather_skills_core.availability import (
+    Availability,
+    ecmwf_s2s_valid_init,
+)
 from weather_skills_core.availability import available_through as spec_available_through
+from weather_skills_core.availability import (
+    load_products as load_availability_products,
+)
 from weather_skills_core.standard_utils import parse_date
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -37,7 +44,7 @@ _QUERY_HELP = (
     'Map English like "the last two weeks" to last-2w — do not pass free text.'
 )
 
-_CATALOG_PATH = Path(__file__).resolve().parent.parent / "assets" / "products.json"
+_SKILLS_DIR = Path(__file__).resolve().parents[2]
 
 
 def _utc_today() -> date:
@@ -106,12 +113,9 @@ class Product:
 
 @lru_cache(maxsize=1)
 def load_products() -> dict[str, Product]:
-    """Load the generated snapshot bundled next to this skill."""
-    raw = json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
-    mapping = raw.get("products")
-    if not isinstance(mapping, dict):
-        raise UsageError(f"{_CATALOG_PATH} is missing a products mapping.")
-    return {key: Product(key, Availability.from_dict(spec)) for key, spec in mapping.items()}
+    """Load products from sibling fetcher SKILL.md files."""
+    mapping = load_availability_products(_SKILLS_DIR)
+    return {key: Product(key, spec) for key, spec in mapping.items()}
 
 
 def lookup_product(key: str | None) -> Product | None:
@@ -119,10 +123,16 @@ def lookup_product(key: str | None) -> Product | None:
         return None
     products = load_products()
     product = products.get(key)
-    if product is None:
-        known = ", ".join(sorted(products))
-        raise UsageError(f"unknown --product {key!r}. Known products: {known}.")
-    return product
+    if product is not None:
+        return product
+    prefix = f"{key}:"
+    children = sorted(name for name in products if name.startswith(prefix))
+    if children:
+        raise UsageError(
+            f"--product {key!r} is not a product; pick a dataset: {', '.join(children)}."
+        )
+    known = ", ".join(sorted(products))
+    raise UsageError(f"unknown --product {key!r}. Known products: {known}.")
 
 
 def available_through(product: Product | None, as_of: date) -> date | None:
@@ -431,7 +441,9 @@ def format_json(resolved: Resolved, product: Product | None) -> str:
 
 def list_products_text() -> str:
     products = load_products()
-    lines = [f"{'PRODUCT':<42} {'SHAPE':<8} LAG / NOTE"]
+    width = max((len(k) for k in products), default=7)
+    width = max(width, len("PRODUCT"))
+    lines = [f"{'PRODUCT':<{width}}  {'SHAPE':<8} LAG / NOTE"]
     for key in sorted(products):
         p = products[key]
         if p.spec.schedule == "pentad":
@@ -442,7 +454,7 @@ def list_products_text() -> str:
             lag = "none (future ok)"
         else:
             lag = f"{p.spec.lag_days}d"
-        lines.append(f"{p.key:<42} {p.shape:<8} {lag} — {p.note}")
+        lines.append(f"{p.key:<{width}}  {p.shape:<8} {lag} — {p.note}")
     return "\n".join(lines)
 
 
@@ -459,7 +471,7 @@ def list_products_text() -> str:
 )
 @weather_skill.argument(
     "--product",
-    help="Fetcher skill name (chirps-fetch, ecmwf-fetch, …) to apply embargo/lag",
+    help="Fetcher product (chirps-fetch, dynamical-fetch:noaa-gfs-forecast, …)",
 )
 @weather_skill.argument(
     "--as-of",
