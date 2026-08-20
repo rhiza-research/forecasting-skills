@@ -30,7 +30,6 @@ from pathlib import Path
 
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
-from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient
 from weather_skills_core.units import precip_amounts_to_rates, stamp_data_interval
 
@@ -177,7 +176,19 @@ def _var_attrs(ds) -> dict:
         "Lower this if the server returns throttling errors."
     ),
 )
-@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
 def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
     """Fetch NOAA GHCN-Daily station observations over HTTPS and write a point_obs weather-skills standard dataset Zarr."""
     if kwargs.get("probe_latest") is not None:

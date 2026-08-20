@@ -21,7 +21,6 @@ from pathlib import Path
 
 from weather_skills_core import DataError, SkillError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords
-from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
@@ -144,7 +143,19 @@ def _is_transport_failure(exc: Exception) -> bool:
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument("--bbox")
-@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
 def fetch(start_time, end_time, bbox, **kwargs):
     """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills standard dataset Zarr."""
     if kwargs.get("probe_latest") is not None:

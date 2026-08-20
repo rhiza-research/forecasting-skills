@@ -19,7 +19,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
@@ -143,7 +142,19 @@ def _stamp_coord_attrs(ds) -> None:
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v", action="append")
-@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
 def fetch(start_time, end_time, bbox, variable, **kwargs):
     """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills standard dataset Zarr."""
     if kwargs.get("probe_latest") is not None:

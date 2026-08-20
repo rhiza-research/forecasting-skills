@@ -35,7 +35,6 @@ from pathlib import Path
 
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
-from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient, require_env
 from weather_skills_core.units import stamp_data_interval
 
@@ -271,7 +270,19 @@ def _var_attrs(ds, units_by_param: dict) -> dict:
         "globally under OpenAQ's published limits (60/minute, 2,000/hour)."
     ),
 )
-@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
 def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
     """Fetch OpenAQ v3 air-quality station observations and write a point_obs weather-skills standard dataset Zarr."""
     if kwargs.get("probe_latest") is not None:

@@ -25,7 +25,6 @@ from pathlib import Path
 
 from weather_skills_core import DataError, SkillError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords, udunits_error
-from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
@@ -248,7 +247,19 @@ def _stamp_cf(ds) -> None:
         "ascending). Default AM."
     ),
 )
-@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
 def fetch(start_time, end_time, bbox, overpass, **kwargs):
     """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills standard dataset Zarr."""
     import earthaccess

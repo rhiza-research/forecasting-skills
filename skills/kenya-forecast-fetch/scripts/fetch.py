@@ -21,7 +21,6 @@ import urllib.request
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
-from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import bbox_subset
 from weather_skills_core.units import (
     precip_amounts_to_rates,
@@ -167,7 +166,19 @@ def _open_remote(key: str):
 @weather_skill.argument("--date")
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v", action="append")
-@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
 def fetch(dataset, date, bbox, variable, output, **kwargs):
     """Fetch a Kenya forecasts archive Zarr and write a weather-skills standard dataset.
 

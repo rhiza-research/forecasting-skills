@@ -24,7 +24,6 @@ from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
-from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 CHIRPS_FINAL_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/sat"
@@ -192,7 +191,19 @@ def _open_day(tif: Path, day: date):
         "temporarily block IPs under higher concurrency."
     ),
 )
-@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
 def fetch(start_time, end_time, workers, **kwargs):
     """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
     if kwargs.get("probe_latest") is not None:

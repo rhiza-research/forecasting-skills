@@ -19,7 +19,6 @@ from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
-from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import bbox_subset, np_to_date
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
@@ -166,7 +165,19 @@ def _open_dataset(state, dataset) -> dict:
     required=True,
     help="Catalog dataset id (validated against dynamical_catalog.list()).",
 )
-@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
 def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
     """Fetch a dynamical.org open-catalog dataset and write a weather-skills standard dataset Zarr."""
     if kwargs.get("probe_latest") is not None:
