@@ -83,9 +83,9 @@ expect `mm day-1`.
 
 ### Example: match the precomputed weekly precip PNG
 
-The archive grid is daily S2S `tp`. The product figure
-(`kenya-forecast-png` `weekly_precip.png`) is six weekly totals on the Kenya
-product extent `7/32/-6/43`, drawn with plot's default precip palette.
+The archive grid is daily S2S `tp` (fetch writes per-step rates). The product
+figure (`kenya-forecast-png` `weekly_precip.png`) is six weekly totals on the
+Kenya product extent `7/32/-6/43`, drawn with plot's default precip palette.
 Replicate it with weekly aggregation + totals, then plot (no `--colormap`):
 
 ```bash

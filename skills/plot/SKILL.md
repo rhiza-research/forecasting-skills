@@ -100,9 +100,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 
 A PNG at `--output`. The colorbar label resolves from variable attrs:
 `GRIB_name` → `long_name` → bare variable name → `"value"`, suffixed
-with `[units]` when the `units` attr is present (Kenya product maps label
-`Total Precipitation [mm]` after `convert-to-totals`; numerically the same
-as the archive PNG's `kg m**-2`).
+with `[units]` when the `units` attr is present.
 
 ### Provenance
 
