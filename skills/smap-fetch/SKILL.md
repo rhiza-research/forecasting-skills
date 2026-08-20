@@ -6,12 +6,6 @@ compatibility: Requires Python 3.12 and uv. Authenticates to NASA Earthdata via 
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: range
-    policy: lag
-    lag_days: 2
-    earliest: 2015-03-31
-    note: SMAP SPL3SMP_E typical 2-day publication lag
   variables:
     - soil_moisture
   openclaw:
@@ -42,6 +36,7 @@ skill is built for a bounded `--bbox` over a short window — pass `--bbox`.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 Requires Earthdata credentials in the environment (`EARTHDATA_USERNAME` /
@@ -51,6 +46,8 @@ like `imerg-fetch`.
 ### Arguments
 - `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
   `YYYY-MM-DD`. Keep windows short — each day is a separate large granule.
+  Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest`.
+- `--probe-latest` — print the latest available `YYYY-MM-DD` on stdout and exit. No `-o`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees (optional). Strongly
   recommended for every run, since each daily granule is the entire ~690 MB
   global grid. SMAP longitudes are already in [-180, 180), so negative west/east

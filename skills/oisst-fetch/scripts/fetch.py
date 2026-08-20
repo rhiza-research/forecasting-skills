@@ -14,16 +14,19 @@
 """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills standard dataset Zarr."""
 
 import sys
+from datetime import UTC, datetime
 
 import cf_xarray  # noqa: F401  (fail-fast probe; core loads it lazily at write time)
 from pathlib import Path
 
 from weather_skills_core import DataError, SkillError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
     normalize_longitude,
+    np_to_date,
     verify_cf_decode,
 )
 from weather_skills_core.units import convert_dataarray, stamp_data_interval
@@ -141,8 +144,30 @@ def _is_transport_failure(exc: Exception) -> bool:
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument("--bbox")
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, bbox, **kwargs):
     """Fetch NOAA OISST v2.1 daily sea-surface temperature from NOAA PSL OPeNDAP and write a weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        import numpy as np
+        import xarray as xr
+
+        year = datetime.now(UTC).date().year
+        last_exc = None
+        for y in (year, year - 1):
+            try:
+                ds = xr.open_dataset(_OPENDAP_URL.format(year=y))
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                continue
+            latest = np_to_date(np.max(ds["time"].values))
+            ds.close()
+            print(latest.isoformat())
+            return
+        raise DataError(
+            "could not open a current or previous-year OISST file to probe latest time"
+            + (f" ({last_exc})" if last_exc is not None else "")
+        )
+
     import numpy as np
     import xarray as xr
 

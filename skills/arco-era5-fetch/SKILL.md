@@ -6,12 +6,6 @@ compatibility: Requires Python 3.12 and uv. Reads the public ARCO-ERA5 analysis-
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: range
-    policy: lag
-    lag_days: 5
-    earliest: 1940-01-01
-    note: ERA5 / ARCO-ERA5 ~5 days behind realtime
   variables:
     - 2m_temperature
     - total_precipitation
@@ -43,10 +37,12 @@ Not a forecast — ERA5 is reanalysis. For forecast grids use `ecmwf-fetch` or
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
-- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest`.
+- `--probe-latest` — print the latest available `YYYY-MM-DD` on stdout and exit (Zarr time coordinate). No `-o`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention, so negative west/east values select correctly on
   ERA5's native 0..360 grid. The slice follows each axis's own order, so any

@@ -6,11 +6,6 @@ compatibility: Requires Python 3.12 and uv. Reads NOAA GHCN-Daily from the publi
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: range
-    policy: lag
-    lag_days: 2
-    note: GHCN-Daily publication lag of a day or two
   variables:
     - precip
     - tmax
@@ -47,13 +42,15 @@ For African stations with sub-daily sensor data, `tahmo-fetch` is an alternative
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py [--bbox N/W/S/E] --start-time YYYY-MM-DD --end-time YYYY-MM-DD [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
 - `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
-  `YYYY-MM-DD`. GHCN-Daily has a publication lag of a day or two, so the
-  trailing days of a window ending near the present may simply be absent; a
-  missing trailing tail is treated as a normal partial window, not an error.
+  `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest`. A
+  missing trailing tail near the present is treated as a normal partial window,
+  not an error.
+- `--probe-latest` — print the latest available `YYYY-MM-DD` on stdout and exit. No `-o`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees, used to select stations
   from the GHCN station metadata. Bounds the work to the stations inside the box;
   omitting it (or giving an over-wide box) selects many stations, each a separate

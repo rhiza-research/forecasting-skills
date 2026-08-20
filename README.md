@@ -32,7 +32,7 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 | Skill | What it does |
 |---|---|
 | `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code or sub-national region to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) |
-| `resolve-time` | Resolve relative dates ("the last two weeks", `latest`, `now-3d`) to `--start-time`/`--end-time` or `--date`, applying each fetcher's embargo / publication lag |
+| `resolve-time` | Resolve relative calendar dates ("the last two weeks", `latest`, `now-3d`) to `--start-time`/`--end-time` or `--date`. Latest published day is the fetcher's `--probe-latest`, not this skill. |
 | `inspect-zarr` | Print dimension sizes, coordinate values, and a data-variable summary of a Zarr (stdout only) |
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
 | `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); duration-weights CF bounds; keeps `data_interval` when uniform; stamps `aggregation_period` + `aggregation_coverage` + `cell_methods` |
@@ -58,10 +58,9 @@ dataset output.
 
 | Skill | What it does |
 |---|---|
-| `resolve-time` | Resolve relative dates to absolute `--start-time`/`--end-time` or `--date`, including product embargoes. |
+| `resolve-time` | Resolve relative calendar dates to absolute `--start-time`/`--end-time` or `--date`. |
 | `inspect-zarr` | Print dims, coordinate values, and data-variable summary of a Zarr (stdout; no write). |
 | `provenance` | Inspect `weather_skills_history` on a Zarr or plot PNG (lineage, JSON, or reproduction script). |
-| `email-report` | Compose an RFC 5322 `.eml` with attachments. **Mocks SMTP — writes to disk, does not send.** |
 | `submit-feedback` | Build a length-checked prefilled GitHub new-issue URL the user clicks to file feedback under their own account. Holds no token, makes no network call, creates no issue itself. |
 
 ## Install
@@ -156,7 +155,7 @@ npx skillkit install rhiza-research/forecasting-skills --all --yes --agent claud
 
 # Install just a subset
 npx skillkit install rhiza-research/forecasting-skills --skill=ecmwf-fetch
-npx skillkit install rhiza-research/forecasting-skills --skills=clip-region,plot,email-report
+npx skillkit install rhiza-research/forecasting-skills --skills=clip-region,plot
 
 # Overwrite an existing install
 npx skillkit install rhiza-research/forecasting-skills --all --yes --force
@@ -225,14 +224,6 @@ forecasting-skills plot-compare \
     -i /tmp/imerg_dekadal_totals.zarr \
     --variable precip \
     --output /tmp/sat_vs_stations.png
-
-forecasting-skills email-report \
-    --from "Sender <sender@example.com>" \
-    --to "recipient@example.com" \
-    --subject "Daily Outlook" \
-    --body-file body.txt \
-    --attach /tmp/weekly.png /tmp/sat_vs_stations.png \
-    --output /tmp/kenya.eml
 ```
 
 In practice a user just states the goal in natural language and the agent

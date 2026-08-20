@@ -6,12 +6,6 @@ compatibility: Requires Python 3.12 and uv. Reads NOAA OISST v2.1 from NOAA PSL'
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: range
-    policy: lag
-    lag_days: 1
-    earliest: 1981-09-01
-    note: OISST v2.1 ~1 day behind realtime
   variables:
     - sst
 ---
@@ -35,12 +29,13 @@ window rather than whole yearly files, with no credentials.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
 - `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
-  `YYYY-MM-DD`. OISST runs about a day behind realtime, so the trailing day of a
-  window ending near the present may be absent.
+  `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest`.
+- `--probe-latest` — print the latest available `YYYY-MM-DD` on stdout and exit. No `-o`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention so negative west/east values select correctly on
   OISST's native 0..360 grid. Omit for the full global grid. To fetch over a

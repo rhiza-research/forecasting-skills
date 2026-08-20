@@ -97,3 +97,10 @@ def test_fetch_honors_date_variable_and_bbox(tmp_path, fetch_mod, monkeypatch):
     # bbox 3/9/0/12 against lats (1,2) lons (10,11) keeps both lats, lon 10..11
     assert float(ds.latitude.min()) >= 0
     assert float(ds.longitude.max()) <= 12
+
+
+def test_probe_latest(capsys, fetch_mod, monkeypatch):
+    monkeypatch.setattr(fetch_mod, "_list_init_dates", lambda: ["2026-08-01", "2026-08-04"])
+    monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: "2026-08-04" in key)
+    run_skill(fetch_mod.fetch, "--probe-latest")
+    assert capsys.readouterr().out.strip() == "2026-08-04"

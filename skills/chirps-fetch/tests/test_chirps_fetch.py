@@ -70,3 +70,15 @@ def test_missing_days_exits_2(tmp_path, mod, fetch):
                 str(out),
             )
     assert exc.value.code == 2
+
+
+def test_probe_latest_lists_directory(capsys, fetch, monkeypatch):
+    import requests
+
+    class _Resp:
+        status_code = 200
+        text = '<a href="chirps-v3.0.prelim.2026.08.15.tif">x</a>'
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp())
+    run_skill(fetch, "--probe-latest")
+    assert capsys.readouterr().out.strip() == "2026-08-15"

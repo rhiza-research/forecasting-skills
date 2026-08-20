@@ -14,6 +14,7 @@
 """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
 
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -21,8 +22,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 CHIRPS_FINAL_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/sat"
@@ -36,6 +38,7 @@ DEFAULT_WORKERS = 2
 _SKILL_VERSION = "0.0.1"
 
 _NOT_FOUND = object()
+_TIF_NAME_RE = re.compile(r"chirps-v3\.0\.(?:prelim|sat)\.(\d{4})\.(\d{2})\.(\d{2})\.tif")
 
 
 class DayUnavailable(Exception):
@@ -189,8 +192,45 @@ def _open_day(tif: Path, day: date):
         "temporarily block IPs under higher concurrency."
     ),
 )
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, workers, **kwargs):
     """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        import requests
+
+        found: list[date] = []
+        today = date.today()
+        for year in (today.year, today.year - 1):
+            for base in (CHIRPS_PRELIM_BASE_URL, CHIRPS_FINAL_BASE_URL):
+                url = f"{base}/{year:04d}/"
+                try:
+                    resp = requests.get(
+                        url,
+                        timeout=HTTP_TIMEOUT,
+                        headers={"User-Agent": "weather-skills-chirps-fetch"},
+                    )
+                except requests.RequestException as exc:
+                    raise DataError(f"CHIRPS directory listing failed for {url}: {exc}") from None
+                if resp.status_code == 404:
+                    continue
+                if resp.status_code in (403, 429):
+                    raise DataError(
+                        f"CHIRPS directory listing refused ({resp.status_code} for {url}). "
+                        "Wait and retry; do not GET the daily TIFs to probe."
+                    )
+                if resp.status_code != 200:
+                    raise DataError(
+                        f"CHIRPS directory listing failed: HTTP {resp.status_code} for {url}"
+                    )
+                for match in _TIF_NAME_RE.finditer(resp.text):
+                    found.append(date(int(match.group(1)), int(match.group(2)), int(match.group(3))))
+            if found:
+                break
+        if not found:
+            raise DataError("CHIRPS probe found no daily TIF names in the year directories")
+        print(max(found).isoformat())
+        return
+
     import requests
 
     start = start_time.isoformat()

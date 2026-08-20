@@ -1,6 +1,6 @@
 ---
 name: plot-compare
-description: Render a side-by-side multi-panel comparison PNG of two weather-skills standard dataset Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC.
+description: Render a side-by-side multi-panel comparison PNG of two weather-skills standard dataset Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC. For precipitation, convert-to-totals after aggregate-temporal before plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py *)
@@ -33,8 +33,8 @@ no overlapping bins; in either case it asks you to aggregate to a common
 resolution first. To compare data captured at different cadences (e.g.
 daily station observations against weekly or dekadal gridded
 rates), aggregate each input to the same window with the
-`aggregate-temporal` skill before comparing (then `convert-to-totals` if
-you want period amounts on the figure).
+`aggregate-temporal` skill before comparing, then `convert-to-totals` so
+precipitation figures are period amounts (`mm`), not rates.
 
 Each row can draw a different variable: `--variable-a`/`--variable-b`
 select per-row, with `--variable` as a both-rows shorthand. This lets

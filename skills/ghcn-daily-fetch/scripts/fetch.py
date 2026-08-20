@@ -30,6 +30,7 @@ from pathlib import Path
 
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient
 from weather_skills_core.units import precip_amounts_to_rates, stamp_data_interval
 
@@ -39,6 +40,7 @@ _SKILL_VERSION = "0.0.1"
 _BASE_URL = "https://noaa-ghcn-pds.s3.amazonaws.com"
 _STATIONS_URL = f"{_BASE_URL}/ghcnd-stations.txt"
 _STATION_CSV_URL = _BASE_URL + "/csv.gz/by_station/{station_id}.csv.gz"
+_YEAR_CSV_URL = _BASE_URL + "/csv.gz/by_year/{year}.csv.gz"
 _CSV_COLUMNS = ["ID", "DATE", "ELEMENT", "VALUE", "M_FLAG", "Q_FLAG", "S_FLAG", "OBS_TIME"]
 _GHCN_MISSING_VALUE = -9999
 HTTP_TIMEOUT = 60
@@ -175,8 +177,27 @@ def _var_attrs(ds) -> dict:
         "Lower this if the server returns throttling errors."
     ),
 )
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
     """Fetch NOAA GHCN-Daily station observations over HTTPS and write a point_obs weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        from email.utils import parsedate_to_datetime
+
+        year = datetime.now(UTC).date().year
+        for y in (year, year - 1):
+            resp = requests.head(
+                _YEAR_CSV_URL.format(year=y), timeout=HTTP_TIMEOUT, allow_redirects=True
+            )
+            if resp.status_code == 404:
+                continue
+            resp.raise_for_status()
+            last_modified = resp.headers.get("Last-Modified")
+            if not last_modified:
+                raise DataError(f"GHCN year file for {y} has no Last-Modified header")
+            print(parsedate_to_datetime(last_modified).date().isoformat())
+            return
+        raise DataError("GHCN probe could not HEAD a by_year csv.gz")
+
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     start_int = int(start_time.strftime("%Y%m%d"))

@@ -33,12 +33,13 @@ def _coerce(values):
     name="concat",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True, dest='dss')
+@weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True)
 @weather_skill.argument("--dim", required=True)
 @weather_skill.argument("--coords", help="Comma-separated coord values for the new dim")
-def concat(dss, dim, coords, **kwargs):
+def concat(ds, dim, coords, **kwargs):
     """Concatenate Zarr stores along a named dim."""
     import xarray as xr
+    dss = ds
 
     if dim not in dss[0].dims or not all(dim in ds.dims for ds in dss):
         if coords:

@@ -1,6 +1,6 @@
 ---
 name: plot
-description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills standard dataset Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile.
+description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills standard dataset Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
@@ -30,6 +30,8 @@ Source-agnostic single-dataset visualization. Two styles:
 
 - Producing a quick-look forecast map panel for any gridded dataset.
 - Producing a time/step profile for a gridded or station standard dataset.
+- Precipitation: only after `aggregate-temporal` and `convert-to-totals`.
+  Fetchers write rates; figures should show period totals (`mm`).
 
 For two-dataset comparisons, use the `plot-compare` skill. For N gridded
 datasets as a valid-time grid with blank cells where a dataset has no time,
@@ -108,8 +110,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 
 A PNG at `--output`. The colorbar label resolves from variable attrs:
 `GRIB_name` → `long_name` → bare variable name → `"value"`, suffixed
-with `[units]` when the `units` attr is present. After `convert-to-totals`,
-leftover rate names (`precipitation rate`) are shown as `Total precipitation`.
+with `[units]` when the `units` attr is present. Prefer an amount Zarr from
+`convert-to-totals` (labeled `Total precipitation [mm]`). If the input is
+still a precip **rate** with `aggregation_period`, plot converts it to a
+period total for the figure only. Unaggregated fetch rates stay `mm day-1`.
 
 ### Provenance
 

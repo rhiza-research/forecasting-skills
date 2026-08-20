@@ -6,12 +6,6 @@ compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public C
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: range
-    policy: lag
-    schedule: pentad
-    earliest: 1998-01-01
-    note: CHIRPS v3.0 preliminary pentad schedule (2 days after pentad close)
   variables:
     - precip
 ---
@@ -31,10 +25,12 @@ Coverage starts in 1998 (CHIRPS v3.0 `sat`); dates before 1998 are unavailable a
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
-- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest` (then `--as-of` on resolve-time to end a rolling window there).
+- `--probe-latest` — print the latest available `YYYY-MM-DD` on stdout and exit. No `-o`. Do not GET the daily TIFs to probe.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--workers` — max concurrent per-day download threads (default 2). Bounds the thread pool that fetches each day's TIF over HTTPS. The default is deliberately conservative: CHC's data server can throttle and temporarily block IPs under higher concurrency. If throttling errors appear, lower it to 1. If requests are refused outright, the IP may be temporarily blocked — wait before retrying; lowering `--workers` helps only before a block.
 

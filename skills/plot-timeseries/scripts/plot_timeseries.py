@@ -21,7 +21,7 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable
 from weather_skills_core.standard_utils import dataset_label, pick_time_dim
-from weather_skills_core.units import to_standard_units, units_equal
+from weather_skills_core.units import precip_for_display, to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -30,7 +30,7 @@ _SKILL_VERSION = "0.0.1"
     name="plot-timeseries",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True, dest='datasets')
+@weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
             "--time-dim",
@@ -49,8 +49,9 @@ _SKILL_VERSION = "0.0.1"
             action="store_true",
             help="Plot against day-of-year (1-366) instead of absolute date.",
         )
-def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_year, output, **kwargs):
+def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, output, **kwargs):
     """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
+    datasets = ds
     if len(datasets) > 26:
         raise UsageError(f"--input must be passed at most 26 times; got {len(datasets)}.")
 
@@ -71,7 +72,7 @@ def plot_timeseries(datasets, variable, time_dim, reduce, title, align_day_of_ye
                 f"variable '{variable}' missing from input {idx + 1}. "
                 f"Available: {list(ds.data_vars)}"
             )
-    datasets = [to_standard_units(ds, variables=[variable]) for ds in datasets]
+    datasets = [precip_for_display(to_standard_units(ds, variables=[variable]), variable) for ds in datasets]
 
     unit_vals = []
     seen_units = {}

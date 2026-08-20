@@ -6,11 +6,6 @@ compatibility: Requires Python 3.12 and uv. Opens public consolidated Zarr over 
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: date
-    policy: none
-    lag_days: 0
-    note: Kenya forecasts archive; no realtime embargo
   variables:
     - tp
     - t2m
@@ -57,6 +52,7 @@ init date whose `data/` folder only has legacy GRIB/NetCDF (no `.zarr`).
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> \
     [--date YYYY-MM-DD] [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest [dataset-id]
 ```
 
 ### Datasets
@@ -82,7 +78,8 @@ run `deaccumulate` after this skill.
 
 - `--dataset` — product id from the table (default `precip`).
 - `--date` — optional init date `YYYY-MM-DD`. Default: latest folder with that
-  Zarr.
+  Zarr. Calendar day: `resolve-time latest`. Latest published init: `--probe-latest`.
+- `--probe-latest [dataset-id]` — print the latest init `YYYY-MM-DD` on stdout and exit. No `-o`.
 - `--bbox` — optional spatial subset `N/W/S/E`.
 - `--variable`, `-v` — restrict to named data variables (repeatable).
 - `--output`, `-o` — output Zarr path.

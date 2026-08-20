@@ -49,9 +49,8 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills plot               -i "$d/ecmwf_weekly_totals.zarr"  -o "$d/weekly_precip.png"  --variable tp --bbox="$BBOX"
     forecasting-skills plot               -i "$d/ecmwf_dekadal_totals.zarr" -o "$d/dekadal_precip.png" --variable tp --bbox="$BBOX"
     # Upstream daily_download2.0.yml runs a downscale step (dowscale_dekade.py) producing
-    # dekadal_precip_downscaled.png. That artifact isn't in the emailed attachments, so
-    # we run the downscale + plot here for parity with the workflow steps but the result is
-    # not part of the email deliverable.
+    # dekadal_precip_downscaled.png. We run the downscale + plot here for parity with
+    # the workflow steps.
     forecasting-skills downscale          -i "$d/ecmwf_dekadal.zarr" -o "$d/ecmwf_dekadal_ds.zarr" --method linear-interpolation --target-resolution 0.25 --variable tp
     forecasting-skills convert-to-totals  -i "$d/ecmwf_dekadal_ds.zarr" -o "$d/ecmwf_dekadal_ds_totals.zarr"
     forecasting-skills plot               -i "$d/ecmwf_dekadal_ds_totals.zarr" -o "$d/dekadal_precip_ds.png" --variable tp
@@ -82,18 +81,4 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills plot-compare -i "$d/tahmo_dekadal_totals.zarr" -i "$d/imerg_dekadal_totals.zarr"  --variable precip             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/imerg_${COUNTRY}_dekadal.png"
     forecasting-skills plot-compare -i "$d/tahmo_weekly_totals.zarr"  -i "$d/chirps_weekly_totals.zarr"  --variable precip --panels 4 --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_weekly.png"
     forecasting-skills plot-compare -i "$d/tahmo_dekadal_totals.zarr" -i "$d/chirps_dekadal_totals.zarr" --variable precip             --bbox="$BBOX" --mask-geojson "$d/boundary.geojson" -o "$d/chirps_${COUNTRY}_dekadal.png"
-
-    forecasting-skills email-report \
-        --from "$COUNTRY Data Share <demo@example.com>" \
-        --to recipient@example.com \
-        --subject "Daily S2S Outlook — $COUNTRY ($INIT_DATE)" \
-        --body "S2S outlook plus sat-vs-station comparison for $COUNTRY." \
-        --attach \
-            "$d/weekly_precip.png" \
-            "$d/dekadal_precip.png" \
-            "$d/imerg_${COUNTRY}_weekly.png" \
-            "$d/imerg_${COUNTRY}_dekadal.png" \
-            "$d/chirps_${COUNTRY}_weekly.png" \
-            "$d/chirps_${COUNTRY}_dekadal.png" \
-        --output "$d/$COUNTRY.eml"
 done

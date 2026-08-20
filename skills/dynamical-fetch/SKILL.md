@@ -6,40 +6,6 @@ compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: date
-    policy: lag
-    lag_days: 0
-    note: dynamical.org forecast; no embargo. Latest is 00 UTC of as_of (AIFS ~5h after init; GEFS 35-day 00Z is usually listed the same calendar day, though the 35-day tail can still be filling).
-    variants:
-      noaa-gefs-forecast-35-day: {}
-      ecmwf-ifs-ens-forecast-15-day-0-25-degree: {}
-      ecmwf-aifs-ens-forecast: {}
-      noaa-gfs-forecast: {}
-      ecmwf-aifs-single-forecast: {}
-      dwd-icon-eu-forecast-5-day: {}
-      noaa-gfs-analysis:
-        shape: range
-        lag_days: 1
-        note: dynamical.org GFS analysis
-      noaa-gefs-analysis:
-        shape: range
-        lag_days: 1
-        note: dynamical.org GEFS analysis
-      noaa-mrms-conus-analysis-hourly:
-        shape: range
-        lag_days: 1
-        note: dynamical.org MRMS CONUS hourly analysis
-      nasa-imerg-analysis-early:
-        shape: range
-        lag_days: 1
-        earliest: 2000-06-01
-        note: dynamical.org IMERG early analysis
-      nasa-imerg-analysis-late:
-        shape: range
-        lag_days: 1
-        earliest: 2000-06-01
-        note: dynamical.org IMERG late analysis
   variables:
     - precipitation_surface
     - temperature_2m
@@ -73,6 +39,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --date <date> [--bbox
 
 # Analysis datasets — an inclusive date range:
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> --start-time <date> --end-time <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+
+# Latest available day (no download):
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest <id>
 ```
 
 ### Supported datasets
@@ -120,10 +89,9 @@ out of scope for this fetcher.
 
 - `--dataset` — catalog dataset id from the table above (validated against
   `dynamical_catalog.list()`; an unknown id prints the available list and exits).
-  Relative dates: `resolve-time --product dynamical-fetch:<this-id>` (not bare
-  `dynamical-fetch`).
-- `--date` — forecast init date (**forecast datasets only**). Absolute ISO date `YYYY-MM-DD`. Selects the **00 UTC** initialization. There is no access embargo — `resolve-time --product dynamical-fetch:<id> latest` is the 00 UTC cycle of as_of. A very fresh GEFS 35-day init can still be filling its long leads.
-- `--start-time`, `--end-time` — inclusive date range (**analysis datasets only**). Absolute ISO dates `YYYY-MM-DD`.
+- `--probe-latest [dataset-id]` — print the latest init or analysis time (`YYYY-MM-DD`) on stdout and exit. No `-o`. Pass the catalog id here or as `--dataset`.
+- `--date` — forecast init date (**forecast datasets only**). Absolute ISO date `YYYY-MM-DD`. Selects the **00 UTC** initialization. Latest listed init: `--probe-latest <id>`. A very fresh GEFS 35-day init can still be filling its long leads.
+- `--start-time`, `--end-time` — inclusive date range (**analysis datasets only**). Absolute ISO dates `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published time: `--probe-latest <this-id>`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. The slice follows each
   axis's own order, so any region works regardless of how a dataset stores
   latitude. Omit to fetch the dataset's full native grid. Named places: compose

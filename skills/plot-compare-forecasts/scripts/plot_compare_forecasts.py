@@ -30,7 +30,7 @@ from weather_skills_core.standard_utils import (
     pick_time_dim,
     polygon_from_geojson,
 )
-from weather_skills_core.units import classify_variable, to_standard_units, units_equal
+from weather_skills_core.units import classify_variable, precip_for_display, to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -488,7 +488,7 @@ def _extent_from_da(da, lat_dim, lon_dim, bbox):
     help="GeoJSON polygon; gridded cells outside become NaN.",
 )
 def plot_compare_forecasts(
-    input,
+    ds,
     bbox,
     variable,
     colormap,
@@ -499,8 +499,8 @@ def plot_compare_forecasts(
     **kwargs,
 ):
     """Compare two or more gridded datasets as a heatmap grid PNG."""
-    if len(input) < 2:
-        raise UsageError(f"expected at least two --input paths, got {len(input)}")
+    if len(ds) < 2:
+        raise UsageError(f"expected at least two --input paths, got {len(ds)}")
     if panels is not None and panels < 1:
         raise UsageError(f"--panels must be >= 1, got {panels}")
 
@@ -513,16 +513,18 @@ def plot_compare_forecasts(
     import matplotlib.pyplot as plt
     import numpy as np
 
-    variable = variable or auto_variable(input[0])
+    variable = variable or auto_variable(ds[0])
     if variable is None:
         raise UsageError("no usable variable in the first input.")
-    for idx, ds in enumerate(input):
-        if variable not in ds:
+    for idx, one in enumerate(ds):
+        if variable not in one:
             raise UsageError(
                 f"variable '{variable}' missing from input {idx + 1}. "
-                f"Available: {list(ds.data_vars)}"
+                f"Available: {list(one.data_vars)}"
             )
-    datasets = [to_standard_units(ds, variables=[variable]) for ds in input]
+    datasets = [
+        precip_for_display(to_standard_units(one, variables=[variable]), variable) for one in ds
+    ]
     labels = [dataset_label(ds, f"input {idx + 1}") for idx, ds in enumerate(datasets)]
 
     unit_vals = []

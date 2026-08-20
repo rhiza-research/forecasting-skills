@@ -26,6 +26,7 @@ from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs, udunits_error
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
@@ -170,8 +171,13 @@ def _drop_bounds(ds):
     "--grid",
     help="CMIP6 grid_label; required only when more than one matches the other facets.",
 )
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, bbox, model, experiment, variable, member, table, grid, **kwargs):
     """Fetch a CMIP6 climate-projection dataset from the public Pangeo Google Cloud catalog and write a weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        print("none")
+        return
+
     state = _open_remote({}, model, experiment, variable, member, table, grid)
     ds = state["ds"]
     grid_label = state["grid_label"]

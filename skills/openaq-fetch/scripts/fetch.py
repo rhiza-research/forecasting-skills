@@ -35,6 +35,7 @@ from pathlib import Path
 
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient, require_env
 from weather_skills_core.units import stamp_data_interval
 
@@ -270,8 +271,34 @@ def _var_attrs(ds, units_by_param: dict) -> dict:
         "globally under OpenAQ's published limits (60/minute, 2,000/hour)."
     ),
 )
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
     """Fetch OpenAQ v3 air-quality station observations and write a point_obs weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        (key,) = require_env(
+            "OPENAQ_API_KEY",
+            message=(
+                "OPENAQ_API_KEY must be set (free key from https://explore.openaq.org/register)."
+            ),
+        )
+        session = requests.Session()
+        session.headers.update({"X-API-Key": key})
+        _rate_limit_wait()
+        resp = session.get(
+            f"{_API_BASE}/locations",
+            params={"limit": 1, "order_by": "datetimeLast", "sort_order": "desc"},
+            timeout=HTTP_TIMEOUT,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results") or []
+        if not results:
+            raise DataError("OpenAQ probe found no locations")
+        last = results[0].get("datetimeLast") or {}
+        utc = last.get("utc") if isinstance(last, dict) else last
+        if not utc:
+            raise DataError("OpenAQ probe location has no datetimeLast")
+        print(str(utc)[:10])
+        return
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     north, west, south, east = bbox

@@ -39,7 +39,7 @@ def _target_axis(coord_vals, resolution, offset):
     name="coarsen",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('spatial'), required=True, dest='ds')
+@weather_skill.argument("-i", "--input", type=Dataset('spatial'), required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--target-resolution", type=float, required=True)
 @weather_skill.argument("--offset", type=float, required=True)

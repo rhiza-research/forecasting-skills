@@ -25,11 +25,11 @@ _WIDEN = {1: "int16", 2: "int32", 4: "int64"}
 )
 @weather_skill.argument("-i", "--input", type=Dataset("any"), action="append", required=True)
 @weather_skill.argument("--variable", "-v", action="append")
-def difference(input, variable, output, **kwargs):
+def difference(ds, variable, output, **kwargs):
     """Subtract A − B (xarray-aligned)."""
-    if len(input) != 2:
-        raise UsageError(f"expected exactly two --input paths, got {len(input)}")
-    ds_a, ds_b = input
+    if len(ds) != 2:
+        raise UsageError(f"expected exactly two --input paths, got {len(ds)}")
+    ds_a, ds_b = ds
     import numpy as np
     import xarray as xr
 

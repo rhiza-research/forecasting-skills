@@ -18,7 +18,7 @@ from pathlib import Path
 
 from weather_skills_core import Dataset, DataError, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
-from weather_skills_core.units import to_standard_units
+from weather_skills_core.units import precip_for_display, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -64,11 +64,11 @@ def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
 @weather_skill.argument("--lat", type=float, required=True, help="Point latitude.")
 @weather_skill.argument("--lon", type=float, required=True, help="Point longitude.")
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
-def plot_mediogram(input, variable, lat, lon, title, output, **kwargs):
+def plot_mediogram(ds, variable, lat, lon, title, output, **kwargs):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
-    if len(input) != 2:
-        raise UsageError(f"expected exactly two --input paths, got {len(input)}")
-    ds_fc, ds_mc = input
+    if len(ds) != 2:
+        raise UsageError(f"expected exactly two --input paths, got {len(ds)}")
+    ds_fc, ds_mc = ds
     import matplotlib
 
     matplotlib.use("Agg")
@@ -84,8 +84,8 @@ def plot_mediogram(input, variable, lat, lon, title, output, **kwargs):
             f"forecast: {list(ds_fc.data_vars)}  mclimate: {list(ds_mc.data_vars)}"
         )
 
-    ds_fc = to_standard_units(ds_fc, variables=[variable])
-    ds_mc = to_standard_units(ds_mc, variables=[variable])
+    ds_fc = precip_for_display(to_standard_units(ds_fc, variables=[variable]), variable)
+    ds_mc = precip_for_display(to_standard_units(ds_mc, variables=[variable]), variable)
     da_fc = ds_fc[variable]
     da_mc = ds_mc[variable]
 

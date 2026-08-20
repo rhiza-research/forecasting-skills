@@ -6,12 +6,6 @@ compatibility: Requires Python 3.12 and uv. Requires the eccodes system library 
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: date
-    policy: embargo
-    schedule: ecmwf-s2s
-    earliest: 2015-01-01
-    note: ECMWF S2S real-time 2-day embargo; daily inits since 2023-06-27
   variables:
     - tp
     - t2m
@@ -54,18 +48,19 @@ fetches the usual surface fields below.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E [-v VAR ...] --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
-- `--date` — forecast init date. Absolute ISO date `YYYY-MM-DD`. Real-time
+- `--date` — forecast init date. Absolute ISO date `YYYY-MM-DD`. Calendar day: `resolve-time latest`. Latest published init (2-day embargo): `--probe-latest`. Real-time
   ECMWF S2S has run **daily** (00 UTC) since IFS Cycle 48r1 (2023-06-27);
   before that it was Mondays and Thursdays only. Requesting a date with no
   published init exits non-zero with a clear "no data for this init" message.
   Recent ECMWF S2S real-time data is access-restricted (embargoed) for **2
-  days**; request an init at least 2 days old. If the requested init falls
-  inside the embargo, the error says so explicitly and suggests an older init
-  date. Transport and auth failures are surfaced as clear errors — not raw
-  tracebacks.
+  days**. If the requested init falls inside the embargo, the error says so
+  explicitly and suggests an older init date. Transport and auth failures are
+  surfaced as clear errors — not raw tracebacks.
+- `--probe-latest` — print the latest init expected off embargo (`YYYY-MM-DD`) on stdout and exit. No `-o`.
 - `--bbox` — required; `N/W/S/E` decimal degrees. The retrieval area (smaller bbox = faster retrieval). To fetch over a country, get its bbox from the `resolve-region` skill and pass the value here.
 - `--variable`, `-v` — S2S field to retrieve (repeatable). Default `tp`.
   Unknown names exit non-zero and print `Available (most used first):`. Use

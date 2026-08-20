@@ -6,11 +6,6 @@ compatibility: Requires Python 3.12 and uv. Reads the public Pangeo CMIP6 collec
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: range
-    policy: none
-    earliest: 1850-01-01
-    note: CMIP6 projections; no realtime cap (future dates allowed)
   variables:
     - tas
     - pr
@@ -42,6 +37,7 @@ windows are multi-year to multi-decadal.
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <id> -v <variable> \
   [--member <id>] [--table <id>] [--grid <label>] \
   --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
@@ -56,9 +52,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <id> -v <v
   e.g. `day`).
 - `--grid` — CMIP6 `grid_label` (e.g. `gn`, `gr1`). Required only when more than
   one grid matches the other facets; otherwise the single match is used.
-- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
-  `YYYY-MM-DD`. Future dates are allowed for scenario experiments (which run to
-  2100).
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`. Future dates are allowed for scenario experiments (which run to
+  2100). Calendar windows: `resolve-time last-2w`. `--probe-latest` prints `none` (no realtime cap).
+- `--probe-latest` — print `none` on stdout and exit (CMIP6 has no realtime cap). No `-o`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention so negative west/east values select correctly.
   Omit for the full native grid. To fetch over a country, get its bbox from the

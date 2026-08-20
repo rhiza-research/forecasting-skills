@@ -6,17 +6,6 @@ compatibility: Requires Python 3.12 and uv. Authenticates to NASA Earthdata via 
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: range
-    policy: lag
-    lag_days: 4
-    earliest: 2000-06-01
-    note: IMERG late ~4 days behind realtime
-    variants:
-      late: {}
-      final:
-        lag_days: 110
-        note: IMERG final ~3.5 months behind realtime
   variables:
     - precip
   openclaw:
@@ -29,7 +18,7 @@ metadata:
 
 # imerg-fetch
 
-Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess` for the requested date range and writes a global-grid Zarr store. The IMERG late release runs ~4 days behind realtime; callers typically shift the requested end date accordingly.
+Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess` for the requested date range and writes a global-grid Zarr store. For a calendar window use `resolve-time`; for the latest published day use `--probe-latest [late|final]` — do not guess the lag.
 
 ## When to use
 
@@ -39,10 +28,12 @@ Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD --output <path.zarr> [--version late|final]
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest [late|final]
 ```
 
 ### Arguments
-- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest [late|final]`.
+- `--probe-latest [late|final]` — print the latest available `YYYY-MM-DD` on stdout and exit. No `-o`. IDENT selects the release (default `late`).
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--version` — `late` (default; ~4 days behind realtime, `GPM_3IMERGDL`) or `final` (`GPM_3IMERGDF`).
 

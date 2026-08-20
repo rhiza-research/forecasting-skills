@@ -100,6 +100,15 @@ def test_amount_colorbar_drops_leftover_rate_name():
     rate.attrs["long_name"] = "precipitation rate"
     assert plot_mod._variable_label(rate) == "precipitation rate [mm day-1]"
 
+
+def test_plot_converts_aggregated_precip_rate_to_totals():
+    plot_mod = load_skill("plot", "plot")
+    ds = make_gridded()
+    ds["precip"].attrs["aggregation_period"] = "1 day"
+    out = plot_mod.precip_for_display(ds, "precip")
+    assert out["precip"].attrs["units"] == "mm"
+    assert "Total precipitation" in plot_mod._variable_label(out["precip"])
+
 def test_parse_draw_boxes():
     from weather_skills_core import UsageError
 

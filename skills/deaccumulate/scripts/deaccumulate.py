@@ -22,7 +22,7 @@ _SKILL_VERSION = "0.0.1"
     name="deaccumulate",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('forecast'), required=True, dest='ds')
+@weather_skill.argument("-i", "--input", type=Dataset('forecast'), required=True)
 @weather_skill.argument("--variable", "-v")
 def deaccumulate(ds, variable, **kwargs):
     """Per-step diff along forecast step. Precip amounts become mm day-1 rates."""

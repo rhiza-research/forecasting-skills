@@ -15,6 +15,7 @@ import urllib.request
 from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -167,6 +168,7 @@ def _download(key: str, dest: Path) -> None:
         f"(default {_DEFAULT_PRODUCT}; nested ok e.g. t2m/t2m.png)."
     ),
 )
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(date, period, product, output, **kwargs):
     """Fetch a pre-rendered Kenya forecasts archive PNG from the public store.
 
@@ -181,6 +183,9 @@ def fetch(date, period, product, output, **kwargs):
             f"unknown --period {period!r}; choose one of: {', '.join(_PERIODS)}"
         )
     product = _normalize_product(product)
+    if kwargs.get("probe_latest") is not None:
+        print(_resolve_date(None, period, product))
+        return
     output = Path(output)
     iso = _resolve_date(date, period, product)
     key = f"{iso}/{period}/{product}"

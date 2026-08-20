@@ -51,7 +51,7 @@ def _preview(vals, n):
     version=_SKILL_VERSION,
     output=False,
 )
-@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True, dest="ds")
+@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument("--format", choices=["human", "json"], default="human")
 @weather_skill.argument("--max-values", type=int, default=24)
 def inspect_zarr(ds, format="human", max_values=24, **kwargs):

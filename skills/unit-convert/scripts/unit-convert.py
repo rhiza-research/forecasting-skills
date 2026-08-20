@@ -34,7 +34,7 @@ _STANDARD_NAME_BY_UNITS = {
     name="unit-convert",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
     "--to-units",

@@ -19,10 +19,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
     normalize_longitude,
+    np_to_date,
     verify_cf_decode,
 )
 from weather_skills_core.units import (
@@ -141,8 +143,15 @@ def _stamp_coord_attrs(ds) -> None:
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, bbox, variable, **kwargs):
     """Fetch ARCO-ERA5 reanalysis from the public Google Cloud Zarr and write a weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        import numpy as np
+
+        print(np_to_date(np.max(_open_arco({})["time"].values)).isoformat())
+        return
+
     import numpy as np
 
     start_iso = start_time.isoformat()

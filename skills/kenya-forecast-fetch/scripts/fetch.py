@@ -21,6 +21,7 @@ import urllib.request
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import bbox_subset
 from weather_skills_core.units import (
     precip_amounts_to_rates,
@@ -166,6 +167,7 @@ def _open_remote(key: str):
 @weather_skill.argument("--date")
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(dataset, date, bbox, variable, output, **kwargs):
     """Fetch a Kenya forecasts archive Zarr and write a weather-skills standard dataset.
 
@@ -175,6 +177,14 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
     decorator to write. Compose with ``plot``, ``plot-timeseries``, ``summarize-dim``,
     etc. for flexible figures — this skill does not render PNGs.
     """
+    if kwargs.get("probe_latest") is not None:
+        dsid = kwargs["probe_latest"] or dataset
+        if dsid not in _DATASETS:
+            raise UsageError(
+                f"unknown --dataset {dsid!r}; choose one of: {', '.join(_DATASETS)}"
+            )
+        print(_resolve_date(None, dsid))
+        return
     if dataset not in _DATASETS:
         raise UsageError(
             f"unknown --dataset {dataset!r}; choose one of: {', '.join(_DATASETS)}"

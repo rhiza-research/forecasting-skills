@@ -6,11 +6,6 @@ compatibility: Requires Python 3.12 and uv. Fetches over HTTPS from the public G
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: figure
-  availability:
-    shape: date
-    policy: none
-    lag_days: 0
-    note: Kenya forecast PNGs; no realtime embargo
 ---
 
 # kenya-forecast-png
@@ -49,13 +44,15 @@ For raw gridded fields to chain through other weather skills (`plot`,
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py -o <out.png> \
     [--date YYYY-MM-DD] [--period weekly|dekadal|monthly] [--product PATH]
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
 
 - `--output`, `-o` — PNG output path (overwritten if it exists).
 - `--date` — optional init date `YYYY-MM-DD`. Default: latest folder that has the
-  product.
+  product. Calendar day: `resolve-time latest`. Latest published init: `--probe-latest`.
+- `--probe-latest` — print the latest init `YYYY-MM-DD` for this period/product on stdout and exit. No `-o`.
 - `--period` — archive folder under `<date>/` (default `weekly`).
 - `--product` — path relative to `<date>/<period>/` (default
   `weekly_precip.png`). Nested paths are allowed (`t2m/t2m.png`,

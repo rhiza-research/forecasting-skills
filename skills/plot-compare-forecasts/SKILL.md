@@ -1,6 +1,6 @@
 ---
 name: plot-compare-forecasts
-description: Compare two or more gridded datasets as a heatmap grid PNG. Each input is a row; columns are the union of times (forecast init+step, or a time dim on observations / analyses). A dataset that lacks a column's time is a blank n/a cell, not a dropped column. Use after aggregating to a common resolution. For a single dataset use plot; for exactly two datasets including station-vs-grid use plot-compare.
+description: Compare two or more gridded datasets as a heatmap grid PNG. Each input is a row; columns are the union of times (forecast init+step, or a time dim on observations / analyses). A dataset that lacks a column's time is a blank n/a cell, not a dropped column. Use after aggregating to a common resolution. For precipitation, convert-to-totals after that aggregation before plotting. For a single dataset use plot; for exactly two datasets including station-vs-grid use plot-compare.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare_forecasts.py *)
@@ -25,8 +25,8 @@ Rows may mix:
 
 Inputs must already share a time resolution (same median spacing, same
 datetime vs timedelta kind, same calendar). Daily CHIRPS against weekly S2S
-is refused — aggregate both with `aggregate-temporal` first (then
-`convert-to-totals` if you want period `mm` on the figure). Ensemble members
+is refused — aggregate both with `aggregate-temporal` first, then
+`convert-to-totals` so precipitation figures are period `mm`, not rates. Ensemble members
 (`number`) are averaged. Maps only; no station row. `--variable` must exist
 in every input (use `rename` if datasets use different names, e.g. `tp` vs
 `precip`).

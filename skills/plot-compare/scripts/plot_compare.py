@@ -24,7 +24,7 @@ from pathlib import Path
 from weather_skills_core import Dataset, DataError, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import dataset_label, lat_slice, pick_time_dim, polygon_from_geojson
-from weather_skills_core.units import to_standard_units, units_equal
+from weather_skills_core.units import precip_for_display, to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -221,7 +221,7 @@ def _axis_kind(values):
             help="GeoJSON polygon; gridded cells outside become NaN.",
         )
 def plot_compare(
-    input,
+    ds,
 
     bbox,
     variable,
@@ -240,9 +240,9 @@ def plot_compare(
     **kwargs,
 ):
     """Side-by-side multi-panel PNG comparing two weather-skills standard dataset Zarrs."""
-    if len(input) != 2:
-        raise UsageError(f"expected exactly two --input paths, got {len(input)}")
-    ds_a, ds_b = input
+    if len(ds) != 2:
+        raise UsageError(f"expected exactly two --input paths, got {len(ds)}")
+    ds_a, ds_b = ds
     if shared_scale and independent_scale:
         raise UsageError("--shared-scale and --independent-scale are mutually exclusive.")
 
@@ -276,8 +276,8 @@ def plot_compare(
                 f"variable '{var}' must exist in input {side}. {side} real data vars: {real_vars}"
             )
 
-    ds_a = to_standard_units(ds_a, variables=[var_a])
-    ds_b = to_standard_units(ds_b, variables=[var_b])
+    ds_a = precip_for_display(to_standard_units(ds_a, variables=[var_a]), var_a)
+    ds_b = precip_for_display(to_standard_units(ds_b, variables=[var_b]), var_b)
 
     try:
         td_a = pick_time_dim(ds_a, time_dim)

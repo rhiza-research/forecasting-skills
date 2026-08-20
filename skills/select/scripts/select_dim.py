@@ -55,7 +55,7 @@ def _parse_value(raw, coord_vals, dim):
     name="select",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
 @weather_skill.argument("--dim", required=True)
 @weather_skill.argument("--index", action="append", help="Integer position (repeatable).")
 @weather_skill.argument("--value", action="append", help="Coord value (repeatable).")

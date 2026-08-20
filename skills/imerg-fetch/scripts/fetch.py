@@ -15,14 +15,16 @@
 # ///
 """Fetch IMERG live precipitation and write a weather-skills standard dataset Zarr."""
 
+import re
 import sys
 import tempfile
-from datetime import timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from pathlib import Path
 
-from weather_skills_core import UsageError, weather_skill
+from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -32,6 +34,7 @@ SHORTNAMES = {
     "late": "GPM_3IMERGDL",
     "final": "GPM_3IMERGDF",
 }
+_GRANULE_DATE_RE = re.compile(r"\.(\d{8})-S")
 
 
 @weather_skill(
@@ -41,8 +44,38 @@ SHORTNAMES = {
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument("--version", default="late", choices=list(SHORTNAMES))
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, version, **kwargs):
     """Fetch IMERG live precipitation and write a weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        import earthaccess
+
+        release = kwargs["probe_latest"] or version or "late"
+        if release not in SHORTNAMES:
+            raise UsageError(f"unknown IMERG product {release!r}; choose late or final")
+        earthaccess.login()
+        end = datetime.now(UTC).date()
+        start = end - timedelta(days=150 if release == "final" else 21)
+        results = earthaccess.search_data(
+            short_name=SHORTNAMES[release],
+            cloud_hosted=True,
+            temporal=(start.isoformat(), end.isoformat()),
+        )
+        days = []
+        for granule in results:
+            for url in granule.data_links():
+                match = _GRANULE_DATE_RE.search(url.rsplit("/", 1)[-1])
+                if match:
+                    ymd = match.group(1)
+                    days.append(date(int(ymd[:4]), int(ymd[4:6]), int(ymd[6:8])))
+                    break
+        if not days:
+            raise DataError(
+                f"no IMERG {release} granules in {start.isoformat()}..{end.isoformat()}"
+            )
+        print(max(days).isoformat())
+        return
+
     import earthaccess
     import numpy as np
     import xarray as xr

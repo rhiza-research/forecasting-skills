@@ -86,3 +86,8 @@ def test_resolve_zstore_unknown_model(mod):
     with patch.object(mod.pd, "read_csv", return_value=catalog):
         with pytest.raises(UsageError, match="NO-SUCH-MODEL"):
             mod._resolve_zstore("NO-SUCH-MODEL", "historical", "tas", "r1i1p1f1", "Amon", None)
+
+
+def test_probe_latest_is_none(capsys, fetch):
+    run_skill(fetch, "--probe-latest")
+    assert capsys.readouterr().out.strip() == "none"

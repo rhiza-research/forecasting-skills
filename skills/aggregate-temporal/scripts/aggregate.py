@@ -458,7 +458,6 @@ def _rolling_aggregation_period(ds, dim, window, interval):
     "--input",
     type=Dataset(["time", "prediction_timedelta"]),
     required=True,
-    dest="ds",
 )
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(

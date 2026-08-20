@@ -51,7 +51,7 @@ def _resolve_dim(ds, time_dim):
     name="convert-to-totals",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
     "--min-coverage",

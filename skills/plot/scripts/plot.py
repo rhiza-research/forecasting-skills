@@ -29,6 +29,7 @@ from weather_skills_core.units import (
     PRECIP_AMOUNT_LONG_NAME,
     classify_variable,
     looks_like_rate_display_name,
+    precip_for_display,
     to_standard_units,
 )
 
@@ -417,7 +418,7 @@ def _heatmap(
     name="plot",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True, dest="ds")
+@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--style", choices=["heatmap", "timeseries"], default="heatmap")
@@ -489,6 +490,7 @@ def plot(
     if not variable or variable not in ds:
         raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
     ds = to_standard_units(ds, variables=[variable])
+    ds = precip_for_display(ds, variable)
     da = ds[variable]
     try:
         overrides = _parse_index(index)

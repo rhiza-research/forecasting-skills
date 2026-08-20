@@ -6,11 +6,6 @@ compatibility: Requires Python 3.12 and uv. Uses the OpenAQ v3 REST API over HTT
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
   catalog-group: fetchers
-  availability:
-    shape: range
-    policy: lag
-    lag_days: 1
-    note: OpenAQ thin trailing tail of unreported days
   variables:
     - pm25
     - pm10
@@ -43,6 +38,7 @@ point_obs Zarr store.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox N/W/S/E --start-time YYYY-MM-DD --end-time YYYY-MM-DD [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 Requires `OPENAQ_API_KEY` in the environment (free; register at
@@ -53,8 +49,8 @@ https://explore.openaq.org/register).
   monitoring locations to fetch). To fetch over a country, get its bbox from the
   `resolve-region` skill.
 - `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
-  `YYYY-MM-DD`. A thin trailing tail of not-yet-reported days near the present
-  is normal.
+  `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest`.
+- `--probe-latest` — print the latest available `YYYY-MM-DD` on stdout and exit. No `-o`.
 - `--variable`, `-v` — restrict to one pollutant; repeat once per variable.
   Choices: `pm25`, `pm10`, `no2`, `o3`, `so2`, `co`. Omit for all six.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).

@@ -19,7 +19,7 @@ _SKILL_VERSION = "0.0.1"
     name="rename",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
+@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--to-name", required=True, help="New variable name.")
 def rename(ds, variable, to_name, **kwargs):

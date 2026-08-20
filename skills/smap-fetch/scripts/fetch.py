@@ -25,6 +25,7 @@ from pathlib import Path
 
 from weather_skills_core import DataError, SkillError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords, udunits_error
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
@@ -247,11 +248,32 @@ def _stamp_cf(ds) -> None:
         "ascending). Default AM."
     ),
 )
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, bbox, overpass, **kwargs):
     """Fetch SMAP SPL3SMP_E soil moisture via Earthdata and write a weather-skills standard dataset Zarr."""
     import earthaccess
     import numpy as np
     import xarray as xr
+
+    if kwargs.get("probe_latest") is not None:
+        end = datetime.now(UTC).date()
+        start = end - timedelta(days=21)
+        _login()
+        results = _earthaccess_call(
+            earthaccess.search_data,
+            short_name=_SHORT_NAME,
+            temporal=(start.isoformat(), end.isoformat()),
+        )
+        days = []
+        for granule in results:
+            try:
+                days.append(_granule_date(granule))
+            except ValueError:
+                continue
+        if not days:
+            raise DataError(f"no SMAP granules in {start.isoformat()}..{end.isoformat()}")
+        print(max(days).isoformat())
+        return
 
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()

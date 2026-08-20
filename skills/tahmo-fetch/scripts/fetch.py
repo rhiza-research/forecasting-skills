@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import is_transient, require_env
 from weather_skills_core.units import stamp_data_interval
 
@@ -182,10 +183,30 @@ def _ensure_setup(state, countries: list):
     required=True,
     help="Country name (pass once per country)",
 )
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(start_time, end_time, workers, country, **kwargs):
     """Fetch TAHMO station observations and write a point_obs weather-skills standard dataset Zarr."""
     import pandas as pd
     import xarray as xr
+
+    if kwargs.get("probe_latest") is not None:
+        from datetime import UTC, datetime, timedelta
+
+        api, stations, _ = _ensure_setup({}, ["Kenya"])
+        end = datetime.now(UTC).date()
+        start = end - timedelta(days=14)
+        sub = stations[stations["code"].str.startswith("TA")]
+        latest = None
+        for _, row in sub.head(3).iterrows():
+            daily = _station_frame(api, row["code"], start.isoformat(), end.isoformat())
+            if daily is None or daily.empty:
+                continue
+            day = daily.index.max().date()
+            latest = day if latest is None else max(latest, day)
+        if latest is None:
+            raise DataError("TAHMO probe found no recent observations")
+        print(latest.isoformat())
+        return
 
     start = start_time.isoformat()
     end = end_time.isoformat()

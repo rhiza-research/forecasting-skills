@@ -29,6 +29,7 @@ from typing import NamedTuple
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.probe import PROBE_LATEST_KWARGS
 from weather_skills_core.standard_utils import require_env
 from weather_skills_core.units import (
     precip_amounts_to_rates,
@@ -306,8 +307,18 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
         "or ECDS 2_m_temperature."
     ),
 )
+@weather_skill.argument("--probe-latest", **PROBE_LATEST_KWARGS)
 def fetch(bbox, date, variable, **kwargs):
     """Fetch ECMWF S2S ensemble fields (cf + pf) and write a weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        # ECDS has no cheap public date list; 2-day embargo, Mon/Thu before 2023-06-27.
+        day = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=2)
+        if day < dt.date(2023, 6, 27):
+            while day.weekday() not in (0, 3):
+                day -= dt.timedelta(days=1)
+        print(day.isoformat())
+        return
+
     date_iso = date.isoformat()
     area = list(bbox)
     names = _resolve_variables(variable)
