@@ -100,7 +100,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 
 A PNG at `--output`. The colorbar label resolves from variable attrs:
 `GRIB_name` → `long_name` → bare variable name → `"value"`, suffixed
-with `[units]` when the `units` attr is present.
+with `[units]` when the `units` attr is present. After `convert-to-totals`,
+leftover rate names (`precipitation rate`) are shown as `Total precipitation`.
 
 ### Provenance
 

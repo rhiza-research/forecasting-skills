@@ -11,6 +11,8 @@ from weather_skills_core.units import (
     AGGREGATION_COVERAGE_COORD,
     AGGREGATION_PERIOD_ATTR,
     DATA_INTERVAL_ATTR,
+    PRECIP_AMOUNT_LONG_NAME,
+    STANDARD,
 )
 
 
@@ -38,6 +40,27 @@ def test_convert_to_totals_from_attr(tmp_path, convert_to_totals):
     assert result["precip"].values == pytest.approx(10.0)
     assert AGGREGATION_PERIOD_ATTR not in result["precip"].attrs
     assert load_history(out)[-1]["skill"] == "convert-to-totals"
+
+
+def test_convert_to_totals_rewrites_rate_display_names(tmp_path, convert_to_totals):
+    ds = make_gridded(n_time=2, fill=10.0)
+    ds["precip"].attrs.update(
+        {
+            AGGREGATION_PERIOD_ATTR: "1 day",
+            "long_name": "precipitation rate",
+            "GRIB_name": "Precipitation rate",
+        }
+    )
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(convert_to_totals, "-i", str(src), "-o", str(out))
+
+    result = xr.open_zarr(out, consolidated=True)
+    assert result["precip"].attrs["units"] == "mm"
+    assert result["precip"].attrs["standard_name"] == STANDARD["precip_amount"]["standard_name"]
+    assert result["precip"].attrs["long_name"] == PRECIP_AMOUNT_LONG_NAME
+    assert result["precip"].attrs["GRIB_name"] == PRECIP_AMOUNT_LONG_NAME
 
 
 def test_convert_to_totals_refuses_finer_than_period(tmp_path, convert_to_totals):

@@ -8,7 +8,7 @@ from conftest import load_skill, make_forecast, make_gridded, run_skill, write_z
 
 @pytest.fixture(scope="module")
 def inspect_zarr():
-    return load_skill("inspect-zarr", "inspect").inspect_zarr
+    return load_skill("inspect-zarr", "inspect_zarr").inspect_zarr
 
 
 def test_human_prints_dims_and_coord_values(tmp_path, inspect_zarr, capsys):

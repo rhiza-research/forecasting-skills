@@ -14,11 +14,13 @@ from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.units import (
     AGGREGATION_COVERAGE_COORD,
     AGGREGATION_PERIOD_ATTR,
+    PRECIP_AMOUNT_LONG_NAME,
     STANDARD,
     assert_timestep_ge_aggregation_period,
     classify_variable,
     filter_min_coverage,
     format_cell_methods,
+    looks_like_rate_display_name,
     rate_to_total,
     variable_units,
 )
@@ -91,6 +93,10 @@ def convert_to_totals(ds, variable, min_coverage, time_dim, **kwargs):
         ):
             attrs["units"] = STANDARD["precip_amount"]["units"]
             attrs["standard_name"] = STANDARD["precip_amount"]["standard_name"]
+            if not attrs.get("long_name") or looks_like_rate_display_name(attrs.get("long_name")):
+                attrs["long_name"] = PRECIP_AMOUNT_LONG_NAME
+            if looks_like_rate_display_name(attrs.get("GRIB_name")):
+                attrs["GRIB_name"] = PRECIP_AMOUNT_LONG_NAME
         attrs["cell_methods"] = format_cell_methods(dim, "sum")
         attrs.pop(AGGREGATION_PERIOD_ATTR, None)
         out[name] = plain

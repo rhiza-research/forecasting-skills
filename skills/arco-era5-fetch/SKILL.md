@@ -84,8 +84,10 @@ CF stamping on the output:
   pressure-level variable is selected, `level` carries `standard_name=air_pressure`,
   `units=hPa`, and `positive=down`.
 - **Data variables:** every variable carries a udunits-valid `units` and a
-  `long_name`. The ARCO store's own `units`/`long_name`/`standard_name` are
-  forwarded; a few udunits-invalid unit placeholders the store uses
+  `long_name`. Known air-temperature and precip kinds are converted to
+  standard display units (`degree_Celsius`, `mm day-1`); remaining variables
+  keep the ARCO store's `units`/`long_name`/`standard_name`. A few udunits-invalid
+  unit placeholders the store uses
   (`(0 - 1)`, `~`, `dimensionless`, `m of water equivalent`) are normalized to a
   CF-valid spelling. Each variable's final `units` string is then validated
   against udunits: a variable whose source units are missing, or are

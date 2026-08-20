@@ -83,3 +83,19 @@ def test_explicit_colormap_overrides_precip_default():
     da = make_forecast()["tp"]
     da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
     assert plot_mod._heatmap_cmap(da, "magma") == "magma"
+
+
+def test_amount_colorbar_drops_leftover_rate_name():
+    plot_mod = load_skill("plot", "plot")
+    da = make_forecast()["tp"]
+    da.attrs.update(
+        units="mm",
+        standard_name="lwe_thickness_of_precipitation_amount",
+        long_name="precipitation rate",
+        GRIB_name="Precipitation rate",
+    )
+    assert plot_mod._variable_label(da) == "Total precipitation [mm]"
+
+    rate = make_gridded()["precip"]
+    rate.attrs["long_name"] = "precipitation rate"
+    assert plot_mod._variable_label(rate) == "precipitation rate [mm day-1]"

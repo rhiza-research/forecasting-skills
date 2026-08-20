@@ -34,7 +34,6 @@ from weather_skills_core.standard_utils import (
 )
 from weather_skills_core.units import (
     precip_amounts_to_rates,
-    precip_convertible_names,
     stamp_data_interval,
     to_standard_units,
 )
@@ -248,10 +247,8 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
         time_calendar=state["source_calendar"],
         fills=fills,
     )
-    precip = precip_convertible_names(ds)
-    if precip:
-        ds = to_standard_units(ds, variables=precip)
-        ds = precip_amounts_to_rates(ds)
+    ds = to_standard_units(ds)
+    ds = precip_amounts_to_rates(ds)
     return stamp_data_interval(ds)
 
 

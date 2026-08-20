@@ -57,5 +57,6 @@ point (one aggregated bin) is allowed.
 ### Output metadata
 
 - Amount `units` / precip `standard_name` when applicable.
+- Precip `long_name` (and rate-like `GRIB_name`) → `Total precipitation`.
 - `cell_methods` → `{dim}: sum`.
 - `aggregation_period` and `aggregation_coverage` removed.

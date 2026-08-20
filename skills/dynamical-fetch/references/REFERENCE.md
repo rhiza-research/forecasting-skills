@@ -62,7 +62,7 @@ analysis.
 | `ensemble_member` | `number` dim | renamed; member 0 = control |
 | `latitude` / `longitude` | `latitude` / `longitude` | unchanged (1-D) |
 | `time` (analysis) | `time` dim | sliced to `--start-time`/`--end-time`, kept |
-| data variables | data variables | units forwarded verbatim |
+| data variables | data variables | known precip → `mm day-1`; known air temp → `degree_Celsius` |
 
 Forecast `--date` selects the **00 UTC** initialization of the resolved date
 (`init_time == <date>T00:00:00`); all supported forecast datasets publish a 00

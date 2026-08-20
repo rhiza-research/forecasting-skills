@@ -73,10 +73,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset <id> \
 | `gefs` | `gefs/gefs_kenya.zarr` | `tp` |
 
 Output dims follow the classic forecast shape: scalar `time` (init) + `step`
-(+ `number` for ensembles) + `latitude`/`longitude`. Precipitation variables
-arrive as **amounts** (`lwe_thickness_of_precipitation_amount`, `mm`); use
-`deaccumulate` when you need per-step rates for middle-pipeline skills that
-expect `mm day-1`.
+(+ `number` for ensembles) + `latitude`/`longitude`. Fetch writes precipitation
+as a per-step **rate** (`mm day-1`) and known air temperature as
+`degree_Celsius`. Aggregate then `convert-to-totals` for period `mm`; do not
+run `deaccumulate` after this skill.
 
 ### Arguments
 

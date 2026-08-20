@@ -77,7 +77,7 @@ silently lost.
 
 Zarr with dims `(time, station_id)`, coords `latitude(station_id)`,
 `longitude(station_id)`, `name(station_id)`, and data variables among `precip`
-(mm/day), `tmax`/`tmin`/`tavg` (°C) — whichever were requested and present.
+(mm day-1), `tmax`/`tmin`/`tavg` (`degree_Celsius`) — whichever were requested and present.
 GHCN-Daily values are stored in tenths (tenths of mm for PRCP, tenths of °C for
 temperature) and are scaled to these canonical units on the way out. Only rows
 whose quality flag is empty (passed all QC checks) are kept.

@@ -40,9 +40,10 @@ selected with `--dataset` and validated at runtime against
   that the source-specific fetchers (ECMWF S2S, CHIRPS, TAHMO) don't provide,
   with no credentials and no API queue.
 - A downstream skill will clip, aggregate, compare, or plot the result as a
-  weather-skills standard dataset Zarr. Precip comes out as a **rate** — next
-  steps are `aggregate-temporal` and (for `mm` totals) `convert-to-totals`.
-  Do **not** run `deaccumulate` (that is for ECMWF S2S `tp` only).
+  weather-skills standard dataset Zarr. Fetch writes known precip as a **rate**
+  (`mm day-1`) and known air temperature as `degree_Celsius`. Next steps are
+  `aggregate-temporal` and (for `mm` totals) `convert-to-totals`. Do **not**
+  run `deaccumulate` — fetchers already write rates.
 
 ## Usage
 
@@ -116,9 +117,9 @@ out of scope for this fetcher.
 A consolidated weather-skills standard dataset Zarr. Forecast datasets carry a scalar `time`
 coord (the init date), `step` (forecast lead time, `timedelta64`), and — for
 ensembles — `number` (member 0 is the control). Analysis datasets carry a
-`time` dimension. Source variable units are forwarded verbatim; this fetcher
-does not convert them (e.g. GEFS / IFS-ENS `precipitation_surface` is a rate,
-`kg m-2 s-1`, not an accumulation — skip `deaccumulate`). Stamped with `weather_skills_source=dynamical:<id>`.
+`time` dimension. Known precip is converted to `mm day-1` and known air
+temperature to `degree_Celsius`; other variables keep source units. Skip
+`deaccumulate` — precip is already a rate. Stamped with `weather_skills_source=dynamical:<id>`.
 
 ### Provenance
 

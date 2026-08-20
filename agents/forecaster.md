@@ -39,10 +39,11 @@ Prefer small steps over stuffing every filter into one call:
 - **Variables / dims:** Use `select` (and fetcher `--variable` when the source
   API requires it) before transforms that operate on a single variable or
   slice. Do not expect every transform to re-accept date/region/variable filters.
-- **Precip accumulations vs rates:** `deaccumulate` is only for cumulative-since-init
-  fields such as ECMWF S2S `tp`. `dynamical-fetch` `precipitation_surface` is
-  already a rate — skip deaccumulate; `aggregate-temporal` then `convert-to-totals`
-  if you need period `mm`.
+- **Precip accumulations vs rates:** Fetchers write precip as rates
+  (`mm day-1`), including `ecmwf-fetch` `tp`. Skip `deaccumulate` after fetch;
+  `aggregate-temporal` then `convert-to-totals` if you need period `mm`.
+  `deaccumulate` is only for leftover cumulative-since-init cubes that still
+  have amount units.
 
 ## Working directory and output files
 

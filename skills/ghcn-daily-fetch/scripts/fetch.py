@@ -48,13 +48,13 @@ _TIME_UNITS = "days since 1970-01-01"
 _TIME_CALENDAR = "proleptic_gregorian"
 
 # canonical -> (GHCN element, scale, units, standard_name, cell_method, long_name).
-# Scale converts tenths-of-mm / tenths-of-degC to mm/day and degC.
+# Scale converts tenths-of-mm / tenths-of-degC to mm day-1 and degree_Celsius.
 # Precip is stamped as a daily rate (no cell_methods sum — that marks convert-to-totals).
 VAR_MAP = {
-    "precip": ("PRCP", 0.1, "mm/day", "lwe_precipitation_rate", None, "daily precipitation rate"),
-    "tmax": ("TMAX", 0.1, "degC", "air_temperature", "time: maximum", "daily maximum air temperature"),
-    "tmin": ("TMIN", 0.1, "degC", "air_temperature", "time: minimum", "daily minimum air temperature"),
-    "tavg": ("TAVG", 0.1, "degC", "air_temperature", "time: mean", "daily mean air temperature"),
+    "precip": ("PRCP", 0.1, "mm day-1", "lwe_precipitation_rate", None, "daily precipitation rate"),
+    "tmax": ("TMAX", 0.1, "degree_Celsius", "air_temperature", "time: maximum", "daily maximum air temperature"),
+    "tmin": ("TMIN", 0.1, "degree_Celsius", "air_temperature", "time: minimum", "daily minimum air temperature"),
+    "tavg": ("TAVG", 0.1, "degree_Celsius", "air_temperature", "time: mean", "daily mean air temperature"),
 }
 DEFAULT_VARIABLES = ["precip", "tmax", "tmin"]
 

@@ -26,7 +26,7 @@ from weather_skills_core.standard_utils import (
     normalize_longitude,
     verify_cf_decode,
 )
-from weather_skills_core.units import stamp_data_interval
+from weather_skills_core.units import convert_dataarray, stamp_data_interval
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -83,7 +83,7 @@ def _strip_dangling_bounds(ds):
 
 
 def _stamp_cf(ds):
-    """Stamp CF-1.13 attrs; validate source sst units are convertible to K."""
+    """Stamp CF-1.13 attrs; convert sst to degree_Celsius."""
     import cf_xarray.units  # noqa: F401
     from pint import application_registry as ureg
 
@@ -104,9 +104,11 @@ def _stamp_cf(ds):
             "unit convertible to K; refusing to stamp CF "
             f"standard_name={_SST_STANDARD_NAME!r}."
         )
+    converted, _ = convert_dataarray(ds["sst"], "degree_Celsius")
+    ds["sst"] = converted
     ds["sst"].attrs["standard_name"] = _SST_STANDARD_NAME
     ds["sst"].attrs["long_name"] = _SST_LONG_NAME
-    ds["sst"].attrs["units"] = src_units
+    ds["sst"].attrs["units"] = "degree_Celsius"
 
     for name in ("sst", "latitude", "longitude", "time"):
         if name in ds.variables:

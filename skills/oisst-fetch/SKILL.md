@@ -62,8 +62,8 @@ CF plus the `weather_skills_history` provenance key):
   `degrees_east`), `axis` (`Y`/`X`).
 - `time`: `standard_name=time`, `axis=T`, with an explicit udunits `units` and
   `calendar` in the write encoding.
-- `sst`: `standard_name=sea_surface_temperature`, `long_name`, `units` (`degC`,
-  validated as a udunits temperature unit), and an explicit NaN `_FillValue` in
+- `sst`: `standard_name=sea_surface_temperature`, `long_name`, `units`
+  (`degree_Celsius`), and an explicit NaN `_FillValue` in
   the encoding for land cells.
 
 cf-xarray resolves the X/Y/T axes on the output, and the write is gated on that

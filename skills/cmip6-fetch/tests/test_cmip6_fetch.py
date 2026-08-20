@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 import xarray as xr
 from conftest import load_skill, make_gridded, run_skill
@@ -23,7 +24,11 @@ def fetch(mod):
 def _cmip6_state():
     ds = make_gridded(n_time=2, start="2020-01-01", name="tas", fill=280.0)
     ds = ds.rename({"latitude": "lat", "longitude": "lon"})
-    ds["tas"].attrs.update(units="K", long_name="Near-Surface Air Temperature")
+    ds["tas"].attrs.update(
+        units="K",
+        long_name="Near-Surface Air Temperature",
+        standard_name="air_temperature",
+    )
     ds["time"].encoding.update(calendar="proleptic_gregorian", units="days since 1850-01-01")
     return {
         "ds": ds,
@@ -57,6 +62,8 @@ def test_fetch_writes_zarr_with_mocked_remote(tmp_path, mod, fetch):
     assert Path(out).exists()
     ds = xr.open_zarr(out, consolidated=True)
     assert "tas" in ds
+    assert ds["tas"].attrs["units"] == "degree_Celsius"
+    np.testing.assert_allclose(ds["tas"].values, 280.0 - 273.15, rtol=1e-5)
     assert ds["tas"].attrs.get("data_interval") == "1 day"
     assert load_history(out)[-1]["skill"] == "cmip6-fetch"
 

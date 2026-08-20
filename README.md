@@ -21,7 +21,7 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 ### Fetchers (ingress — source-specific)
 | Skill | What it does |
 |---|---|
-| `ecmwf-fetch` | ECMWF S2S ensemble precipitation forecast (cf + pf) over a `--bbox` (use `resolve-region` for a country's bbox) via ECDS → Zarr |
+| `ecmwf-fetch` | ECMWF S2S ensemble forecast (cf + pf; default `tp`, also `t2m` and other surface fields) over a `--bbox` (use `resolve-region` for a country's bbox) via ECDS → Zarr |
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
 | `imerg-fetch` | IMERG satellite precipitation (late release) → Zarr |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
@@ -37,7 +37,7 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
 | `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); keeps `data_interval`; stamps `aggregation_period` + `aggregation_coverage` + `cell_methods` |
 | `convert-to-totals` | Terminal: rate × stamped `aggregation_period` → amount (100% coverage default; refuses overlapping Δt < period — `select` first) |
-| `deaccumulate` | Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) into per-step diffs along the `step` axis |
+| `deaccumulate` | Convert a leftover cumulative-since-init forecast variable into per-step diffs along the `step` axis (fetchers already write rates) |
 | `step-to-time` | Realize a forecast's `step` lead-time axis as wall-clock valid times (`time = init + step`) so it can be compared against time-based observations |
 | `unit-convert` | Convert a variable to target `--to-units` (e.g. precip flux `kg m-2 s-1` → depth rate `mm/day` via ÷ liquid-water density) |
 | `downscale` | Spatial downscaling onto a finer grid (by factor, finer resolution, or a reference grid) via `--method` (linear-interpolation or q-q empirical quantile mapping) |

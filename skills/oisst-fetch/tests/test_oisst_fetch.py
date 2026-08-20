@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 import xarray as xr
 from conftest import load_skill, make_gridded, run_skill
@@ -40,5 +41,8 @@ def test_fetch_writes_zarr_with_mocked_opendap(tmp_path, fetch):
     assert Path(out).exists()
     ds = xr.open_zarr(out, consolidated=True)
     assert "sst" in ds
+    assert ds["sst"].attrs["units"] == "degree_Celsius"
+    assert ds["sst"].attrs["standard_name"] == "sea_surface_temperature"
+    np.testing.assert_allclose(ds["sst"].values, 295.0 - 273.15, rtol=1e-5)
     assert ds["sst"].attrs.get("data_interval") == "1 day"
     assert load_history(out)[-1]["skill"] == "oisst-fetch"

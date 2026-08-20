@@ -8,7 +8,7 @@ Both the control and perturbed retrievals target the `s2s-forecasts` collection 
 |---|---|
 | origin | `ecmwf` |
 | level_type | `single_level` |
-| variable | `["total_precipitation"]` |
+| variable | ECDS names for the requested `-v` fields (default `["total_precipitation"]`) |
 | year | `[YYYY]` (from `--date`) |
 | month | `[MM]` (from `--date`) |
 | day | `[DD]` (from `--date`) |
@@ -19,6 +19,21 @@ Both the control and perturbed retrievals target the `s2s-forecasts` collection 
 | data_format | `grib` |
 
 `forecast_type=perturbed_forecast` returns all 100 ensemble members in one retrieval — there is no per-member subsetting field on this collection.
+
+`-v` uses cfgrib short names. Instant/accumulated fields (`tp`, `mx2t6`, `mn2t6`, `u10`, `v10`, `msl`) share the integer `leadtime_hour` list above. Daily-mean fields (`t2m`, `d2m`, `cape`, `tcw`) are a separate ECDS request whose `leadtime_hour` values are 24-hour windows aligned to those leads (`0` → `0_24`, `168` → `144_168`, …).
+
+| `-v` | ECDS `variable` |
+|---|---|
+| `tp` | `total_precipitation` |
+| `t2m` | `2_m_temperature` |
+| `d2m` | `2_m_dewpoint_temperature` |
+| `mx2t6` | `maximum_2_m_temperature_in_the_last_6_hours` |
+| `mn2t6` | `minimum_2_m_temperature_in_the_last_6_hours` |
+| `u10` | `10_m_u_component_of_wind` |
+| `v10` | `10_m_v_component_of_wind` |
+| `msl` | `mean_sea_level_pressure` |
+| `cape` | `convective_available_potential_energy` |
+| `tcw` | `total_column_water` |
 
 ## Init schedule
 

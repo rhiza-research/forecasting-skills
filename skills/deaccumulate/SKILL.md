@@ -1,6 +1,6 @@
 ---
 name: deaccumulate
-description: Convert a cumulative-since-init forecast variable (e.g. ECMWF S2S `tp`) along its `step` axis into per-step rates (precip → mm day-1). Use after ecmwf-fetch, not after dynamical-fetch: `precipitation_surface` is already a rate and this skill will refuse it.
+description: Convert a leftover cumulative-since-init forecast variable along its `step` axis into per-step rates (precip → mm day-1). Fetchers (`ecmwf-fetch`, `dynamical-fetch`, `kenya-forecast-fetch`) already write rates — do not run this after them. Use on older cumulative archives that still have amount units.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py *)
@@ -17,18 +17,20 @@ per-step increments via `arr[i+1] - arr[i]`, clipped at zero.
 
 ## When to use
 
-- After `ecmwf-fetch`: S2S `tp` is accumulated since init. Deaccumulate before
-  plotting, comparing to per-period obs, or aggregating into longer windows.
+- A forecast cube that is still cumulative since init (amount units such as
+  `mm` / `kg m-2`, growing along `step`) — typically a leftover archive, not
+  a current fetcher output.
 - Other cumulative-since-init forecast fields (surface radiation, evaporation,
   SWE) that grow along `step`.
 
 ## When not to use
 
-- **`dynamical-fetch` `precipitation_surface`** (GEFS, GFS, IFS-ENS, AIFS) —
-  already a rate (`kg m-2 s-1` / `mm day-1`). The skill refuses it. For period
-  amounts, run `aggregate-temporal` then `convert-to-totals`.
+- **Current fetcher outputs** (`ecmwf-fetch` `tp`, `dynamical-fetch`
+  `precipitation_surface`, `kenya-forecast-fetch` precip) — already rates
+  (`mm day-1`). The skill refuses them. For period amounts, run
+  `aggregate-temporal` then `convert-to-totals`.
 - CHIRPS, IMERG, station precip, and any variable whose `units` are per-time
-  (`mm/day`, `kg m-2 s-1`) or whose `standard_name` ends in `_rate` / `_flux`.
+  (`mm day-1`, `kg m-2 s-1`) or whose `standard_name` ends in `_rate` / `_flux`.
 
 ## Input precondition
 
@@ -97,7 +99,7 @@ Deaccumulation turns cumulative precip into **per-step rates** (`mm day-1`).
 Aggregate those rates with `aggregate-temporal --method mean` (or min/max),
 then run `convert-to-totals` when you need period amounts for plotting.
 Do not aggregate a still-accumulated variable — deaccumulate first.
-Do not deaccumulate a dynamical-fetch precip cube — it is already a rate;
+Do not deaccumulate a current fetcher precip cube — it is already a rate;
 aggregate those rates, then `convert-to-totals` if you need `mm`.
 
 `deaccumulate` is also useful standalone: per-step rates can be compared to
@@ -107,6 +109,7 @@ aggregation.
 ## Examples
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_per_step.zarr \
+# Leftover cumulative-since-init cube (current fetchers already write rates)
+uv run ${CLAUDE_SKILL_DIR}/scripts/deaccumulate.py -i /tmp/cumulative_tp.zarr -o /tmp/tp_rates.zarr \
     --variable tp
 ```

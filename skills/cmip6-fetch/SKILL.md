@@ -96,9 +96,10 @@ mapping onto the standard dataset would otherwise break:
   `noleap` or `360_day`); that source calendar and a udunits-valid `units` are
   carried into the written time encoding and re-verified on the written store, so
   the non-standard calendar is never silently coerced to `standard`.
-- **Units.** The data variable's source `units`, `standard_name`, and
-  `long_name` are forwarded verbatim; the `units` are validated with a real
-  udunits check before writing.
+- **Units.** Known air-temperature (`tas`) and precip (`pr`) kinds are converted
+  to standard display units (`degree_Celsius`, `mm day-1`). Other variables
+  keep source `units`/`standard_name`/`long_name`; `units` are validated with a
+  real udunits check before writing.
 
 ### Memory and performance
 

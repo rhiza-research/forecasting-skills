@@ -27,7 +27,6 @@ from weather_skills_core.standard_utils import (
 )
 from weather_skills_core.units import (
     precip_amounts_to_rates,
-    precip_convertible_names,
     stamp_data_interval,
     to_standard_units,
 )
@@ -219,10 +218,8 @@ def fetch(start_time, end_time, bbox, variable, **kwargs):
         time_units=f"hours since {start_time.isoformat()} 00:00:00",
         time_calendar="proleptic_gregorian",
     )
-    precip = precip_convertible_names(ds)
-    if precip:
-        ds = to_standard_units(ds, variables=precip)
-        ds = precip_amounts_to_rates(ds, interval="1 hour")
+    ds = to_standard_units(ds)
+    ds = precip_amounts_to_rates(ds, interval="1 hour")
     return stamp_data_interval(ds, period="1 hour")
 
 

@@ -25,7 +25,12 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import lat_slice, polygon_from_geojson
-from weather_skills_core.units import classify_variable, to_standard_units
+from weather_skills_core.units import (
+    PRECIP_AMOUNT_LONG_NAME,
+    classify_variable,
+    looks_like_rate_display_name,
+    to_standard_units,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -115,6 +120,27 @@ def _heatmap_cmap(da, colormap):
     if kind in ("precip", "precip_amount"):
         return _precip_colormap()
     return "viridis"
+
+
+def _variable_label(da):
+    """Colorbar / axis label: GRIB_name, then long_name, then the variable name.
+
+    After convert-to-totals, leftover fetch rate names (``precipitation rate``)
+    are shown as ``Total precipitation``.
+    """
+    label = da.attrs.get("GRIB_name") or da.attrs.get("long_name") or da.name or "value"
+    kind = classify_variable(
+        da.name or "",
+        units=da.attrs.get("units"),
+        standard_name=da.attrs.get("standard_name"),
+    )
+    if kind == "precip_amount" and looks_like_rate_display_name(label):
+        label = PRECIP_AMOUNT_LONG_NAME
+    units = da.attrs.get("units") or ""
+    if units:
+        return f"{label} [{units}]"
+    return label
+
 
 def _parse_cities(spec):
     if not spec:
@@ -311,11 +337,7 @@ def _heatmap(
     fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
     cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", fraction=5)
-    units = da.attrs.get("units", "")
-    label = da.attrs.get("GRIB_name") or da.attrs.get("long_name") or da.name or "value"
-    if units:
-        label = f"{label} [{units}]"
-    cbar.set_label(label, fontsize=fontsize)
+    cbar.set_label(_variable_label(da), fontsize=fontsize)
     return fig
 
 @weather_skill(
@@ -540,12 +562,8 @@ def plot(
         reduced = da.mean(reduce_dims, keep_attrs=True)
         xvals, xlabel = _timeseries_axis(reduced, sdim)
         ax.plot(xvals, reduced.values)
-        ylabel = reduced.attrs.get("long_name") or variable
-        units = reduced.attrs.get("units")
-        if units:
-            ylabel = f"{ylabel} [{units}]"
         ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+        ax.set_ylabel(_variable_label(reduced))
         ax.set_title(title or f"{variable} ({style})")
         if xlabel == "valid time":
             fig.autofmt_xdate()

@@ -3,7 +3,7 @@ name: inspect-zarr
 description: Inspect a weather-skills standard dataset Zarr — print dimension sizes, coordinate values, and a data-variable summary (names, dims, dtype, units). Use when you need to see what is in a Zarr before clipping, selecting, aggregating, or plotting, or to confirm lat/lon/time coordinates after a fetch.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/inspect.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/inspect_zarr.py *)
 metadata:
   catalog-group: agent-tooling
 ---
@@ -30,7 +30,7 @@ the grid itself.
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/inspect.py --input <in.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/inspect_zarr.py --input <in.zarr> \
     [--format human|json] [--max-values N]
 ```
 
@@ -75,7 +75,7 @@ A truncated coordinate line ends with `(N values)`.
 ## Example
 
 ```bash
-uv run ${CLAUDE_SKILL_DIR}/scripts/inspect.py -i /tmp/ecmwf.zarr
-uv run ${CLAUDE_SKILL_DIR}/scripts/inspect.py -i /tmp/ecmwf.zarr --format json
-uv run ${CLAUDE_SKILL_DIR}/scripts/inspect.py -i /tmp/imerg.zarr --max-values 0
+uv run ${CLAUDE_SKILL_DIR}/scripts/inspect_zarr.py -i /tmp/ecmwf.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/inspect_zarr.py -i /tmp/ecmwf.zarr --format json
+uv run ${CLAUDE_SKILL_DIR}/scripts/inspect_zarr.py -i /tmp/imerg.zarr --max-values 0
 ```
