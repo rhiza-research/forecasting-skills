@@ -120,13 +120,14 @@ fields are 1.5° — do not mix ocean with atmosphere in one call.
 
 Daily-mean fields (`t2m`, `sst`, `d2m`, `cape`, `tcw`, and the other daily
 parameters) use ECDS 24-hour leadtime windows; instant/accumulated and
-pressure-level fields use the same integer lead hours as `tp`. Mixing groups
-(e.g. `-v tp -v t`) submits extra retrieval legs. Pressure-level and `pv`
-fields are archived with the **control forecast only** (`number=0`).
+pressure-level fields use the same daily 00Z lead hours as `tp` (`0`, `24`,
+… `1104` hours, the 46-day S2S range). Mixing groups (e.g. `-v tp -v t`)
+submits extra retrieval legs. Pressure-level and `pv` fields are archived
+with the **control forecast only** (`number=0`).
 
 ### Output
 
-A Zarr store with the selected data variables and dims `(number, step, latitude, longitude)` — plus `vertical` when a pressure-level or `pv` field is selected. `number=0` is the control; `number=1..100` are perturbed members. Pressure-level fields have only the control member. `tp` is a precipitation **rate** (`mm day-1`); known temperature fields (`t2m`, `sst`, `t`, …) are `degree_Celsius`. Stamped with `weather_skills_source=ecmwf-s2s`.
+A Zarr store with the selected data variables and dims `(number, step, latitude, longitude)` — plus `vertical` when a pressure-level or `pv` field is selected. `number=0` is the control; `number=1..100` are perturbed members. Pressure-level fields have only the control member. `step` is daily (00Z). `tp` is a precipitation **rate** (`mm day-1`); known temperature fields (`t2m`, `sst`, `t`, …) are `degree_Celsius`. Stamped with `weather_skills_source=ecmwf-s2s`.
 
 ### Provenance
 

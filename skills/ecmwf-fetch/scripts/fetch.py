@@ -43,7 +43,9 @@ _SKILL_VERSION = "0.0.1"
 _PROBE_POLL_SECONDS = 30
 _PROBE_POLL_MAX_SECONDS = 3600
 
-LEADTIME_HOURS = ["0", "168", "240", "336", "480", "504", "672", "720", "840", "960", "1008"]
+# S2S archives tp 6-hourly; request 00Z daily leads through the 46-day S2S range.
+_MAX_LEAD_HOURS = 46 * 24
+LEADTIME_HOURS = [str(h) for h in range(0, _MAX_LEAD_HOURS + 1, 24)]
 
 S2S_LICENCE_URL = "https://ecds.ecmwf.int/datasets/s2s-forecasts?tab=download#manage-licences"
 

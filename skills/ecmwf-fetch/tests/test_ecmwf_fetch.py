@@ -96,15 +96,24 @@ def test_build_request(mod):
     assert req["area"] == [3.0, 10.0, 0.0, 13.0]
     assert req["variable"] == ["total_precipitation"]
     assert req["leadtime_hour"][0] == "0"
+    assert req["leadtime_hour"][1] == "24"
+    assert req["leadtime_hour"][-1] == "1104"
     assert req["level_type"] == "single_level"
     assert "pressure_level" not in req
+
+
+def test_leadtime_hours_are_daily_through_day_46(mod):
+    hours = [int(h) for h in mod.LEADTIME_HOURS]
+    assert hours == list(range(0, 46 * 24 + 1, 24))
 
 
 def test_build_request_daily_mean(mod):
     req = mod._build_request("2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["t2m"])
     assert req["variable"] == ["2_m_temperature"]
     assert req["leadtime_hour"][0] == "0_24"
+    assert "24_48" in req["leadtime_hour"]
     assert "144_168" in req["leadtime_hour"]
+    assert req["leadtime_hour"][-1] == "1080_1104"
     assert "0" not in req["leadtime_hour"]
 
 

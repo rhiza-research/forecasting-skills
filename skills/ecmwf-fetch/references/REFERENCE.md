@@ -16,7 +16,7 @@ Both the control and perturbed retrievals target the `s2s-forecasts` collection 
 | month | `[MM]` (from `--date`) |
 | day | `[DD]` (from `--date`) |
 | time | `["00:00"]` |
-| leadtime_hour | `["0","168","240","336","480","504","672","720","840","960","1008"]` |
+| leadtime_hour | daily 00Z hours `0`, `24`, … `1104` (46-day S2S range). The archive is 6-hourly; this skill requests the 00Z slice. |
 | forecast_type | `control_forecast` or `perturbed_forecast` |
 | area | `[N, W, S, E]` |
 | data_format | `grib` |
@@ -26,7 +26,7 @@ Both the control and perturbed retrievals target the `s2s-forecasts` collection 
 `-v` uses cfgrib short names. Instant/accumulated fields share the integer
 `leadtime_hour` list above. Daily-mean fields are a separate ECDS request
 whose `leadtime_hour` values are 24-hour windows aligned to those leads
-(`0` → `0_24`, `168` → `144_168`, …). Pressure-level fields use
+(`0` → `0_24`, `24` → `0_24`, `48` → `24_48`, …). Pressure-level fields use
 `level_type=pressure_level` and `pressure_level` (1000–10 hPa, or 1000–200
 hPa for `q`). Potential vorticity uses `level_type=potential_temperature`
 and level 320 K. Those vertical fields are control-forecast only.
