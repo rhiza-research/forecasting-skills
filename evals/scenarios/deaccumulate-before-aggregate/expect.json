@@ -1,0 +1,25 @@
+{
+  "mode": "offline",
+  "timeout_s": 300,
+  "fixtures": [
+    {
+      "kind": "cumulative_forecast",
+      "path": "forecast_tp.zarr",
+      "n_step": 14,
+      "init": "2026-08-01",
+      "name": "tp",
+      "fill": 1.0
+    }
+  ],
+  "skills_used": ["deaccumulate", "aggregate-temporal"],
+  "outputs": [
+    {
+      "glob": "out/weekly_rates.zarr",
+      "min_count": 1,
+      "checks": {
+        "has_history": true,
+        "var_units": { "tp": ["mm day-1", "millimeter / day"] }
+      }
+    }
+  ]
+}

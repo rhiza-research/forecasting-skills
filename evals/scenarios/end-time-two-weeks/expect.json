@@ -1,0 +1,27 @@
+{
+  "mode": "offline",
+  "timeout_s": 180,
+  "fixtures": [
+    {
+      "kind": "daily_rates",
+      "path": "rates.zarr",
+      "n_time": 15,
+      "start": "2026-08-16",
+      "name": "precip",
+      "fill": 1.0
+    }
+  ],
+  "skills_used": ["aggregate-temporal"],
+  "outputs": [
+    {
+      "glob": "out/weekly.zarr",
+      "min_count": 1,
+      "checks": {
+        "has_history": true,
+        "time_size": 2,
+        "aggregation_period": "7 day",
+        "var_units": { "precip": ["mm day-1", "millimeter / day"] }
+      }
+    }
+  ]
+}

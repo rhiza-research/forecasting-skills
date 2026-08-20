@@ -68,6 +68,14 @@ dataset output.
 | `provenance` | Inspect `weather_skills_history` on a Zarr or plot PNG (lineage, JSON, or reproduction script). |
 | `submit-feedback` | Build a length-checked prefilled GitHub new-issue URL the user clicks to file feedback under their own account. Holds no token, makes no network call, creates no issue itself. |
 
+## Prompt-based composition evals
+
+See [`evals/README.md`](evals/README.md). Offline golden path:
+
+```bash
+python evals/run_eval.py --agent script
+```
+
 ## Install
 
 These skills live at <https://github.com/rhiza-research/forecasting-skills>.
