@@ -1,11 +1,10 @@
 ---
 name: coarsen
-description: Coarsen or align a weather-skills envelope Zarr by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
+description: Coarsen or align a weather-skills standard dataset Zarr by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py *)
 metadata:
-  version: "0.1.11"
   catalog-group: transforms
 ---
 
@@ -39,18 +38,17 @@ most_common); this skill is linear-only.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --output <out.zarr> \
     --target-resolution DEG --offset DEG \
-    [--variable NAME] [--dims LAT,LON]
+    [--variable NAME]
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr (any gridded envelope).
+- `--input`, `-i` — input Zarr (any gridded dataset).
 - `--output`, `-o` — output Zarr.
 - `--target-resolution` — target grid spacing in degrees.
 - `--offset` — grid offset in degrees; target points fall at `offset + k*resolution`.
 - `--variable`, `-v` — restrict to a single data variable. Default: process all.
-- `--dims` — comma-separated lat,lon dim names. Defaults autodetect via CF metadata.
 
 ### Longitude convention
 
@@ -71,8 +69,7 @@ and appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
 stored bytes; `version` is the `_SKILL_VERSION` constant in
-`scripts/coarsen.py`, kept in lockstep with `metadata.version` in this SKILL.md
-by the CI version-bump workflow. Cache-hit comparison reads the existing
+`scripts/coarsen.py`. Cache-hit comparison reads the existing
 output's `weather_skills_history`: a hit requires the upstream chain to match and the
 last entry's `skill`, `version`, `args`, and `input.basename` to match the
 proposed new entry; on a hit the script returns without recomputing. The
@@ -84,19 +81,19 @@ hits on basename).
 The `args` dict stores argparse dest names (underscored, e.g.
 `target_resolution`, `offset`), not the hyphenated CLI flag names
 (`--target-resolution`, `--offset`). A consumer reconstructing a
-`uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
+`uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
 underscore → hyphen.
 
 ## Examples
 
 ```bash
 # Onto sheerwater's global0_25 alignment.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/imerg.zarr -o /tmp/imerg_p25.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/imerg.zarr -o /tmp/imerg_p25.zarr \
     --target-resolution 0.25 --offset 0.0
 ```
 
 ```bash
 # Onto sheerwater's global0_1 alignment.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/chirps.zarr -o /tmp/chirps_p1.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/chirps.zarr -o /tmp/chirps_p1.zarr \
     --target-resolution 0.1 --offset 0.05
 ```

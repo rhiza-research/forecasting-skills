@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -9,15 +9,19 @@
 #   # matplotlib<3.10: keep the plot skills on one tested matplotlib
 #   "matplotlib>=3.8,<3.10",
 #   "numpy",
+#   "pint-xarray>=0.6",
 # ]
 # ///
 """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
 
-from weather_skills_core import DataError, UsageError, weather_skill
-from weather_skills_core.envelope import cf_dim
+from pathlib import Path
+
+from weather_skills_core import DataError, Dataset, UsageError, weather_skill
+from weather_skills_core.cf import auto_variable, cf_dim
+from weather_skills_core.units import precip_for_display, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.11"
+_SKILL_VERSION = "0.0.1"
 
 
 def _select_point(da, lat, lon):
@@ -28,48 +32,51 @@ def _select_point(da, lat, lon):
     return da.sel({lat_dim: lat, lon_dim: lon}, method="nearest")
 
 
-def _outer_stats(values):
+def _bxp_stats(values, lo, q1, q3, hi):
     import numpy as np
 
     return {
-        "whislo": float(np.percentile(values, 25)),
-        "q1": float(np.percentile(values, 25)),
+        "whislo": float(np.percentile(values, lo)),
+        "q1": float(np.percentile(values, q1)),
         "med": float(np.percentile(values, 50)),
-        "q3": float(np.percentile(values, 75)),
-        "whishi": float(np.percentile(values, 75)),
+        "q3": float(np.percentile(values, q3)),
+        "whishi": float(np.percentile(values, hi)),
         "fliers": [],
     }
 
 
-def _inner_stats(values):
-    import numpy as np
-
-    return {
-        "whislo": float(np.percentile(values, 0)),
-        "q1": float(np.percentile(values, 10)),
-        "med": float(np.percentile(values, 50)),
-        "q3": float(np.percentile(values, 90)),
-        "whishi": float(np.percentile(values, 100)),
-        "fliers": [],
-    }
+def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
+    ax.bxp(
+        stats,
+        positions=positions,
+        widths=width,
+        showfliers=False,
+        patch_artist=True,
+        boxprops={"facecolor": facecolor, "alpha": 1},
+        medianprops={"color": "black", "linewidth": 1.5},
+        whiskerprops={"color": "black" if whisker_lw <= 1 else "gray", "linewidth": whisker_lw},
+        capprops={
+            "color": "gray" if cap_alpha == 0 else "black",
+            "linewidth": 1,
+            "alpha": cap_alpha,
+        },
+    )
 
 
 @weather_skill(
-    "plot-mediogram",
-    _SKILL_VERSION,
-    input_type=["any", "any"],
-    input_names=["forecast", "mclimate"],
-    input_help=["Forecast Zarr (number × step × spatial)", "M-climate Zarr (same schema)"],
-    output_type="png",
-    variable="single",
-    title=True,
-    extra_args={
-        "lat": {"type": float, "required": True},
-        "lon": {"type": float, "required": True},
-    },
+    name="plot-mediogram",
+    version=_SKILL_VERSION,
 )
-def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
+@weather_skill.argument("-i", "--input", type=Dataset("any"), action="append", required=True)
+@weather_skill.argument("--variable", "-v")
+@weather_skill.argument("--lat", type=float, required=True, help="Point latitude.")
+@weather_skill.argument("--lon", type=float, required=True, help="Point longitude.")
+@weather_skill.argument("--title", default=None, help="Optional plot title.")
+def plot_mediogram(ds, variable, lat, lon, title, output, **kwargs):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
+    if len(ds) != 2:
+        raise UsageError(f"expected exactly two --input paths, got {len(ds)}")
+    ds_fc, ds_mc = ds
     import matplotlib
 
     matplotlib.use("Agg")
@@ -78,13 +85,15 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
     import numpy as np
     from matplotlib.patches import Patch
 
-    variable = variable or (next(iter(ds_fc.data_vars)) if ds_fc.data_vars else None)
+    variable = variable or auto_variable(ds_fc)
     if variable is None or variable not in ds_fc or variable not in ds_mc:
         raise UsageError(
             f"variable '{variable}' must exist in both inputs. "
             f"forecast: {list(ds_fc.data_vars)}  mclimate: {list(ds_mc.data_vars)}"
         )
 
+    ds_fc = precip_for_display(to_standard_units(ds_fc, variables=[variable]), variable)
+    ds_mc = precip_for_display(to_standard_units(ds_mc, variables=[variable]), variable)
     da_fc = ds_fc[variable]
     da_mc = ds_mc[variable]
 
@@ -112,84 +121,48 @@ def plot_mediogram(ds_fc, ds_mc, variable, lat, lon, title):
     snapped_lon = float(pt_fc[lon_dim].values) if lon_dim else lon
 
     time_steps = np.arange(n_steps)
-    ensemble_mean = np.mean(fc, axis=0)
-
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    fc_outer = [_outer_stats(fc[:, i]) for i in range(n_steps)]
-    mc_outer = [_outer_stats(mc[:, i]) for i in range(n_steps)]
-    fc_inner = [_inner_stats(fc[:, i]) for i in range(n_steps)]
-    mc_inner = [_inner_stats(mc[:, i]) for i in range(n_steps)]
+    fc_outer = [_bxp_stats(fc[:, i], 25, 25, 75, 75) for i in range(n_steps)]
+    mc_outer = [_bxp_stats(mc[:, i], 25, 25, 75, 75) for i in range(n_steps)]
+    fc_inner = [_bxp_stats(fc[:, i], 0, 10, 90, 100) for i in range(n_steps)]
+    mc_inner = [_bxp_stats(mc[:, i], 0, 10, 90, 100) for i in range(n_steps)]
 
     pos_fc = time_steps - 0.2
     pos_mc = time_steps + 0.2
+    _draw_bxp(ax, fc_inner, pos_fc, 0.2, "cyan", 1, cap_alpha=0)
+    _draw_bxp(ax, mc_inner, pos_mc, 0.2, "red", 1, cap_alpha=0)
+    _draw_bxp(ax, fc_outer, pos_fc, 0.4, "cyan", 2)
+    _draw_bxp(ax, mc_outer, pos_mc, 0.4, "red", 2)
 
-    # Reference draws the extreme/inner box first, then the IQR/outer box on top
-    # at width 0.4 with visible black caps — the caps appear as horizontal lines
-    # at p25 and p75 since whiskers are zero-length.
-    ax.bxp(
-        fc_inner,
-        positions=pos_fc,
-        widths=0.2,
-        showfliers=False,
-        patch_artist=True,
-        boxprops={"facecolor": "cyan", "alpha": 1},
-        medianprops={"color": "black", "linewidth": 1.5},
-        whiskerprops={"color": "black", "linewidth": 1},
-        capprops={"color": "gray", "linewidth": 1, "alpha": 0},
-    )
-    ax.bxp(
-        mc_inner,
-        positions=pos_mc,
-        widths=0.2,
-        showfliers=False,
-        patch_artist=True,
-        boxprops={"facecolor": "red", "alpha": 1},
-        medianprops={"color": "black", "linewidth": 1.5},
-        whiskerprops={"color": "black", "linewidth": 1},
-        capprops={"color": "gray", "linewidth": 1, "alpha": 0},
-    )
-
-    ax.bxp(
-        fc_outer,
-        positions=pos_fc,
-        widths=0.4,
-        showfliers=False,
-        patch_artist=True,
-        boxprops={"facecolor": "cyan", "alpha": 1},
-        medianprops={"color": "black", "linewidth": 1.5},
-        whiskerprops={"color": "gray", "linewidth": 2},
-        capprops={"color": "black", "linewidth": 1},
-    )
-    ax.bxp(
-        mc_outer,
-        positions=pos_mc,
-        widths=0.4,
-        showfliers=False,
-        patch_artist=True,
-        boxprops={"facecolor": "red", "alpha": 1},
-        medianprops={"color": "black", "linewidth": 1.5},
-        whiskerprops={"color": "gray", "linewidth": 2},
-        capprops={"color": "black", "linewidth": 1},
-    )
-
-    ax.plot(time_steps, ensemble_mean, color="black", linewidth=1.2)
-
+    ax.plot(time_steps, np.mean(fc, axis=0), color="black", linewidth=1.2)
     ax.set_xticks(time_steps)
-    ax.set_xticklabels([f"T+{t + 1}" for t in time_steps])
+    step_vals = np.asarray(pt_fc["step"].values)
+    tick_labels = []
+    for value in step_vals:
+        arr = np.asarray(value)
+        if arr.dtype.kind == "m":
+            tick_labels.append(f"+{int(arr.astype('timedelta64[D]').astype(int))}d")
+        else:
+            tick_labels.append(str(value))
+    ax.set_xticklabels(tick_labels)
     ax.set_xlabel("Forecast step")
     ax.set_ylabel(variable)
     ax.set_title(title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
     ax.grid(True, linestyle="--", alpha=0.6)
-
-    handles = [
-        Patch(facecolor="cyan", edgecolor="black", label="forecast"),
-        Patch(facecolor="red", edgecolor="black", label="m-climate"),
-    ]
-    ax.legend(handles=handles)
+    ax.legend(
+        handles=[
+            Patch(facecolor="cyan", edgecolor="black", label="forecast"),
+            Patch(facecolor="red", edgecolor="black", label="m-climate"),
+        ]
+    )
 
     fig.tight_layout()
-    return fig
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return output
 
 
 if __name__ == "__main__":

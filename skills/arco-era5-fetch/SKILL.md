@@ -1,12 +1,17 @@
 ---
 name: arco-era5-fetch
-description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, pressure, and more) for a date range and region from the public, credential-free Google Cloud Zarr store, and write a weather-skills envelope Zarr. Use when a task needs multi-variable gridded reanalysis ground truth for comparison, verification, or downstream clipping/aggregation/plotting.
+description: Fetch ARCO-ERA5 reanalysis (temperature, wind, precipitation, pressure, and more) for a date range and region from the public, credential-free Google Cloud Zarr store, and write a weather-skills standard dataset Zarr. Use when a task needs multi-variable gridded reanalysis ground truth for comparison, verification, or downstream clipping/aggregation/plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads the public ARCO-ERA5 analysis-ready Zarr from Google Cloud (gs://gcp-public-data-arco-era5) over anonymous access; no credentials required.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.9"
   catalog-group: fetchers
+  variables:
+    - 2m_temperature
+    - total_precipitation
+    - 2m_dewpoint_temperature
+    - 10m_u_component_of_wind
+    - 10m_v_component_of_wind
 ---
 
 # arco-era5-fetch
@@ -14,7 +19,7 @@ metadata:
 Opens the [ARCO-ERA5](https://github.com/google-research/arco-era5) analysis-ready
 Zarr store (`gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3`),
 subsets it by bounding box, time range, and variables, maps it onto the weather-skills
-envelope analysis shape, and writes a consolidated Zarr store. The store is a
+standard dataset analysis shape, and writes a consolidated Zarr store. The store is a
 uniform 0.25° equiangular lat/lon grid, hourly, opened with anonymous Google
 Cloud access — no credentials and no API queue.
 
@@ -23,35 +28,21 @@ Cloud access — no credentials and no API queue.
 - A task needs multi-variable reanalysis (2m temperature, winds, precipitation,
   geopotential, pressure-level fields) as gridded observations/ground truth.
 - A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
-  envelope Zarr.
+  standard dataset Zarr.
 
-Not a forecast — ERA5 is reanalysis. For forecast grids use `ecmwf-fetch` or
-`dynamical-fetch`.
+Not a forecast — ERA5 is reanalysis. For forecast grids prefer
+`dynamical-fetch`; use `ecmwf-fetch` only for ECMWF S2S.
 
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [-v VAR ...] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is one of:
-  - an absolute ISO date `YYYY-MM-DD`;
-  - `now` or `today` — the current UTC date;
-  - `latest` — the newest date with available data;
-  - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
-    days). The offset is capped at 36525 days; a larger value, a future `+`
-    offset, a month/year unit, or any malformed value exits 2 before any network
-    call.
-
-  Boundary handling: absolute endpoints and ordinary relative ranges are
-  inclusive of both ends. The **duration idiom** — start `B-<int>{d|w}` paired
-  with end exactly its own base `B` (both `now`, or both `latest`) — yields an
-  N-day window inclusive of `B`, with the far edge shifted in by one. For any
-  invocation using a relative token, the resolved concrete window is echoed to
-  stderr before fetching. `latest` discovery runs at most once per invocation and
-  only when a token references `latest`. The cache key records the resolved
-  absolute dates, never the relative token.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest`.
+- `--probe-latest` — print the latest available `YYYY-MM-DD` on stdout and exit (Zarr time coordinate). No `-o`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention, so negative west/east values select correctly on
   ERA5's native 0..360 grid. The slice follows each axis's own order, so any
@@ -73,9 +64,9 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date>
 
 ### Output
 
-A consolidated, fully CF-1.13 compliant weather-skills envelope analysis Zarr with a
+A consolidated, fully CF-1.13 compliant weather-skills standard dataset analysis Zarr with a
 `time` dimension and dims `(time, latitude, longitude)` — plus `level` when a
-pressure-level variable is selected. The weather-skills envelope is a CF superset: the
+pressure-level variable is selected. The weather-skills standard dataset is a CF superset: the
 output passes CF first, then carries the `weather_skills_history` provenance key.
 
 CF stamping on the output:
@@ -89,8 +80,10 @@ CF stamping on the output:
   pressure-level variable is selected, `level` carries `standard_name=air_pressure`,
   `units=hPa`, and `positive=down`.
 - **Data variables:** every variable carries a udunits-valid `units` and a
-  `long_name`. The ARCO store's own `units`/`long_name`/`standard_name` are
-  forwarded; a few udunits-invalid unit placeholders the store uses
+  `long_name`. Known air-temperature and precip kinds are converted to
+  standard display units (`degree_Celsius`, `mm day-1`); remaining variables
+  keep the ARCO store's `units`/`long_name`/`standard_name`. A few udunits-invalid
+  unit placeholders the store uses
   (`(0 - 1)`, `~`, `dimensionless`, `m of water equivalent`) are normalized to a
   CF-valid spelling. Each variable's final `units` string is then validated
   against udunits: a variable whose source units are missing, or are
@@ -131,27 +124,26 @@ The output stamps a JSON-encoded `weather_skills_history` attr: an append-only a
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="arco-era5-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records every option except
-the `--output` path — `start`, `end`, `bbox`, and `variable` — with the resolved
-concrete dates substituted for any relative token. `version` is this skill's
+the `--output` path — `start`, `end`, `bbox`, and `variable`. `version` is this skill's
 version, also printed by `--help`. Inspect a written output's provenance with the
 `provenance` skill.
 
 The `args` dict stores option names with underscores, not the hyphenated CLI flag
-names. A consumer reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
+names. A consumer reconstructing a `uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py <args>`
 invocation must translate underscore → hyphen.
 
 ## Examples
 
 ```bash
-# 2m temperature over Kenya for two days
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-02 \
-  --bbox 7/32/-6/43 -v 2m_temperature -o /tmp/arco.zarr
+# 2m temperature over a country for two days (dummy bbox; use resolve-region for a real one)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-02 \
+  --bbox 5/34/-5/42 -v 2m_temperature -o /tmp/arco.zarr
 
-# Last week ending at the newest available time, two variables
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start latest-1w --end latest \
+# One week, two variables, continental Africa (custom bbox)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-05-24 --end-time 2026-05-30 \
   --bbox 23/-20/-37/59 -v 2m_temperature -v total_precipitation -o /tmp/arco_week.zarr
 
 # A pressure-level variable for one day — adds a CF `level` (air_pressure) dim
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start 2026-01-01 --end 2026-01-01 \
-  --bbox 7/32/-6/43 -v temperature -o /tmp/arco_level.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time 2026-01-01 --end-time 2026-01-01 \
+  --bbox 5/34/-5/42 -v temperature -o /tmp/arco_level.zarr
 ```

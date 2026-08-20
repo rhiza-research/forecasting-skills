@@ -1,11 +1,10 @@
 ---
 name: concat
-description: Concatenate two or more weather-skills envelope Zarr stores along a named dimension, optionally assigning coordinate values to the new axis. Use when combining ensemble members, stitching time windows, or merging per-country fetches into a single dataset.
+description: Concatenate two or more weather-skills standard dataset Zarr stores along a named dimension, optionally assigning coordinate values to the new axis. Use when combining ensemble members, stitching time windows, or merging per-country fetches into a single dataset.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/concat.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/concat.py *)
 metadata:
-  version: "0.1.10"
   catalog-group: transforms
 ---
 
@@ -22,7 +21,7 @@ Source-agnostic concatenation along a named dim. Inputs must share all other dim
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/concat.py -i a.zarr -i b.zarr [-i ...] --dim DIM --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/concat.py -i a.zarr -i b.zarr [-i ...] --dim DIM --output <out.zarr> \
     [--coords V1,V2,...]
 ```
 
@@ -58,14 +57,12 @@ output is fully reproducible from its own provenance. The output's top-level
 `weather_skills_history` is a single linear array: the first input's chain followed by
 this concat entry, matching the attr passthrough already done on the dataset.
 `args` is the argparse namespace minus the `--input`/`--output` path strings;
-`version` is the `_SKILL_VERSION` constant in `scripts/concat.py`, kept in
-lockstep with `metadata.version` in this SKILL.md by the CI version-bump
-workflow. Each input's `hash` is a sha256 over its stored bytes, so
+`version` is the `_SKILL_VERSION` constant in `scripts/concat.py`. Each input's `hash` is a sha256 over its stored bytes, so
 renamed-but-unchanged inputs still match and same-named-but-modified inputs
 do not.
 
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/concat.py -i /tmp/cf.zarr -i /tmp/pf.zarr --dim number --output /tmp/ens.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/concat.py -i /tmp/cf.zarr -i /tmp/pf.zarr --dim number --output /tmp/ens.zarr
 ```

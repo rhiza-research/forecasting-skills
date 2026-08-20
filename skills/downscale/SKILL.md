@@ -1,11 +1,10 @@
 ---
 name: downscale
-description: Downscale a weather-skills envelope Zarr onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
+description: Downscale a weather-skills standard dataset Zarr onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py *)
 metadata:
-  version: "0.1.11"
   catalog-group: transforms
 ---
 
@@ -44,21 +43,20 @@ Not for: coarsening a grid onto a strictly-coarser resolution — that is the
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --output <out.zarr> \
     --algorithm {linear-interpolation,q-q} \
     (--factor N | --target-resolution DEG | --reference-grid REF.zarr) \
-    [--dims LAT,LON] [--variable NAME] \
+    [--variable NAME] \
     [--qq-reference REF.zarr] [--time-dim DIM]
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr (any gridded envelope).
+- `--input`, `-i` — input Zarr (any gridded dataset).
 - `--output`, `-o` — output Zarr.
 - `--algorithm` — `linear-interpolation` or `q-q`. Required.
 - `--factor`, `-f` — integer refinement factor (>= 1). New spacing = input spacing / factor (factor 1 = identity). Mutually exclusive with `--target-resolution` and `--reference-grid`.
 - `--target-resolution` — target spacing in degrees; must be finer-or-equal (<=) to the input on each axis. Mutually exclusive with `--factor` and `--reference-grid`.
 - `--reference-grid` — path to a reference Zarr whose lat/lon grid defines the target. The reference grid must be finer-or-equal to the input. Mutually exclusive with `--factor` and `--target-resolution`.
-- `--dims` — comma-separated lat,lon dim names. Defaults autodetect among `latitude/lat/y` and `longitude/lon/x`.
 - `--variable`, `-v` — restrict to a single data variable. Default: process all.
 - `--qq-reference` — reference Zarr whose distribution the `q-q` method maps the output onto. Per-grid-cell empirical quantile mapping along `--time-dim`. The reference must already be on the post-downscale lat/lon grid; mismatches are an error. Required for `--algorithm q-q`.
 - `--time-dim` — time dimension used as the sample axis for q-q mapping. Default: `time`. Both the output and the reference must have a dimension by this name.
@@ -84,8 +82,7 @@ recorded under their argparse dest names (underscored). `input` is a
 field: a list of `{basename, hash}` dicts content-hashing each supplied
 reference zarr's stored bytes, so editing a reference in place (same path,
 changed content) invalidates the cache and forces a recompute. `version` is
-the `_SKILL_VERSION` constant in `scripts/downscale.py`, kept in lockstep
-with `metadata.version` in this SKILL.md by the CI version-bump workflow.
+the `_SKILL_VERSION` constant in `scripts/downscale.py`.
 Cache-hit comparison reads the existing output's `weather_skills_history`: a hit requires
 the upstream chain to match and the last entry's `skill`, `version`, `args`,
 `input.basename`, and `reference_inputs` to match the proposed new entry; on a
@@ -97,25 +94,25 @@ secondary `reference_inputs` hashes are.
 
 ```bash
 # Factor-4 finer, linear interpolation.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_4x.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_4x.zarr \
     --algorithm linear-interpolation --factor 4
 ```
 
 ```bash
 # Onto a finer 0.05° grid, linear interpolation.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/imerg.zarr -o /tmp/imerg_p05.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/imerg.zarr -o /tmp/imerg_p05.zarr \
     --algorithm linear-interpolation --target-resolution 0.05
 ```
 
 ```bash
 # Match the (finer) grid of another dataset.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_on_imerg.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_on_imerg.zarr \
     --algorithm linear-interpolation --reference-grid /tmp/imerg.zarr
 ```
 
 ```bash
 # Downscale ECMWF onto a finer 0.05° grid and q-q map onto ERA5 observations
 # that already sit on that grid.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_p05_qq.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_p05_qq.zarr \
     --algorithm q-q --target-resolution 0.05 --qq-reference /tmp/era5_p05.zarr
 ```

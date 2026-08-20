@@ -4,3 +4,5 @@ demo_output
 .claude
 uv.lock
 _site
+__pycache__/
+*.pyc

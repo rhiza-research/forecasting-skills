@@ -1,12 +1,11 @@
 ---
 name: plot-mediogram
-description: Render an ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate (historical) ensemble at a single lat/lon. Two-layer boxplots per time step show an extremes box underneath (p0–p100 whiskers, p10–p90 box, p50 median) with a wider p25–p75 IQR box overlaid on top, whose visible black caps mark the IQR edges.
+description: Render an ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate (historical) ensemble at a single lat/lon. Two-layer boxplots per time step show an extremes box underneath (p0–p100 whiskers, p10–p90 box, p50 median) with a wider p25–p75 IQR box overlaid on top, whose visible black caps mark the IQR edges. For precipitation, run convert-to-totals after aggregate-temporal before plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py *)
 metadata:
-  version: "0.1.11"
-  catalog-group: visualization
+  catalog-group: figure
 ---
 
 # plot-mediogram
@@ -31,14 +30,13 @@ Lat/lon selection is nearest-neighbor.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py --forecast <forecast.zarr> --mclimate <mclimate.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py -i <forecast.zarr> -i <mclimate.zarr> \
     --lat <lat> --lon <lon> --output <out.png> \
     [--variable NAME] [--title TEXT]
 ```
 
 ### Arguments
-- `--forecast` — forecast Zarr (`number` × `step` × spatial).
-- `--mclimate` — m-climate Zarr (same schema).
+- `--input`, `-i` — pass exactly twice: forecast Zarr first, m-climate Zarr second.
 - `--lat`, `--lon` — point location (nearest-neighbor selection).
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable in the forecast input.
@@ -46,42 +44,15 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py --forecast <foreca
 
 ### Output
 
-A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on the x-axis.
+A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on the x-axis labeled with actual leads (`+7d`, `+10d`, …).
 
 ### Provenance
 
-Every PNG carries three `tEXt` chunk keys written via matplotlib's
-`savefig(metadata=...)`:
-
-- `weather_skills_history_forecast` — a JSON-encoded array of `{skill, version,
-  args, input}` entries with the same schema used for the zarr
-  `weather_skills_history` attribute. The chain belongs to the `--forecast`
-  input. The last entry records this `plot-mediogram` invocation, with
-  its `input` field set to the forecast-side `{basename, hash}`.
-  Preceding entries are the upstream chain inherited from the forecast
-  zarr's `weather_skills_history` (empty if the input had none — a stderr
-  warning is emitted and the array contains only the rendering entry).
-- `weather_skills_history_mclimate` — the same shape for the `--mclimate` input.
-  The last entry's `input` is the m-climate-side `{basename, hash}`;
-  preceding entries come from the m-climate zarr's upstream chain.
-- `Software` — set to `forecasting-skills` so generic image tools like
-  `exiftool` surface the producer prominently.
-
-Both `--forecast` and `--mclimate` are recorded as first-class inputs:
-a mediogram plots the forecast against the climatology baseline, so
-the PNG can only be reproduced from its own provenance when both input
-chains are present. Two keys (not one tree-shaped key) because the
-forecast and m-climate inputs typically come from independent
-upstream branches (e.g. an ecmwf-fetch forecast vs. an m-climate
-sample drawn from the historical archive). Two linear chains keep the
-on-disk schema identical to the single-input plotters: a consumer
-reading either `weather_skills_history_forecast` or `weather_skills_history_mclimate`
-uses one parse path and gets the full lineage of that branch.
-
-Read-back:
+The decorator stamps a single `weather_skills_history` JSON array into the PNG
+metadata. Read-back:
 
 ```bash
-python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['weather_skills_history_forecast'])); print(json.loads(img.info['weather_skills_history_mclimate']))"
+python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['weather_skills_history']))"
 ```
 
 Or:
@@ -93,9 +64,9 @@ exiftool out.png
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py \
-    --forecast /tmp/ecmwf_forecast.zarr \
-    --mclimate /tmp/ecmwf_mclimate.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py \
+    -i /tmp/ecmwf_forecast.zarr \
+    -i /tmp/ecmwf_mclimate.zarr \
     --lat -1.3 --lon 36.8 \
     --variable tp \
     --output /tmp/mediogram_nairobi.png

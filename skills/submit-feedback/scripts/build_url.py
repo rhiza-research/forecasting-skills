@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
 # ]
 # ///
 """Build a length-checked prefilled GitHub "new issue" URL for filing feedback."""
@@ -14,7 +14,7 @@ from urllib.parse import quote
 from weather_skills_core import DataError, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.9"
+_SKILL_VERSION = "0.0.1"
 
 # The target repository is fixed so feedback always lands in the right place and
 # the caller cannot direct it elsewhere by guessing a slug.
@@ -34,16 +34,14 @@ def build_url(title: str, body: str) -> str:
 
 
 @weather_skill(
-    "submit-feedback",
-    _SKILL_VERSION,
-    extra_args={
-        "title": {"required": True, "help": "Issue title; must not be empty."},
-        "body": {"help": "Issue body as a markdown string."},
-        "body_file": {"help": "Path to a file holding the issue body."},
-    },
-    mutex_groups={"body_source": {"args": ("body", "body_file"), "required": True}},
+    name="submit-feedback",
+    version=_SKILL_VERSION,
+    output=False,
 )
-def submit_feedback(title, body, body_file):
+@weather_skill.argument("--title", required=True, help="Issue title; must not be empty.")
+@weather_skill.argument("--body", help="Issue body as a markdown string.")
+@weather_skill.argument("--body-file", help="Path to a file holding the issue body.")
+def submit_feedback(title, body, body_file, **kwargs):
     """Build a length-checked prefilled GitHub "new issue" URL for filing feedback.
 
     Stateless formatter and validator. The caller authors the title and body; this
@@ -58,6 +56,9 @@ def submit_feedback(title, body, body_file):
     """
     if not title.strip():
         raise UsageError("--title must not be empty.")
+
+    if (body is None) == (body_file is None):
+        raise UsageError("pass exactly one of --body or --body-file.")
 
     if body is None:
         body_path = Path(body_file)

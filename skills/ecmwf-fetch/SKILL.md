@@ -1,89 +1,133 @@
 ---
 name: ecmwf-fetch
-description: Fetch an ECMWF S2S precipitation forecast (control + perturbed ensemble) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills envelope Zarr. Use when a task needs raw S2S forecast precipitation for downstream aggregation, clipping, downscaling, or plotting. To fetch over a country, get its bbox from the resolve-region skill first.
+description: "On the first call, inject secrets ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY as environment variables — do not run once without them and retry. Prefer dynamical-fetch for medium-range ECMWF IFS-ENS / AIFS (credential-free). This skill fetches an ECMWF S2S ensemble forecast (control + perturbed) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills standard dataset Zarr. Default `-v tp`. Most used: `tp`, `t2m`, `sst` (then `d2m`, winds). Pressure-level: `-v t` / `-v gh` (control only, all native levels). `-v` is the short name (`t2m`, `sst`, `t`), not ARCO `2m_temperature`. Real-time S2S has a 2-day embargo — request an init at least 2 days old. Fetch writes `tp` as a per-step rate (`mm day-1`) and temperatures as `degree_Celsius` — do not run deaccumulate after this skill. To fetch over a country, get its bbox from the resolve-region skill first."
 license: MIT
 compatibility: Requires Python 3.12 and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.12"
   catalog-group: fetchers
+  variables:
+    - tp
+    - t2m
+    - sst
+    - d2m
+    - mx2t6
+    - mn2t6
+    - u10
+    - v10
+    - msl
+    - cape
+    - tcw
+    - t
+    - gh
   openclaw:
     requires:
       env:
         - ECMWF_DATASTORES_URL
         - ECMWF_DATASTORES_KEY
     primaryEnv: ECMWF_DATASTORES_KEY
+    envVars:
+      - name: ECMWF_DATASTORES_URL
+        description: ECDS API base URL (https://ecds.ecmwf.int/api)
+      - name: ECMWF_DATASTORES_KEY
+        description: Personal ECDS token from your ECMWF Data Stores account
 ---
 
 # ecmwf-fetch
 
-Retrieves S2S total precipitation from the ECMWF Data Store (ECDS) `s2s-forecasts` collection via `ecmwf-datastores-client`. Submits the control and perturbed retrievals in parallel, concatenates the control forecast (`number=0`) and perturbed ensemble (`number=1..100`) along the `number` dimension, and writes a consolidated Zarr store.
+Retrieves ECMWF S2S single-level fields from the ECMWF Data Store (ECDS)
+`s2s-forecasts` collection via `ecmwf-datastores-client`. Submits the control
+and perturbed retrievals in parallel, concatenates the control forecast
+(`number=0`) and perturbed ensemble (`number=1..100`) along the `number`
+dimension, and writes a consolidated Zarr store. Default field is `tp`.
 
 ## When to use
 
-- A task asks for a fresh ECMWF S2S forecast for a specific init date.
-- A downstream skill needs the forecast as a weather-skills envelope Zarr (not raw GRIB).
+Prefer `dynamical-fetch` (`ecmwf-ifs-ens-forecast-15-day-0-25-degree` or
+`ecmwf-aifs-ens-forecast`) for medium-range ECMWF — credential-free, 0.25°,
+no embargo. This skill is **S2S only**.
 
-Not for reanalysis, climatology, or deterministic HRES — this skill is S2S only.
+- A task asks for an ECMWF S2S forecast for a specific init date (real-time
+  inits are embargoed for 2 days), or for S2S fields the dynamical catalog
+  does not carry (ocean, full pressure-level stack, 46-day leads).
+- A downstream skill needs the forecast as a weather-skills standard dataset
+  Zarr (not raw GRIB).
+
+Not for reanalysis, climatology, or deterministic HRES. It retrieves S2S
+single-level, ocean, pressure-level, and potential-vorticity fields.
+
+## Credentials
+
+The fetch process does not inherit host secrets. On the **first** invocation
+that talks to ECDS, inject both of these as environment variables:
+
+- `ECMWF_DATASTORES_URL` — `https://ecds.ecmwf.int/api`
+- `ECMWF_DATASTORES_KEY` — personal ECDS token
+
+Do not call the skill once to discover they are missing, then retry. `--probe-latest`
+does not need credentials. Never print, log, or echo the values.
 
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date YYYY-MM-DD --bbox N/W/S/E [-v VAR ...] --output <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
-- `--date` — forecast init date. The value is one of:
-  - an absolute ISO date `YYYY-MM-DD`;
-  - `now` or `today` — the current UTC date;
-  - `latest` — the newest *accessible* forecast init, found by probing init dates
-    backward via ECDS submits. Recent ECMWF S2S real-time data is
-    access-restricted (embargoed) for a window of variable width, so `latest`
-    skips embargoed inits and resolves to the newest init you can actually
-    retrieve;
-  - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
-    days, so `3w` = 21 days). The offset is capped at 36525 days; a larger value,
-    a future `+` offset, a month/year unit, or any malformed value exits 2 before
-    any network call.
-
-  For a relative token the resolved concrete init date is echoed to stderr before
-  fetching, e.g. `resolved "latest" -> 2026-05-30 (single forecast init date)`.
-
-  **`now`/offset values rarely land on a real init day.** ECMWF S2S runs init on
-  fixed days (Mondays and Thursdays), so an arbitrary calendar date — which is
-  what `now`, `today`, and `now-<int>{d|w}` resolve to — usually is not a
-  published init. When the requested init is not retrievable (ECDS rejects the
-  job) the main fetch exits non-zero with a clear "no data for this init (it may
-  not be a valid S2S init day)" message, and a transport/auth failure is
-  likewise surfaced as a clear error — not a raw traceback. If the requested
-  init is inside the S2S real-time embargo (access-restricted), the error says
-  so explicitly and points at `latest` or an older init date. Prefer `latest`
-  (or an explicit init date); `now`/offset values are accepted but seldom
-  resolve to a valid init.
-
-  **Cost of `latest`:** resolving `latest` is the slow case. Each probe is a real
-  ECDS retrieval submit (the asynchronous queue, polled until results-ready), so
-  one init day at a time until one succeeds. An absolute or `now`-based `--date`
-  does no probing. A job ECDS marks failed/rejected because that init is not yet
-  published steps back. A probe failure matching the S2S real-time embargo
-  signature ("Restricted access to S2S" in the error text) also steps back,
-  since `latest` resolves to the newest accessible init. That signature is the
-  dividing line: a credential, transport, or HTTP failure does not match it, so
-  the run exits non-zero with the original error instead of misreporting it as a
-  missing init. A probe job still not results-ready after a bounded wall-clock
-  poll (1 hour) is treated as stuck and also exits non-zero rather than stepping
-  back, because stepping back from a stuck-but-possibly-valid job would report a
-  misleadingly old `latest`. The whole discovery loop is additionally bounded by
-  a one-hour time budget. If every probed init in the lookback window was
-  access-restricted, the run exits non-zero with a message to check S2S access
-  and license terms. The cache key records the resolved absolute init date,
-  never the relative token.
+- `--date` — forecast init date. Absolute ISO date `YYYY-MM-DD`. Calendar day: `resolve-time latest`. Latest published init (2-day embargo): `--probe-latest`. Real-time
+  ECMWF S2S has run **daily** (00 UTC) since IFS Cycle 48r1 (2023-06-27);
+  before that it was Mondays and Thursdays only. Requesting a date with no
+  published init exits non-zero with a clear "no data for this init" message.
+  Recent ECMWF S2S real-time data is access-restricted (embargoed) for **2
+  days**. If the requested init falls inside the embargo, the error says so
+  explicitly and suggests an older init date. Transport and auth failures are
+  surfaced as clear errors — not raw tracebacks.
+- `--probe-latest` — print the latest init expected off embargo (`YYYY-MM-DD`) on stdout and exit. No `-o`.
 - `--bbox` — required; `N/W/S/E` decimal degrees. The retrieval area (smaller bbox = faster retrieval). To fetch over a country, get its bbox from the `resolve-region` skill and pass the value here.
+- `--variable`, `-v` — S2S field to retrieve (repeatable). Default `tp`.
+  Unknown names exit non-zero and print `Available (most used first):`. Use
+  the short names (`sst`, `t2m`) — not ARCO `2m_temperature` /
+  `total_precipitation`. ECDS form names (`sea_surface_temperature`,
+  `2_m_temperature`) are also accepted.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
+
+### Variables (most used first)
+
+| `-v` | Field | Notes |
+|---|---|---|
+| `tp` | Total precipitation | **Default.** Written as a per-step rate (`mm day-1`). Aggregate then `convert-to-totals` for period `mm`. |
+| `t2m` | 2 m temperature | Daily mean, `degree_Celsius`. Prefer this for "how warm". |
+| `sst` | Sea-surface temperature | Daily mean, `degree_Celsius`. S2S GRIB short name `wtmp` is accepted. |
+| `d2m` | 2 m dewpoint temperature | Daily mean. |
+| `mx2t6` / `mn2t6` | Max / min 2 m temperature in the last 6 hours | |
+| `u10` / `v10` | 10 m wind components | |
+| `msl` | Mean sea-level pressure | |
+| `cape` | Convective available potential energy | Daily mean. |
+| `tcw` | Total column water | Daily mean. |
+| `gh` | Geopotential height | Pressure levels 1000–10 hPa. Control forecast only. |
+| `t` | Temperature on pressure levels | Same levels. Control only. `degree_Celsius`. |
+| `u` / `v` / `w` | Wind / vertical velocity on pressure levels | Control only. |
+| `q` | Specific humidity | 1000–200 hPa (7 levels). Control only. |
+| `pv` | Potential vorticity | 320 K isentropic level. Control only. |
+
+The skill also accepts the rest of the S2S single-level and ocean parameters
+(soil moisture/temperature, snow, fluxes, runoff, sea ice, ocean currents,
+…). Pass an unknown `-v` to print the full `Available:` list, or see
+[references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md).
+Ocean fields are on a 1.0° grid; atmosphere single-level and pressure-level
+fields are 1.5° — do not mix ocean with atmosphere in one call.
+
+Daily-mean fields (`t2m`, `sst`, `d2m`, `cape`, `tcw`, and the other daily
+parameters) use ECDS 24-hour leadtime windows; instant/accumulated and
+pressure-level fields use the same daily 00Z lead hours as `tp` (`0`, `24`,
+… `1104` hours, the 46-day S2S range). Mixing groups (e.g. `-v tp -v t`)
+submits extra retrieval legs. Pressure-level and `pv` fields are archived
+with the **control forecast only** (`number=0`).
 
 ### Output
 
-A Zarr store with data variable `tp` (total precipitation, `kg m⁻²` — numerically equivalent to mm depth over the accumulation period) and dims `(number, step, latitude, longitude)`. `number=0` is the control; `number=1..100` are perturbed members. Stamped with `weather_skills_source=ecmwf-s2s`.
+A Zarr store with the selected data variables and dims `(number, step, latitude, longitude)` — plus `vertical` when a pressure-level or `pv` field is selected. `number=0` is the control; `number=1..100` are perturbed members. Pressure-level fields have only the control member. `step` is daily (00Z). `tp` is a precipitation **rate** (`mm day-1`); known temperature fields (`t2m`, `sst`, `t`, …) are `degree_Celsius`. Stamped with `weather_skills_source=ecmwf-s2s`.
 
 ### Provenance
 
@@ -97,20 +141,28 @@ records the run's flag values under underscored names (e.g. a flag
 ## Examples
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/59 --output /tmp/ecmwf.zarr
+# Default: total precipitation, continental Africa (custom bbox — not a country lookup)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/59 --output /tmp/ecmwf.zarr
 ```
 
 ```bash
-# Fetch over a country: get its bbox from the resolve-region skill (e.g. KEN → 5.5/33.9/-4.7/41.9)
-BBOX=5.5/33.9/-4.7/41.9
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox "$BBOX" --output /tmp/ecmwf_kenya.zarr
+# 2 m temperature (the other most-used S2S field)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 -v t2m --output /tmp/ecmwf_t2m.zarr
 ```
 
 ```bash
-# Newest available init (slow: probes init dates backward via ECDS submits)
-# (bbox from the resolve-region skill, e.g. KEN)
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date latest --bbox 5.5/33.9/-4.7/41.9 \
-    --output /tmp/ecmwf_latest.zarr
+# Sea-surface temperature
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 -v sst --output /tmp/ecmwf_sst.zarr
+```
+
+```bash
+# Temperature on all native pressure levels (control forecast)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 -v t --output /tmp/ecmwf_t.zarr
+```
+
+```bash
+# Named country: run resolve-region first, then pass the printed N/W/S/E:
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 --output /tmp/ecmwf_kenya.zarr
 ```
 
 See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the exact ECDS request parameters and how retrieval time scales with area.

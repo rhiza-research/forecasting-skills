@@ -1,22 +1,21 @@
 ---
 name: step-to-time
-description: Realize a forecast envelope's `step` lead-time axis as wall-clock valid times (`time = init + step`), replacing the `step` dim with a `time` dim. Use it to compare a forecast against observations — e.g. before plot-compare, plot-timeseries, or difference against a time-based dataset.
+description: Realize a forecast dataset's `step` lead-time axis as wall-clock valid times (`time = init + step`), replacing the `step` dim with a `time` dim. Use it to compare a forecast against observations — e.g. before plot-compare, plot-timeseries, or difference against a time-based dataset.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py *)
 metadata:
-  version: "0.1.8"
   catalog-group: transforms
 ---
 
 # step-to-time
 
-Axis-realization primitive. A forecast envelope labels its temporal axis with
+Axis-realization primitive. A forecast dataset labels its temporal axis with
 lead times — a `step` dim (`timedelta64`) plus a scalar `time` coord holding
-the forecast init date — while observation envelopes carry a wall-clock `time`
+the forecast init date — while observation datasets carry a wall-clock `time`
 dim (`datetime64`). Skills that compare the two need both inputs on the same
 kind of axis. This skill computes `valid_time = init + step` and rewrites the
-envelope with the `step` dim replaced by a `time` dim labeled with those valid
+standard dataset with the `step` dim replaced by a `time` dim labeled with those valid
 times.
 
 ## When to use
@@ -40,11 +39,11 @@ a message to select a single init first.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py --input <in.zarr> --output <out.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py --input <in.zarr> --output <out.zarr>
 ```
 
 ### Arguments
-- `--input`, `-i` — input Zarr containing a forecast envelope with a `step` dim
+- `--input`, `-i` — input Zarr containing a forecast dataset with a `step` dim
   and a scalar `time` init coord.
 - `--output`, `-o` — output Zarr.
 
@@ -91,5 +90,5 @@ input misses).
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py -i /tmp/ecmwf_daily.zarr -o /tmp/ecmwf_valid.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py -i /tmp/ecmwf_daily.zarr -o /tmp/ecmwf_valid.zarr
 ```
