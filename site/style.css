@@ -679,6 +679,10 @@ pre code {
   flex-wrap: wrap;
 }
 
+.schema-pair .schema {
+  min-width: 0;
+}
+
 .schema {
   flex: 1 1 16rem;
   border: 1px solid var(--rule);

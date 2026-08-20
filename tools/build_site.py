@@ -50,7 +50,7 @@ import yaml
 GROUPS: list[tuple[str, str, str | None]] = [
     ("fetchers", "Fetchers", "ingress — source → standard dataset"),
     ("transforms", "Transforms", "standard dataset → standard dataset"),
-    ("figure", "Figure", "dataset → PNG"),
+    ("figure", "Figure", "standard dataset → PNG"),
     (
         "agent-tooling",
         "Agent capabilities",

@@ -10,8 +10,9 @@ metadata:
 
 # clip-region
 
-Source-agnostic spatial subset. Pass an explicit `--bbox`, `--region` (ISO3 /
-country name; decorator fills `bbox`), or `--geojson` polygon.
+Source-agnostic spatial subset. Pass an explicit `--bbox`, `--region` (ISO3,
+country name, or sub-national `country-admin1` / `country-admin1-admin2`;
+decorator fills `bbox`), or `--geojson` polygon.
 
 ## When to use
 
@@ -36,7 +37,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr>
 - `--input`, `-i` — input Zarr (gridded/spatial or point_obs).
 - `--output`, `-o` — output Zarr.
 - `--bbox` — `N/W/S/E` in decimal degrees (optional if `--region` is set).
-- `--region` — ISO3 code or country name; fills `bbox` automatically. Do not pass with `--bbox` or `--geojson`.
+- `--region` — ISO3 code, country name, or sub-national region (`kenya-nairobi`);
+  fills `bbox` automatically. Do not pass with `--bbox` or `--geojson`. For a
+  polygon clip (county boundary, not just the bbox), resolve the region to
+  GeoJSON first and pass `--geojson`.
 - `--geojson` — path to a GeoJSON Feature/FeatureCollection/geometry. Mutex with `--bbox`/`--region`.
 - `--keep-outside` — with `--geojson` only: set values outside the polygon to NaN instead of dropping cells/stations.
 

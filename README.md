@@ -32,6 +32,7 @@ Built as [Agent Skills](https://agentskills.io) by Rhiza Research.
 | Skill | What it does |
 |---|---|
 | `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) from bundled Natural Earth 1:110m boundaries |
+| `inspect-zarr` | Print dimension sizes, coordinate values, and a data-variable summary of a Zarr (stdout only) |
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
 | `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); stamps `aggregation_period` + `cell_methods` |
 | `convert-to-totals` | Terminal: rate × `aggregation_period` → amount for plotting (refuses rolling Δt < period) |
@@ -55,6 +56,8 @@ dataset output.
 
 | Skill | What it does |
 |---|---|
+| `inspect-zarr` | Print dims, coordinate values, and data-variable summary of a Zarr (stdout; no write). |
+| `provenance` | Inspect `weather_skills_history` on a Zarr or plot PNG (lineage, JSON, or reproduction script). |
 | `email-report` | Compose an RFC 5322 `.eml` with attachments. **Mocks SMTP — writes to disk, does not send.** |
 | `submit-feedback` | Build a length-checked prefilled GitHub new-issue URL the user clicks to file feedback under their own account. Holds no token, makes no network call, creates no issue itself. |
 

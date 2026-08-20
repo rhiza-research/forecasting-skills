@@ -119,7 +119,7 @@
         Skills read and write CF-compliant Zarr stores. The CF conventions
         themselves are the contract — not a repo-specific subset — so producers
         must emit valid CF and consumers must read any valid CF representation
-        of the standard dataset's canonical shapes, including non-standard model calendars.
+        of the standard dimensions and types, including non-standard model calendars.
       </p>
     </div>
     <div class="trust-card">
@@ -127,8 +127,9 @@
       <p>
         Every zarr-writing skill appends to <code>weather_skills_history</code>,
         an append-only JSON chain recording the skill, its version, its arguments,
-        and a hash of its input. Plot PNGs embed the same chain in their metadata,
-        and the <code>provenance</code> skill renders any chain as a human-readable
+        and a hash of its input. Plot PNGs embed the same chain in their metadata
+        and, when the chain is intact, a corner provenance-verified mark.
+        The <code>provenance</code> skill renders any chain as a human-readable
         lineage, the raw JSON, or a runnable reproduction script.
       </p>
     </div>
@@ -241,16 +242,23 @@ forecasting-skills plot \
     --output /tmp/weekly.png
 
 forecasting-skills imerg-fetch \
-    --start 2025-12-24 \
-    --end 2026-02-13 \
+    --start-time 2025-12-24 \
+    --end-time 2026-02-13 \
     --output /tmp/imerg.zarr
 forecasting-skills clip-region \
     --input /tmp/imerg.zarr \
     --bbox "$KENYA_BBOX" \
     --output /tmp/imerg_kenya.zarr</code></pre>
   <p>
-    The <em>weather-skills standard dataset</em> is a CF-compliant Zarr v3 store with two
-    canonical shapes. Consumers rely only on dimensions, coordinates, data
+    The <em>weather-skills standard dataset</em> is a CF-compliant Zarr v3 store.
+    Skills declare what they need as dimension names
+    (<code>lat</code>, <code>lon</code>, <code>time</code>,
+    <code>init_time</code>, <code>prediction_timedelta</code>,
+    <code>member</code>, <code>point_id</code>, &#8230;)
+    or as short types that stand for a fixed set of those dimensions.
+    CF spellings such as <code>latitude</code>, <code>step</code>,
+    <code>number</code>, and <code>station_id</code> alias onto the same names.
+    Consumers rely only on dimensions, coordinates, data
     variables, and <code>weather_skills_*</code> attributes — never on per-variable
     codec encoding — which keeps skills independent across library versions. The
     full contract is documented in
@@ -258,19 +266,28 @@ forecasting-skills clip-region \
   </p>
   <div class="schema-pair">
     <div class="schema">
-      <h3>Gridded dataset</h3>
-      <pre><code>(number?, step|time,
- latitude, longitude)</code></pre>
-      <p>forecasts, satellite grids, reanalyses</p>
+      <h3>observations</h3>
+      <pre><code>lat, lon, time</code></pre>
+      <p>satellite grids, reanalyses</p>
     </div>
     <div class="schema">
-      <h3>Point observations dataset</h3>
-      <pre><code>(time, station_id)
-latitude(station_id)
-longitude(station_id)</code></pre>
+      <h3>forecast</h3>
+      <pre><code>lat, lon, init_time,
+prediction_timedelta</code></pre>
+      <p>ensembles add <code>member</code></p>
+    </div>
+    <div class="schema">
+      <h3>point_obs</h3>
+      <pre><code>point_id, time</code></pre>
       <p>in-situ station observations</p>
     </div>
   </div>
+  <p>
+    Accumulated variables travel the pipeline as rates (precipitation as
+    <code>mm day-1</code>). After <code>aggregate-temporal</code> stamps
+    <code>aggregation_period</code>, <code>convert-to-totals</code> turns those
+    rates into period amounts for plotting.
+  </p>
 </section>
 
 <section id="skills" class="section">
