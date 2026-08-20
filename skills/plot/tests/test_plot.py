@@ -99,3 +99,33 @@ def test_amount_colorbar_drops_leftover_rate_name():
     rate = make_gridded()["precip"]
     rate.attrs["long_name"] = "precipitation rate"
     assert plot_mod._variable_label(rate) == "precipitation rate [mm day-1]"
+
+def test_parse_draw_boxes():
+    from weather_skills_core import UsageError
+
+    plot_mod = load_skill("plot", "plot")
+    boxes = plot_mod._parse_draw_boxes(["10/50/-10/70", "0/90/-10/110"])
+    assert boxes == [(10.0, 50.0, -10.0, 70.0), (0.0, 90.0, -10.0, 110.0)]
+    assert plot_mod._parse_draw_boxes(None) == []
+    with pytest.raises(UsageError):
+        plot_mod._parse_draw_boxes(["not-a-box"])
+
+
+def test_heatmap_draw_box_writes_png(tmp_path, plot_fn):
+    # Wider lon range so IOD-style boxes are on-map.
+    ds = make_gridded(lats=(-15.0, 0.0, 15.0), lons=(40.0, 70.0, 100.0, 120.0))
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "boxes.png"
+    run_skill(
+        plot_fn,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--draw-box",
+        "10/50/-10/70",
+        "--draw-box",
+        "0/90/-10/110",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0

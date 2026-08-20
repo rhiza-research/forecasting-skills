@@ -43,7 +43,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
     [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E] \
-    [--mask-geojson PATH]
+    [--mask-geojson PATH] [--draw-box N/W/S/E ...]
 ```
 
 ### Arguments
@@ -97,6 +97,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   are unioned. Combine with `--bbox` to crop to the rectangle first, then mask to
   the polygon within it. Heatmap-only — `--style timeseries` ignores it with a
   stderr warning. Default unset → no mask.
+- `--draw-box` — optional black outline rectangle(s) drawn on each heatmap panel.
+  Same `N/W/S/E` form as `--bbox`. Repeat the flag for multiple boxes (e.g.
+  IOD west `10/50/-10/70` and east `0/90/-10/110`). Unlike `--bbox`, this does
+  **not** crop the data — it only overlays outlines. Antimeridian spans
+  (`W > E`) are drawn as two segments. Heatmap-only — `--style timeseries`
+  ignores it with a stderr warning. Default unset → no boxes.
 
 ### Output
 
@@ -147,6 +153,13 @@ Country-shaped map masked to a boundary polygon:
 # After resolve-region writes --geojson /tmp/kenya.geojson (dummy bbox below):
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/chirps_kenya.zarr -o /tmp/kenya.png \
     --variable precip --bbox 5/34/-5/42 --mask-geojson /tmp/kenya.geojson
+```
+
+Indian Ocean map with IOD west/east dipole boxes overlaid:
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ts_anom.zarr -o /tmp/iod_boxes.png \
+    --variable ts_anomaly --extent 40,120,-20,20 \
+    --draw-box 10/50/-10/70 --draw-box 0/90/-10/110
 ```
 
 Time series:
