@@ -1,12 +1,11 @@
 ---
 name: plot-compare
-description: Render a side-by-side multi-panel comparison PNG of two weather-skills envelope Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC.
+description: Render a side-by-side multi-panel comparison PNG of two weather-skills standard dataset Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC. For precipitation, convert-to-totals after aggregate-temporal before plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py *)
 metadata:
-  version: "0.1.16"
-  catalog-group: visualization
+  catalog-group: figure
 ---
 
 # plot-compare
@@ -18,7 +17,7 @@ Handles:
 - Gridded vs. gridded (pcolormesh maps).
 - Station (`station_id`-indexed) vs. gridded (scatter over mesh).
 
-When exactly one input is a station-schema Zarr, that input is placed
+When exactly one input is a point_obs Zarr, that input is placed
 on the top row to match the canonical "stations vs. satellite" layout.
 
 The two inputs must already be at the same time resolution and are
@@ -33,8 +32,9 @@ one a calendar `time` axis and the other a forecast `step` axis) or have
 no overlapping bins; in either case it asks you to aggregate to a common
 resolution first. To compare data captured at different cadences (e.g.
 daily station observations against weekly or dekadal gridded
-accumulations), aggregate each input to the same window with the
-`aggregate-temporal` skill before comparing.
+rates), aggregate each input to the same window with the
+`aggregate-temporal` skill before comparing, then `convert-to-totals` so
+precipitation figures are period amounts (`mm`), not rates.
 
 Each row can draw a different variable: `--variable-a`/`--variable-b`
 select per-row, with `--variable` as a both-rows shorthand. This lets
@@ -70,10 +70,13 @@ end − bin_width + 1 day. Matches `aggregate-temporal` and
 - Validating a satellite product against station observations for a country.
 - Comparing two forecasts (e.g. model A vs. model B) on the same axes.
 
+For N gridded datasets as a valid-time grid with blank cells where a
+dataset has no matching time, use `plot-compare-forecasts`.
+
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--variable-a NAME] [--variable-b NAME] \
     [--colormap NAME] [--colormap-a NAME] [--colormap-b NAME] \
     [--shared-scale | --independent-scale] [--title TEXT] \
@@ -172,34 +175,11 @@ leftmost panel of each row.
 
 ### Provenance
 
-Every PNG carries three `tEXt` chunk keys written via matplotlib's
-`savefig(metadata=...)`:
-
-- `weather_skills_history_a` — a JSON-encoded array of `{skill, version, args,
-  input}` entries with the same schema used for the zarr `weather_skills_history`
-  attribute. The chain belongs to the first `-i` input. The last entry
-  records this `plot-compare` invocation, with its `input` field set to
-  the A-side `{basename, hash}`. Preceding entries are the upstream
-  chain inherited from input A's `weather_skills_history` (empty if input A had
-  none — a stderr warning is emitted and the array contains only the
-  rendering entry).
-- `weather_skills_history_b` — the same shape for the second `-i` input. The
-  last entry's `input` is the B-side `{basename, hash}`; preceding
-  entries come from input B's upstream chain.
-- `Software` — set to `forecasting-skills` so generic image tools like
-  `exiftool` surface the producer prominently.
-
-Two keys (not one tree-shaped key) because `plot-compare`'s two inputs
-typically have no common ancestor (e.g. tahmo-fetch vs. imerg-fetch are
-independent fetcher branches). Two linear chains keep the on-disk
-schema identical to the single-input plotters: a consumer reading
-either `weather_skills_history_a` or `weather_skills_history_b` uses one parse path and
-gets the full lineage of that branch.
-
-Read-back:
+The decorator stamps a single `weather_skills_history` JSON array into the PNG
+metadata. Read-back:
 
 ```bash
-python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['weather_skills_history_a'])); print(json.loads(img.info['weather_skills_history_b']))"
+python3 -c "from PIL import Image; import json; img=Image.open('out.png'); print(json.loads(img.info['weather_skills_history']))"
 ```
 
 Or:
@@ -211,7 +191,7 @@ exiftool out.png
 ## Example
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i /tmp/tahmo_dekadal.zarr -i /tmp/imerg_dekadal.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i /tmp/tahmo_dekadal.zarr -i /tmp/imerg_dekadal.zarr \
     --variable precip --output /tmp/sat_vs_station.png \
     --title "IMERG vs TAHMO dekadal"
 ```

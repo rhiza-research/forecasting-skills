@@ -1,19 +1,21 @@
 ---
 name: cmip6-fetch
-description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipitation) for a date range and region from the public, credential-free Pangeo Google Cloud catalog, and write a weather-skills envelope Zarr. Use when a task needs climate-projection grids (historical or future scenario) for downstream clipping, aggregation, comparison, or plotting.
+description: Fetch a CMIP6 climate-model projection (e.g. temperature, precipitation) for a date range and region from the public, credential-free Pangeo Google Cloud catalog, and write a weather-skills standard dataset Zarr. Use when a task needs climate-projection grids (historical or future scenario) for downstream clipping, aggregation, comparison, or plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads the public Pangeo CMIP6 collection from Google Cloud (gs://cmip6) over anonymous access; no credentials required.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.7"
   catalog-group: fetchers
+  variables:
+    - tas
+    - pr
 ---
 
 # cmip6-fetch
 
 Resolves a single CMIP6 dataset from the [Pangeo CMIP6](https://pangeo-data.github.io/pangeo-cmip6-cloud/)
 catalog on Google Cloud, opens its analysis-ready Zarr store anonymously, subsets
-it by bounding box and time, maps its dimensions onto the weather-skills envelope analysis
+it by bounding box and time, maps its dimensions onto the weather-skills standard dataset analysis
 shape, and writes a consolidated Zarr store. CMIP6 is faceted, so the dataset is
 selected with facet flags (model, experiment, variable, member, table, grid) that
 are validated against the catalog CSV.
@@ -23,7 +25,7 @@ are validated against the catalog CSV.
 - A task needs climate-model projection output — historical runs or future
   scenarios (ssp*) — as gridded data, with no credentials.
 - A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
-  envelope Zarr.
+  standard dataset Zarr.
 
 CMIP6 is model projection, not observation or short-range forecast. Historical
 runs cover 1850–2014 and scenario (`ssp*`) runs continue to 2100, so the natural
@@ -32,9 +34,10 @@ windows are multi-year to multi-decadal.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <id> -v <variable> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <id> -v <variable> \
   [--member <id>] [--table <id>] [--grid <label>] \
-  --start <date> --end <date> [--bbox N/W/S/E] -o <path.zarr>
+  --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 ### Arguments
@@ -49,13 +52,9 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model <id> --experiment <
   e.g. `day`).
 - `--grid` — CMIP6 `grid_label` (e.g. `gn`, `gr1`). Required only when more than
   one grid matches the other facets; otherwise the single match is used.
-- `--start`, `--end` — inclusive date range. Each value is one of an absolute
-  ISO date `YYYY-MM-DD`; `now`/`today`; `latest` (the newest time present in the
-  resolved dataset); or an offset `now-<int>{d|w}` / `latest-<int>{d|w}`
-  (`w` = 7 days, capped at 36525 days). Absolute **future** dates are allowed
-  (scenario experiments run to 2100); only future `+` offsets are rejected. The
-  duration idiom and inclusive-both-ends boundary handling match the other
-  fetchers. The cache key records the resolved absolute dates, never the token.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`. Future dates are allowed for scenario experiments (which run to
+  2100). Calendar windows: `resolve-time last-2w`. `--probe-latest` prints `none` (no realtime cap).
+- `--probe-latest` — print `none` on stdout and exit (CMIP6 has no realtime cap). No `-o`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees. Longitudes are normalized
   to the [-180, 180) convention so negative west/east values select correctly.
   Omit for the full native grid. To fetch over a country, get its bbox from the
@@ -69,12 +68,12 @@ regular 1-D lat/lon grids.
 
 ### Output
 
-A consolidated weather-skills envelope analysis Zarr with a `time` dimension and dims
+A consolidated weather-skills standard dataset analysis Zarr with a `time` dimension and dims
 `(time, latitude, longitude)`, carrying the requested variable.
 
 The output is fully CF-1.13 compliant. CMIP6 source data is already strongly
 CF-compliant, so the transform preserves the source metadata and repairs what
-mapping onto the envelope would otherwise break:
+mapping onto the standard dataset would otherwise break:
 
 - **Global attrs.** The rich CMIP6 globals (`title`, `source`, `institution`,
   `references`, `tracking_id`, etc.) are preserved; `Conventions` is overwritten
@@ -85,7 +84,7 @@ mapping onto the envelope would otherwise break:
 - **Coordinates.** `latitude`/`longitude`/`time` carry CF `standard_name`,
   `units` (`degrees_north`/`degrees_east`), and `axis` (`Y`/`X`/`T`). cf-xarray
   resolves the X/Y/T axes — verified on the way out.
-- **Bounds integrity.** The weather-skills envelope does not carry cell bounds, so the
+- **Bounds integrity.** The weather-skills standard dataset does not carry cell bounds, so the
   `*_bnds` variables are dropped. The `bounds` attr each coordinate would
   otherwise still carry (a dangling CF §7.1 reference to an absent variable) is
   removed, so no coordinate points at a missing variable.
@@ -93,9 +92,10 @@ mapping onto the envelope would otherwise break:
   `noleap` or `360_day`); that source calendar and a udunits-valid `units` are
   carried into the written time encoding and re-verified on the written store, so
   the non-standard calendar is never silently coerced to `standard`.
-- **Units.** The data variable's source `units`, `standard_name`, and
-  `long_name` are forwarded verbatim; the `units` are validated with a real
-  udunits check before writing.
+- **Units.** Known air-temperature (`tas`) and precip (`pr`) kinds are converted
+  to standard display units (`degree_Celsius`, `mm day-1`). Other variables
+  keep source `units`/`standard_name`/`long_name`; `units` are validated with a
+  real udunits check before writing.
 
 ### Memory and performance
 
@@ -127,23 +127,23 @@ The output stamps a JSON-encoded `weather_skills_history` attr: an append-only a
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="cmip6-fetch"` and `input=null`. `args` records the
 resolved facets (`model`, `experiment`, `variable`, `member`, `table`, the chosen
-`grid`, and the dataset `data_version`), the `bbox`, and the resolved concrete
-`start`/`end`. `version` is this skill's version, also printed by `--help`.
+`grid`, and the dataset `data_version`), the `bbox`, and `start`/`end`. `version`
+is this skill's version, also printed by `--help`.
 Inspect a written output's provenance with the `provenance` skill.
 
 ## Examples
 
 ```bash
-# GFDL-CM4 historical near-surface air temperature over East Africa,
-# a multi-decade monthly slice
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
-  --table Amon --start 1980-01-01 --end 2014-12-31 --bbox 7/32/-6/43 -o /tmp/cmip6_hist.zarr
+# GFDL-CM4 historical near-surface air temperature over a country
+# (dummy bbox; use resolve-region for a real one), a multi-decade monthly slice
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
+  --table Amon --start-time 1980-01-01 --end-time 2014-12-31 --bbox 5/34/-5/42 -o /tmp/cmip6_hist.zarr
 
 # Full historical monthly record (1850–2014), global grid
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
-  --table Amon --start 1850-01-01 --end 2014-12-31 -o /tmp/cmip6_full_hist.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment historical -v tas \
+  --table Amon --start-time 1850-01-01 --end-time 2014-12-31 -o /tmp/cmip6_full_hist.zarr
 
 # A future scenario: monthly precipitation under ssp245, mid-century decade
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment ssp245 -v pr \
-  --table Amon --start 2040-01-01 --end 2049-12-31 -o /tmp/cmip6_ssp245.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --model GFDL-CM4 --experiment ssp245 -v pr \
+  --table Amon --start-time 2040-01-01 --end-time 2049-12-31 -o /tmp/cmip6_ssp245.zarr
 ```

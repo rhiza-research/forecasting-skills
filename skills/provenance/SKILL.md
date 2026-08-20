@@ -1,11 +1,10 @@
 ---
 name: provenance
-description: Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact (an envelope Zarr or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
+description: Inspect the weather_skills_history provenance chain stamped on a weather-skills artifact (a standard dataset Zarr or a plot PNG) and render it as a human-readable lineage, the raw JSON chain, or a runnable reproduction script. Use when you need to answer "how did this file come to exist, and how do I regenerate it?" — especially for a PNG, whose chain lives in binary tEXt chunks an editor can't open.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Inspects a zarr directory or a .png file; reads no credentials and writes nothing.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py *)
 metadata:
-  version: "0.1.10"
   catalog-group: agent-tooling
 ---
 
@@ -31,11 +30,11 @@ writes a file or modifies its input.
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py --input <artifact> [--format human|json|script] [--check]
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py --input <artifact> [--format human|json|script] [--check]
 ```
 
 ### Arguments
-- `--input`, `-i` — the artifact to inspect: a weather-skills envelope Zarr (a
+- `--input`, `-i` — the artifact to inspect: a weather-skills standard dataset Zarr (a
   directory) or a plot PNG (a file ending `.png`). Required.
 - `--format` — output view, one of `human` (default), `json`, or `script`.
 - `--check` — validate the `weather_skills_history` schema instead of rendering it.
@@ -79,9 +78,9 @@ nothing needs to be installed first — `uvx` fetches the CLI on demand.
   `--input`; intermediates write to `stepN.zarr` and the final step writes the
   artifact's own name.
 - A two-input plot (`plot-compare`, `plot-mediogram`) or any multi-branch PNG
-  reproduces each input branch to a distinctly-named file, then emits one final
-  plot command that takes every branch's output as an input (e.g.
-  `plot-compare --input a.zarr --input b.zarr`).
+  (`plot-compare-forecasts`, …) reproduces each input branch to a distinctly-named
+  file, then emits one final plot command that takes every branch's output as
+  an input (e.g. `plot-compare --input a.zarr --input b.zarr`).
 - A `concat` zarr records each input's full chain under the concat entry, so it
   reproduces every input branch (labeled `a`, `b`, … by input order) to its own
   `{letter}.zarr`, then emits one final `concat` command that threads every
@@ -92,7 +91,7 @@ nothing needs to be installed first — `uvx` fetches the CLI on demand.
 ## `--check` (schema validation)
 
 `--check` validates the `weather_skills_history` on an artifact against the array
-contract in `ENVELOPE.md` and reports every violation it finds. It validates
+contract in `STANDARD_DATASET.md` and reports every violation it finds. It validates
 **schema shape**, not skill-name membership: a `skill` value may be any
 non-empty string, because external tools that emit `weather_skills_history` have their
 own skill names.
@@ -120,7 +119,7 @@ Exit codes:
 
 ```bash
 # Validate that a freshly produced artifact conforms to the schema.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.zarr --check
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.zarr --check
 ```
 
 ## Reproduction-script caveats
@@ -138,11 +137,11 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.zarr 
 
 ```bash
 # Human-readable lineage of a clipped forecast zarr.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/ecmwf_kenya.zarr
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/ecmwf_kenya.zarr
 
 # Raw chain as JSON.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format json
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format json
 
 # Reproduction script, saved by the user via redirect.
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format script > repro.sh
+uv run ${CLAUDE_SKILL_DIR}/scripts/provenance.py -i /tmp/forecast.png --format script > repro.sh
 ```

@@ -1,0 +1,84 @@
+"""Correctness tests for chirps-fetch (mocked network)."""
+
+from datetime import date
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+import pytest
+import xarray as xr
+from conftest import load_skill, make_gridded, run_skill
+from weather_skills_core.provenance import load_history
+
+
+@pytest.fixture(scope="module")
+def mod():
+    return load_skill("chirps-fetch", "fetch")
+
+
+@pytest.fixture(scope="module")
+def fetch(mod):
+    return mod.fetch
+
+
+def _fake_open_day(_tif, day: date):
+    da = make_gridded(n_time=1, start=day.isoformat()).precip
+    return da.isel(time=0).expand_dims(time=[np.datetime64(day.isoformat(), "ns")])
+
+
+def test_fetch_writes_zarr_with_mocked_download(tmp_path, mod, fetch):
+    out = tmp_path / "out.zarr"
+
+    def fake_download(_session, day, dest_dir):
+        return dest_dir / f"{day.isoformat()}.tif"
+
+    with (
+        patch.object(mod, "_download_day_tif", side_effect=fake_download),
+        patch.object(mod, "_open_day", side_effect=_fake_open_day),
+    ):
+        run_skill(
+            fetch,
+            "--start-time",
+            "2026-01-01",
+            "--end-time",
+            "2026-01-02",
+            "-o",
+            str(out),
+        )
+
+    assert Path(out).exists()
+    ds = xr.open_zarr(out, consolidated=True)
+    assert "precip" in ds
+    assert ds.sizes["time"] == 2
+    assert ds["precip"].attrs.get("data_interval") == "1 day"
+    assert "aggregation_period" not in ds["precip"].attrs
+    assert load_history(out)[-1]["skill"] == "chirps-fetch"
+
+
+def test_missing_days_exits_2(tmp_path, mod, fetch):
+    out = tmp_path / "out.zarr"
+
+    with patch.object(mod, "_download_day_tif", side_effect=mod.DayUnavailable("404")):
+        with pytest.raises(SystemExit) as exc:
+            run_skill(
+                fetch,
+                "--start-time",
+                "2026-01-01",
+                "--end-time",
+                "2026-01-01",
+                "-o",
+                str(out),
+            )
+    assert exc.value.code == 2
+
+
+def test_probe_latest_lists_directory(capsys, fetch, monkeypatch):
+    import requests
+
+    class _Resp:
+        status_code = 200
+        text = '<a href="chirps-v3.0.prelim.2026.08.15.tif">x</a>'
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp())
+    run_skill(fetch, "--probe-latest")
+    assert capsys.readouterr().out.strip() == "2026-08-15"

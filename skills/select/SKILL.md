@@ -1,39 +1,43 @@
 ---
 name: select
-description: Select entries along one named dimension of a weather-skills envelope Zarr, by integer position or by coordinate value. A single selection collapses the dimension and drops the coordinates it leaves scalar, so outputs from different sources are ready to concat — e.g. pick the same forecast week from several model envelopes before merging them along a new model dim.
+description: Select entries along one named dimension of a weather-skills standard dataset Zarr, by integer position or by coordinate value. A single selection collapses the dimension and drops the coordinates it leaves scalar, so outputs from different sources are ready to concat — e.g. pick the same forecast week from several model datasets before merging them along a new model dim.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py *)
 metadata:
-  version: "0.1.6"
   catalog-group: transforms
 ---
 
 # select
 
 Entry-selection primitive. Picks entries along one named dimension of an
-envelope, either by integer position (`--index`) or by coordinate value
-(`--value`), and writes a new envelope. A single selection collapses the
+standard dataset, either by integer position (`--index`) or by coordinate value
+(`--value`), and writes a new standard dataset. A single selection collapses the
 dimension and also drops every coordinate variable it leaves scalar; multiple
 selections keep the dimension with just those entries, in the order given.
 Everything else — untouched dims, coords, data variables, and attrs — passes
-through unchanged. Works on gridded and station envelopes alike.
+through unchanged. Works on gridded and point_obs datasets alike.
 
 ## When to use
 
 - To align inputs for `concat`: select the same entry (e.g. week-1, `--dim
-  step --index 0`) from each of several forecast envelopes, then concatenate
+  step --index 0`) from each of several forecast datasets, then concatenate
   the selected outputs along a new `model` dim. The collapse-and-drop
   semantics make the outputs merge cleanly — a leftover scalar coord on the
   selected dim would otherwise block or pollute the merge.
 - To pull a single ensemble member, forecast step, timestamp, or station out
-  of a larger envelope.
+  of a larger standard dataset.
 - To subset a dimension to a handful of entries in a chosen order.
+- Before `convert-to-totals`, when the time/step axis still overlaps
+  (rolling `--window`, or more intervals than you want as independent
+  totals). Pick a non-overlapping subset (`--dim time` or `--dim step`,
+  `--index` or `--value`); convert-to-totals refuses overlapping labels
+  rather than silently thinning the axis.
 
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py --input <in.zarr> --output <out.zarr> \
     --dim DIM (--index N [--index N ...] | --value V [--value V ...])
 ```
 
@@ -113,14 +117,14 @@ same-named input misses).
 
 ## Example
 
-Pick week-1 from two weekly forecast envelopes, then merge the selected
+Pick week-1 from two weekly forecast datasets, then merge the selected
 outputs along a new `model` dim with the `concat` skill
 (`--dim model --coords ECMWF,GFS`):
 
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/ecmwf_weekly.zarr -o /tmp/ecmwf_w1.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/ecmwf_weekly.zarr -o /tmp/ecmwf_w1.zarr \
     --dim step --index 0
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/gfs_weekly.zarr -o /tmp/gfs_w1.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py -i /tmp/gfs_weekly.zarr -o /tmp/gfs_w1.zarr \
     --dim step --index 0
 ```
 

@@ -1,18 +1,18 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
 #   "xarray",
 #   "zarr",
 #   "numpy",
 #   "pandas",
 #   "requests",
 #   "cf_xarray",
-#   "cf_units",
+#   "pint-xarray>=0.6",
 #   "cftime",
 # ]
 # ///
-"""Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
+"""Fetch NOAA GHCN-Daily station observations over HTTPS and write a point_obs weather-skills standard dataset Zarr."""
 
 import io
 import sys
@@ -20,96 +20,41 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-# cf_units and cf_xarray are used only inside weather-skills-core, which imports
-# them lazily at write time (udunits_error / verify_cf_dsg) — the final step, after
-# every per-station download. Importing them eagerly at module top turns that late
-# import into a startup fail-fast probe: a missing dependency errors before any
-# network work rather than only after every download has run. The F401 noqa marks
-# these probe-only imports; removing either would drop the fail-fast guarantee.
-import cf_units  # noqa: F401  (loaded lazily by core's udunits_error at write time)
-import cf_xarray  # noqa: F401  (loaded lazily by core's verify_cf_dsg at write time)
+import cf_xarray  # noqa: F401  (fail-fast probe; core loads lazily at write time)
+import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
 from weather_skills_core import DataError, weather_skill
-from weather_skills_core.dates import today_utc
-from weather_skills_core.envelope import stamp_cf_dsg, udunits_error, verify_cf_dsg
-from weather_skills_core.util import is_transient
+from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
+from weather_skills_core.standard_utils import apply_write_encoding, is_transient
+from weather_skills_core.units import precip_amounts_to_rates, stamp_data_interval
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.7"
+_SKILL_VERSION = "0.0.2"
 
-# Public, credential-free GHCN-Daily on the S3 website endpoint.
 _BASE_URL = "https://noaa-ghcn-pds.s3.amazonaws.com"
 _STATIONS_URL = f"{_BASE_URL}/ghcnd-stations.txt"
-# Per-station CSV (gzip, NO header). Positional columns:
-# ID, DATE(YYYYMMDD), ELEMENT, VALUE, M_FLAG, Q_FLAG, S_FLAG, OBS_TIME.
 _STATION_CSV_URL = _BASE_URL + "/csv.gz/by_station/{station_id}.csv.gz"
+_YEAR_CSV_URL = _BASE_URL + "/csv.gz/by_year/{year}.csv.gz"
 _CSV_COLUMNS = ["ID", "DATE", "ELEMENT", "VALUE", "M_FLAG", "Q_FLAG", "S_FLAG", "OBS_TIME"]
-# GHCN-Daily's missing-value sentinel for the raw integer VALUE field. It can
-# appear with an empty Q_FLAG, so it is filtered explicitly (not caught by the QC
-# filter) and dropped before unit scaling so a missing cell becomes NaN.
 _GHCN_MISSING_VALUE = -9999
 HTTP_TIMEOUT = 60
 DEFAULT_WORKERS = 8
 
-# CF time-coordinate encoding. udunits-valid reference-time units plus a
-# calendar, carried in the write encoding so the on-disk time axis is fully CF.
 _TIME_UNITS = "days since 1970-01-01"
 _TIME_CALENDAR = "proleptic_gregorian"
 
-# --- Source -> output transforms ---
-# Everything not listed here is a verbatim pass-through from the raw GHCN-Daily
-# source. The transforms applied below (all encoded in VAR_MAP and the per-value
-# scaling in _station_frame) are:
-#
-# Value conversions (scale 0.1, applied in _station_frame as wide[element] *
-# scale):
-#   - PRCP: raw integer "tenths of a mm" -> mm/day
-#   - TMAX/TMIN/TAVG: raw integer "tenths of a degree C" -> degC
-#   There is no verbatim pass-through of the raw values because GHCN's "tenths"
-#   integer is a documented storage encoding with no udunits unit of its own; a
-#   conversion to whole mm / degC is required. This is a value conversion, not a
-#   unit remap.
-#
-# Variable renames (GHCN element code -> canonical envelope variable name, from
-# the VAR_MAP keys/element fields):
-#   - PRCP -> precip
-#   - TMAX -> tmax
-#   - TMIN -> tmin
-#   - TAVG -> tavg
-#
-# Metadata assignment basis (per variable, from VAR_MAP):
-#   - units: the udunits-valid string in VAR_MAP (precip "mm/day"; tmax/tmin/tavg
-#     "degC"), validated at write time via weather_skills_core's udunits_error
-#     (in _var_attrs).
-#   - standard_name: the CF standard name in VAR_MAP (precip
-#     "lwe_precipitation_rate"; tmax/tmin/tavg "air_temperature").
-#   - long_name: the descriptive string in VAR_MAP (precip "daily total
-#     precipitation"; tmax "daily maximum air temperature"; tmin "daily minimum
-#     air temperature"; tavg "daily mean air temperature").
-#
-# Canonical envelope variable -> (GHCN element, scale, units, standard_name,
-# cell_method, long_name).
-# GHCN stores PRCP in tenths of mm and TMAX/TMIN/TAVG in tenths of degrees C, so
-# the scale brings raw integers to mm/day and degrees C respectively. `units`
-# strings are udunits-valid (validated at write time); `standard_name` values
-# are from the CF standard name table; `cell_methods` records the within-day
-# reduction GHCN applies to each element.
+# canonical -> (GHCN element, scale, units, standard_name, cell_method, long_name).
+# Scale converts tenths-of-mm / tenths-of-degC to mm day-1 and degree_Celsius.
+# Precip is stamped as a daily rate (no cell_methods sum — that marks convert-to-totals).
 VAR_MAP = {
-    "precip": (
-        "PRCP",
-        0.1,
-        "mm/day",
-        "lwe_precipitation_rate",
-        "time: sum",
-        "daily total precipitation",
-    ),
+    "precip": ("PRCP", 0.1, "mm day-1", "lwe_precipitation_rate", None, "daily precipitation rate"),
     "tmax": (
         "TMAX",
         0.1,
-        "degC",
+        "degree_Celsius",
         "air_temperature",
         "time: maximum",
         "daily maximum air temperature",
@@ -117,7 +62,7 @@ VAR_MAP = {
     "tmin": (
         "TMIN",
         0.1,
-        "degC",
+        "degree_Celsius",
         "air_temperature",
         "time: minimum",
         "daily minimum air temperature",
@@ -125,7 +70,7 @@ VAR_MAP = {
     "tavg": (
         "TAVG",
         0.1,
-        "degC",
+        "degree_Celsius",
         "air_temperature",
         "time: mean",
         "daily mean air temperature",
@@ -135,26 +80,15 @@ DEFAULT_VARIABLES = ["precip", "tmax", "tmin"]
 
 
 def _load_stations(bbox):
-    """Fetch and parse ghcnd-stations.txt, optionally filtered to a bbox.
-
-    Returns a DataFrame indexed by station ID with latitude/longitude/name.
-    ``bbox`` is a parsed (north, west, south, east) tuple, or None.
-    """
+    """Fetch ghcnd-stations.txt, optionally filtered to a bbox."""
     resp = requests.get(_STATIONS_URL, timeout=HTTP_TIMEOUT)
     resp.raise_for_status()
-    # Fixed-width per the GHCN-Daily readme: ID 1-11, LAT 13-20, LON 22-30,
-    # NAME 42-71 (1-indexed inclusive -> 0-indexed half-open colspecs below).
     stations = pd.read_fwf(
         io.StringIO(resp.text),
         colspecs=[(0, 11), (12, 20), (21, 30), (41, 71)],
         names=["station_id", "latitude", "longitude", "name"],
     )
-    # A missing NAME field parses as NaN; render it as an empty string rather
-    # than the literal "nan" that str(NaN) would produce.
     stations["name"] = stations["name"].fillna("").astype(str).str.strip()
-    # A malformed or short fixed-width line yields NaN latitude/longitude; drop
-    # those so a station with no usable position never reaches the output (it
-    # would otherwise be written with NaN coords on a no-bbox pull).
     stations = stations.dropna(subset=["latitude", "longitude"])
     if bbox is not None:
         north, west, south, east = bbox
@@ -162,21 +96,13 @@ def _load_stations(bbox):
         if west <= east:
             lon_in = (stations["longitude"] >= west) & (stations["longitude"] <= east)
         else:
-            # Antimeridian-crossing bbox (west > east, e.g. 10/170/-10/-170):
-            # the longitude span wraps across +/-180, so a station is inside when
-            # its longitude is >= west OR <= east, not the AND (which would be
-            # empty for every station).
             lon_in = (stations["longitude"] >= west) | (stations["longitude"] <= east)
         stations = stations[lat_in & lon_in]
     return stations.set_index("station_id")
 
 
 def _fetch_station_csv(station_id: str):
-    """GET one station's gzip CSV bytes, retrying once on a transient error.
-
-    Returns the response content (bytes), or None on HTTP 404 (station has no
-    by_station file). Raises on a non-transient error or a surviving transient.
-    """
+    """GET one station's gzip CSV; retry once on transient error. None on 404."""
     url = _STATION_CSV_URL.format(station_id=station_id)
     for attempt in range(2):
         try:
@@ -194,11 +120,7 @@ def _fetch_station_csv(station_id: str):
 
 
 def _station_frame(station_id: str, elements: dict, start_int: int, end_int: int):
-    """Return a daily DataFrame (time index, canonical-variable columns) for one
-    station within the window, or None when it has no usable rows.
-
-    `elements` maps GHCN element code -> canonical variable name.
-    """
+    """Daily DataFrame for one station within the window, or None."""
     content = _fetch_station_csv(station_id)
     if content is None:
         return None
@@ -218,13 +140,7 @@ def _station_frame(station_id: str, elements: dict, start_int: int, end_int: int
     )
     raw = raw[raw["ELEMENT"].isin(elements)]
     raw = raw[(raw["DATE"] >= start_int) & (raw["DATE"] <= end_int)]
-    # Empty Q_FLAG means the value passed every quality-control check; any flag
-    # letter marks a failed check, so drop those rows.
     raw = raw[raw["Q_FLAG"].isna()]
-    # GHCN-Daily encodes a missing observation as the raw integer sentinel -9999
-    # (which can carry an empty Q_FLAG). Drop those rows BEFORE unit scaling so a
-    # missing cell becomes NaN in the envelope rather than being scaled to a
-    # spurious -999.9 real observation.
     raw = raw[raw["VALUE"] != _GHCN_MISSING_VALUE]
     if raw.empty:
         return None
@@ -234,8 +150,7 @@ def _station_frame(station_id: str, elements: dict, start_int: int, end_int: int
     out_cols = {}
     for element, canonical in elements.items():
         if element in wide.columns:
-            scale = VAR_MAP[canonical][1]
-            out_cols[canonical] = wide[element] * scale
+            out_cols[canonical] = wide[element] * VAR_MAP[canonical][1]
     if not out_cols:
         return None
     daily = pd.DataFrame(out_cols)
@@ -244,17 +159,6 @@ def _station_frame(station_id: str, elements: dict, start_int: int, end_int: int
 
 
 def _var_attrs(ds) -> dict:
-    """Per-variable CF attr dicts from VAR_MAP, udunits-validated.
-
-    A CF data variable's `units` must parse under udunits; emitting an
-    unparseable string while claiming CF compliance is a false claim. cf_units
-    wraps the same udunits-2 library cf-checker uses, so this is a real check,
-    not a regex. Missing station-time cells are represented by `_FillValue`,
-    set as an encoding key (not an attribute) by the write-encoding hook; a NaN
-    `missing_value` attribute is not added — it is redundant with the NaN
-    `_FillValue`, and xarray's CF encoder drops a NaN `missing_value` on write
-    rather than persist it, so claiming it as an attr would be false.
-    """
     attrs = {}
     for canonical in ds.data_vars:
         _element, _scale, units, std_name, cell_method, long_name = VAR_MAP[canonical]
@@ -262,106 +166,82 @@ def _var_attrs(ds) -> dict:
         if exc is not None:
             raise DataError(
                 f"units {units!r} for variable {canonical!r} are not udunits-valid "
-                f"({exc}); refusing to write a non-CF store under a CF-1.13 claim. Fix the "
-                "units in VAR_MAP."
+                f"({exc}); refusing to write a non-CF store under a CF-1.13 claim."
             )
         attrs[canonical] = {
             "standard_name": std_name,
             "long_name": long_name,
             "units": units,
-            "cell_methods": cell_method,
         }
+        if cell_method:
+            attrs[canonical]["cell_methods"] = cell_method
     return attrs
 
 
-def _normalize_entry_args(raw: dict) -> dict:
-    """Canonicalize the recorded cache-key args.
-
-    Variables are sorted (with the default list applied when --variable is
-    omitted) so flag order does not change the key. --workers (concurrency) is
-    a knob, not a data parameter; the decorator already excludes it.
-    """
-    raw["variable"] = sorted(raw.get("variable") or DEFAULT_VARIABLES)
-    return raw
-
-
-def _set_write_encoding(ds) -> None:
-    """Controlled write encodings, applied after the decorator's encoding clear.
-
-    Carry udunits-valid reference-time units + a calendar in the time encoding
-    so the on-disk time axis is fully CF. `_FillValue` is an encoding key, not
-    a CF attribute: set here so the on-disk store represents missing
-    station-time cells with a real fill (and reopens with the NaNs intact).
-    """
-    ds["time"].encoding["units"] = _TIME_UNITS
-    ds["time"].encoding["calendar"] = _TIME_CALENDAR
-    for canonical in ds.data_vars:
-        ds[canonical].encoding["_FillValue"] = np.float64(np.nan)
-
-
 @weather_skill(
-    "ghcn-daily-fetch",
-    _SKILL_VERSION,
-    output_type="station",
-    source="ghcn-daily",
-    start_time={
-        "help": (
-            "Start date (inclusive). Either YYYY-MM-DD, 'now'/'today', 'latest', "
-            "or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). For "
-            "GHCN-Daily 'latest' resolves to the current UTC date (no cheap "
-            "day-precise discovery); a missing trailing tail near today is normal."
-        )
-    },
-    end_time={"help": "End date (inclusive). Same date grammar as --start."},
-    bbox={
-        "mode": "optional",
-        "help": (
-            "Spatial subset N/W/S/E decimal degrees, filtering stations. Omitting it "
-            "(or giving an over-wide box) selects many stations, each a separate "
-            "whole-history download. To fetch over a country, get its bbox from the "
-            "resolve-region skill."
-        ),
-    },
-    workers={
-        "default": DEFAULT_WORKERS,
-        "help": (
-            f"Max concurrent per-station download threads (default {DEFAULT_WORKERS}). "
-            "Lower this if the server returns throttling errors."
-        ),
-    },
-    variable={
-        "mode": "repeat",
-        "choices": sorted(VAR_MAP.keys()),
-        "help": (
-            "Restrict to this variable; repeat once per variable. "
-            f"Omit for default {DEFAULT_VARIABLES}."
-        ),
-    },
-    latest_resolver=today_utc,
-    normalize_args=_normalize_entry_args,
-    write_encoding=_set_write_encoding,
-    cache_hit_label="fetch",
+    name="ghcn-daily-fetch",
+    version=_SKILL_VERSION,
 )
-def fetch(start_time, end_time, bbox, workers, variable, context):
-    """Fetch NOAA GHCN-Daily station observations over HTTPS and write a station-schema weather-skills envelope Zarr."""
+@weather_skill.argument("--start-time", required=True)
+@weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument(
+    "--workers",
+    type=int,
+    default=DEFAULT_WORKERS,
+    help=(
+        f"Max concurrent per-station download threads (default {DEFAULT_WORKERS}). "
+        "Lower this if the server returns throttling errors."
+    ),
+)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
+def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
+    """Fetch NOAA GHCN-Daily station observations over HTTPS and write a point_obs weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        from email.utils import parsedate_to_datetime
+
+        year = datetime.now(UTC).date().year
+        for y in (year, year - 1):
+            resp = requests.head(
+                _YEAR_CSV_URL.format(year=y), timeout=HTTP_TIMEOUT, allow_redirects=True
+            )
+            if resp.status_code == 404:
+                continue
+            resp.raise_for_status()
+            last_modified = resp.headers.get("Last-Modified")
+            if not last_modified:
+                raise DataError(f"GHCN year file for {y} has no Last-Modified header")
+            print(parsedate_to_datetime(last_modified).date().isoformat())
+            return
+        raise DataError("GHCN probe could not HEAD a by_year csv.gz")
+
     start_iso = start_time.isoformat()
     end_iso = end_time.isoformat()
     start_int = int(start_time.strftime("%Y%m%d"))
     end_int = int(end_time.strftime("%Y%m%d"))
-    # Error messages echo the bbox exactly as given on the CLI.
-    bbox_raw = context.args.bbox
+    bbox_label = f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
 
-    variables = variable or list(DEFAULT_VARIABLES)
-    # element code -> canonical variable name, for the requested variables.
+    variables = sorted(variable or list(DEFAULT_VARIABLES))
     elements = {VAR_MAP[v][0]: v for v in variables}
 
-    # Parse + bbox-filter the (single, cheap) station metadata file before any
-    # per-station download.
     stations = _load_stations(bbox)
     if stations.empty:
         where = (
-            f"the requested --bbox {bbox_raw}"
-            if bbox_raw is not None
+            f"the requested --bbox {bbox_label}"
+            if bbox_label is not None
             else "the GHCN-Daily station table"
         )
         raise DataError(f"no stations in {where}.")
@@ -384,10 +264,7 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
             sid = futures[fut]
             try:
                 daily = fut.result()
-            except Exception as exc:  # noqa: BLE001 -- isolate per-station failures
-                # A station whose fetch raised even after the single in-flight
-                # retry is dropped (not silently lost): logged per-line here and
-                # rolled into the aggregate count reported below.
+            except Exception as exc:  # noqa: BLE001
                 dropped += 1
                 print(f"{sid}: DROPPED, fetch failed ({exc})", file=sys.stderr)
                 continue
@@ -404,9 +281,6 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
             )
             frames.append(daily)
 
-    # Aggregate observability: per-station drops are logged above; this rolls
-    # them into a single count so a caller can see at a glance how many of the
-    # candidate stations were lost to fetch failures.
     if dropped:
         print(
             f"Dropped {dropped} of {candidate_count} candidate stations after a "
@@ -416,8 +290,8 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
 
     if not frames:
         where = (
-            f"within the requested --bbox {bbox_raw}"
-            if bbox_raw is not None
+            f"within the requested --bbox {bbox_label}"
+            if bbox_label is not None
             else "across the GHCN-Daily station network"
         )
         raise DataError(
@@ -435,16 +309,12 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
         name=("station_id", meta.loc[ds["station_id"].values, "name"].values),
     )
 
-    # A requested variable reported by no station in the selection produces no
-    # data column and so is silently absent from the output. Name each such
-    # variable on stderr; the run still succeeds with the variables that do have
-    # data (this is not a failure, just a visible omission).
     missing_vars = [v for v in variables if v not in ds.data_vars]
     if missing_vars:
         print(
             f"Warning: requested variable(s) {sorted(missing_vars)} were reported by no "
             f"station in the selection for {start_iso}..{end_iso}; they are omitted from "
-            "the output. The store still carries the variables that had data.",
+            "the output.",
             file=sys.stderr,
         )
 
@@ -462,15 +332,18 @@ def fetch(start_time, end_time, bbox, workers, variable, context):
         institution="NOAA National Centers for Environmental Information",
         references="https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-daily",
         history=f"{datetime.now(UTC).isoformat()} ghcn-daily-fetch {start_iso}..{end_iso}",
+        weather_skills_source="ghcn-daily",
     )
 
-    # Write-side decode check: confirm cf-xarray resolves the DSG geometry
-    # (timeseries_id) and the lat/lon/time axes BEFORE writing. A failure here
-    # means the stamping is wrong, so fail loudly rather than emit a store that
-    # falsely claims CF compliance.
     verify_cf_dsg(ds)
-
-    return ds
+    apply_write_encoding(
+        ds,
+        time_units=_TIME_UNITS,
+        time_calendar=_TIME_CALENDAR,
+        fills={v: np.float64(np.nan) for v in ds.data_vars},
+    )
+    ds = precip_amounts_to_rates(ds, interval="1 day")
+    return stamp_data_interval(ds, period="1 day")
 
 
 if __name__ == "__main__":

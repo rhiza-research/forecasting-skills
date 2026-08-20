@@ -1,45 +1,52 @@
 ---
 name: clip-region
-description: Spatially subset a gridded weather-skills envelope Zarr to an explicit lat/lon bbox. Use when you need to restrict any dataset (forecast, satellite, reanalysis) to a custom bounding box before downstream aggregation or plotting. To clip to a country, get its bbox from the resolve-region skill first.
+description: "Spatially subset a weather-skills standard dataset Zarr to a lat/lon bbox or GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting. Named places: get a bbox (or polygon) from the resolve-region skill first."
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
 metadata:
-  version: "0.1.11"
   catalog-group: transforms
 ---
 
 # clip-region
 
-Source-agnostic spatial subset using simple lat/lon slicing, driven by an explicit `--bbox`. To clip to a country, resolve its bbox with the `resolve-region` skill and pass that value.
+Source-agnostic spatial subset. Pass an explicit `--bbox` or a `--geojson`
+polygon. For a named country or county, run the `resolve-region` skill first
+and pass its printed bbox (or the GeoJSON file it writes).
 
 ## When to use
 
 - Narrowing a continental grid down to one country for plotting or per-country reporting.
-- Applying a custom bbox to any gridded envelope before further processing.
-
-Does **not** clip station-schema envelopes (station_id-indexed). For stations, filter by country using an `aggregate-*` or custom skill.
+- Clipping a gridded or station dataset to a custom polygon.
+- Applying a custom bbox to any gridded dataset before further processing.
 
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
-    --bbox N/W/S/E [--dims LAT,LON]
+uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
+    --bbox N/W/S/E
+
+uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py --input <in.zarr> --output <out.zarr> \
+    --geojson boundary.geojson [--keep-outside]
 ```
 
 ### Arguments
-- `--input`, `-i` — gridded Zarr.
+- `--input`, `-i` — input Zarr (gridded/spatial or point_obs).
 - `--output`, `-o` — output Zarr.
-- `--bbox` — required; `N/W/S/E` in decimal degrees. To clip to a country, get its bbox from the `resolve-region` skill and pass the value here.
-- `--dims` — optional `LAT,LON` dim name override.
+- `--bbox` — `N/W/S/E` in decimal degrees. Mutex with `--geojson`. Named
+  places: compose with the `resolve-region` skill and pass the printed value.
+- `--geojson` — path to a GeoJSON Feature/FeatureCollection/geometry. Mutex
+  with `--bbox`. For a country or county polygon, write it with
+  `resolve-region --geojson`.
+- `--keep-outside` — with `--geojson` only: set values outside the polygon to NaN instead of dropping cells/stations.
 
 ### Longitude convention
 
-Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing, so a global grid stored in the `[0, 360]` convention still intersects bboxes that straddle the prime meridian (e.g. Ghana). Inputs already in `[-180, 180]` pass through unchanged.
+Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before clipping, so a global grid stored in the `[0, 360]` convention still intersects bboxes/polygons that use negative lon.
 
 ### Output
 
-Same dims and variables, reduced to the requested window.
+A spatial subset of the input Zarr with provenance history stamped.
 
 ### Provenance
 
@@ -49,24 +56,16 @@ upstream input's `weather_skills_history` (default `[]` and stderr warning if ab
 and appends its own entry. `args` is the argparse namespace minus the
 `--input`/`--output` path strings; `input` is a `{basename, hash}` dict —
 `basename` is the upstream zarr's filename and `hash` is a sha256 of its
-stored bytes, so a renamed-but-unchanged input still cache-hits and a
-same-named-but-modified input correctly cache-misses; `version` is the
-`_SKILL_VERSION` constant in `scripts/clip.py`, kept in lockstep with
-`metadata.version` in this SKILL.md by the CI version-bump workflow.
-Cache-hit comparison reads the existing output's
-`weather_skills_history`: a hit requires the upstream entries to match and the last
-entry's `skill`, `args`, and `input` to match the proposed new entry.
+stored bytes; `version` is the `_SKILL_VERSION` constant in `scripts/clip.py`.
 
-The `args` dict stores argparse dest names (underscored, e.g. `time_dim`,
-`target_resolution`, `anchor_end`), not the hyphenated CLI flag names
-(`--time-dim`, `--target-resolution`, `--anchor-end`). A consumer
-reconstructing a `uv run --script ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
+The `args` dict stores argparse dest names (underscored), not the hyphenated CLI
+flag names. A consumer reconstructing a
+`uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must
 translate underscore → hyphen.
 
 ## Example
 
 ```bash
-# Get BBOX from the resolve-region skill for your country (e.g. KEN → 5.5/33.9/-4.7/41.9):
-BBOX=5.5/33.9/-4.7/41.9
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --bbox "$BBOX"
+# Named places: run resolve-region first, then pass the printed N/W/S/E:
+uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --bbox 5/34/-5/42
 ```

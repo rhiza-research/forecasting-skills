@@ -1,12 +1,13 @@
 ---
 name: smap-fetch
-description: Fetch NASA SMAP SPL3SMP_E daily 9 km volumetric soil moisture for a bounded region and short date range via Earthdata, and write a fully CF-1.13 weather-skills envelope Zarr. Use when a task needs gridded land-surface soil-moisture observations, e.g. for drought or agricultural analysis, or comparison against models.
+description: Fetch NASA SMAP SPL3SMP_E daily 9 km volumetric soil moisture for a bounded region and short date range via Earthdata, and write a fully CF-1.13 weather-skills standard dataset Zarr. Use when a task needs gridded land-surface soil-moisture observations, e.g. for drought or agricultural analysis, or comparison against models.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
-  version: "0.1.9"
   catalog-group: fetchers
+  variables:
+    - soil_moisture
   openclaw:
     requires:
       env:
@@ -21,7 +22,7 @@ Downloads NASA SMAP Enhanced L3 radiometer soil moisture (`SPL3SMP_E`, 9 km,
 daily) granules from NASA Earthdata via `earthaccess` and writes a gridded Zarr
 store. The product is HDF5 on the global EASE-Grid 2.0; its degenerate 2-D
 latitude/longitude reduce to 1-D coordinate vectors, so the output is a regular
-1-D lat/lon weather-skills envelope. Each requested day is one ~690 MB granule, so this
+1-D lat/lon weather-skills standard dataset. Each requested day is one ~690 MB granule, so this
 skill is built for a bounded `--bbox` over a short window — pass `--bbox`.
 
 ## When to use
@@ -29,12 +30,13 @@ skill is built for a bounded `--bbox` over a short window — pass `--bbox`.
 - A task needs gridded surface soil-moisture observations (daily, 9 km, land)
   over a bounded region.
 - A downstream skill will clip, aggregate, compare, or plot the result as a weather-skills
-  envelope Zarr.
+  standard dataset Zarr.
 
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start <date> --end <date> [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --start-time YYYY-MM-DD --end-time YYYY-MM-DD [--bbox N/W/S/E] [--overpass AM|PM] -o <path.zarr>
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
 ```
 
 Requires Earthdata credentials in the environment (`EARTHDATA_USERNAME` /
@@ -42,20 +44,10 @@ Requires Earthdata credentials in the environment (`EARTHDATA_USERNAME` /
 like `imerg-fetch`.
 
 ### Arguments
-- `--start`, `--end` — inclusive date range. Each value is one of:
-  - an absolute ISO date `YYYY-MM-DD`;
-  - `now` or `today` — the current UTC date;
-  - `latest` — the newest available SPL3SMP_E granule date (discovered via
-    `earthaccess` over a bounded lookback);
-  - an offset `now-<int>{d|w}` or `latest-<int>{d|w}` — the base minus N (`w` = 7
-    days). The offset is capped at 36525 days; a larger value, a future `+`
-    offset, a month/year unit, or any malformed value exits 2 before any network
-    call.
-
-  Boundary handling matches the other fetchers (inclusive both ends; duration
-  idiom for `B-<int>{d|w}` .. `B`). For a relative token the resolved concrete
-  window is echoed to stderr. The cache key records the resolved absolute dates,
-  never the token. Keep windows short — each day is a separate large granule.
+- `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date
+  `YYYY-MM-DD`. Keep windows short — each day is a separate large granule.
+  Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest`.
+- `--probe-latest` — print the latest available `YYYY-MM-DD` on stdout and exit. No `-o`.
 - `--bbox` — spatial subset `N/W/S/E` decimal degrees (optional). Strongly
   recommended for every run, since each daily granule is the entire ~690 MB
   global grid. SMAP longitudes are already in [-180, 180), so negative west/east
@@ -69,9 +61,9 @@ like `imerg-fetch`.
 
 ### Output
 
-A consolidated, fully **CF-1.13** weather-skills envelope Zarr with dims
+A consolidated, fully **CF-1.13** weather-skills standard dataset Zarr with dims
 `(time, latitude, longitude)`. The store is CF-compliant first, with
-`weather_skills_history` added on top — the envelope is a CF superset, not a separate
+`weather_skills_history` added on top — the standard dataset is a CF superset, not a separate
 format.
 
 - Global attrs: `Conventions="CF-1.13"`, `title`, `source` (SMAP SPL3SMP_E),
@@ -126,27 +118,25 @@ The output stamps a JSON-encoded `weather_skills_history` attr: an append-only a
 per-step entries `{skill, version, args, input}`. For this fetcher it is a
 length-1 array with `skill="smap-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. `args` records `bbox`, `overpass`,
-and the resolved concrete `start`/`end`. `version` is this skill's version, also
+and `start`/`end`. `version` is this skill's version, also
 printed by `--help`. Inspect a written output's provenance with the `provenance`
 skill.
 
 ### Memory and performance
 
-The output is streamed one day at a time — each daily granule is downloaded, read
-into a single (latitude, longitude) array, written/appended to Zarr, and released
-before the next — so peak resident memory is bounded to one day's grid. Downloaded
-granules are large (~690 MB each) and are staged to a temp directory, so disk,
-not RAM, bounds the window. Keep the window short and `--bbox` tight, and run the
-`clip-region` skill afterward for further trimming.
+Each requested day is one ~690 MB granule, so keep the window short and
+`--bbox` tight. Downloaded granules are staged to a temp directory, so disk,
+not RAM, bounds the window. Run the `clip-region` skill afterward for further
+trimming.
 
 ## Examples
 
 ```bash
 # Soil moisture over a Horn-of-Africa bbox for two days (AM overpass)
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start 2024-06-01 --end 2024-06-02 \
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start-time 2024-06-01 --end-time 2024-06-02 \
   -o /tmp/smap.zarr
 
-# A bounded bbox over the last week ending at the newest available granule, PM overpass
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start latest-1w --end latest \
+# One week ending at a recent date, PM overpass
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --bbox 12/32/-6/52 --start-time 2024-05-26 --end-time 2024-06-01 \
   --overpass PM -o /tmp/smap_pm.zarr
 ```

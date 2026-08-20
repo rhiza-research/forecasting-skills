@@ -1,29 +1,29 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
 #   "cftime",
 #   "dynamical-catalog==0.5.0",
 #   "xarray",
 #   "zarr",
 #   "numpy",
+#   "pint-xarray>=0.6",
 # ]
 # ///
-"""Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
+"""Fetch a dynamical.org open-catalog dataset and write a weather-skills standard dataset Zarr."""
 
+import re
 import sys
-from datetime import date
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
-from weather_skills_core.dates import np_to_date, parse_token, resolve_date, resolve_window
-from weather_skills_core.envelope import stamp_cf_attrs
+from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.standard_utils import bbox_subset, np_to_date
+from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.0.2"
 
-# Coords dynamical attaches that are not part of the weather-skills envelope: forecast
-# bookkeeping (valid_time, *_forecast_length) and the CRS scalar (spatial_ref).
-# Dropped on the way out so the output carries only envelope coords.
+# Forecast bookkeeping / CRS scalar coords dropped from the standard output.
 _DROP_COORDS = (
     "valid_time",
     "expected_forecast_length",
@@ -31,16 +31,92 @@ _DROP_COORDS = (
     "spatial_ref",
 )
 
+# Catalog stores selected pressure-level fields as separate 2-D variables
+# (`temperature_850hpa`). Stack those onto the ontology `vertical` dim.
+_HPA_RE = re.compile(r"^(.+)_(\d+)hpa$")
+_HPA_ALIASES = {"t": "temperature", "gh": "geopotential_height"}
+
+
+def _hpa_by_prefix(data_vars) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {}
+    for name in data_vars:
+        match = _HPA_RE.match(name)
+        if match:
+            groups.setdefault(match.group(1), []).append(name)
+    return groups
+
+
+def _resolve_variables(requested, data_vars, dataset: str):
+    """Map `-v` tokens onto catalog names.
+
+    Catalog-exact names pass through. A prefix (`temperature`) or short alias
+    (`t`, `gh`) expands to every `*_Nhpa` field of that prefix — not to
+    height-above-ground companions like `temperature_2m`.
+    """
+    if not requested:
+        return None
+    name_set = set(data_vars)
+    hpa = _hpa_by_prefix(data_vars)
+    resolved: list[str] = []
+    seen: set[str] = set()
+    missing: list[str] = []
+    for token in requested:
+        prefix = _HPA_ALIASES.get(token, token)
+        if token in name_set:
+            if token not in seen:
+                resolved.append(token)
+                seen.add(token)
+            continue
+        kids = hpa.get(prefix)
+        if kids:
+            for kid in sorted(kids, key=lambda n: -int(_HPA_RE.match(n).group(2))):
+                if kid not in seen:
+                    resolved.append(kid)
+                    seen.add(kid)
+            continue
+        missing.append(token)
+    if missing:
+        raise UsageError(
+            f"variable(s) not in {dataset}: {', '.join(missing)}.\n"
+            f"Available: {', '.join(sorted(data_vars))}"
+        )
+    return resolved
+
+
+def _stack_pressure_levels(ds):
+    """Combine `*_Nhpa` variables into one field with a `vertical` (hPa) dim."""
+    import xarray as xr
+
+    groups: dict[str, list[tuple[int, str]]] = {}
+    for name in ds.data_vars:
+        match = _HPA_RE.match(name)
+        if match:
+            groups.setdefault(match.group(1), []).append((int(match.group(2)), name))
+    if not groups:
+        return ds
+
+    drop = [name for items in groups.values() for _, name in items]
+    pieces = [ds.drop_vars(drop)]
+    for prefix, items in groups.items():
+        items = sorted(items, key=lambda it: -it[0])
+        stacked = xr.concat(
+            [ds[name].expand_dims(vertical=[float(hpa)]) for hpa, name in items],
+            dim="vertical",
+        )
+        stacked.name = prefix
+        stacked["vertical"].attrs.update(
+            units="hPa",
+            standard_name="air_pressure",
+            long_name="pressure",
+            positive="down",
+            axis="Z",
+        )
+        pieces.append(stacked.to_dataset())
+    return xr.merge(pieces)
+
 
 def _open_dataset(state, dataset) -> dict:
-    """Validate the dataset id, open it, and detect its shape, at most once per run.
-
-    ``state`` is the run-scoped ``RunContext.state`` dict, shared by the
-    `latest` resolution and the fetch body so the dataset is opened at most
-    once per run. Lazy, icechunk-backed open: this reads only metadata, so
-    shape detection and `latest` resolution run before any array bytes are
-    pulled.
-    """
+    """Validate the dataset id, open it, and detect its shape, at most once per run."""
     if "ds" not in state:
         import dynamical_catalog
 
@@ -51,23 +127,12 @@ def _open_dataset(state, dataset) -> dict:
             )
         ds = dynamical_catalog.open(dataset)
 
-        # Projected grids (e.g. NOAA HRRR on a Lambert Conformal Conic grid) expose
-        # 1-D `y`/`x` in meters with 2-D latitude(y,x)/longitude(y,x) and a CRS in
-        # `spatial_ref`, not 1-D latitude/longitude dims. A lat/lon bbox on such a
-        # grid needs masking over the 2-D coordinate arrays, and a faithful subset
-        # stays curvilinear — which the 1-D-lat/lon weather-skills envelope does not model.
-        # Converting it to a regular lat/lon grid is a reprojection (a grid
-        # transform), which belongs in a dedicated reprojection skill, not in this
-        # faithful-I/O fetcher.
         if "latitude" not in ds.dims or "longitude" not in ds.dims:
             raise UsageError(
                 f"{dataset} is on a projected grid (dims {tuple(ds.dims)}); this "
-                "fetcher only handles regular 1-D latitude/longitude grids. Reprojecting a "
-                "projected grid to lat/lon is a grid transform for a dedicated reprojection "
-                "skill, not this fetcher."
+                "fetcher only handles regular 1-D latitude/longitude grids."
             )
 
-        # Shape is detected from the dims present, not a hardcoded per-dataset table.
         if "ensemble_member" in ds.dims:
             shape = "ensemble"
         elif "lead_time" in ds.dims:
@@ -84,149 +149,78 @@ def _open_dataset(state, dataset) -> dict:
     return state
 
 
-def _latest_from_dataset(state, dataset) -> date:
-    """Newest available date, read cheaply from the opened dataset's own coords.
-
-    Max init for forecasts, max time for analysis.
-    """
-    state = _open_dataset(state, dataset)
-    ds = state["ds"]
-    is_forecast = state["shape"] in ("ensemble", "forecast")
-    coord = "init_time" if is_forecast else "time"
-    vals = ds[coord].values
-    if is_forecast:
-        # --date selects the 00 UTC init, so `latest` must be the newest
-        # date that HAS one. Filter to midnight inits before taking the
-        # max so a later same-day cycle (e.g. GFS 18 UTC) doesn't resolve
-        # `latest` to a date whose 00 UTC init isn't published yet.
-        midnight = vals[vals == vals.astype("datetime64[D]")]
-        if midnight.size:
-            vals = midnight
-    return np_to_date(vals.max())
-
-
-def _validate_and_resolve(args, context) -> None:
-    """Pre-cache-check date resolution onto the argparse namespace.
-
-    The time flags are optional strings here (which of them applies depends on
-    the dataset's shape, discovered only after the catalog open), so the date
-    grammar is applied through the core resolvers rather than the standard
-    toggles. Each provided value is resolved to a concrete ISO date in place,
-    so the cache key records resolved dates, never relative tokens. A
-    malformed token exits 2 before any network call; `latest` opens the
-    catalog dataset lazily, at most once. Which flags the dataset's shape
-    actually requires is validated in the body, after the open.
-    """
-
-    def latest_fn():
-        return _latest_from_dataset(context.state, args.dataset)
-
-    if args.date:
-        resolved, log_line = resolve_date(args.date, latest_fn, context="forecast init date")
-        if log_line is not None:
-            print(log_line, file=sys.stderr)
-        args.date = resolved.isoformat()
-    if args.start and args.end:
-        start_date, end_date, log_line = resolve_window(args.start, args.end, latest_fn)
-        if log_line is not None:
-            print(log_line, file=sys.stderr)
-        args.start = start_date.isoformat()
-        args.end = end_date.isoformat()
-    elif args.start or args.end:
-        # A lone --start or --end is a shape mismatch reported in the body;
-        # its token syntax is still rejected pre-network here.
-        parse_token(args.start or args.end)
-
-
-def _bbox_subset(ds, bbox, bbox_raw) -> object:
-    """Subset a regular 1-D lat/lon grid to an N/W/S/E bbox.
-
-    The slice direction follows each axis's own monotonic order (latitude is
-    descending on these GRIB-derived stores, longitude ascending), so the same
-    bbox works whether a dataset stores latitude north-to-south or the reverse.
-    ``bbox_raw`` is the bbox exactly as given on the CLI, echoed in the
-    no-cells error message.
-    """
-    north, west, south, east = bbox
-    lat = ds["latitude"].values
-    lon = ds["longitude"].values
-    lat_slice = slice(north, south) if lat[0] > lat[-1] else slice(south, north)
-    lon_slice = slice(west, east) if lon[0] < lon[-1] else slice(east, west)
-    ds = ds.sel(latitude=lat_slice, longitude=lon_slice)
-    if ds.sizes.get("latitude", 0) == 0 or ds.sizes.get("longitude", 0) == 0:
-        raise DataError(
-            f"--bbox {bbox_raw} selects no grid cells; check the extent and N/W/S/E order."
-        )
-    return ds
-
-
-# output_type: the written envelope is `forecast` for forecast datasets and
-# `gridded` for analysis datasets; the union declares both, and the returned
-# dataset's detected shape is validated against it before the write.
 @weather_skill(
-    "dynamical-fetch",
-    _SKILL_VERSION,
-    output_type=("gridded", "forecast"),
-    bbox="optional",
-    variable={
-        "mode": "repeat",
-        "help": "Restrict to this data variable. Repeat once per variable; omit for all.",
-    },
-    extra_args={
-        "dataset": {
-            "required": True,
-            "help": "Catalog dataset id (validated against dynamical_catalog.list()).",
-        },
-        "date": {
-            "help": (
-                "Forecast init date (forecast datasets). Either YYYY-MM-DD, 'now'/'today', "
-                "'latest', or an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-                "Selects the 00 UTC initialization of the resolved date."
-            ),
-        },
-        "start": {
-            "help": "Range start, inclusive (analysis datasets). Same date grammar as --date.",
-        },
-        "end": {
-            "help": "Range end, inclusive (analysis datasets). Same date grammar as --date.",
-        },
-    },
-    validate_args=_validate_and_resolve,
-    cache_hit_label="fetch",
+    name="dynamical-fetch",
+    version=_SKILL_VERSION,
 )
-def fetch(bbox, dataset, date, start, end, variable, context):
-    """Fetch a dynamical.org open-catalog dataset and write a weather-skills envelope Zarr."""
+@weather_skill.argument("--date")
+@weather_skill.argument("--start-time")
+@weather_skill.argument("--end-time")
+@weather_skill.argument("--bbox")
+@weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument(
+    "--dataset",
+    required=True,
+    help="Catalog dataset id (validated against dynamical_catalog.list()).",
+)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
+def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
+    """Fetch a dynamical.org open-catalog dataset and write a weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        import numpy as np
+
+        dsid = kwargs["probe_latest"] or dataset
+        if not dsid:
+            raise UsageError("--dataset is required (or pass it as --probe-latest <id>).")
+        state = _open_dataset({}, dsid)
+        coord = "init_time" if state["shape"] in ("ensemble", "forecast") else "time"
+        print(np_to_date(np.max(state["ds"][coord].values)).isoformat())
+        return
+
     import numpy as np
 
-    state = _open_dataset(context.state, dataset)
+    state = _open_dataset({}, dataset)
     ds = state["ds"]
     shape = state["shape"]
     is_forecast = shape in ("ensemble", "forecast")
 
-    # Time flags are bound to the dataset shape: forecasts take a single --date,
-    # analyses take a --start/--end range. Mismatches exit 2 before any fetch.
     if is_forecast:
-        if not date:
+        if date is None:
             raise UsageError(f"{dataset} is a forecast dataset; --date is required.")
-        if start or end:
-            raise UsageError(f"{dataset} is a forecast dataset; use --date, not --start/--end.")
-        date_iso = date
+        if start_time is not None or end_time is not None:
+            raise UsageError(
+                f"{dataset} is a forecast dataset; use --date, not --start-time/--end-time."
+            )
+        date_iso = date.isoformat()
     else:
-        if not (start and end):
-            raise UsageError(f"{dataset} is an analysis dataset; --start and --end are required.")
-        if date:
-            raise UsageError(f"{dataset} is an analysis dataset; use --start/--end, not --date.")
-        start_iso, end_iso = start, end
+        if start_time is None or end_time is None:
+            raise UsageError(
+                f"{dataset} is an analysis dataset; --start-time and --end-time are required."
+            )
+        if date is not None:
+            raise UsageError(
+                f"{dataset} is an analysis dataset; use --start-time/--end-time, not --date."
+            )
+        start_iso = start_time.isoformat()
+        end_iso = end_time.isoformat()
 
-    if bbox:
-        ds = _bbox_subset(ds, bbox, context.args.bbox)
+    if bbox is not None:
+        ds = bbox_subset(ds, bbox, lat_dim="latitude", lon_dim="longitude")
 
-    # Temporal selection + dimension mapping onto the envelope.
     if is_forecast:
         inits = ds["init_time"].values
-        # Build the target in the index's own dtype so the membership test and the
-        # .sel() label lookup compare like-for-like (a [s]-vs-[ns] mismatch could
-        # otherwise let the check pass and .sel() still raise KeyError).
         init_target = np.datetime64(f"{date_iso}T00:00:00").astype(inits.dtype)
 
         def _no_init() -> DataError:
@@ -246,8 +240,6 @@ def fetch(bbox, dataset, date, start, end, variable, context):
         if shape == "ensemble":
             rename["ensemble_member"] = "number"
         ds = ds.rename(rename)
-        # Demote the selected init_time to the scalar `time` coord the envelope
-        # uses for a forecast's init date.
         ds = ds.assign_coords(time=ds["init_time"]).drop_vars("init_time")
     else:
         ds = ds.sel(time=slice(np.datetime64(start_iso), np.datetime64(end_iso)))
@@ -256,29 +248,26 @@ def fetch(bbox, dataset, date, start, end, variable, context):
         ds = ds.drop_vars([c for c in _DROP_COORDS if c in ds.coords])
 
     if variable:
-        missing = [v for v in variable if v not in ds.data_vars]
-        if missing:
-            raise UsageError(
-                f"variable(s) not in {dataset}: {', '.join(missing)}.\n"
-                f"Available: {', '.join(sorted(ds.data_vars))}"
-            )
-        ds = ds[variable]
+        ds = ds[_resolve_variables(variable, ds.data_vars, dataset)]
+    ds = _stack_pressure_levels(ds)
 
     print(f"Fetching dynamical:{dataset} (shape={shape})", file=sys.stderr)
 
-    # Write lazily: to_zarr streams the selection chunk-by-chunk, so a no-bbox
-    # full-grid fetch does not pull the whole archive slice into memory at once.
-    # Source variable units are forwarded verbatim (dynamical stamps them); this
-    # fetcher does not convert or relabel them. `weather_skills_source` embeds
-    # the dataset id, so it is set here; the decorator stamps
-    # `weather_skills_history`.
     ds.attrs.update(
         weather_skills_source=f"dynamical:{dataset}",
         Conventions="CF-1.13",
     )
     stamp_cf_attrs(ds)
-
-    return ds, WroteSummary("", replace=True)
+    # Catalog datasets mix precip with dimensionless companions (e.g. IMERG
+    # precipitation_quality_index_surface, units "1"). Convert each variable
+    # independently so one inconvertible field does not abort the fetch.
+    out = ds
+    for name in list(ds.data_vars):
+        try:
+            out = to_standard_units(out, variables=[name])
+        except UsageError:
+            continue
+    return stamp_data_interval(out)
 
 
 if __name__ == "__main__":

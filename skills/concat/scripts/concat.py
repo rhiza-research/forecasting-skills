@@ -1,17 +1,17 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
 #   "cftime",
 #   "xarray",
 # ]
 # ///
-"""Concatenate weather-skills envelope Zarr stores along a named dim."""
+"""Concatenate Zarr stores along a named dim."""
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.10"
+_SKILL_VERSION = "0.0.2"
 
 
 def _coerce(values):
@@ -28,73 +28,27 @@ def _coerce(values):
 
 
 @weather_skill(
-    "concat",
-    _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    variadic_input=True,
-    input_paths=True,
-    extra_args={
-        "dim": {"required": True},
-        "coords": {"help": "Comma-separated coord values for the new dim"},
-    },
+    name="concat",
+    version=_SKILL_VERSION,
 )
-def concat(dss, input_paths, dim, coords):
-    """Concatenate weather-skills envelope Zarr stores along a named dim."""
+@weather_skill.argument("-i", "--input", type=Dataset("any"), nargs="+", required=True)
+@weather_skill.argument("--dim", required=True)
+@weather_skill.argument("--coords", help="Comma-separated coord values for the new dim")
+def concat(ds, dim, coords, **kwargs):
+    """Concatenate Zarr stores along a named dim."""
     import xarray as xr
 
-    names = [p.name for p in input_paths]
+    dss = ds
 
-    # Input-units guard. Concatenation places the inputs' values into a single
-    # array under one set of attrs (the first input's, stamped below). If the
-    # inputs hold the same variable in different units, the concatenated array
-    # mixes incompatible numbers under one units label, producing objectively
-    # wrong data. For each data variable common to all inputs, compare the
-    # `units` attr across inputs; error when two inputs carry the variable in
-    # differing units. Inputs that omit `units` for a variable are not a
-    # violation (missing metadata can't be checked), so only present values
-    # participate in the comparison. The check spans the union of all inputs'
-    # data variables, so a variable that appears in only some inputs with
-    # conflicting units is still caught; inputs lacking the variable are
-    # skipped. Units are compared after stripping surrounding whitespace and
-    # only when they are strings, so a trailing space is not read as a real
-    # difference and a non-string attr does not break the comparison.
-    all_vars = set()
-    for ds in dss:
-        all_vars |= set(ds.data_vars)
-    for var in sorted(all_vars):
-        seen_units = {}
-        for name, ds in zip(names, dss, strict=True):
-            if var not in ds.data_vars:
-                continue
-            u = ds[var].attrs.get("units")
-            if not isinstance(u, str):
-                continue
-            seen_units[name] = u.strip()
-        if len(set(seen_units.values())) > 1:
-            detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
-            raise UsageError(
-                f"variable '{var}' has differing units across the inputs "
-                f"({detail}). Concatenation combines these inputs into one array "
-                f"that carries a single units label, so values measured in "
-                f"different units would be mixed together as if they were the "
-                f"same quantity. Concatenation requires the inputs to express "
-                f"'{var}' in one consistent unit."
-            )
-
-    dim_on_inputs = all(dim in ds.dims for ds in dss)
-
-    if not dim_on_inputs:
+    if dim not in dss[0].dims or not all(dim in ds.dims for ds in dss):
         if coords:
-            coord_vals = _coerce([c.strip() for c in coords.split(",")])
-            if len(coord_vals) != len(dss):
-                raise UsageError(f"--coords len {len(coord_vals)} != inputs {len(dss)}")
-            dss = [d.expand_dims({dim: [v]}) for d, v in zip(dss, coord_vals, strict=True)]
+            vals = _coerce([c.strip() for c in coords.split(",")])
+            if len(vals) != len(dss):
+                raise UsageError(f"--coords len {len(vals)} != inputs {len(dss)}")
+            dss = [d.expand_dims({dim: [v]}) for d, v in zip(dss, vals, strict=True)]
         else:
             dss = [d.expand_dims(dim) for d in dss]
-
-    out_ds = xr.concat(dss, dim=dim)
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return xr.concat(dss, dim=dim)
 
 
 if __name__ == "__main__":

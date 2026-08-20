@@ -1,12 +1,11 @@
 ---
 name: plot
-description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills envelope Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile.
+description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills standard dataset Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
 metadata:
-  version: "0.1.16"
-  catalog-group: visualization
+  catalog-group: figure
 ---
 
 # plot
@@ -17,36 +16,51 @@ Source-agnostic single-dataset visualization. Two styles:
   step (up to 4 columns; rows added as needed) with a shared color scale and a
   horizontal colorbar spanning all panels at the bottom. Ensemble members
   (`number` dim) are averaged before plotting. Use `--index` to override the
-  default reduction for any other extra dim.
-- `timeseries` — 1D profile. Averages across all non-time dims.
+  default reduction for any other extra dim. Precipitation variables default
+  to the Kenya / ECMWF-S2S product palette (white–wheat–green–blue–yellow–
+  orange–red–purple), matching `kenya-forecast-png` weekly/dekadal precip
+  maps; other variables default to `viridis`.
+- `timeseries` — 1D profile. Averages across all non-time dims. A forecast
+  cube (`step` lead times + scalar init `time`) is plotted against **valid
+  time** (`init + step`) with calendar dates on the x-axis, not raw lead-time
+  nanoseconds. An analysis / obs cube with a `time` dim is plotted against
+  that axis as-is.
 
 ## When to use
 
-- Producing a quick-look forecast map panel for any gridded envelope.
-- Producing a time/step profile for a gridded or station envelope.
+- Producing a quick-look forecast map panel for any gridded dataset.
+- Producing a time/step profile for a gridded or station standard dataset.
+- Precipitation: only after `aggregate-temporal` and `convert-to-totals`.
+  Fetchers write rates; figures should show period totals (`mm`).
 
-For two-dataset comparisons, use the `plot-compare` skill.
+For two-dataset comparisons, use the `plot-compare` skill. For N gridded
+datasets as a valid-time grid with blank cells where a dataset has no time,
+use `plot-compare-forecasts`.
 
 ## Usage
 
 ```
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> \
     [--variable NAME] [--style heatmap|timeseries] \
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
     [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E] \
-    [--mask-geojson PATH]
+    [--mask-geojson PATH] [--draw-box N/W/S/E ...]
 ```
 
 ### Arguments
 - `--input`, `-i` — Zarr input.
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable.
-- `--style` — `heatmap` (default) or `timeseries`.
-- `--colormap` — either a matplotlib colormap name (default `viridis`) or a
-  comma-separated list of colors to interpolate between (e.g.
-  `white,wheat,green`). Named matplotlib colormaps cannot contain commas, so
-  the presence of a comma unambiguously selects the custom-list form.
+- `--style` — `heatmap` (default) or `timeseries`. Timeseries of a forecast
+  (`step` + scalar init) uses valid times on the x-axis.
+- `--colormap` — either a matplotlib colormap name or a comma-separated
+  list of colors to interpolate between (e.g. `white,wheat,green`). Named
+  matplotlib colormaps cannot contain commas, so the presence of a comma
+  unambiguously selects the custom-list form. When omitted, precipitation
+  (rate or amount) uses the Kenya / ECMWF-S2S product palette
+  (`white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple`);
+  every other variable uses `viridis`.
 - `--title` — optional plot title.
 - `--index` — dim selections like `step=3,number=0`. A dim may take several
   comma-separated positions, e.g. `step=0,1,2`, which keeps the dim with just
@@ -85,29 +99,26 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <
   are unioned. Combine with `--bbox` to crop to the rectangle first, then mask to
   the polygon within it. Heatmap-only — `--style timeseries` ignores it with a
   stderr warning. Default unset → no mask.
+- `--draw-box` — optional black outline rectangle(s) drawn on each heatmap panel.
+  Same `N/W/S/E` form as `--bbox`. Repeat the flag for multiple boxes (e.g.
+  IOD west `10/50/-10/70` and east `0/90/-10/110`). Unlike `--bbox`, this does
+  **not** crop the data — it only overlays outlines. Antimeridian spans
+  (`W > E`) are drawn as two segments. Heatmap-only — `--style timeseries`
+  ignores it with a stderr warning. Default unset → no boxes.
 
 ### Output
 
 A PNG at `--output`. The colorbar label resolves from variable attrs:
-`long_name` → `GRIB_name` → bare variable name → `"value"`, suffixed
-with `[units]` when the `units` attr is present.
+`GRIB_name` → `long_name` → bare variable name → `"value"`, suffixed
+with `[units]` when the `units` attr is present. Prefer an amount Zarr from
+`convert-to-totals` (labeled `Total precipitation [mm]`). If the input is
+still a precip **rate** with `aggregation_period`, plot converts it to a
+period total for the figure only. Unaggregated fetch rates stay `mm day-1`.
 
 ### Provenance
 
-Every PNG carries two `tEXt` chunk keys written via matplotlib's
-`savefig(metadata=...)`:
-
-- `weather_skills_history` — a JSON-encoded array of `{skill, version, args,
-  input}` entries with the same schema used for the zarr `weather_skills_history`
-  attribute. Each entry records one pipeline step. The last entry is
-  this `plot` invocation; preceding entries are the upstream chain
-  inherited from the input zarr's `weather_skills_history` (empty array if the
-  input had none — a stderr warning is emitted in that case and the
-  array contains only the `plot` entry).
-- `Software` — set to `forecasting-skills` so generic image tools like
-  `exiftool` surface the producer prominently.
-
-Read-back:
+The decorator stamps a single `weather_skills_history` JSON array into the PNG
+metadata (same schema as Zarr provenance). Read-back:
 
 ```bash
 python3 -c "from PIL import Image; import json; print(json.loads(Image.open('out.png').info['weather_skills_history']))"
@@ -121,22 +132,21 @@ exiftool out.png
 
 ## Examples
 
-Multi-step forecast panel:
+Multi-step forecast panel (precip uses the Kenya/S2S palette by default):
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
-    --variable tp --style heatmap --colormap magma --title "S2S precip"
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
+    --variable tp --style heatmap --title "S2S precip"
 ```
 
-Multi-step forecast panel with a custom precipitation palette:
+Override the palette (e.g. magma):
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
-    --variable tp --style heatmap \
-    --colormap white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
+    --variable tp --style heatmap --colormap magma --title "S2S precip"
 ```
 
 Single-step map with cities and an explicit extent:
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf_step0.png \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf_step0.png \
     --variable tp --index step=0 \
     --extent 11,29,-30,-15 \
     --cities '{"Windhoek": [-22.55, 17.08]}'
@@ -144,12 +154,20 @@ uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -
 
 Country-shaped map masked to a boundary polygon:
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/chirps_kenya.zarr -o /tmp/kenya.png \
-    --variable precip --bbox 5.0/33.9/-4.7/41.9 --mask-geojson /tmp/kenya.geojson
+# After resolve-region writes --geojson /tmp/kenya.geojson (dummy bbox below):
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/chirps_kenya.zarr -o /tmp/kenya.png \
+    --variable precip --bbox 5/34/-5/42 --mask-geojson /tmp/kenya.geojson
+```
+
+Indian Ocean map with IOD west/east dipole boxes overlaid:
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ts_anom.zarr -o /tmp/iod_boxes.png \
+    --variable ts_anomaly --extent 40,120,-20,20 \
+    --draw-box 10/50/-10/70 --draw-box 0/90/-10/110
 ```
 
 Time series:
 ```bash
-uv run --script ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ts.png \
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ts.png \
     --variable tp --style timeseries
 ```
