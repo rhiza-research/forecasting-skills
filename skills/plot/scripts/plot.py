@@ -24,7 +24,7 @@ from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
-from weather_skills_core.standard_utils import lat_slice, polygon_from_geojson
+from weather_skills_core.standard_utils import lat_slice, parse_bbox, polygon_from_geojson
 from weather_skills_core.units import (
     PRECIP_AMOUNT_LONG_NAME,
     classify_variable,
@@ -50,6 +50,7 @@ PRECIP_COLORS = [
     "red",
     "purple",
 ]
+
 
 def _parse_index(spec):
     """Parse ``--index`` into ``{dim: int | list[int]}`` (e.g. ``step=0,1,2``)."""
@@ -83,6 +84,7 @@ def _parse_index(spec):
         values[current].append(pos)
     return {k: v[0] if len(v) == 1 else v for k, v in values.items()}
 
+
 def _parse_extent(spec):
     if not spec:
         return None
@@ -92,6 +94,7 @@ def _parse_extent(spec):
             "--extent expects 4 comma-separated floats: lon_min,lon_max,lat_min,lat_max"
         )
     return parts
+
 
 def _parse_colormap(spec):
     if spec is None or "," not in spec:
@@ -156,6 +159,69 @@ def _parse_cities(spec):
             out[name] = (float(val[0]), float(val[1]))
     return out
 
+
+def _parse_draw_boxes(specs):
+    """Parse repeatable ``--draw-box N/W/S/E`` into a list of ``(N, W, S, E)``."""
+    if not specs:
+        return []
+    boxes = []
+    for spec in specs:
+        try:
+            boxes.append(parse_bbox(spec))
+        except UsageError as exc:
+            raise UsageError(
+                f"--draw-box {spec!r} must be four decimal degrees N/W/S/E (same form as --bbox)."
+            ) from exc
+    return boxes
+
+
+def _draw_boxes_on_ax(ax, boxes, transform):
+    """Outline each N/W/S/E box in black (split antimeridian spans into two)."""
+    from matplotlib.patches import Rectangle
+
+    for north, west, south, east in boxes:
+        height = north - south
+        if west <= east:
+            ax.add_patch(
+                Rectangle(
+                    (west, south),
+                    east - west,
+                    height,
+                    fill=False,
+                    edgecolor="black",
+                    linewidth=1.5,
+                    transform=transform,
+                    zorder=5,
+                )
+            )
+        else:
+            # Antimeridian: west..180 and -180..east
+            ax.add_patch(
+                Rectangle(
+                    (west, south),
+                    180.0 - west,
+                    height,
+                    fill=False,
+                    edgecolor="black",
+                    linewidth=1.5,
+                    transform=transform,
+                    zorder=5,
+                )
+            )
+            ax.add_patch(
+                Rectangle(
+                    (-180.0, south),
+                    east - (-180.0),
+                    height,
+                    fill=False,
+                    edgecolor="black",
+                    linewidth=1.5,
+                    transform=transform,
+                    zorder=5,
+                )
+            )
+
+
 def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
     lat_range = abs(lat_max - lat_min)
     lon_range = abs(lon_max - lon_min)
@@ -165,12 +231,14 @@ def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
     width = height * lon_range / lat_range
     return max(width, 2.0), height
 
+
 def _step_dim(da):
     for cand in ("step", "time", "valid_time"):
         if cand in da.dims:
             return cand
     cf = cf_dim(da, "time")
     return cf if cf and cf in da.dims else None
+
 
 def _format_step(value):
     import numpy as np
@@ -201,6 +269,7 @@ def _timeseries_axis(da, sdim):
         return da[sdim].values, sdim
     return (init + steps).astype("datetime64[ns]"), "valid time"
 
+
 def _panel_title(da, sdim, step_value, all_steps):
     """'<start> until <end>' from time + step; else '<sdim>=<step>'."""
     import numpy as np
@@ -225,6 +294,7 @@ def _panel_title(da, sdim, step_value, all_steps):
     except Exception:  # noqa: BLE001
         return fallback
 
+
 def _heatmap(
     da,
     lat_dim,
@@ -237,6 +307,7 @@ def _heatmap(
     wrap_lon=True,
     native_step_dim=None,
     native_steps=None,
+    draw_boxes=None,
 ):
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
@@ -260,9 +331,7 @@ def _heatmap(
     else:
         steps = list(da[sdim].values)
 
-    title_steps = (
-        native_steps if native_steps is not None and native_step_dim == sdim else steps
-    )
+    title_steps = native_steps if native_steps is not None and native_step_dim == sdim else steps
 
     num_steps = len(steps)
     ncols = min(4, num_steps)
@@ -298,6 +367,7 @@ def _heatmap(
     axes = np.array(axes).reshape(nrows, ncols).flatten()
 
     contour = None
+    boxes = draw_boxes or []
     for i, s in enumerate(steps):
         ax = axes[i]
         slab = da if sdim is None else da.isel({sdim: i})
@@ -326,6 +396,8 @@ def _heatmap(
         for city, (lat, lon) in cities.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=ccrs.PlateCarree())
             ax.text(lon - 2.0, lat + 0.5, city, fontsize=10, transform=ccrs.PlateCarree())
+        if boxes:
+            _draw_boxes_on_ax(ax, boxes, ccrs.PlateCarree())
         if s is not None:
             ax.set_title(_panel_title(da, sdim, s, title_steps), fontsize=int(fontsize * 0.8))
 
@@ -340,44 +412,54 @@ def _heatmap(
     cbar.set_label(_variable_label(da), fontsize=fontsize)
     return fig
 
+
 @weather_skill(
     name="plot",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
+@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True, dest="ds")
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--style", choices=["heatmap", "timeseries"], default="heatmap")
 @weather_skill.argument(
-            "--colormap",
-            default=None,
-            help=(
-                "matplotlib colormap name, or comma-separated colors. "
-                "Default: Kenya/S2S precip palette for precip variables, else viridis."
-            ),
-        )
+    "--colormap",
+    default=None,
+    help=(
+        "matplotlib colormap name, or comma-separated colors. "
+        "Default: Kenya/S2S precip palette for precip variables, else viridis."
+    ),
+)
 @weather_skill.argument(
-            "--index",
-            default=None,
-            help="Slice like 'step=3,number=0' (heatmap only). Lists keep the dim as panels.",
-        )
+    "--index",
+    default=None,
+    help="Slice like 'step=3,number=0' (heatmap only). Lists keep the dim as panels.",
+)
 @weather_skill.argument(
-            "--extent",
-            default=None,
-            help="Map extent 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
-        )
+    "--extent",
+    default=None,
+    help="Map extent 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
+)
 @weather_skill.argument(
-            "--cities",
-            default=None,
-            help='City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or file path.',
-        )
+    "--cities",
+    default=None,
+    help='City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or file path.',
+)
 @weather_skill.argument("--fontsize", type=int, default=16)
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
 @weather_skill.argument(
-            "--mask-geojson",
-            default=None,
-            help="GeoJSON polygon; cells outside become NaN (heatmap only).",
-        )
+    "--mask-geojson",
+    default=None,
+    help="GeoJSON polygon; cells outside become NaN (heatmap only).",
+)
+@weather_skill.argument(
+    "--draw-box",
+    action="append",
+    default=None,
+    help=(
+        "Draw a black outline box on the heatmap as N/W/S/E decimal degrees "
+        "(same form as --bbox). Repeat for multiple boxes. Heatmap-only."
+    ),
+)
 def plot(
     ds,
     bbox,
@@ -390,6 +472,7 @@ def plot(
     cities,
     fontsize,
     mask_geojson,
+    draw_box,
     output,
     **kwargs,
 ):
@@ -413,19 +496,31 @@ def plot(
         raise UsageError(str(exc)) from None
 
     bbox_nwse = bbox
+    draw_boxes = _parse_draw_boxes(draw_box)
     heatmap_only = {
         "--bbox": bbox_nwse is not None,
         "--mask-geojson": bool(mask_geojson),
         "--extent": bool(extent),
         "--cities": bool(cities),
         "--index": bool(overrides),
+        "--draw-box": bool(draw_boxes),
     }
     if style != "heatmap":
         for flag, set_ in heatmap_only.items():
             if not set_:
                 continue
-            detail = f" {bbox_nwse[0]}/{bbox_nwse[1]}/{bbox_nwse[2]}/{bbox_nwse[3]}" if flag == "--bbox" else (
-                f" {extent!r}" if flag == "--extent" else (f" {index!r}" if flag == "--index" else "")
+            detail = (
+                f" {bbox_nwse[0]}/{bbox_nwse[1]}/{bbox_nwse[2]}/{bbox_nwse[3]}"
+                if flag == "--bbox"
+                else (
+                    f" {extent!r}"
+                    if flag == "--extent"
+                    else (
+                        f" {index!r}"
+                        if flag == "--index"
+                        else (f" {draw_box!r}" if flag == "--draw-box" else "")
+                    )
+                )
             )
             print(
                 f"Warning: {flag}{detail} is a heatmap-only option; ignored for --style {style}.",
@@ -552,6 +647,7 @@ def plot(
             wrap_lon=not wrapped_bbox,
             native_step_dim=native_step_dim,
             native_steps=native_steps,
+            draw_boxes=draw_boxes,
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -574,6 +670,7 @@ def plot(
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return output
+
 
 if __name__ == "__main__":
     plot()
