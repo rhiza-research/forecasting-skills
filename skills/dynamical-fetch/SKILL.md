@@ -20,6 +20,9 @@ metadata:
         shape: range
         earliest: 2000-06-01
         note: dynamical.org IMERG early analysis
+  variables:
+    - precipitation_surface
+    - temperature_2m
 ---
 
 # dynamical-fetch

@@ -1,19 +1,21 @@
 ---
-name: reduce
-description: Collapse one or more named dimensions of a weather-skills standard dataset Zarr with a statistic (mean, std, min, max, sum, median) — e.g. ensemble spread as the std across `number`, model disagreement as the std across a model dim, or a time-mean baseline for anomalies. Use whenever a dataset needs a statistical reduction along a named dimension.
+name: summarize-dim
+description: Summarize one or more named dimensions of a weather-skills standard dataset Zarr with a statistic (mean, std, min, max, sum, median) — e.g. ensemble spread as the std across `number`, model disagreement as the std across a model dim, or a time-mean baseline for anomalies. Use whenever a dataset needs a statistical summary along a named dimension (the dim disappears). For coarser time windows that keep a time axis, use aggregate-temporal.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
-allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py *)
+allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/summarize_dim.py *)
 metadata:
   catalog-group: transforms
 ---
 
-# reduce
+# summarize-dim
 
-Source-agnostic statistical reduction along named dims. Collapses the
+Source-agnostic statistical summary along named dims. Summarizes the
 requested dims of each selected data variable with one statistic; data
 variables that carry none of the requested dims pass through untouched.
-NaNs are skipped (xarray's default `skipna`).
+NaNs are skipped (xarray's default `skipna`). The summarized dim
+**disappears** from the output — unlike `aggregate-temporal`, which keeps a
+coarser time/step axis.
 
 ## When to use
 
@@ -30,7 +32,7 @@ NaNs are skipped (xarray's default `skipna`).
 ## Usage
 
 ```
-uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py --input <in.zarr> --output <out.zarr> \
+uv run ${CLAUDE_SKILL_DIR}/scripts/summarize_dim.py --input <in.zarr> --output <out.zarr> \
     --dim DIM [--dim DIM ...] --method mean|std|min|max|sum|median \
     [--variable VAR ...] [--lat-weighted]
 ```
@@ -41,20 +43,20 @@ where `--input` and `--output` resolve to the same path.
 ### Arguments
 - `--input`, `-i` — input Zarr.
 - `--output`, `-o` — output Zarr (a distinct path from `--input`).
-- `--dim` — dimension to collapse. Repeat once per dimension to collapse
+- `--dim` — dimension to summarize. Repeat once per dimension to summarize
   several in one run. Each name must be a dim of the input.
-- `--method` — statistic applied along the collapsed dimension(s): `mean`,
+- `--method` — statistic applied along the summarized dimension(s): `mean`,
   `std`, `min`, `max`, `sum`, or `median`.
-- `--variable`, `-v` — repeatable; restricts the reduction to the named data
+- `--variable`, `-v` — repeatable; restricts the summary to the named data
   variable(s). Each name must be a data variable of the input and must carry
-  every requested `--dim`; violations exit non-zero. Default (unset) reduces
+  every requested `--dim`; violations exit non-zero. Default (unset) summarizes
   every data variable that carries at least one of the requested dims, each
   over the subset of those dims it carries. Unselected or untouched data
-  variables pass through unchanged (a stderr note lists them); reducing a
+  variables pass through unchanged (a stderr note lists them); summarizing a
   default selection where no data variable carries any requested dim exits
   non-zero.
 - `--lat-weighted` — with `--method mean`, apply cosine-latitude weights when
-  collapsing the latitude dim (must include that dim in `--dim`).
+  summarizing the latitude dim (must include that dim in `--dim`).
 
 ### Method and units
 
@@ -80,10 +82,10 @@ conventions follow from that:
 
 ### Output
 
-The selected data variables with the requested dims collapsed. A reduced dim
-disappears from the output (along with its coordinates) once no data variable
-carries it; a dim still carried by a pass-through variable stays. Remaining
-dims, coords, and pass-through variables are unchanged.
+The selected data variables with the requested dims summarized. A summarized
+dim disappears from the output (along with its coordinates) once no data
+variable carries it; a dim still carried by a pass-through variable stays.
+Remaining dims, coords, and pass-through variables are unchanged.
 
 ### Provenance
 
@@ -105,12 +107,12 @@ input misses).
 
 ```bash
 # Ensemble spread: where is the forecast most/least certain.
-uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_spread.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/summarize_dim.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_spread.zarr \
     --dim number --method std
 ```
 
 ```bash
 # Time-mean baseline to feed `difference` for anomalies.
-uv run ${CLAUDE_SKILL_DIR}/scripts/reduce.py -i /tmp/sst.zarr -o /tmp/sst_baseline.zarr \
+uv run ${CLAUDE_SKILL_DIR}/scripts/summarize_dim.py -i /tmp/sst.zarr -o /tmp/sst_baseline.zarr \
     --dim time --method mean
 ```

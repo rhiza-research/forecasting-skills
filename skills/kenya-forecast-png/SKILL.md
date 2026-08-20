@@ -42,7 +42,7 @@ the requested product. Pass `--date` to pin an init date.
 - You need the official product figure (not a re-plot from raw ensemble grids).
 
 For raw gridded fields to chain through other weather skills (`plot`,
-`plot-timeseries`, `reduce`, …), use `kenya-forecast-fetch` instead.
+`plot-timeseries`, `summarize-dim`, …), use `kenya-forecast-fetch` instead.
 
 ## Usage
 

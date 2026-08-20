@@ -12,6 +12,8 @@ metadata:
     schedule: ecmwf-s2s
     earliest: 2015-01-01
     note: ECMWF S2S real-time 2-day embargo; daily inits since 2023-06-27
+  variables:
+    - tp
   openclaw:
     requires:
       env:

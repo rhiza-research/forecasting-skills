@@ -104,6 +104,17 @@ def collect_products(skills_dir: Path) -> dict[str, dict]:
         avail = metadata.get("availability")
         if group == "fetchers" and not avail:
             raise ValueError(f"{skill_md}: catalog-group fetchers requires metadata.availability")
+        if group == "fetchers":
+            variables = metadata.get("variables")
+            if not isinstance(variables, list) or not variables:
+                raise ValueError(
+                    f"{skill_md}: catalog-group fetchers requires metadata.variables "
+                    "(a non-empty list of exact --variable / -v names)"
+                )
+            if not all(isinstance(item, str) and item.strip() for item in variables):
+                raise ValueError(
+                    f"{skill_md}: metadata.variables must be a list of non-empty names"
+                )
         if not avail:
             continue
         if not isinstance(avail, dict):

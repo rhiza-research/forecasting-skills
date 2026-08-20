@@ -12,6 +12,12 @@ metadata:
     lag_days: 5
     earliest: 1940-01-01
     note: ERA5 / ARCO-ERA5 ~5 days behind realtime
+  variables:
+    - 2m_temperature
+    - total_precipitation
+    - 2m_dewpoint_temperature
+    - 10m_u_component_of_wind
+    - 10m_v_component_of_wind
 ---
 
 # arco-era5-fetch

@@ -12,6 +12,8 @@ metadata:
     lag_days: 1
     earliest: 1981-09-01
     note: OISST v2.1 ~1 day behind realtime
+  variables:
+    - sst
 ---
 
 # oisst-fetch

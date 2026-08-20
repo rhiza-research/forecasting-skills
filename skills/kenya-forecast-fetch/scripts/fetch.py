@@ -172,7 +172,7 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
     Opens a consolidated Zarr under ``gs://kenya-forecasting-data/<date>/data/``
     over HTTPS (credential-free), optionally subsets by ``--bbox`` and
     ``--variable``, normalizes units/CF attrs, and returns a Dataset for the
-    decorator to write. Compose with ``plot``, ``plot-timeseries``, ``reduce``,
+    decorator to write. Compose with ``plot``, ``plot-timeseries``, ``summarize-dim``,
     etc. for flexible figures — this skill does not render PNGs.
     """
     if dataset not in _DATASETS:

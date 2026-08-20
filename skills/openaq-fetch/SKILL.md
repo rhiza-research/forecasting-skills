@@ -11,6 +11,13 @@ metadata:
     policy: lag
     lag_days: 1
     note: OpenAQ thin trailing tail of unreported days
+  variables:
+    - pm25
+    - pm10
+    - no2
+    - o3
+    - so2
+    - co
   openclaw:
     requires:
       env:

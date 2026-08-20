@@ -11,6 +11,11 @@ metadata:
     policy: lag
     lag_days: 1
     note: TAHMO stations; allow a 1-day trailing gap
+  variables:
+    - precip
+    - temperature
+    - humidity
+    - pressure
   openclaw:
     requires:
       env:

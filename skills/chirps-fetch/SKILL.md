@@ -12,6 +12,8 @@ metadata:
     schedule: pentad
     earliest: 1998-01-01
     note: CHIRPS v3.0 preliminary pentad schedule (2 days after pentad close)
+  variables:
+    - precip
 ---
 
 # chirps-fetch

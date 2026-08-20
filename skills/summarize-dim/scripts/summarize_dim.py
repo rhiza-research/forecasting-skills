@@ -5,7 +5,7 @@
 #   "cftime>=1.6",
 # ]
 # ///
-"""Collapse named dims with a statistic."""
+"""Summarize named dims with a statistic."""
 
 from pathlib import Path
 
@@ -18,7 +18,7 @@ _SKILL_VERSION = "0.0.1"
 
 
 @weather_skill(
-    name="reduce",
+    name="summarize-dim",
     version=_SKILL_VERSION,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
@@ -27,7 +27,7 @@ _SKILL_VERSION = "0.0.1"
     "--dim",
     action="append",
     required=True,
-    help="Dim to collapse (repeatable).",
+    help="Dim to summarize (repeatable).",
 )
 @weather_skill.argument(
     "--method",
@@ -39,8 +39,8 @@ _SKILL_VERSION = "0.0.1"
     action="store_true",
     help="cos(lat) weights for --method mean over latitude.",
 )
-def reduce(ds, variable, dim, method, lat_weighted, **kwargs):
-    """Collapse named dims with a statistic."""
+def summarize_dim(ds, variable, dim, method, lat_weighted, **kwargs):
+    """Summarize named dims with a statistic."""
     dims = list(dict.fromkeys(dim))
     lat_dim = None
     if lat_weighted:
@@ -79,4 +79,4 @@ def reduce(ds, variable, dim, method, lat_weighted, **kwargs):
 
 
 if __name__ == "__main__":
-    reduce()
+    summarize_dim()

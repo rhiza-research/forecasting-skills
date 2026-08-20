@@ -11,6 +11,12 @@ metadata:
     policy: none
     lag_days: 0
     note: Kenya forecasts archive; no realtime embargo
+  variables:
+    - tp
+    - t2m
+    - d2m
+    - cape
+    - tcw
 ---
 
 # kenya-forecast-fetch
@@ -34,7 +40,7 @@ By default the skill takes the **most recent** init date that has the requested
 `--dataset`. Pass `--date` to pin an init.
 
 This skill does **not** plot. For flexible figures, chain to `plot`,
-`plot-timeseries`, `plot-mediogram`, `reduce`, `clip-region`, etc. For the
+`plot-timeseries`, `plot-mediogram`, `summarize-dim`, `clip-region`, etc. For the
 archive's pre-rendered product PNGs, use `kenya-forecast-png`.
 
 ## When to use

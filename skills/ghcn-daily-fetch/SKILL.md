@@ -11,6 +11,11 @@ metadata:
     policy: lag
     lag_days: 2
     note: GHCN-Daily publication lag of a day or two
+  variables:
+    - precip
+    - tmax
+    - tmin
+    - tavg
 ---
 
 # ghcn-daily-fetch

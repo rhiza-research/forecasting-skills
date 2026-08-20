@@ -11,6 +11,9 @@ metadata:
     policy: none
     earliest: 1850-01-01
     note: CMIP6 projections; no realtime cap (future dates allowed)
+  variables:
+    - tas
+    - pr
 ---
 
 # cmip6-fetch

@@ -17,6 +17,8 @@ metadata:
       final:
         lag_days: 110
         note: IMERG final ~3.5 months behind realtime
+  variables:
+    - precip
   openclaw:
     requires:
       env:

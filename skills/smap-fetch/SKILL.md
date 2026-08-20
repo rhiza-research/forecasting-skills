@@ -12,6 +12,8 @@ metadata:
     lag_days: 2
     earliest: 2015-03-31
     note: SMAP SPL3SMP_E typical 2-day publication lag
+  variables:
+    - soil_moisture
   openclaw:
     requires:
       env:
