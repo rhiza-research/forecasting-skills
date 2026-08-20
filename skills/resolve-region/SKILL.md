@@ -1,6 +1,6 @@
 ---
 name: resolve-region
-description: Resolve an ISO 3166-1 alpha-3 country code or a sub-national region (state, province, county) to a lat/lon bbox and optionally a boundary polygon GeoJSON. Use when you need to turn a country or county into a `--bbox N/W/S/E` value (or a polygon mask) for clip-region, ecmwf-fetch, plot, or plot-compare.
+description: Resolve an ISO 3166-1 alpha-3 country code, a sub-national region (state, province, county), or a leftover landmark name to a lat/lon bbox and optionally a boundary polygon GeoJSON. Use when you need to turn a country, county, or named place into a `--bbox N/W/S/E` value (or a polygon mask) for clip-region, ecmwf-fetch, plot, or plot-compare. Prefer ISO3 / country-admin1 keys; Nominatim is the fallback for landmarks.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py *)
@@ -10,36 +10,41 @@ metadata:
 
 # resolve-region
 
-Look up a bounding box and boundary polygon for a country or a sub-national
-administrative unit. The script prints a `N/W/S/E` bbox suitable for the
-`--bbox` flag of the other skills, and can optionally write the boundary
-polygon as a GeoJSON file for use as a `--mask-geojson` / `--geojson` polygon
-mask.
+Look up a bounding box and boundary polygon for a country, a sub-national
+administrative unit, or a leftover place name (landmark, city that is not an
+admin key). The script prints a `N/W/S/E` bbox suitable for the `--bbox` flag
+of the other skills, and can optionally write the boundary polygon as a GeoJSON
+file for use as a `--mask-geojson` / `--geojson` polygon mask.
 
 Countries come from a bundled Natural Earth 1:110m admin-0 dataset, keyed by
 ISO 3166-1 alpha-3 (`iso3`). States, provinces, and counties come from
 [geoBoundaries](https://www.geoboundaries.org) `gbOpen` (ADM1 / ADM2), fetched
-on demand per country via the public API.
+on demand per country via the public API. Queries that are not an ISO3 code or
+admin key fall through to [OSM Nominatim](https://nominatim.org) (`limit=1`).
 
 ## When to use
 
 - Turning a country into a `--bbox` value for `clip-region`, `ecmwf-fetch`,
   `plot`, or `plot-compare`.
 - Turning a county / state / province into a bbox or a boundary polygon.
+- Turning a landmark (Mount Kenya, a lake, a city that is not an admin unit)
+  into a bbox when you do not have an ISO3 / `country-admin1` key.
 - Producing a boundary polygon (`--geojson`) to feed `plot-compare`'s
   `--mask-geojson` or `clip-region`'s `--geojson` so grid cells outside the
   region are masked.
 
-This does not geocode free text (no cities, basins, or street addresses). The
-agent maps a place name to a country ISO3 code or a hierarchical admin name,
-then this script does the deterministic geometry lookup.
+Prefer ISO3 and hierarchical admin keys when you have them — those lookups are
+offline (countries) or geoBoundaries (ADM1/ADM2) and do not hit Nominatim.
 
 ## Division of labor
 
-This script does **not** parse place names. Mapping a free-text place name to
-an ISO3 code or a hierarchical admin key is the agent's job — the model is
-good at it and at disambiguation. The script does the deterministic lookup
-only.
+The agent maps a country to uppercase ISO3 and a county to a hierarchical
+admin key. This script does that deterministic geometry lookup first.
+Leftover free text that is **not** an ISO3-shaped token and **not** a
+`country-admin…` key is sent to Nominatim (one search, first hit). Misspelled
+admin keys (`kenya-nairbi`) error instead of guessing via OSM. Disambiguate
+landmarks by passing a more specific string (`Mount Kenya, Kenya`), not extra
+flags.
 
 ### Countries
 
@@ -77,6 +82,20 @@ hyphens (`kenya-elgeyo-marakwet` is ADM1 Elgeyo-Marakwet, not admin-2). The
 script matches the full remainder against ADM1 `shapeName`, then ADM2
 `shapeName`, then `admin1-admin2` using ADM1 as a prefix.
 
+### Landmarks (Nominatim fallback)
+
+Pass the place as written (`Mount Kenya`, `Lake Victoria, Kenya`). Do not
+invent an admin key. The script searches
+`https://nominatim.openstreetmap.org/search` once (`format=jsonv2`, `limit=1`,
+`polygon_geojson=1`) and uses that hit's `boundingbox` (`south, north, west,
+east` → printed `N/W/S/E`). stderr starts with `nominatim: {display_name}` so
+you can see what OSM picked.
+
+Public Nominatim is donated capacity
+([usage policy](https://operations.osmfoundation.org/policies/nominatim/)): one
+request per run, identifying User-Agent, no bulk loops or autocomplete. Use it
+for a single user-triggered place, not a list of POIs.
+
 ## Usage
 
 ```
@@ -91,6 +110,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN
 
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN-nairobi
+uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Mount Kenya, Kenya"
 ```
 
 Also write the boundary polygon:
@@ -102,10 +122,13 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi --geojson /tmp/nairo
 
 ### Arguments
 
-- `code` (positional) — uppercase ISO3 country code (`KEN`) or a sub-national
-  region (`kenya-nairobi`, `KEN-nairobi`, `kenya-nairobi-westlands`).
+- `code` (positional) — uppercase ISO3 (`KEN`), a sub-national region
+  (`kenya-nairobi`, `KEN-nairobi`, `kenya-nairobi-westlands`), or a leftover
+  landmark (`Mount Kenya, Kenya`).
 - `--geojson` — optional path; writes the boundary polygon as a
   single-feature GeoJSON `FeatureCollection` (in addition to printing the bbox).
+  Nominatim polygons are used when OSM returns Polygon/MultiPolygon; otherwise
+  a rectangle from the Nominatim bounding box.
 
 ### Output
 
@@ -113,11 +136,14 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi --geojson /tmp/nairo
   degrees — the value shape consumed by `--bbox` on the other skills.
 - `--geojson PATH`: a GeoJSON `FeatureCollection` with the one matching feature.
   Properties: `iso3`, `name`, `region_name`, `level` (`country` / `admin_1` /
-  `admin_2`), `country`.
+  `admin_2` / `nominatim`), `country`. Nominatim hits also have `display_name`
+  and `bbox` (`N, W, S, E`); `iso3` / `country` may be null.
 
 Unknown codes, lowercase 3-letter tokens, and alpha-2 codes exit non-zero with
 an explanation on stderr. Unknown sub-national names do too (the parent country
-was recognized but the admin unit was not in geoBoundaries ADM1 or ADM2).
+was recognized but the admin unit was not in geoBoundaries ADM1 or ADM2) — those
+do **not** fall through to Nominatim. A landmark with no Nominatim hit also
+exits non-zero.
 
 ### Antimeridian (wrapped bboxes)
 
@@ -141,6 +167,9 @@ BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN)
 # Resolve a Kenyan county (geoBoundaries ADM1) and mask with its polygon:
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi --geojson /tmp/nairobi.json
 
+# Landmark bbox (Nominatim). stderr shows the OSM display_name:
+BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Mount Kenya, Kenya")
+
 # Resolve a country to a boundary polygon; pass the file to the plot-compare
 # skill's --mask-geojson to mask grid cells outside the country:
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN --geojson /tmp/ken.json
@@ -163,3 +192,8 @@ and ADM2, CC BY 4.0 (attribution). Looked up through
 `https://www.geoboundaries.org/api/current/gbOpen/{ISO3}/ADM{1|2}/`, then the
 simplified GeoJSON URL in that metadata. Units are matched on `shapeName`.
 Kenyan counties are ADM1 (47); Kenyan sub-counties are ADM2.
+
+**Landmarks.** [OpenStreetMap](https://www.openstreetmap.org/copyright)
+Nominatim search, ODbL 1.0 (share-alike / attribution). One request per skill
+run to `https://nominatim.openstreetmap.org/search`. Do not scrape lists of
+places through this skill.

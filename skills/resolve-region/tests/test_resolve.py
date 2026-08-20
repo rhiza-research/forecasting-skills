@@ -75,7 +75,9 @@ def test_county_prints_bbox(capsys, resolve_mod, monkeypatch):
 
     monkeypatch.setattr(
         "weather_skills_core.region._load_admin_geojson",
-        lambda iso3, level: _NAIROBI if level == 1 else {"type": "FeatureCollection", "features": []},
+        lambda iso3, level: (
+            _NAIROBI if level == 1 else {"type": "FeatureCollection", "features": []}
+        ),
     )
     _admin_collection.cache_clear()
 
@@ -94,7 +96,9 @@ def test_county_geojson_write(tmp_path, resolve_mod, monkeypatch):
 
     monkeypatch.setattr(
         "weather_skills_core.region._load_admin_geojson",
-        lambda iso3, level: _NAIROBI if level == 1 else {"type": "FeatureCollection", "features": []},
+        lambda iso3, level: (
+            _NAIROBI if level == 1 else {"type": "FeatureCollection", "features": []}
+        ),
     )
     _admin_collection.cache_clear()
 
@@ -107,3 +111,94 @@ def test_county_geojson_write(tmp_path, resolve_mod, monkeypatch):
     assert props["level"] == "admin_1"
     assert props["region_name"] == "kenya-nairobi"
     assert props["name"] == "Nairobi"
+
+
+_MOUNT_KENYA_HIT = [
+    {
+        "display_name": "Mount Kenya, Kenya",
+        "name": "Mount Kenya",
+        "boundingbox": ["-0.25", "-0.05", "37.2", "37.4"],
+        "lat": "-0.15",
+        "lon": "37.3",
+        "geojson": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [37.2, -0.25],
+                    [37.4, -0.25],
+                    [37.4, -0.05],
+                    [37.2, -0.05],
+                    [37.2, -0.25],
+                ]
+            ],
+        },
+    }
+]
+
+
+def test_landmark_falls_through_to_nominatim(capsys, resolve_mod, monkeypatch):
+    from weather_skills_core.region import _nominatim_collection
+
+    monkeypatch.setattr(
+        "weather_skills_core.region._load_nominatim",
+        lambda query: _MOUNT_KENYA_HIT,
+    )
+    _nominatim_collection.cache_clear()
+
+    run_skill(resolve_mod.resolve_region, "Mount Kenya, Kenya")
+
+    captured = capsys.readouterr()
+    n, w, s, e = (float(x) for x in captured.out.strip().split("/"))
+    assert (n, w, s, e) == pytest.approx((-0.05, 37.2, -0.25, 37.4))
+    assert "nominatim: Mount Kenya, Kenya" in captured.err
+
+
+def test_unknown_admin_key_does_not_geocode(resolve_mod, monkeypatch):
+    from weather_skills_core.region import _admin_collection
+
+    monkeypatch.setattr(
+        "weather_skills_core.region._load_admin_geojson",
+        lambda iso3, level: (
+            _NAIROBI if level == 1 else {"type": "FeatureCollection", "features": []}
+        ),
+    )
+    _admin_collection.cache_clear()
+
+    def _fail_nominatim(query):
+        raise AssertionError(f"Nominatim should not run for admin typo; got {query!r}")
+
+    monkeypatch.setattr("weather_skills_core.region._load_nominatim", _fail_nominatim)
+
+    with pytest.raises(SystemExit) as exc:
+        run_skill(resolve_mod.resolve_region, "kenya-nairbi")
+    assert exc.value.code == 1
+
+
+def test_unknown_iso3_does_not_geocode(resolve_region, monkeypatch):
+    def _fail_nominatim(query):
+        raise AssertionError(f"Nominatim should not run for ISO3; got {query!r}")
+
+    monkeypatch.setattr("weather_skills_core.region._load_nominatim", _fail_nominatim)
+
+    with pytest.raises(SystemExit) as exc:
+        run_skill(resolve_region, "ZZZ")
+    assert exc.value.code == 1
+
+
+def test_landmark_geojson_write(tmp_path, resolve_mod, monkeypatch):
+    from weather_skills_core.region import _nominatim_collection
+
+    monkeypatch.setattr(
+        "weather_skills_core.region._load_nominatim",
+        lambda query: _MOUNT_KENYA_HIT,
+    )
+    _nominatim_collection.cache_clear()
+
+    geo = tmp_path / "mount-kenya.geojson"
+    run_skill(resolve_mod.resolve_region, "Mount Kenya", "--geojson", str(geo))
+
+    data = json.loads(geo.read_text())
+    props = data["features"][0]["properties"]
+    assert props["level"] == "nominatim"
+    assert props["name"] == "Mount Kenya"
+    assert data["features"][0]["geometry"]["type"] == "Polygon"
