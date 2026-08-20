@@ -1,6 +1,6 @@
 ---
 name: convert-to-totals
-description: Convert rate variables to period totals by multiplying by aggregation_period (pint). Use as a terminal step before plotting; do not feed totals back into rate-math skills. Refuses when the time axis spacing is finer than aggregation_period (rolling windows).
+description: Convert rate variables to period totals by multiplying by aggregation_period (pint). Use as a terminal step before plotting; do not feed totals back into rate-math skills. Requires time spacing ≥ aggregation_period — for half-hourly IMERG, run aggregate-temporal --period '21 day' (or weekly/daily) first. Refuses rolling windows.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/convert_to_totals.py *)
@@ -41,9 +41,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/convert_to_totals.py \
 When spacing can be inferred (≥ 2 points), requires sample spacing on the
 time/step axis **≥** `aggregation_period`. End-over-end weekly means
 (Δt = 7 day, period = 7 day) are allowed. Daily series of rolling 7-day
-means (Δt = 1 day, period = 7 day) are refused. A **single** time/step
-point (one aggregated bin) is allowed — spacing cannot be inferred, and
-one sample cannot overcount.
+means (Δt = 1 day, period = 7 day) and native half-hourly IMERG (Δt ≈ 30 min,
+period = 21 day) are refused — run `aggregate-temporal --period '21 day'`
+(or `weekly` / `daily`) onto non-overlapping bins first. A **single**
+time/step point (one aggregated bin) is allowed — spacing cannot be inferred,
+and one sample cannot overcount.
 
 ### Output metadata
 

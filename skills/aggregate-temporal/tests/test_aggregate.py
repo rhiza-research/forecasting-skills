@@ -138,6 +138,19 @@ def test_aggregate_end_time_drops_incomplete_leading(tmp_path, aggregate, capsys
     assert "dropped 1 incomplete weekly bin" in capsys.readouterr().err
 
 
+def test_aggregate_duration_21_day(tmp_path, aggregate):
+    """Pint duration --period '21 day' bins 21 daily samples into one complete window."""
+    src = write_zarr(make_gridded(n_time=21, fill=3.0), tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "21 day")
+
+    ds = xr.open_zarr(out, consolidated=True)
+    assert ds.sizes["time"] == 1
+    assert float(ds["precip"].values.flat[0]) == pytest.approx(3.0)
+    assert ds["precip"].attrs.get("aggregation_period") == "21 day"
+
+
 def test_aggregate_requires_period_or_window(tmp_path, aggregate):
     src = write_zarr(make_gridded(n_time=7), tmp_path / "in.zarr")
     out = tmp_path / "out.zarr"

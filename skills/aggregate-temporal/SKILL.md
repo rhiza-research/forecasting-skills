@@ -1,6 +1,6 @@
 ---
 name: aggregate-temporal
-description: Roll up a weather-skills standard dataset Zarr along its time axis (or forecast step axis) into fixed windows (daily, weekly, dekadal, monthly) or a rolling --window, with mean/min/max. Stamps aggregation_period and CF cell_methods. Rates in and rates out — use convert-to-totals for period amounts (refuses overlapping rolling series).
+description: Roll up a weather-skills standard dataset Zarr along its time axis (or forecast step axis) into fixed windows (daily, weekly, dekadal, monthly, or a pint duration like '21 day') or a rolling --window, with mean/min/max. Stamps aggregation_period and CF cell_methods. Rates in and rates out — use convert-to-totals for period amounts (refuses overlapping rolling series).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py *)
@@ -18,7 +18,8 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
 
 ## When to use
 
-- Turning daily rates into weekly/dekadal/monthly **mean** (or min/max) rates.
+- Turning daily or half-hourly rates into weekly/dekadal/monthly/custom-duration
+  **mean** (or min/max) rates (`--period weekly` or `--period '21 day'`).
 - Rolling N-step means (`--window`) with optional `--align` / `--stride`.
 - Selecting weekly or dekadal subsets of a forecast initialized at multiple steps.
 - For period **totals** (`mm`), run `convert-to-totals` afterward (non-overlapping bins only; rolling series with Δt &lt; `aggregation_period` are refused). A single remaining bin is allowed.
@@ -27,7 +28,7 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py --input <in.zarr> --output <out.zarr> \
-    --period daily|weekly|dekadal|monthly [--method mean|max|min] \
+    --period daily|weekly|dekadal|monthly|'21 day' [--method mean|max|min] \
     [--variable VAR ...] [--time-dim DIM] \
     [--start-time YYYY-MM-DD] [--end-time YYYY-MM-DD] [--keep-partial]
 
@@ -41,7 +42,11 @@ Exactly one of `--period` or `--window` is required.
 ### Arguments
 - `--input`, `-i` — input Zarr.
 - `--output`, `-o` — output Zarr.
-- `--period` — calendar/step window: `daily` (1d), `weekly` (7d), `dekadal` (10d), `monthly` (calendar month for the default forward resample; 30-day fixed width with `--end-time`). Mutex with `--window`.
+- `--period` — calendar/step window: `daily` (1d), `weekly` (7d), `dekadal` (10d),
+  `monthly` (calendar month for the default forward resample; 30-day fixed width
+  with `--end-time`), or a pint duration in whole days (`21 day`, `3 week`).
+  Mutex with `--window`. Use a duration when you need a window the named
+  periods do not cover (e.g. 21-day totals from half-hourly IMERG).
 - `--window` — rolling window length in axis steps. Mutex with `--period`.
 - `--align` — with `--window`: label placement `left` (default), `right`, or `center`.
 - `--stride` — with `--window`: integer subsample step, or a date stride (`day`, `week`, `month`, `year`, or weekday names like `Monday`).
@@ -57,8 +62,8 @@ Exactly one of `--period` or `--window` is required.
 On each aggregated data variable:
 
 - `aggregation_period` — pint duration for the window (`1 day`, `7 day`,
-  `1 dekad`, `1 month`, or e.g. `7 day` for `--window 7` on daily data) used
-  later by `convert-to-totals`.
+  `1 dekad`, `1 month`, `21 day`, or e.g. `7 day` for `--window 7` on daily
+  data) used later by `convert-to-totals`.
 - `cell_methods` — CF statistic, e.g. `time: mean (interval: 1 day)`.
   `interval:` is the **input** sample spacing when it can be inferred.
 

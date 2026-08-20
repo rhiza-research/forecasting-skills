@@ -30,6 +30,24 @@ def test_convert_to_totals_from_attr(tmp_path, convert_to_totals):
     assert load_history(out)[-1]["skill"] == "convert-to-totals"
 
 
+def test_convert_to_totals_refuses_finer_than_period(tmp_path, convert_to_totals):
+    ds = make_gridded(n_time=2, fill=1.0)
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    with pytest.raises(SystemExit) as exc:
+        run_skill(
+            convert_to_totals,
+            "-i",
+            str(src),
+            "-o",
+            str(out),
+            "--aggregation-period",
+            "21 day",
+        )
+    assert exc.value.code == 2
+
+
 def test_convert_to_totals_cli_override(tmp_path, convert_to_totals):
     ds = make_gridded(n_time=2, fill=5.0)
     src = write_zarr(ds, tmp_path / "in.zarr")

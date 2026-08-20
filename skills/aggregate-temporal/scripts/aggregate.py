@@ -24,6 +24,7 @@ from weather_skills_core.units import (
     format_cell_methods,
     format_duration,
     infer_timestep,
+    parse_aggregation_period,
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -33,6 +34,39 @@ PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
 ANCHOR_PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10, "monthly": 30}
 _METHOD_TO_CF = {"mean": "mean", "max": "maximum", "min": "minimum"}
+_NAMED_PERIODS = tuple(PERIOD_TO_AGGREGATION)
+
+
+def _resolve_period(period: str) -> dict:
+    """Named period or a whole-day pint duration (e.g. ``21 day``)."""
+    if period in PERIOD_TO_AGGREGATION:
+        return {
+            "key": period,
+            "agg": PERIOD_TO_AGGREGATION[period],
+            "freq": RESAMPLE_FREQ[period],
+            "anchor_days": ANCHOR_PERIOD_DAYS[period],
+        }
+    try:
+        quantity = parse_aggregation_period(period)
+    except UsageError as exc:
+        raise UsageError(
+            f"--period {period!r} must be one of {', '.join(_NAMED_PERIODS)} "
+            f"or a pint duration in whole days (e.g. '21 day'): {exc}"
+        ) from None
+    days = float(quantity.to("day").magnitude)
+    if days <= 0 or abs(days - round(days)) > 1e-6:
+        raise UsageError(
+            f"--period {period!r} must be a named period "
+            f"({', '.join(_NAMED_PERIODS)}) or a whole number of days "
+            "(e.g. '21 day')"
+        )
+    ndays = int(round(days))
+    return {
+        "key": period,
+        "agg": format_duration(quantity),
+        "freq": f"{ndays}D",
+        "anchor_days": ndays,
+    }
 
 
 def _reduce(grouped, method, dim=None):
@@ -70,12 +104,12 @@ def _expected_samples(
     return max(1, int(round(days / timestep_days)))
 
 
-def _aggregate_time_resample(ds, dim, period, method, *, keep_partial: bool):
+def _aggregate_time_resample(ds, dim, spec, method, *, keep_partial: bool):
     """Forward calendar resample; drop incomplete bins unless ``keep_partial``."""
     import numpy as np
     import xarray as xr
 
-    freq = RESAMPLE_FREQ[period]
+    freq = spec["freq"]
     timestep_days = _timestep_days(ds, dim)
     resampler = ds.resample({dim: freq})
     n = ds.sizes[dim]
@@ -85,7 +119,10 @@ def _aggregate_time_resample(ds, dim, period, method, *, keep_partial: bool):
         indices = _group_indices(group, n)
         if not indices:
             continue
-        expected = _expected_samples(period, label, timestep_days)
+        period_days = None if spec["key"] == "monthly" else spec["anchor_days"]
+        expected = _expected_samples(
+            spec["key"], label, timestep_days, period_days=period_days
+        )
         if not keep_partial and len(indices) < expected:
             dropped += 1
             continue
@@ -93,7 +130,7 @@ def _aggregate_time_resample(ds, dim, period, method, *, keep_partial: bool):
         labels.append(np.datetime64(label) if not hasattr(label, "calendar") else label)
     if dropped:
         print(
-            f"dropped {dropped} incomplete {period} bin(s); "
+            f"dropped {dropped} incomplete {spec['key']} bin(s); "
             "pass --keep-partial to retain",
             file=sys.stderr,
         )
@@ -103,7 +140,7 @@ def _aggregate_time_resample(ds, dim, period, method, *, keep_partial: bool):
 
 
 def _aggregate_time_anchored(
-    ds, dim, period, method, end_time, *, keep_partial: bool, start_time=None
+    ds, dim, spec, method, end_time, *, keep_partial: bool, start_time=None
 ):
     """Backward fixed-width bins ending at ``end_time``.
 
@@ -115,7 +152,7 @@ def _aggregate_time_anchored(
     import numpy as np
     import xarray as xr
 
-    period_days = ANCHOR_PERIOD_DAYS[period]
+    period_days = spec["anchor_days"]
     raw = np.asarray(ds[dim].values)
     if raw.size == 0:
         return ds.isel({dim: slice(0, 0)})
@@ -173,7 +210,7 @@ def _aggregate_time_anchored(
         if keep.size == 0:
             continue
         expected = _expected_samples(
-            period, right, timestep_days, period_days=period_days
+            spec["key"], right, timestep_days, period_days=period_days
         )
         if not keep_partial and keep.size < expected:
             dropped += 1
@@ -182,7 +219,7 @@ def _aggregate_time_anchored(
         labels.append(label(right))
     if dropped:
         print(
-            f"dropped {dropped} incomplete {period} bin(s); "
+            f"dropped {dropped} incomplete {spec['key']} bin(s); "
             "pass --keep-partial to retain",
             file=sys.stderr,
         )
@@ -191,14 +228,14 @@ def _aggregate_time_anchored(
     return xr.concat(chunks, dim=dim).assign_coords({dim: labels})
 
 
-def _aggregate_step(ds, period, method):
+def _aggregate_step(ds, spec, method):
     import numpy as np
     import pandas as pd
     import xarray as xr
 
-    if period == "monthly":
+    if spec["key"] == "monthly":
         raise UsageError("monthly aggregation is not defined for step")
-    window = pd.Timedelta(days=PERIOD_DAYS[period]).to_timedelta64()
+    window = pd.Timedelta(days=spec["anchor_days"]).to_timedelta64()
     steps = ds["step"].values
     max_step = steps.max()
     edges = np.arange(0, max_step + window, window, dtype=steps.dtype)
@@ -250,7 +287,12 @@ def _rolling_aggregation_period(ds, dim, window, interval):
 )
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
-    "--period", default=None, choices=["daily", "weekly", "dekadal", "monthly"]
+    "--period",
+    default=None,
+    help=(
+        "Calendar/step window: daily, weekly, dekadal, monthly, or a pint "
+        "duration in whole days (e.g. '21 day'). Mutex with --window."
+    ),
 )
 @weather_skill.argument(
     "--window",
@@ -351,9 +393,10 @@ def aggregate(
         agg_period = _rolling_aggregation_period(ds, dim, window, interval)
         return _stamp_attrs(out, dim, agg_period, method, interval)
 
+    spec = _resolve_period(period)
     if dim == "step":
         # Step buckets already require a full window (right <= max_step).
-        out = _aggregate_step(ds, period, method)
+        out = _aggregate_step(ds, spec, method)
         if keep_partial:
             print(
                 "--keep-partial has no effect on step aggregation "
@@ -369,7 +412,7 @@ def aggregate(
         out = _aggregate_time_anchored(
             ds,
             dim,
-            period,
+            spec,
             method,
             end_time,
             keep_partial=keep_partial,
@@ -377,10 +420,10 @@ def aggregate(
         )
     else:
         out = _aggregate_time_resample(
-            ds, dim, period, method, keep_partial=keep_partial
+            ds, dim, spec, method, keep_partial=keep_partial
         )
 
-    return _stamp_attrs(out, dim, PERIOD_TO_AGGREGATION[period], method, interval)
+    return _stamp_attrs(out, dim, spec["agg"], method, interval)
 
 
 if __name__ == "__main__":
