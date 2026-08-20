@@ -32,7 +32,6 @@ def _coerce(values):
 @weather_skill(
     name="concat",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True, dest='dss')
 @weather_skill.argument("--dim", required=True)

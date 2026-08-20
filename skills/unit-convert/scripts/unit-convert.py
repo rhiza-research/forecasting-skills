@@ -33,7 +33,6 @@ _STANDARD_NAME_BY_UNITS = {
 @weather_skill(
     name="unit-convert",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")

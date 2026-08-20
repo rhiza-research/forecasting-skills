@@ -173,7 +173,6 @@ def _axis_kind(values):
 @weather_skill(
     name="plot-compare",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset("any"), action="append", required=True)
 @weather_skill.argument("--bbox")

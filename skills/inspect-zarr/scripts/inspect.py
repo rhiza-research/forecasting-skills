@@ -50,7 +50,6 @@ def _preview(vals, n):
     name="inspect-zarr",
     version=_SKILL_VERSION,
     output=False,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset("any"), required=True, dest="ds")
 @weather_skill.argument("--format", choices=["human", "json"], default="human")

@@ -54,7 +54,6 @@ def _parse_value(raw, coord_vals, dim):
 @weather_skill(
     name="select",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument("--dim", required=True)

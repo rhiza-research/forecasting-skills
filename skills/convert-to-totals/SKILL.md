@@ -1,6 +1,6 @@
 ---
 name: convert-to-totals
-description: Convert rate variables to period totals by multiplying by stamped aggregation_period (pint). Use as a terminal step before plotting; do not feed totals back into rate-math skills. Requires aggregate-temporal first. Default --min-coverage 1.0. Refuses overlapping intervals — run select on time/step first.
+description: Convert rate variables to period totals by multiplying by stamped aggregation_period (pint). Use as a terminal step before plotting. Requires aggregate-temporal first. Refuses precip totals (would double-count). Default --min-coverage 1.0. Refuses overlapping intervals — run select on time/step first.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/convert_to_totals.py *)
@@ -12,8 +12,9 @@ metadata:
 
 Terminal conversion: **rate × stamped `aggregation_period` → amount**.
 
-Intended only before plot/export. Rate-path skills refuse precip totals
-(`cell_methods` with `sum`, or amount units) on input.
+Intended only before plot/export. Refuses precip totals (`cell_methods` with
+`sum`, or amount units) — multiplying an amount by the period would
+double-count.
 
 ## When to use
 

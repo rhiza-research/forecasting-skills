@@ -167,3 +167,19 @@ def test_full_week_of_halfhourly_converts(tmp_path, aggregate, convert_to_totals
     assert result.sizes["time"] == 1
     assert result["precip"].attrs["units"] == "mm"
     assert float(result["precip"].values.flat[0]) == pytest.approx(7.0)
+
+
+def test_convert_to_totals_refuses_precip_totals(tmp_path, convert_to_totals):
+    ds = make_gridded(n_time=1, fill=10.0)
+    ds["precip"].attrs.update(
+        units="mm",
+        standard_name="lwe_thickness_of_precipitation_amount",
+        cell_methods="time: sum",
+    )
+    ds["precip"].attrs[AGGREGATION_PERIOD_ATTR] = "1 day"
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    with pytest.raises(SystemExit) as exc:
+        run_skill(convert_to_totals, "-i", str(src), "-o", str(out))
+    assert exc.value.code == 2

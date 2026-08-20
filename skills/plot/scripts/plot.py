@@ -25,12 +25,26 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import lat_slice, polygon_from_geojson
-from weather_skills_core.units import to_standard_units
+from weather_skills_core.units import classify_variable, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
 
 _INDEX_INT_RE = re.compile(r"[+-]?[0-9]+")
+
+# ECMWF-S2S4AFRICA / Kenya product palette (get_ECMWF_functions.cmap).
+PRECIP_COLORS = [
+    "white",
+    "wheat",
+    "lightgreen",
+    "green",
+    "lightblue",
+    "blue",
+    "yellow",
+    "orange",
+    "red",
+    "purple",
+]
 
 def _parse_index(spec):
     """Parse ``--index`` into ``{dim: int | list[int]}`` (e.g. ``step=0,1,2``)."""
@@ -81,6 +95,26 @@ def _parse_colormap(spec):
 
     parts = [p.strip() for p in spec.split(",") if p.strip()]
     return LinearSegmentedColormap.from_list("custom", parts)
+
+
+def _precip_colormap():
+    from matplotlib.colors import LinearSegmentedColormap
+
+    return LinearSegmentedColormap.from_list("wgbrp", PRECIP_COLORS)
+
+
+def _heatmap_cmap(da, colormap):
+    """Explicit ``--colormap``, else the Kenya/S2S precip palette, else viridis."""
+    if colormap:
+        return _parse_colormap(colormap)
+    kind = classify_variable(
+        da.name or "",
+        units=da.attrs.get("units"),
+        standard_name=da.attrs.get("standard_name"),
+    )
+    if kind in ("precip", "precip_amount"):
+        return _precip_colormap()
+    return "viridis"
 
 def _parse_cities(spec):
     if not spec:
@@ -278,7 +312,7 @@ def _heatmap(
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
     cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", fraction=5)
     units = da.attrs.get("units", "")
-    label = da.attrs.get("long_name") or da.attrs.get("GRIB_name") or da.name or "value"
+    label = da.attrs.get("GRIB_name") or da.attrs.get("long_name") or da.name or "value"
     if units:
         label = f"{label} [{units}]"
     cbar.set_label(label, fontsize=fontsize)
@@ -293,7 +327,14 @@ def _heatmap(
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--style", choices=["heatmap", "timeseries"], default="heatmap")
-@weather_skill.argument("--colormap", default="viridis")
+@weather_skill.argument(
+            "--colormap",
+            default=None,
+            help=(
+                "matplotlib colormap name, or comma-separated colors. "
+                "Default: Kenya/S2S precip palette for precip variables, else viridis."
+            ),
+        )
 @weather_skill.argument(
             "--index",
             default=None,
@@ -433,7 +474,7 @@ def plot(
 
         extent_vals = _parse_extent(extent)
         cities_map = _parse_cities(cities)
-        cmap = _parse_colormap(colormap)
+        cmap = _heatmap_cmap(da, colormap)
         region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
         wrapped_bbox = bbox_nwse is not None and bbox_nwse[1] > bbox_nwse[3]
 

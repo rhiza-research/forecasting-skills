@@ -20,7 +20,6 @@ _SKILL_VERSION = "0.0.1"
 @weather_skill(
     name="convert-calendar",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('any'), required=True, dest='ds')
 @weather_skill.argument(

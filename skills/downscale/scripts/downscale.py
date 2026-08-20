@@ -49,7 +49,6 @@ def _qmap_1d(model, ref):
 @weather_skill(
     name="downscale",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('spatial'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")

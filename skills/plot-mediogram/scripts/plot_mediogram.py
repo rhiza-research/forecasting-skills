@@ -58,7 +58,6 @@ def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
 @weather_skill(
     name="plot-mediogram",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset("any"), action="append", required=True)
 @weather_skill.argument("--variable", "-v")

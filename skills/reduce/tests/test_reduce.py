@@ -37,7 +37,7 @@ def test_reduce_sum_collapses_longitude(tmp_path, reduce):
     assert ds["precip"].sizes["latitude"] == 3
 
 
-def test_reduce_refuses_precip_totals(tmp_path, reduce):
+def test_reduce_accepts_precip_totals(tmp_path, reduce):
     ds = make_gridded()
     ds["precip"].attrs.update(
         units="mm",
@@ -47,6 +47,8 @@ def test_reduce_refuses_precip_totals(tmp_path, reduce):
     src = write_zarr(ds, tmp_path / "in.zarr")
     out = tmp_path / "out.zarr"
 
-    with pytest.raises(SystemExit) as exc:
-        run_skill(reduce, "-i", str(src), "-o", str(out), "--dim", "time", "--method", "mean")
-    assert exc.value.code == 2
+    run_skill(reduce, "-i", str(src), "-o", str(out), "--dim", "time", "--method", "mean")
+
+    result = xr.open_zarr(out, consolidated=True)
+    assert "time" not in result.dims
+    assert "sum" in result["precip"].attrs["cell_methods"]

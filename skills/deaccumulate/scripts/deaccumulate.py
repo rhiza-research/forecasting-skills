@@ -21,7 +21,6 @@ _SKILL_VERSION = "0.0.1"
 @weather_skill(
     name="deaccumulate",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset('forecast'), required=True, dest='ds')
 @weather_skill.argument("--variable", "-v")

@@ -18,7 +18,6 @@ _SKILL_VERSION = "0.0.1"
 @weather_skill(
     name="clip-region",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument(
     "-i", "--input", type=Dataset(["spatial", "point_obs"]), required=True, dest="ds"
