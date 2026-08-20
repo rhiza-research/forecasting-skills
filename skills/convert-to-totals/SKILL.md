@@ -21,7 +21,7 @@ double-count.
 - After `aggregate-temporal` (which stamps `aggregation_period`,
   `aggregation_coverage`, and `cell_methods` with `mean`/`minimum`/`maximum`).
 - When you need depth totals (`mm`) for display, not further rate math.
-- Native-only cubes (`data_interval` but no `aggregation_period`) will not
+- Native-only cubes (`data_interval` or CF bounds, but no `aggregation_period`) will not
   convert — aggregate first.
 
 ## Usage

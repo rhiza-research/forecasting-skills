@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 import xarray as xr
 from conftest import load_skill, make_gridded, run_skill, write_zarr
@@ -182,3 +183,93 @@ def test_aggregate_requires_period_or_window(tmp_path, aggregate):
     with pytest.raises(SystemExit) as exc:
         run_skill(aggregate, "-i", str(src), "-o", str(out))
     assert exc.value.code == 2
+
+
+def _s2s_accum_forecast():
+    """S2S-like steps with known cumulative tp (mm)."""
+    import numpy as np
+    import xarray as xr
+
+    days = [0, 7, 10, 14, 20, 21, 28]
+    # Amounts added in each interval after step 0: 7, 6, 12, 24, 10, 35
+    increments = [0.0, 7.0, 6.0, 12.0, 24.0, 10.0, 35.0]
+    accum = np.cumsum(increments)
+    ds = xr.Dataset(
+        {
+            "tp": (
+                ("step", "latitude", "longitude"),
+                accum.reshape(-1, 1, 1),
+                {"units": "mm", "standard_name": "lwe_thickness_of_precipitation_amount"},
+            )
+        },
+        coords={
+            "step": np.array(days, dtype="timedelta64[D]").astype("timedelta64[ns]"),
+            "time": np.datetime64("2026-01-01", "ns"),
+            "latitude": [1.0],
+            "longitude": [10.0],
+        },
+    )
+    ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
+    ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
+    ds["step"].attrs.update(standard_name="forecast_period")
+    ds["time"].attrs.update(standard_name="forecast_reference_time", axis="T")
+    return ds, accum, days
+
+
+def test_irregular_weekly_totals_match_tp_differences(tmp_path, aggregate):
+    from conftest import load_skill
+
+    deaccumulate = load_skill("deaccumulate", "deaccumulate").deaccumulate
+    convert = load_skill("convert-to-totals", "convert_to_totals").convert_to_totals
+    ds, accum, days = _s2s_accum_forecast()
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    rates = tmp_path / "rates.zarr"
+    weekly = tmp_path / "weekly.zarr"
+    totals = tmp_path / "totals.zarr"
+
+    run_skill(deaccumulate, "-i", str(src), "-o", str(rates))
+    run_skill(aggregate, "-i", str(rates), "-o", str(weekly), "--period", "weekly")
+    run_skill(convert, "-i", str(weekly), "-o", str(totals))
+
+    rates_ds = xr.open_zarr(rates, consolidated=True)
+    assert "step_bounds" in rates_ds.coords or "step_bounds" in rates_ds.variables
+    assert rates_ds["tp"].attrs.get("data_interval") is None
+
+    weekly_ds = xr.open_zarr(weekly, consolidated=True)
+    idx = {
+        int(np.asarray(s).astype("timedelta64[D]").astype(int)): i
+        for i, s in enumerate(weekly_ds.step.values)
+    }
+    assert 21 in idx
+    assert float(weekly_ds["aggregation_coverage"].values[idx[21]]) == pytest.approx(1.0)
+
+    out = xr.open_zarr(totals, consolidated=True)
+    # Week 3 is (14d, 21d] = tp[21] - tp[14]
+    assert float(out["tp"].values[idx[21]].flat[0]) == pytest.approx(
+        accum[days.index(21)] - accum[days.index(14)]
+    )
+
+
+def test_window_refused_on_cf_bounds(tmp_path, aggregate):
+    from conftest import load_skill
+
+    deaccumulate = load_skill("deaccumulate", "deaccumulate").deaccumulate
+    ds, _, _ = _s2s_accum_forecast()
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    rates = tmp_path / "rates.zarr"
+    out = tmp_path / "out.zarr"
+    run_skill(deaccumulate, "-i", str(src), "-o", str(rates))
+    with pytest.raises(SystemExit) as exc:
+        run_skill(aggregate, "-i", str(rates), "-o", str(out), "--window", "7")
+    assert exc.value.code == 2
+
+
+def test_reaggregate_weekly_to_21_day_expects_three_weeks(tmp_path, aggregate):
+    src = write_zarr(make_gridded(n_time=21, fill=2.0), tmp_path / "daily.zarr")
+    weekly = tmp_path / "weekly.zarr"
+    out = tmp_path / "21d.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(weekly), "--period", "weekly")
+    run_skill(aggregate, "-i", str(weekly), "-o", str(out), "--period", "21 day")
+    ds = xr.open_zarr(out, consolidated=True)
+    assert ds.sizes["time"] == 1
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(1.0)

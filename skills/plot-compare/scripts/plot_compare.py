@@ -336,13 +336,32 @@ def plot_compare(
         enc_b = raw_b.astype(ns_dtype).astype("int64")
         tol_enc = 1_000_000_000
 
-    def _median_spacing(enc_values):
+    def _median_spacing(enc_values, ds, dim):
+        bound_name = ds[dim].attrs.get("bounds") if dim in ds else None
+        if isinstance(bound_name, str) and bound_name in ds:
+            pairs = np.asarray(ds[bound_name].values)
+            if pairs.ndim == 2 and pairs.shape[1] == 2:
+                try:
+                    widths = np.abs(
+                        pairs[:, 1].astype("timedelta64[ns]").astype("int64")
+                        - pairs[:, 0].astype("timedelta64[ns]").astype("int64")
+                    )
+                except (TypeError, ValueError):
+                    try:
+                        widths = np.abs(
+                            pairs[:, 1].astype("datetime64[ns]").astype("int64")
+                            - pairs[:, 0].astype("datetime64[ns]").astype("int64")
+                        )
+                    except (TypeError, ValueError):
+                        widths = None
+                if widths is not None and widths.size:
+                    return float(np.median(widths))
         if enc_values.size < 2:
             return None
         return float(np.median(np.abs(np.diff(enc_values))))
 
-    width_a = _median_spacing(enc_a)
-    width_b = _median_spacing(enc_b)
+    width_a = _median_spacing(enc_a, ds_a, td_a)
+    width_b = _median_spacing(enc_b, ds_b, td_b)
     if width_a is not None and width_b is not None:
         rel = abs(width_a - width_b) / max(width_a, width_b, 1.0)
         if rel > 1e-3:

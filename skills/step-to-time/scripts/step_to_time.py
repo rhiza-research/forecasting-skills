@@ -41,9 +41,25 @@ def step_to_time(ds, **kwargs):
         valid = (init.values + step.values).astype("datetime64[ns]")
         init_iso = str(np.datetime_as_string(init.values.astype("datetime64[s]")))
     drop = ["time"] + (["valid_time"] if "valid_time" in ds.variables else [])
+    bound_name = ds["step"].attrs.get("bounds") if "step" in ds.coords else None
     out = ds.drop_vars(drop).rename({"step": "time"}).assign_coords(time=("time", valid))
     out["time"].attrs.setdefault("standard_name", "time")
     out["time"].attrs.setdefault("axis", "T")
+    if isinstance(bound_name, str) and bound_name in out:
+        pairs = np.asarray(out[bound_name].values)
+        if isinstance(init_scalar, cftime.datetime):
+            time_pairs = np.empty(pairs.shape, dtype=object)
+            for i in range(pairs.shape[0]):
+                for j in range(2):
+                    time_pairs[i, j] = init_scalar + np.asarray(pairs[i, j]).astype(
+                        "timedelta64[us]"
+                    ).item()
+        else:
+            time_pairs = (init.values + pairs).astype("datetime64[ns]")
+        out = out.drop_vars(bound_name).assign_coords(
+            time_bounds=(("time", "nv"), time_pairs)
+        )
+        out["time"].attrs["bounds"] = "time_bounds"
     out.attrs["weather_skills_forecast_init"] = init_iso
     return out
 

@@ -129,7 +129,15 @@ def plot_mediogram(input, variable, lat, lon, title, output, **kwargs):
 
     ax.plot(time_steps, np.mean(fc, axis=0), color="black", linewidth=1.2)
     ax.set_xticks(time_steps)
-    ax.set_xticklabels([f"T+{t + 1}" for t in time_steps])
+    step_vals = np.asarray(pt_fc["step"].values)
+    tick_labels = []
+    for value in step_vals:
+        arr = np.asarray(value)
+        if arr.dtype.kind == "m":
+            tick_labels.append(f"+{int(arr.astype('timedelta64[D]').astype(int))}d")
+        else:
+            tick_labels.append(str(value))
+    ax.set_xticklabels(tick_labels)
     ax.set_xlabel("Forecast step")
     ax.set_ylabel(variable)
     ax.set_title(title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")

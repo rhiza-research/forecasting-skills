@@ -30,6 +30,8 @@ def test_deaccumulate_cumulative_tp(tmp_path, deaccumulate):
     vals = result["tp"].values.flatten()
     assert vals[0] == pytest.approx(2.0)
     assert vals[1] == pytest.approx(3.0)
+    assert result["tp"].attrs.get("data_interval") == "1 day"
+    assert "step_bounds" not in result.variables
     assert load_history(out)[-1]["skill"] == "deaccumulate"
 
 

@@ -16,7 +16,7 @@ from weather_skills_core.units import (
     AGGREGATION_PERIOD_ATTR,
     PRECIP_AMOUNT_LONG_NAME,
     STANDARD,
-    assert_timestep_ge_aggregation_period,
+    assert_nonoverlapping_intervals,
     classify_variable,
     filter_min_coverage,
     format_cell_methods,
@@ -78,7 +78,7 @@ def convert_to_totals(ds, variable, min_coverage, time_dim, **kwargs):
                 f"variable {name!r} has no {AGGREGATION_PERIOD_ATTR!r}; "
                 "run aggregate-temporal first"
             )
-        assert_timestep_ge_aggregation_period(ds, dim, period)
+        assert_nonoverlapping_intervals(ds, dim, period)
         total = rate_to_total(da, period)
         plain = total.pint.dequantify() if total.pint.units is not None else total
         attrs = {**da.attrs, **plain.attrs}

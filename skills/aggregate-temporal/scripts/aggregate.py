@@ -83,6 +83,117 @@ def _native_interval(ds, dim) -> str | None:
         return None
 
 
+def _coverage_cell(ds) -> str | None:
+    """Current cell width for coverage: re-agg uses aggregation_period, else native."""
+    for name in ds.data_vars:
+        val = ds[name].attrs.get(AGGREGATION_PERIOD_ATTR)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return data_interval_of(ds)
+
+
+def _cf_bounds(ds, dim):
+    """``(N, 2)`` start/end array if CF bounds exist, else None."""
+    import numpy as np
+
+    name = ds[dim].attrs.get("bounds") if dim in ds.coords or dim in ds.dims else None
+    if not (isinstance(name, str) and name in ds):
+        name = f"{dim}_bounds" if f"{dim}_bounds" in ds else None
+    if name is None:
+        return None
+    arr = np.asarray(ds[name].values)
+    if arr.ndim != 2 or arr.shape[-1] != 2:
+        raise UsageError(f"{name!r} must have shape ({dim}, 2) start/end")
+    return arr.reshape(arr.shape[0], 2)
+
+
+def _as_ns(val):
+    import numpy as np
+
+    arr = np.asarray(val)
+    if arr.dtype.kind == "m":
+        return arr.astype("timedelta64[ns]").astype(np.int64)
+    if arr.dtype.kind == "M":
+        return arr.astype("datetime64[ns]").astype(np.int64)
+    raise UsageError(f"cannot convert {arr.dtype} to a duration for CF bounds")
+
+
+def _drop_bounds(ds, dim):
+    name = ds[dim].attrs.get("bounds") if dim in ds.coords or dim in ds.dims else None
+    names = []
+    if isinstance(name, str) and name in ds:
+        names.append(name)
+    extra = f"{dim}_bounds"
+    if extra in ds and extra not in names:
+        names.append(extra)
+    if names:
+        ds = ds.drop_vars(names)
+    if dim in ds.coords:
+        attrs = dict(ds[dim].attrs)
+        attrs.pop("bounds", None)
+        ds[dim].attrs = attrs
+    return ds
+
+
+def _weighted_mean(ds, dim, indices, weights):
+    import numpy as np
+    import xarray as xr
+
+    w = np.asarray(weights, dtype=float)
+    sub = _drop_bounds(ds.isel({dim: indices}), dim)
+    for name in sub.data_vars:
+        da = sub[name]
+        if getattr(da, "pint", None) is not None and da.pint.units is not None:
+            sub[name] = da.pint.dequantify()
+    wda = xr.DataArray(w, dims=[dim], coords={dim: sub[dim].values})
+    return (sub * wda).sum(dim=dim, skipna=True, keep_attrs=True) / wda.sum()
+
+
+def _aggregate_from_bounds(ds, dim, spec, method, bins, *, keep_partial: bool):
+    """Duration-weight samples into ``bins`` of ``(left, right, label)``."""
+    import numpy as np
+    import xarray as xr
+
+    bounds = _cf_bounds(ds, dim)
+    starts = _as_ns(bounds[:, 0])
+    ends = _as_ns(bounds[:, 1])
+    work = _drop_bounds(ds, dim)
+    chunks, labels, coverages = [], [], []
+    dropped = 0
+    for left, right, label in bins:
+        left_ns = int(np.asarray(_as_ns(left)).reshape(-1)[0])
+        right_ns = int(np.asarray(_as_ns(right)).reshape(-1)[0])
+        period_ns = right_ns - left_ns
+        if period_ns <= 0:
+            continue
+        overlap = np.minimum(ends, right_ns) - np.maximum(starts, left_ns)
+        overlap = np.maximum(overlap, 0)
+        idx = np.flatnonzero(overlap > 0)
+        if idx.size == 0:
+            continue
+        covered = float(overlap[idx].sum())
+        coverage = min(1.0, covered / period_ns)
+        if not keep_partial and coverage < 1.0 - 1e-9:
+            dropped += 1
+            continue
+        if method == "mean":
+            chunks.append(_weighted_mean(work, dim, idx, overlap[idx]))
+        else:
+            chunks.append(_reduce(work.isel({dim: idx}), method=method, dim=dim))
+        labels.append(label)
+        coverages.append(coverage)
+    if dropped:
+        print(
+            f"dropped {dropped} incomplete {spec['key']} bin(s); "
+            "pass --keep-partial to retain",
+            file=sys.stderr,
+        )
+    if not chunks:
+        return ds.isel({dim: slice(0, 0)})
+    out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+    return _assign_coverage(out, dim, coverages)
+
+
 def _coverage_fraction(n_present: int, expected: int) -> float:
     if expected <= 0:
         return 1.0
@@ -165,8 +276,27 @@ def _aggregate_time_resample(ds, dim, spec, method, *, keep_partial: bool):
     import xarray as xr
 
     freq = spec["freq"]
+    if _cf_bounds(ds, dim) is not None:
+        resampler = ds.resample({dim: freq})
+        bins = []
+        for label in resampler.groups:
+            if spec["key"] == "monthly":
+                import pandas as pd
+
+                left, right = label, pd.Timestamp(label) + pd.offsets.MonthBegin(1)
+            elif hasattr(label, "calendar"):
+                left = label
+                right = label + _dt.timedelta(days=spec["anchor_days"])
+            else:
+                left = np.datetime64(label)
+                right = left + np.timedelta64(spec["anchor_days"], "D")
+            bins.append((left, right, left if hasattr(label, "calendar") else np.datetime64(label)))
+        return _aggregate_from_bounds(
+            ds, dim, spec, method, bins, keep_partial=keep_partial
+        )
+
     timestep_days = _timestep_days(ds, dim)
-    native_interval = _native_interval(ds, dim)
+    native_interval = _coverage_cell(ds)
     resampler = ds.resample({dim: freq})
     n = ds.sizes[dim]
     chunks, labels, coverages = [], [], []
@@ -250,7 +380,7 @@ def _aggregate_time_anchored(
         label = lambda edge: np.datetime64(edge)  # noqa: E731
 
     timestep_days = _timestep_days(ds, dim)
-    native_interval = _native_interval(ds, dim)
+    native_interval = _coverage_cell(ds)
     bins, r = [], right
     # Stop once the right edge is at/before the first sample — do not require
     # left >= data_min, or a bin that still holds data is never created.
@@ -259,6 +389,11 @@ def _aggregate_time_anchored(
         bins.append((left, r))
         r = left
     bins.reverse()
+    if _cf_bounds(ds, dim) is not None:
+        bound_bins = [(left, right, label(right)) for left, right in bins]
+        return _aggregate_from_bounds(
+            ds, dim, spec, method, bound_bins, keep_partial=keep_partial
+        )
     chunks, labels, coverages = [], [], []
     dropped = 0
     for left, right in bins:
@@ -284,7 +419,7 @@ def _aggregate_time_anchored(
     return _assign_coverage(out, dim, coverages)
 
 
-def _aggregate_step(ds, spec, method):
+def _aggregate_step(ds, spec, method, *, keep_partial: bool):
     import numpy as np
     import pandas as pd
     import xarray as xr
@@ -293,9 +428,20 @@ def _aggregate_step(ds, spec, method):
         raise UsageError("monthly aggregation is not defined for step")
     window = pd.Timedelta(days=spec["anchor_days"]).to_timedelta64()
     steps = ds["step"].values
-    max_step = steps.max()
+    bounds = _cf_bounds(ds, "step")
+    max_step = bounds[:, 1].max() if bounds is not None else steps.max()
     edges = np.arange(0, max_step + window, window, dtype=steps.dtype)
-    native_interval = _native_interval(ds, "step")
+    if bounds is not None:
+        bins = []
+        for left in edges[:-1]:
+            right = left + window
+            if right > max_step and not keep_partial:
+                continue
+            bins.append((left, right, left + window))
+        return _aggregate_from_bounds(
+            ds, "step", spec, method, bins, keep_partial=keep_partial
+        )
+    native_interval = _coverage_cell(ds)
     timestep_days = _timestep_days(ds, "step")
     chunks, labels, coverages = [], [], []
     for left in edges[:-1]:
@@ -442,13 +588,15 @@ def aggregate(
         else:
             raise UsageError(f"no time/step dim in {list(ds.dims)}; pass --time-dim")
 
-    native_interval = _native_interval(ds, dim)
+    has_bounds = _cf_bounds(ds, dim) is not None
+    native_interval = None if has_bounds else _native_interval(ds, dim)
     interval = native_interval
-    try:
-        if interval is None:
-            interval = format_duration(infer_timestep(ds, dim))
-    except UsageError:
-        pass
+    if not has_bounds:
+        try:
+            if interval is None:
+                interval = format_duration(infer_timestep(ds, dim))
+        except UsageError:
+            pass
 
     stride_val = stride
     if stride is not None:
@@ -458,6 +606,10 @@ def aggregate(
             pass
 
     if window is not None:
+        if has_bounds:
+            raise UsageError(
+                "--window is a step count; irregular axes with CF bounds require --period"
+            )
         out = roll_and_agg(ds, window, dim, method, align=align, stride=stride_val)
         n = out.sizes.get(dim, 0)
         if n:
@@ -469,9 +621,8 @@ def aggregate(
 
     spec = _resolve_period(period)
     if dim == "step":
-        # Step buckets already require a full window (right <= max_step).
-        out = _aggregate_step(ds, spec, method)
-        if keep_partial:
+        out = _aggregate_step(ds, spec, method, keep_partial=keep_partial)
+        if keep_partial and not has_bounds:
             print(
                 "--keep-partial has no effect on step aggregation "
                 "(incomplete step bins are never emitted)",

@@ -55,23 +55,28 @@ Exactly one of `--period` or `--window` is required.
 - `--time-dim` — override; by default uses `time` if present, else `step`.
 - `--end-time` — with `--period` on a `time` axis: date the final bin ends on (bins walk backward). Same standard flag as fetchers. No effect on `step` or `--window`.
 - `--start-time` — with `--period` and `--end-time`: optional earliest coverage floor. Requires `--end-time`.
-- `--keep-partial` — with `--period` (forward resample and `--end-time`): keep incomplete bins (e.g. a trailing week with fewer than 7 daily samples) and stamp `aggregation_coverage` &lt; 1. **Default drops them**. Convert-to-totals then applies `--min-coverage` (default 1.0). No effect on `--window` or `step` (those paths already omit incomplete windows).
+- `--keep-partial` — with `--period` (forward resample, `--end-time`, and irregular `step` with CF bounds): keep incomplete bins and stamp `aggregation_coverage` &lt; 1. **Default drops them**. Convert-to-totals then applies `--min-coverage` (default 1.0). No effect on `--window`. Uniform `step` buckets still omit trailing incomplete windows.
+- `--window` — index-length rolling. Refused when the input has CF `{dim}_bounds` (use `--period`).
 
 ### Metadata stamped
 
 On each aggregated data variable:
 
-- `data_interval` — native sample spacing from the fetch (kept; not the window).
+- `data_interval` — native sample spacing from the fetch (kept when the input was uniform; omitted when the input had CF bounds).
 - `aggregation_period` — pint duration for the window (`1 day`, `7 day`,
   `1 dekad`, `1 month`, `21 day`, or e.g. `7 day` for `--window 7` on daily
   data) used later by `convert-to-totals`.
 - `cell_methods` — CF statistic, e.g. `time: mean (interval: 1 day)`.
-  `interval:` is the **input** sample spacing when it can be inferred.
+  `interval:` is the **input** sample spacing when it is a scalar `data_interval`.
 
 On the time/step axis:
 
-- `aggregation_coverage` — completeness of each interval vs `data_interval`
-  (0–1). Expected count = `aggregation_period / data_interval`.
+- `aggregation_coverage` — completeness of each interval vs native cells
+  (0–1). Uniform: expected count = `aggregation_period / data_interval` (or
+  vs the input `aggregation_period` on a re-aggregate). Irregular CF bounds:
+  covered duration / window.
+
+Inputs with CF `{dim}_bounds` are duration-weighted (`sum(rate × dt) / sum(dt)`), so a 1-day cell and a 5-day cell in the same week are not equal-weighted. `--window` is a step count and is refused on those axes.
 
 Rate `units` are unchanged (still `mm day-1`, etc.).
 

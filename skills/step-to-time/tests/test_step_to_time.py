@@ -53,3 +53,23 @@ def test_step_to_time_accepts_precip_totals(tmp_path, step_to_time):
     result = xr.open_zarr(out, consolidated=True)
     assert "time" in result.dims
     assert "sum" in result["tp"].attrs["cell_methods"]
+
+
+def test_step_to_time_rewrites_cf_bounds(tmp_path, step_to_time):
+    from weather_skills_core.units import stamp_data_interval
+
+    ds = _forecast_without_precip_totals(n_step=4, init="2026-01-01")
+    ds = ds.assign_coords(
+        step=np.array([7, 10, 14, 21], dtype="timedelta64[D]").astype("timedelta64[ns]")
+    )
+    ds = stamp_data_interval(ds, dim="step")
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(step_to_time, "-i", str(src), "-o", str(out))
+    result = xr.open_zarr(out, consolidated=True)
+    assert result["time"].attrs.get("bounds") == "time_bounds"
+    assert "step_bounds" not in result.variables
+    bounds = np.asarray(result["time_bounds"].values)
+    assert bounds.shape == (4, 2)
+    assert str(bounds[0, 0])[:10] == "2026-01-01"
+    assert str(bounds[0, 1])[:10] == "2026-01-08"
