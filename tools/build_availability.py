@@ -33,8 +33,8 @@ _SIBLING_CORE = ROOT.parent / "weather-skills-core" / "src"
 if _SIBLING_CORE.is_dir():
     sys.path.insert(0, str(_SIBLING_CORE))
 
-from weather_skills_core.availability import Availability  # noqa: E402
-from weather_skills_core.errors import UsageError  # noqa: E402
+from weather_skills_core.availability import Availability
+from weather_skills_core.errors import UsageError
 
 _GENERATED_BY = "tools/build_availability.py"
 
@@ -65,7 +65,7 @@ def _parse_frontmatter(skill_md: Path) -> dict:
     except yaml.YAMLError as exc:
         raise ValueError(f"{skill_md}: invalid YAML frontmatter: {exc}") from exc
     if not isinstance(data, dict):
-        raise ValueError(f"{skill_md}: frontmatter is not a mapping")
+        raise ValueError(f"{skill_md}: frontmatter is not a mapping")  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
     return data
 
 
@@ -99,7 +99,7 @@ def collect_products(skills_dir: Path) -> dict[str, dict]:
             )
         metadata = front.get("metadata")
         if not isinstance(metadata, dict):
-            raise ValueError(f"{skill_md}: frontmatter has no metadata map")
+            raise ValueError(f"{skill_md}: frontmatter has no metadata map")  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
         group = metadata.get("catalog-group")
         avail = metadata.get("availability")
         if group == "fetchers" and not avail:
@@ -107,7 +107,7 @@ def collect_products(skills_dir: Path) -> dict[str, dict]:
         if not avail:
             continue
         if not isinstance(avail, dict):
-            raise ValueError(f"{skill_md}: metadata.availability is not a mapping")
+            raise ValueError(f"{skill_md}: metadata.availability is not a mapping")  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
         variants = avail.get("variants") or {}
         if variants and not isinstance(variants, dict):
             raise ValueError(f"{skill_md}: metadata.availability.variants is not a mapping")
@@ -116,7 +116,9 @@ def collect_products(skills_dir: Path) -> dict[str, dict]:
             if override is None:
                 override = {}
             if not isinstance(override, dict):
-                raise ValueError(f"{skill_md}: variant {variant!r} must be a mapping (or empty)")
+                raise ValueError(  # noqa: TRY004 -- ValueError is the documented malformed-frontmatter contract; not a type bug
+                    f"{skill_md}: variant {variant!r} must be a mapping (or empty)"
+                )
             key = f"{name}:{variant}"
             products[key] = _spec_dict(_merge(avail, override), origin=f"{skill_md} ({key})")
     return dict(sorted(products.items()))

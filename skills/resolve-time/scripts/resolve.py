@@ -16,11 +16,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from weather_skills_core import UsageError, weather_skill
-from weather_skills_core.availability import (
-    Availability,
-    available_through as spec_available_through,
-    ecmwf_s2s_valid_init,
-)
+from weather_skills_core.availability import Availability, ecmwf_s2s_valid_init
+from weather_skills_core.availability import available_through as spec_available_through
 from weather_skills_core.standard_utils import parse_date
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
