@@ -4,6 +4,7 @@
 #   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "xarray",
 #   "zarr>=3",
+#   "cftime",
 #   "fsspec",
 #   "aiohttp",
 #   "numpy",
@@ -58,9 +59,7 @@ def _get_json(url: str) -> dict:
         with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as exc:
-        raise DataError(
-            f"GCS listing failed for {url!r}: HTTP {exc.code} {exc.reason}"
-        ) from None
+        raise DataError(f"GCS listing failed for {url!r}: HTTP {exc.code} {exc.reason}") from None
     except urllib.error.URLError as exc:
         raise DataError(f"GCS listing failed for {url!r}: {exc.reason}") from None
 
@@ -101,9 +100,7 @@ def _store_exists(key: str) -> bool:
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return False
-        raise DataError(
-            f"GCS HEAD failed for {meta_key!r}: HTTP {exc.code} {exc.reason}"
-        ) from None
+        raise DataError(f"GCS HEAD failed for {meta_key!r}: HTTP {exc.code} {exc.reason}") from None
     except urllib.error.URLError as exc:
         raise DataError(f"GCS HEAD failed for {meta_key!r}: {exc.reason}") from None
 
@@ -145,9 +142,7 @@ def _open_remote(key: str):
     try:
         return xr.open_zarr(url, consolidated=True)
     except Exception as exc:  # noqa: BLE001 — surface remote open failures cleanly
-        raise DataError(
-            f"failed to open remote Zarr gs://{_BUCKET}/{key} ({exc})."
-        ) from None
+        raise DataError(f"failed to open remote Zarr gs://{_BUCKET}/{key} ({exc}).") from None
 
 
 @weather_skill(
@@ -158,10 +153,7 @@ def _open_remote(key: str):
     "--dataset",
     default=_DEFAULT_DATASET,
     choices=list(_DATASETS),
-    help=(
-        "Archive data product under <date>/data/ "
-        f"(default {_DEFAULT_DATASET})."
-    ),
+    help=(f"Archive data product under <date>/data/ (default {_DEFAULT_DATASET})."),
 )
 @weather_skill.argument("--date")
 @weather_skill.argument("--bbox")
@@ -191,15 +183,11 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
     if kwargs.get("probe_latest") is not None:
         dsid = kwargs["probe_latest"] or dataset
         if dsid not in _DATASETS:
-            raise UsageError(
-                f"unknown --dataset {dsid!r}; choose one of: {', '.join(_DATASETS)}"
-            )
+            raise UsageError(f"unknown --dataset {dsid!r}; choose one of: {', '.join(_DATASETS)}")
         print(_resolve_date(None, dsid))
         return
     if dataset not in _DATASETS:
-        raise UsageError(
-            f"unknown --dataset {dataset!r}; choose one of: {', '.join(_DATASETS)}"
-        )
+        raise UsageError(f"unknown --dataset {dataset!r}; choose one of: {', '.join(_DATASETS)}")
 
     iso = _resolve_date(date, dataset)
     key = _store_key(dataset, iso)

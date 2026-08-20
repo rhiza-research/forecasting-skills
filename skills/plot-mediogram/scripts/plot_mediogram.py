@@ -16,12 +16,13 @@
 
 from pathlib import Path
 
-from weather_skills_core import Dataset, DataError, UsageError, weather_skill
+from weather_skills_core import DataError, Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.units import precip_for_display, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
+
 
 def _select_point(da, lat, lon):
     lat_dim = cf_dim(da, "latitude")
@@ -29,6 +30,7 @@ def _select_point(da, lat, lon):
     if lat_dim is None or lon_dim is None:
         raise ValueError(f"Could not identify latitude/longitude in dims {list(da.dims)}.")
     return da.sel({lat_dim: lat, lon_dim: lon}, method="nearest")
+
 
 def _bxp_stats(values, lo, q1, q3, hi):
     import numpy as np
@@ -42,6 +44,7 @@ def _bxp_stats(values, lo, q1, q3, hi):
         "fliers": [],
     }
 
+
 def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
     ax.bxp(
         stats,
@@ -52,8 +55,13 @@ def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
         boxprops={"facecolor": facecolor, "alpha": 1},
         medianprops={"color": "black", "linewidth": 1.5},
         whiskerprops={"color": "black" if whisker_lw <= 1 else "gray", "linewidth": whisker_lw},
-        capprops={"color": "gray" if cap_alpha == 0 else "black", "linewidth": 1, "alpha": cap_alpha},
+        capprops={
+            "color": "gray" if cap_alpha == 0 else "black",
+            "linewidth": 1,
+            "alpha": cap_alpha,
+        },
     )
+
 
 @weather_skill(
     name="plot-mediogram",
@@ -155,6 +163,7 @@ def plot_mediogram(ds, variable, lat, lon, title, output, **kwargs):
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return output
+
 
 if __name__ == "__main__":
     plot_mediogram()

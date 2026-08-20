@@ -17,8 +17,6 @@ import sys
 from datetime import UTC, datetime
 
 import cf_xarray  # noqa: F401  (fail-fast probe; core loads it lazily at write time)
-from pathlib import Path
-
 from weather_skills_core import DataError, SkillError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords
 from weather_skills_core.standard_utils import (
@@ -132,7 +130,8 @@ def _is_transport_failure(exc: Exception) -> bool:
         return False
     text = str(exc).lower()
     return any(
-        m in text for m in ("dap failure", "dap2", "dap", "curl", "connection", "timed out", "timeout")
+        m in text
+        for m in ("dap failure", "dap2", "dap", "curl", "connection", "timed out", "timeout")
     )
 
 
@@ -186,9 +185,7 @@ def fetch(start_time, end_time, bbox, **kwargs):
     end_iso = end_time.isoformat()
     time_slice = slice(np.datetime64(f"{start_iso}T00:00"), np.datetime64(f"{end_iso}T23:59"))
     years = list(range(start_time.year, end_time.year + 1))
-    bbox_label = (
-        f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else "global"
-    )
+    bbox_label = f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else "global"
     print(
         f"Fetching oisst {start_iso}..{end_iso} (years {years[0]}..{years[-1]})",
         file=sys.stderr,

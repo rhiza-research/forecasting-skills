@@ -8,8 +8,6 @@
 # ///
 """Convert data variable(s) to --to-units, or --to-standard (temp °C, precip mm)."""
 
-from pathlib import Path
-
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.units import (
     STANDARD,
@@ -34,7 +32,7 @@ _STANDARD_NAME_BY_UNITS = {
     name="unit-convert",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
     "--to-units",
@@ -84,11 +82,7 @@ def unit_convert(ds, variable, to_units, to_standard, standard_name, **kwargs):
             new_name = standard_name if standard_name.strip() else None
         else:
             looked = next(
-                (
-                    sn
-                    for key, sn in _STANDARD_NAME_BY_UNITS.items()
-                    if units_equal(to_units, key)
-                ),
+                (sn for key, sn in _STANDARD_NAME_BY_UNITS.items() if units_equal(to_units, key)),
                 None,
             )
             precip = isinstance(source_name, str) and (

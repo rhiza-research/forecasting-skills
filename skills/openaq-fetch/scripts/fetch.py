@@ -31,8 +31,6 @@ import pandas as pd
 import requests
 import xarray as xr
 from pint import application_registry as ureg
-from pathlib import Path
-
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient, require_env
@@ -318,9 +316,7 @@ def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
 
     (key,) = require_env(
         "OPENAQ_API_KEY",
-        message=(
-            "OPENAQ_API_KEY must be set (free key from https://explore.openaq.org/register)."
-        ),
+        message=("OPENAQ_API_KEY must be set (free key from https://explore.openaq.org/register)."),
     )
     session = requests.Session()
     session.headers.update({"X-API-Key": key})

@@ -24,12 +24,14 @@ REPO = "rhiza-research/forecasting-skills"
 # starts erroring (500s) well before the hard 414, so this is the usable limit.
 MAX_URL = 6800
 
+
 def build_url(title: str, body: str) -> str:
     """Assemble the prefilled new-issue URL with title and body percent-encoded."""
     return (
         f"https://github.com/{REPO}/issues/new"
         f"?title={quote(title, safe='')}&body={quote(body, safe='')}"
     )
+
 
 @weather_skill(
     name="submit-feedback",
@@ -103,6 +105,7 @@ def submit_feedback(title, body, body_file, **kwargs):
         "required).",
         file=sys.stderr,
     )
+
 
 if __name__ == "__main__":
     submit_feedback()

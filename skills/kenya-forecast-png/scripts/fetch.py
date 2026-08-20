@@ -36,9 +36,7 @@ def _get_json(url: str) -> dict:
         with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as exc:
-        raise DataError(
-            f"GCS listing failed for {url!r}: HTTP {exc.code} {exc.reason}"
-        ) from None
+        raise DataError(f"GCS listing failed for {url!r}: HTTP {exc.code} {exc.reason}") from None
     except urllib.error.URLError as exc:
         raise DataError(f"GCS listing failed for {url!r}: {exc.reason}") from None
 
@@ -87,9 +85,7 @@ def _object_exists(key: str) -> bool:
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return False
-        raise DataError(
-            f"GCS HEAD failed for {key!r}: HTTP {exc.code} {exc.reason}"
-        ) from None
+        raise DataError(f"GCS HEAD failed for {key!r}: HTTP {exc.code} {exc.reason}") from None
     except urllib.error.URLError as exc:
         raise DataError(f"GCS HEAD failed for {key!r}: {exc.reason}") from None
 
@@ -117,10 +113,7 @@ def _resolve_date(date, period: str, product: str) -> str:
     for iso in reversed(dates):
         if _object_exists(f"{iso}/{period}/{product}"):
             return iso
-    raise DataError(
-        f"no {period}/{product!r} found under any init-date folder in "
-        f"gs://{_BUCKET}/."
-    )
+    raise DataError(f"no {period}/{product!r} found under any init-date folder in gs://{_BUCKET}/.")
 
 
 def _download(key: str, dest: Path) -> None:
@@ -131,9 +124,7 @@ def _download(key: str, dest: Path) -> None:
             data = resp.read()
             content_type = resp.headers.get("Content-Type", "")
     except urllib.error.HTTPError as exc:
-        raise DataError(
-            f"download failed for {key!r}: HTTP {exc.code} {exc.reason}"
-        ) from None
+        raise DataError(f"download failed for {key!r}: HTTP {exc.code} {exc.reason}") from None
     except urllib.error.URLError as exc:
         raise DataError(f"download failed for {key!r}: {exc.reason}") from None
 
@@ -141,8 +132,7 @@ def _download(key: str, dest: Path) -> None:
         raise DataError(f"download of {key!r} returned an empty body.")
     if data[:8] != b"\x89PNG\r\n\x1a\n":
         raise DataError(
-            f"downloaded {key!r} is not a PNG "
-            f"(content-type={content_type!r}, size={len(data)})."
+            f"downloaded {key!r} is not a PNG (content-type={content_type!r}, size={len(data)})."
         )
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
@@ -190,9 +180,7 @@ def fetch(date, period, product, output, **kwargs):
     ``--date``), and writes that PNG to ``--output``. Credential-free.
     """
     if period not in _PERIODS:
-        raise UsageError(
-            f"unknown --period {period!r}; choose one of: {', '.join(_PERIODS)}"
-        )
+        raise UsageError(f"unknown --period {period!r}; choose one of: {', '.join(_PERIODS)}")
     product = _normalize_product(product)
     if kwargs.get("probe_latest") is not None:
         print(_resolve_date(None, period, product))

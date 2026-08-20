@@ -100,11 +100,18 @@ whenever you need a file's lineage.
 
 ## Credentials
 
-Some fetchers need credentials, which the user supplies as environment variables
-in the shell that launched you. Prefer `dynamical-fetch` so you often need none.
-Never read, print, or check those variables, and
-never open or read any `.env` or credential file. Do not verify that a variable
-is set before running a skill — just run the skill. If a credential is missing,
-the skill fails with a clear error naming the missing variable; relay that error
-and let the user fix it. Checking environment variables yourself is how secrets
-leak into the conversation, so never do it.
+Prefer `dynamical-fetch` so you often need none. Credentialed fetchers run in a
+sandbox that does **not** inherit host secrets. When you invoke one, inject
+every required env var on the **first** call — do not run once, read
+`missing required env var(s)`, then retry.
+
+Required names (from each skill's `metadata.openclaw.requires.env`):
+
+- `ecmwf-fetch` — `ECMWF_DATASTORES_URL`, `ECMWF_DATASTORES_KEY`
+- `imerg-fetch` / `smap-fetch` — `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD`
+- `tahmo-fetch` — `TAHMO_API_USERNAME`, `TAHMO_API_PASSWORD`
+- `openaq-fetch` — `OPENAQ_API_KEY`
+
+`--probe-latest` does not need credentials. Never read, print, or echo the
+values, and never open a `.env` or credential file. If a named secret is not
+available to inject, report that to the user instead of calling the skill.

@@ -101,9 +101,7 @@ def test_build_request(mod):
 
 
 def test_build_request_daily_mean(mod):
-    req = mod._build_request(
-        "2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["t2m"]
-    )
+    req = mod._build_request("2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["t2m"])
     assert req["variable"] == ["2_m_temperature"]
     assert req["leadtime_hour"][0] == "0_24"
     assert "144_168" in req["leadtime_hour"]
@@ -111,9 +109,7 @@ def test_build_request_daily_mean(mod):
 
 
 def test_build_request_sst(mod):
-    req = mod._build_request(
-        "2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["sst"]
-    )
+    req = mod._build_request("2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["sst"])
     assert req["variable"] == ["sea_surface_temperature"]
     assert req["level_type"] == "single_level"
     assert req["leadtime_hour"][0] == "0_24"
@@ -121,9 +117,7 @@ def test_build_request_sst(mod):
 
 
 def test_build_request_pressure_level(mod):
-    req = mod._build_request(
-        "2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["t"]
-    )
+    req = mod._build_request("2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["t"])
     assert req["variable"] == ["temperature"]
     assert req["level_type"] == "pressure_level"
     assert req["pressure_level"][0] == "1000"
@@ -132,16 +126,12 @@ def test_build_request_pressure_level(mod):
 
 
 def test_build_request_specific_humidity_seven_levels(mod):
-    req = mod._build_request(
-        "2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["q"]
-    )
+    req = mod._build_request("2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["q"])
     assert req["pressure_level"] == ["1000", "925", "850", "700", "500", "300", "200"]
 
 
 def test_build_request_potential_vorticity(mod):
-    req = mod._build_request(
-        "2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["pv"]
-    )
+    req = mod._build_request("2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["pv"])
     assert req["level_type"] == "potential_temperature"
     assert req["potential_temperature"] == ["320"]
 
@@ -223,4 +213,6 @@ def test_standardize_sst_to_celsius(mod):
     ds["sst"].attrs.update(units="K")
     out = mod._standardize(ds)
     assert out["sst"].attrs["units"] == "degree_Celsius"
-    np.testing.assert_allclose(out["sst"].values, np.array([[290.0, 291.0], [292.0, 293.0]]) - 273.15)
+    np.testing.assert_allclose(
+        out["sst"].values, np.array([[290.0, 291.0], [292.0, 293.0]]) - 273.15
+    )

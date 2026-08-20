@@ -30,7 +30,12 @@ from weather_skills_core.standard_utils import (
     pick_time_dim,
     polygon_from_geojson,
 )
-from weather_skills_core.units import classify_variable, precip_for_display, to_standard_units, units_equal
+from weather_skills_core.units import (
+    classify_variable,
+    precip_for_display,
+    to_standard_units,
+    units_equal,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -462,7 +467,6 @@ def _extent_from_da(da, lat_dim, lon_dim, bbox):
 @weather_skill(
     name="plot-compare-forecasts",
     version=_SKILL_VERSION,
-    allow_precip_totals=True,
 )
 @weather_skill.argument("-i", "--input", type=Dataset("spatial"), action="append", required=True)
 @weather_skill.argument("--bbox")

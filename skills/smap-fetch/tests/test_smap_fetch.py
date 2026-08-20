@@ -23,9 +23,7 @@ def fetch(mod):
 
 def test_login_without_credentials_raises_data_error(mod):
     env = {
-        k: v
-        for k, v in os.environ.items()
-        if k not in ("EARTHDATA_USERNAME", "EARTHDATA_PASSWORD")
+        k: v for k, v in os.environ.items() if k not in ("EARTHDATA_USERNAME", "EARTHDATA_PASSWORD")
     }
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(DataError, match="Earthdata authentication failed"):
@@ -38,8 +36,6 @@ def test_fetch_writes_zarr_with_mocked_earthaccess(tmp_path, mod, fetch):
     granule = MagicMock()
     granule.data_links.return_value = ["https://example/SPL3SMP_E_20260101_001.h5"]
 
-    lat2d = np.array([[1.0, 1.0], [2.0, 2.0]])
-    lon2d = np.array([[10.0, 11.0], [10.0, 11.0]])
     sm = np.array([[0.2, 0.3], [0.4, 0.5]])
 
     def fake_slice_from_file(_path, _group, _day_iso):

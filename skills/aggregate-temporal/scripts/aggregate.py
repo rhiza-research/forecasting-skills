@@ -14,7 +14,6 @@
 
 import datetime as _dt
 import sys
-from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_utils import roll_and_agg
@@ -260,9 +259,7 @@ def _expected_from_interval(spec, label, native_interval, timestep_days: float) 
         except UsageError:
             pass
     period_days = None if spec["key"] == "monthly" else spec["anchor_days"]
-    return _expected_samples(
-        spec["key"], label, timestep_days, period_days=period_days
-    )
+    return _expected_samples(spec["key"], label, timestep_days, period_days=period_days)
 
 
 def _aggregate_time_resample(ds, dim, spec, method):
@@ -339,13 +336,9 @@ def _aggregate_time_anchored(ds, dim, spec, method, end_time, *, start_time=None
             if start_cf > data_min:
                 data_min = start_cf
         try:
-            right = cftime.datetime(
-                end_time.year, end_time.month, end_time.day, calendar=calendar
-            )
+            right = cftime.datetime(end_time.year, end_time.month, end_time.day, calendar=calendar)
         except ValueError:
-            raise UsageError(
-                f"--end-time {end_time.isoformat()} invalid in {calendar!r}"
-            ) from None
+            raise UsageError(f"--end-time {end_time.isoformat()} invalid in {calendar!r}") from None
         label = lambda edge: edge  # noqa: E731
     else:
         import pandas as pd
@@ -570,9 +563,7 @@ def aggregate(
         if n:
             out = _assign_coverage(out, dim, [1.0] * n)
         agg_period = _rolling_aggregation_period(ds, dim, window, interval)
-        return _stamp_attrs(
-            out, dim, agg_period, method, interval, data_interval=native_interval
-        )
+        return _stamp_attrs(out, dim, agg_period, method, interval, data_interval=native_interval)
 
     spec = _resolve_period(period)
     if dim == "step":
@@ -594,9 +585,7 @@ def aggregate(
     else:
         out = _aggregate_time_resample(ds, dim, spec, method)
 
-    return _stamp_attrs(
-        out, dim, spec["agg"], method, interval, data_interval=native_interval
-    )
+    return _stamp_attrs(out, dim, spec["agg"], method, interval, data_interval=native_interval)
 
 
 if __name__ == "__main__":

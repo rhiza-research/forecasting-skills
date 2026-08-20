@@ -10,8 +10,6 @@
 # ///
 """Downscale onto a finer grid (linear or empirical q-q)."""
 
-from pathlib import Path
-
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims, detect_time_dim
 from weather_skills_core.standard_utils import grid_spacing
@@ -50,7 +48,7 @@ def _qmap_1d(model, ref):
     name="downscale",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('spatial'), required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("spatial"), required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
     "--algorithm",
@@ -63,7 +61,15 @@ def _qmap_1d(model, ref):
 @weather_skill.argument("--qq-reference", default=None)
 @weather_skill.argument("--time-dim", default="time")
 def downscale(
-    ds, variable, algorithm, factor, target_resolution, reference_grid, qq_reference, time_dim, **kwargs
+    ds,
+    variable,
+    algorithm,
+    factor,
+    target_resolution,
+    reference_grid,
+    qq_reference,
+    time_dim,
+    **kwargs,
 ):
     """Downscale onto a finer grid (linear or empirical q-q)."""
     import numpy as np

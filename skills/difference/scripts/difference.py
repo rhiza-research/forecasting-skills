@@ -9,8 +9,6 @@
 # ///
 """Subtract A − B (xarray-aligned)."""
 
-from pathlib import Path
-
 from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -33,9 +31,11 @@ def difference(ds, variable, output, **kwargs):
     import numpy as np
     import xarray as xr
 
-    vars_ = list(dict.fromkeys(variable)) if variable else [
-        v for v in ds_a.data_vars if v in ds_b.data_vars
-    ]
+    vars_ = (
+        list(dict.fromkeys(variable))
+        if variable
+        else [v for v in ds_a.data_vars if v in ds_b.data_vars]
+    )
     out = {}
     for v in vars_:
         a, b = ds_a[v], ds_b[v]

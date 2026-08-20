@@ -1,6 +1,6 @@
 ---
 name: ecmwf-fetch
-description: Prefer dynamical-fetch for medium-range ECMWF IFS-ENS / AIFS (credential-free). This skill fetches an ECMWF S2S ensemble forecast (control + perturbed) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills standard dataset Zarr. Default `-v tp`. Most used: `tp`, `t2m`, `sst` (then `d2m`, winds). Pressure-level: `-v t` / `-v gh` (control only, all native levels). `-v` is the short name (`t2m`, `sst`, `t`), not ARCO `2m_temperature`. Real-time S2S has a 2-day embargo — request an init at least 2 days old. Fetch writes `tp` as a per-step rate (`mm day-1`) and temperatures as `degree_Celsius` — do not run deaccumulate after this skill. To fetch over a country, get its bbox from the resolve-region skill first.
+description: "On the first call, inject secrets ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY as environment variables — do not run once without them and retry. Prefer dynamical-fetch for medium-range ECMWF IFS-ENS / AIFS (credential-free). This skill fetches an ECMWF S2S ensemble forecast (control + perturbed) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills standard dataset Zarr. Default `-v tp`. Most used: `tp`, `t2m`, `sst` (then `d2m`, winds). Pressure-level: `-v t` / `-v gh` (control only, all native levels). `-v` is the short name (`t2m`, `sst`, `t`), not ARCO `2m_temperature`. Real-time S2S has a 2-day embargo — request an init at least 2 days old. Fetch writes `tp` as a per-step rate (`mm day-1`) and temperatures as `degree_Celsius` — do not run deaccumulate after this skill. To fetch over a country, get its bbox from the resolve-region skill first."
 license: MIT
 compatibility: Requires Python 3.12 and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -26,6 +26,11 @@ metadata:
         - ECMWF_DATASTORES_URL
         - ECMWF_DATASTORES_KEY
     primaryEnv: ECMWF_DATASTORES_KEY
+    envVars:
+      - name: ECMWF_DATASTORES_URL
+        description: ECDS API base URL (https://ecds.ecmwf.int/api)
+      - name: ECMWF_DATASTORES_KEY
+        description: Personal ECDS token from your ECMWF Data Stores account
 ---
 
 # ecmwf-fetch
@@ -50,6 +55,17 @@ no embargo. This skill is **S2S only**.
 
 Not for reanalysis, climatology, or deterministic HRES. It retrieves S2S
 single-level, ocean, pressure-level, and potential-vorticity fields.
+
+## Credentials
+
+The fetch process does not inherit host secrets. On the **first** invocation
+that talks to ECDS, inject both of these as environment variables:
+
+- `ECMWF_DATASTORES_URL` — `https://ecds.ecmwf.int/api`
+- `ECMWF_DATASTORES_KEY` — personal ECDS token
+
+Do not call the skill once to discover they are missing, then retry. `--probe-latest`
+does not need credentials. Never print, log, or echo the values.
 
 ## Usage
 

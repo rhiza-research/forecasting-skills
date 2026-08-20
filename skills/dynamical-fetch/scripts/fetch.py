@@ -15,8 +15,6 @@
 import re
 import sys
 
-from pathlib import Path
-
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.standard_utils import bbox_subset, np_to_date

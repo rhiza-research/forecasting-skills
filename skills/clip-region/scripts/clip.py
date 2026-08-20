@@ -19,9 +19,7 @@ _SKILL_VERSION = "0.0.1"
     name="clip-region",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument(
-    "-i", "--input", type=Dataset(["spatial", "point_obs"]), required=True
-)
+@weather_skill.argument("-i", "--input", type=Dataset(["spatial", "point_obs"]), required=True)
 @weather_skill.argument("--bbox")
 @weather_skill.argument(
     "--geojson",

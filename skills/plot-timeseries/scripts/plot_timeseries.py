@@ -26,29 +26,30 @@ from weather_skills_core.units import precip_for_display, to_standard_units, uni
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
 
+
 @weather_skill(
     name="plot-timeseries",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), nargs="+", required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("any"), nargs="+", required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
-            "--time-dim",
-            default=None,
-            help="Time-like dim; default time, then step, then CF time.",
-        )
+    "--time-dim",
+    default=None,
+    help="Time-like dim; default time, then step, then CF time.",
+)
 @weather_skill.argument(
-            "--reduce",
-            action="append",
-            default=[],
-            help="Non-time dim to mean-reduce before plotting. Repeatable.",
-        )
+    "--reduce",
+    action="append",
+    default=[],
+    help="Non-time dim to mean-reduce before plotting. Repeatable.",
+)
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
-            "--align-day-of-year",
-            action="store_true",
-            help="Plot against day-of-year (1-366) instead of absolute date.",
-        )
+    "--align-day-of-year",
+    action="store_true",
+    help="Plot against day-of-year (1-366) instead of absolute date.",
+)
 def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, output, **kwargs):
     """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
     datasets = ds
@@ -72,7 +73,9 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
                 f"variable '{variable}' missing from input {idx + 1}. "
                 f"Available: {list(ds.data_vars)}"
             )
-    datasets = [precip_for_display(to_standard_units(ds, variables=[variable]), variable) for ds in datasets]
+    datasets = [
+        precip_for_display(to_standard_units(ds, variables=[variable]), variable) for ds in datasets
+    ]
 
     unit_vals = []
     seen_units = {}
@@ -143,9 +146,7 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
                 and ds["time"].ndim == 0
                 and np.asarray(ds["time"].values).dtype.kind == "M"
             ):
-                xvals = (np.asarray(ds["time"].values) + np.asarray(xvals)).astype(
-                    "datetime64[ns]"
-                )
+                xvals = (np.asarray(ds["time"].values) + np.asarray(xvals)).astype("datetime64[ns]")
                 xlabel = "valid time"
         ax.plot(xvals, da.values, label=label)
 
@@ -170,6 +171,7 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return output
+
 
 if __name__ == "__main__":
     plot_timeseries()

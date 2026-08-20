@@ -1,6 +1,6 @@
 ---
 name: clip-region
-description: Spatially subset a weather-skills standard dataset Zarr to a lat/lon bbox or GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting. Named places: get a bbox (or polygon) from the resolve-region skill first.
+description: "Spatially subset a weather-skills standard dataset Zarr to a lat/lon bbox or GeoJSON polygon. Use when you need to restrict any dataset (forecast, satellite, reanalysis, stations) before downstream aggregation or plotting. Named places: get a bbox (or polygon) from the resolve-region skill first."
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py *)

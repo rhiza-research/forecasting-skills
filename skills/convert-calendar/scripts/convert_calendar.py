@@ -8,8 +8,6 @@
 # ///
 """Convert time axis to a target CF calendar."""
 
-from pathlib import Path
-
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_time_dim
 
@@ -21,13 +19,20 @@ _SKILL_VERSION = "0.0.1"
     name="convert-calendar",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument(
     "--calendar",
     required=True,
     choices=[
-        "standard", "gregorian", "proleptic_gregorian", "noleap", "365_day",
-        "360_day", "all_leap", "366_day", "julian",
+        "standard",
+        "gregorian",
+        "proleptic_gregorian",
+        "noleap",
+        "365_day",
+        "360_day",
+        "all_leap",
+        "366_day",
+        "julian",
     ],
 )
 @weather_skill.argument(

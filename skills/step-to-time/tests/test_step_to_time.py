@@ -21,7 +21,9 @@ def _forecast_without_precip_totals(**kwargs):
 
 
 def test_step_to_time_replaces_step_dim(tmp_path, step_to_time):
-    src = write_zarr(_forecast_without_precip_totals(n_step=3, init="2026-01-01"), tmp_path / "in.zarr")
+    src = write_zarr(
+        _forecast_without_precip_totals(n_step=3, init="2026-01-01"), tmp_path / "in.zarr"
+    )
     out = tmp_path / "out.zarr"
 
     run_skill(step_to_time, "-i", str(src), "-o", str(out))
@@ -35,7 +37,9 @@ def test_step_to_time_replaces_step_dim(tmp_path, step_to_time):
         ["2026-01-02", "2026-01-03", "2026-01-04"],
         dtype="datetime64[ns]",
     )
-    assert np.array_equal(ds["time"].values.astype("datetime64[D]"), expected.astype("datetime64[D]"))
+    assert np.array_equal(
+        ds["time"].values.astype("datetime64[D]"), expected.astype("datetime64[D]")
+    )
     assert load_history(out)[-1]["skill"] == "step-to-time"
 
 

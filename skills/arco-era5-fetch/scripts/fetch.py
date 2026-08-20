@@ -16,8 +16,6 @@
 import sys
 from datetime import UTC, datetime
 
-from pathlib import Path
-
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.standard_utils import (
     apply_write_encoding,

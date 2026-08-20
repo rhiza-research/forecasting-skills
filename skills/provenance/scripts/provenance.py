@@ -26,6 +26,7 @@ from weather_skills_core.provenance import (
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
 
+
 def _load_zarr(path: Path) -> dict:
     import xarray as xr
 
@@ -42,6 +43,7 @@ def _load_zarr(path: Path) -> dict:
     if coerced is not None:
         chains[path.name] = coerced
     return {"chains": chains, "source": attrs.get(SOURCE_ATTR), "name": path.name}
+
 
 def _load_png(path: Path) -> dict:
     from PIL import Image
@@ -65,6 +67,7 @@ def _load_png(path: Path) -> dict:
                 chains[slot] = coerced
     return {"chains": chains, "source": None, "name": path.name}
 
+
 def _read_artifact(path: Path) -> dict:
     if not path.exists():
         raise UsageError(f"Error: {path} not found.", prefix=False)
@@ -76,6 +79,7 @@ def _read_artifact(path: Path) -> dict:
         f"Error: {path} is neither a zarr directory nor a .png file; cannot inspect provenance.",
         prefix=False,
     )
+
 
 def _read_raw_histories(path: Path) -> dict:
     """Return {location_key: raw_string} for every weather_skills_history value present."""
@@ -112,6 +116,7 @@ def _read_raw_histories(path: Path) -> dict:
         prefix=False,
     )
 
+
 def _run_check(path: Path) -> tuple[int, str]:
     """Validate schema: 0=valid, 1=absent, 2=invalid."""
     raw_histories = _read_raw_histories(path)
@@ -143,6 +148,7 @@ def _run_check(path: Path) -> tuple[int, str]:
         lines += [f"  - {n}" for n in notes]
     return 0, "\n".join(lines)
 
+
 def _print_step(n: int, step: dict, indent: str) -> None:
     if not isinstance(step, dict):
         print(f"{indent}{n}. (malformed entry: not an object)")
@@ -163,6 +169,7 @@ def _print_step(n: int, step: dict, indent: str) -> None:
         print(f"{indent}   args: " + ", ".join(f"{k}={v!r}" for k, v in sorted(args.items())))
     else:
         print(f"{indent}   args: (none)")
+
 
 def _render_human(data: dict) -> None:
     chains = data["chains"]
@@ -192,12 +199,15 @@ def _render_human(data: dict) -> None:
                     history = item.get("history")
                     if not isinstance(history, list):
                         history = []
-                    print(f"{indent}   input branch {chr(ord('a') + idx)} ({item.get('basename', '?')}):")
+                    print(
+                        f"{indent}   input branch {chr(ord('a') + idx)} ({item.get('basename', '?')}):"
+                    )
                     if not history:
                         print(f"{indent}     (no recorded history)")
                         continue
                     for bn, bstep in enumerate(history, start=1):
                         _print_step(bn, bstep, indent + "     ")
+
 
 def _command(skill: str, args: dict, inputs: list, output: str) -> str:
     parts = [
@@ -219,6 +229,7 @@ def _command(skill: str, args: dict, inputs: list, output: str) -> str:
         parts += [flag, shlex.quote(path)]
     parts += ["--output", shlex.quote(output)]
     return " ".join(parts)
+
 
 def _emit_linear(chain: list, prefix: str, final_output: str) -> list:
     lines = []
@@ -257,6 +268,7 @@ def _emit_linear(chain: list, prefix: str, final_output: str) -> list:
         prev = output
     return lines
 
+
 def _concat_branches(chain: list) -> dict | None:
     """Expand a terminal multi-input concat into ``{letter: history + [concat]}``."""
     if not chain or not isinstance(chain[-1], dict):
@@ -276,6 +288,7 @@ def _concat_branches(chain: list) -> dict | None:
             history = []
         branches[chr(ord("a") + idx)] = list(history) + [terminal]
     return branches
+
 
 def _render_script(data: dict) -> None:
     chains = data["chains"]
@@ -333,28 +346,29 @@ def _render_script(data: dict) -> None:
             )
     print("\n".join(lines))
 
+
 @weather_skill(
     name="provenance",
     version=_SKILL_VERSION,
     output=False,
 )
 @weather_skill.argument(
-            "-i",
-            "--input",
-            required=True,
-            help="Artifact to inspect: a zarr dir or a .png file.",
-        )
+    "-i",
+    "--input",
+    required=True,
+    help="Artifact to inspect: a zarr dir or a .png file.",
+)
 @weather_skill.argument(
-            "--format",
-            choices=["human", "json", "script"],
-            default="human",
-            help="Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
-        )
+    "--format",
+    choices=["human", "json", "script"],
+    default="human",
+    help="Output view: human-readable lineage, raw JSON chain, or a reproduction script.",
+)
 @weather_skill.argument(
-            "--check",
-            action="store_true",
-            help="Validate weather_skills_history schema (exit 0/1/2).",
-        )
+    "--check",
+    action="store_true",
+    help="Validate weather_skills_history schema (exit 0/1/2).",
+)
 def provenance(input, format, check, **kwargs):
     """Inspect weather_skills_history on a Zarr or plot PNG (stdout only; never writes)."""
     if check:
@@ -379,6 +393,7 @@ def provenance(input, format, check, **kwargs):
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         _render_script(data)
+
 
 if __name__ == "__main__":
     provenance()

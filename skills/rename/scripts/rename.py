@@ -7,8 +7,6 @@
 # ///
 """Rename one data variable (omit --variable after select left a single var)."""
 
-from pathlib import Path
-
 from weather_skills_core import Dataset, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -19,7 +17,7 @@ _SKILL_VERSION = "0.0.1"
     name="rename",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument("--to-name", required=True, help="New variable name.")
 def rename(ds, variable, to_name, **kwargs):

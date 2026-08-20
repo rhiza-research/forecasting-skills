@@ -61,9 +61,7 @@ def test_forecast_fetch_writes_zarr(tmp_path, mod, fetch):
 
 
 def _imerg_like_analysis_ds():
-    times = np.array(
-        [np.datetime64("2026-01-01T00:00"), np.datetime64("2026-01-01T00:30")]
-    )
+    times = np.array([np.datetime64("2026-01-01T00:00"), np.datetime64("2026-01-01T00:30")])
     lats = [1.0, 2.0]
     lons = [10.0, 11.0]
     return xr.Dataset(
@@ -168,12 +166,8 @@ def test_resolve_t_alias_expands_hpa_only(mod):
         "temperature_925hpa",
         "temperature_850hpa",
     ]
-    assert mod._resolve_variables(["gh"], names, "ifs") == [
-        "geopotential_height_500hpa"
-    ]
-    assert mod._resolve_variables(["temperature_850hpa"], names, "ifs") == [
-        "temperature_850hpa"
-    ]
+    assert mod._resolve_variables(["gh"], names, "ifs") == ["geopotential_height_500hpa"]
+    assert mod._resolve_variables(["temperature_850hpa"], names, "ifs") == ["temperature_850hpa"]
 
 
 def test_resolve_unknown_lists_available(mod):

@@ -304,7 +304,11 @@ def _gefs_like_mixed_step():
             "precipitation_surface": (
                 ("step", "latitude", "longitude"),
                 np.ones((hours.size, 1, 1)),
-                {"units": "mm day-1", "standard_name": "lwe_precipitation_rate", "data_interval": "3 hour"},
+                {
+                    "units": "mm day-1",
+                    "standard_name": "lwe_precipitation_rate",
+                    "data_interval": "3 hour",
+                },
             )
         },
         coords={

@@ -2,13 +2,12 @@
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
 #   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
+#   "cf-xarray",
 #   "cftime>=1.6",
 #   "pint-xarray>=0.6",
 # ]
 # ///
 """Convert rate variables to period totals using stamped aggregation_period."""
-
-from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.units import (
@@ -51,7 +50,7 @@ def _resolve_dim(ds, time_dim):
     name="convert-to-totals",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
     "--min-coverage",
@@ -84,12 +83,9 @@ def convert_to_totals(ds, variable, min_coverage, time_dim, **kwargs):
         attrs = {**da.attrs, **plain.attrs}
         attrs["units"] = plain.attrs.get("units", STANDARD["precip_amount"]["units"])
         units = variable_units(da) or da.attrs.get("units")
-        kind = classify_variable(
-            name, units=units, standard_name=da.attrs.get("standard_name")
-        )
+        kind = classify_variable(name, units=units, standard_name=da.attrs.get("standard_name"))
         if kind in ("precip", "precip_amount") or (
-            isinstance(name, str)
-            and any(h in name.lower() for h in ("precip", "rain", "tp", "pr"))
+            isinstance(name, str) and any(h in name.lower() for h in ("precip", "rain", "tp", "pr"))
         ):
             attrs["units"] = STANDARD["precip_amount"]["units"]
             attrs["standard_name"] = STANDARD["precip_amount"]["standard_name"]

@@ -64,15 +64,11 @@ def _check(root: Path) -> int:
 
         checked += 1
         for path in lacking:
-            errors.append(
-                f"{skill}: {path.relative_to(root)} is missing `_SKILL_VERSION`"
-            )
+            errors.append(f"{skill}: {path.relative_to(root)} is missing `_SKILL_VERSION`")
 
         distinct = set(have.values())
         if len(distinct) > 1:
-            detail = ", ".join(
-                f"{p.relative_to(root)}={v!r}" for p, v in have.items()
-            )
+            detail = ", ".join(f"{p.relative_to(root)}={v!r}" for p, v in have.items())
             errors.append(f"{skill}: scripts disagree on `_SKILL_VERSION`: {detail}")
 
     if errors:

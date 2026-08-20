@@ -234,7 +234,9 @@ def fetch(start_time, end_time, workers, **kwargs):
                         f"CHIRPS directory listing failed: HTTP {resp.status_code} for {url}"
                     )
                 for match in _TIF_NAME_RE.finditer(resp.text):
-                    found.append(date(int(match.group(1)), int(match.group(2)), int(match.group(3))))
+                    found.append(
+                        date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+                    )
             if found:
                 break
         if not found:

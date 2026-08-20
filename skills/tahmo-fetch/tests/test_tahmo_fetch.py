@@ -24,9 +24,7 @@ def fetch(mod):
 def test_missing_tahmo_credentials_exits_2(tmp_path, fetch):
     out = tmp_path / "out.zarr"
     env = {
-        k: v
-        for k, v in os.environ.items()
-        if k not in ("TAHMO_API_USERNAME", "TAHMO_API_PASSWORD")
+        k: v for k, v in os.environ.items() if k not in ("TAHMO_API_USERNAME", "TAHMO_API_PASSWORD")
     }
 
     with patch.dict(os.environ, env, clear=True):

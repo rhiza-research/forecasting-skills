@@ -106,9 +106,7 @@ VARIABLES: dict[str, _Var] = {
         PRESSURE_LEVELS_10,
         control_only=True,
     ),
-    "t": _Var(
-        "temperature", "instant", "pressure_level", PRESSURE_LEVELS_10, control_only=True
-    ),
+    "t": _Var("temperature", "instant", "pressure_level", PRESSURE_LEVELS_10, control_only=True),
     "u": _Var(
         "u_component_of_wind",
         "instant",
@@ -175,9 +173,7 @@ VARIABLES: dict[str, _Var] = {
     "t20d": _Var("depth_of_20_C_isotherm", "daily"),
     "sav300": _Var("mean_sea_water_practical_salinity_in_the_upper_300_m", "daily"),
     "mswpt300": _Var("mean_sea_water_potential_temperature_in_the_upper_300_m", "daily"),
-    "mlotst010": _Var(
-        "ocean_mixed_layer_thickness_defined_by_sigma_theta_0_01_kg_m_3", "daily"
-    ),
+    "mlotst010": _Var("ocean_mixed_layer_thickness_defined_by_sigma_theta_0_01_kg_m_3", "daily"),
     "ocu": _Var("u_component_of_surface_current", "daily"),
     "ocv": _Var("v_component_of_surface_current", "daily"),
     "sithick": _Var("sea_ice_thickness", "daily"),
@@ -198,9 +194,7 @@ _GRIB_EXTRAS = {
 _GRIB_ALIASES = {name: name for name in VARIABLES} | _GRIB_EXTRAS
 
 # Kelvin fields `to_standard_units` does not treat as air temperature.
-_KELVIN_TEMPS = frozenset(
-    {"sst", "skt", "d2m", "mx2t6", "mn2t6", "st20", "st100", "mswpt300", "t"}
-)
+_KELVIN_TEMPS = frozenset({"sst", "skt", "d2m", "mx2t6", "mn2t6", "st20", "st100", "mswpt300", "t"})
 
 
 def _canonical_name(token: str) -> str | None:
@@ -415,9 +409,7 @@ def _rename_to_short(ds, requested: list[str]):
     missing = [name for name in requested if name not in ds.data_vars]
     if missing:
         have = ", ".join(ds.data_vars) if list(ds.data_vars) else "none"
-        raise DataError(
-            f"ECDS GRIB did not contain {', '.join(missing)} (decoded: {have})."
-        )
+        raise DataError(f"ECDS GRIB did not contain {', '.join(missing)} (decoded: {have}).")
     return ds[requested]
 
 
@@ -543,9 +535,7 @@ def fetch(bbox, date, variable, **kwargs):
         print(f"Submitting {len(legs)} retrieval leg(s)...", file=sys.stderr)
         try:
             for leg in legs:
-                req = _build_request(
-                    date_iso, leg["area"], leg["forecast_type"], leg["group_vars"]
-                )
+                req = _build_request(date_iso, leg["area"], leg["forecast_type"], leg["group_vars"])
                 leg["remote"] = _submit(client, req)
         except DataError:
             raise

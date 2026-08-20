@@ -17,13 +17,11 @@
 import sys
 from datetime import UTC, datetime
 
-import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import cf_xarray  # noqa: F401  (fail-fast probe)
+import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import gcsfs
 import pandas as pd
 import xarray as xr
-from pathlib import Path
-
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs, udunits_error
 from weather_skills_core.standard_utils import (
@@ -221,9 +219,7 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
         file=sys.stderr,
     )
 
-    bbox_label = (
-        f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
-    )
+    bbox_label = f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
     history_line = (
         f"{datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')} cmip6-fetch: "
         f"subset {variable} to {start_iso}..{end_iso}"

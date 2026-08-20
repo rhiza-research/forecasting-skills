@@ -19,10 +19,8 @@ import sys
 import tempfile
 from datetime import UTC, date, datetime, timedelta
 
-import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import cf_xarray  # noqa: F401  (fail-fast probe)
-from pathlib import Path
-
+import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 from weather_skills_core import DataError, SkillError, weather_skill
 from weather_skills_core.cf import stamp_cf_coords, udunits_error
 from weather_skills_core.standard_utils import (
@@ -243,8 +241,7 @@ def _stamp_cf(ds) -> None:
     choices=["AM", "PM"],
     default="AM",
     help=(
-        "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm "
-        "ascending). Default AM."
+        "Half-orbit overpass group to read (AM = 6am descending, PM = 6pm ascending). Default AM."
     ),
 )
 @weather_skill.argument(
@@ -336,9 +333,7 @@ def fetch(start_time, end_time, bbox, overpass, **kwargs):
         for d in present_days:
             day_iso = d.isoformat()
             try:
-                files = _earthaccess_call(
-                    earthaccess.download, [in_window[d]], local_path=td
-                )
+                files = _earthaccess_call(earthaccess.download, [in_window[d]], local_path=td)
             except SkillError:
                 raise
             except Exception as exc:

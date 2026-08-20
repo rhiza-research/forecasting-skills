@@ -20,14 +20,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import cf_xarray  # noqa: F401  (fail-fast probe; core loads lazily at write time)
+import cf_xarray.units  # noqa: F401  (fail-fast probe; configures pint CF registry)
 import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
-from pathlib import Path
-
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_dsg, udunits_error, verify_cf_dsg
 from weather_skills_core.standard_utils import apply_write_encoding, is_transient
@@ -53,9 +51,30 @@ _TIME_CALENDAR = "proleptic_gregorian"
 # Precip is stamped as a daily rate (no cell_methods sum — that marks convert-to-totals).
 VAR_MAP = {
     "precip": ("PRCP", 0.1, "mm day-1", "lwe_precipitation_rate", None, "daily precipitation rate"),
-    "tmax": ("TMAX", 0.1, "degree_Celsius", "air_temperature", "time: maximum", "daily maximum air temperature"),
-    "tmin": ("TMIN", 0.1, "degree_Celsius", "air_temperature", "time: minimum", "daily minimum air temperature"),
-    "tavg": ("TAVG", 0.1, "degree_Celsius", "air_temperature", "time: mean", "daily mean air temperature"),
+    "tmax": (
+        "TMAX",
+        0.1,
+        "degree_Celsius",
+        "air_temperature",
+        "time: maximum",
+        "daily maximum air temperature",
+    ),
+    "tmin": (
+        "TMIN",
+        0.1,
+        "degree_Celsius",
+        "air_temperature",
+        "time: minimum",
+        "daily minimum air temperature",
+    ),
+    "tavg": (
+        "TAVG",
+        0.1,
+        "degree_Celsius",
+        "air_temperature",
+        "time: mean",
+        "daily mean air temperature",
+    ),
 }
 DEFAULT_VARIABLES = ["precip", "tmax", "tmin"]
 
@@ -213,9 +232,7 @@ def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
     end_iso = end_time.isoformat()
     start_int = int(start_time.strftime("%Y%m%d"))
     end_int = int(end_time.strftime("%Y%m%d"))
-    bbox_label = (
-        f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
-    )
+    bbox_label = f"{bbox[0]}/{bbox[1]}/{bbox[2]}/{bbox[3]}" if bbox is not None else None
 
     variables = sorted(variable or list(DEFAULT_VARIABLES))
     elements = {VAR_MAP[v][0]: v for v in variables}

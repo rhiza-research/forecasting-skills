@@ -3,6 +3,7 @@
 # dependencies = [
 #   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@combine-dim-ontology-cleanup",
 #   "cftime>=1.6",
+#   "numpy",
 # ]
 # ///
 """Print dimensions, coordinate values, and data-variable summary of a Zarr."""
@@ -64,15 +65,17 @@ def inspect_zarr(ds, format="human", max_values=24, **kwargs):
     for name, da in ds.coords.items():
         arr = _numpy(da).reshape(-1)
         values, truncated = _preview([_fmt(v) for v in arr], max_values)
-        coords.append({
-            "name": name,
-            "dims": list(da.dims),
-            "dtype": str(arr.dtype),
-            "units": _units(da),
-            "size": int(arr.size),
-            "values": values,
-            "truncated": truncated,
-        })
+        coords.append(
+            {
+                "name": name,
+                "dims": list(da.dims),
+                "dtype": str(arr.dtype),
+                "units": _units(da),
+                "size": int(arr.size),
+                "values": values,
+                "truncated": truncated,
+            }
+        )
     data_vars = [
         {
             "name": name,

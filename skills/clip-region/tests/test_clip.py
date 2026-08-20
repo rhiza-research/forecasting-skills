@@ -65,9 +65,7 @@ def test_clip_geojson_polygon(tmp_path, clip_region):
         json.dumps(
             {
                 "type": "Polygon",
-                "coordinates": [
-                    [[10.5, 0.5], [12.5, 0.5], [12.5, 2.5], [10.5, 2.5], [10.5, 0.5]]
-                ],
+                "coordinates": [[[10.5, 0.5], [12.5, 0.5], [12.5, 2.5], [10.5, 2.5], [10.5, 0.5]]],
             }
         )
     )

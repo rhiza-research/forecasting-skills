@@ -22,8 +22,6 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from pathlib import Path
-
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.standard_utils import is_transient, require_env
 from weather_skills_core.units import stamp_data_interval

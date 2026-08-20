@@ -21,22 +21,37 @@
 import sys
 from pathlib import Path
 
-from weather_skills_core import Dataset, DataError, UsageError, weather_skill
+from weather_skills_core import DataError, Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
-from weather_skills_core.standard_utils import dataset_label, lat_slice, pick_time_dim, polygon_from_geojson
+from weather_skills_core.standard_utils import (
+    dataset_label,
+    lat_slice,
+    pick_time_dim,
+    polygon_from_geojson,
+)
 from weather_skills_core.units import precip_for_display, to_standard_units, units_equal
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
 
 PRECIP_COLORS = [
-    "#bdbdbd", "wheat", "lightgreen", "green", "lightblue",
-    "blue", "yellow", "orange", "red", "purple",
+    "#bdbdbd",
+    "wheat",
+    "lightgreen",
+    "green",
+    "lightblue",
+    "blue",
+    "yellow",
+    "orange",
+    "red",
+    "purple",
 ]
 PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
 
+
 def _is_station(ds):
     return "station_id" in ds.dims
+
 
 def _format_single(t, bin_width=None):
     """Render a time-bin label; with bin_width, ``YYYY-MM-DD to YYYY-MM-DD`` (right-edge)."""
@@ -64,6 +79,7 @@ def _format_single(t, bin_width=None):
     except (TypeError, ValueError):
         return end.date().isoformat()
     return f"{start.date().isoformat()} to {end.date().isoformat()}"
+
 
 def _load_admin_boundaries(bbox=None):
     """Natural Earth admin-1 via cartopy; optional shapely clip to bbox. None on failure."""
@@ -93,11 +109,11 @@ def _load_admin_boundaries(bbox=None):
         return gdf[~gdf.geometry.is_empty & gdf.geometry.notna()]
     except Exception as exc:  # noqa: BLE001
         print(
-            f"Warning: could not clip admin boundaries to bbox ({exc}); "
-            "drawing unclipped overlay.",
+            f"Warning: could not clip admin boundaries to bbox ({exc}); drawing unclipped overlay.",
             file=sys.stderr,
         )
         return gdf
+
 
 def _median_bin_width(time_values):
     """Median spacing of a 1-D time coord (pandas.Timedelta or datetime.timedelta)."""
@@ -121,6 +137,7 @@ def _median_bin_width(time_values):
         return None
     return pd.Timedelta(pd.Series(diffs).median()) if diffs.size else None
 
+
 def _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax):
     return ax.scatter(
         ds["longitude"].values,
@@ -133,12 +150,14 @@ def _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax):
         s=30,
     )
 
+
 def _grid_panel(ax, sel, cmap, norm, vmin, vmax):
     lat_dim = cf_dim(sel, "latitude")
     lon_dim = cf_dim(sel, "longitude")
     return sel.transpose(lat_dim, lon_dim).plot.pcolormesh(
         ax=ax, x=lon_dim, y=lat_dim, cmap=cmap, norm=norm, vmin=vmin, vmax=vmax, add_colorbar=False
     )
+
 
 def _ax_bounds(ds, variable):
     import numpy as np
@@ -149,7 +168,13 @@ def _ax_bounds(ds, variable):
         lat_dim = cf_dim(ds[variable], "latitude")
         lon_dim = cf_dim(ds[variable], "longitude")
         lons, lats = ds[lon_dim].values, ds[lat_dim].values
-    return float(np.nanmin(lons)), float(np.nanmax(lons)), float(np.nanmin(lats)), float(np.nanmax(lats))
+    return (
+        float(np.nanmin(lons)),
+        float(np.nanmax(lons)),
+        float(np.nanmin(lats)),
+        float(np.nanmax(lats)),
+    )
+
 
 def _is_cftime_axis(values):
     import numpy as np
@@ -159,6 +184,7 @@ def _is_cftime_axis(values):
         and values.size > 0
         and hasattr(np.asarray(values).flat[0], "calendar")
     )
+
 
 def _axis_kind(values):
     kind = getattr(values.dtype, "kind", None)
@@ -170,6 +196,7 @@ def _axis_kind(values):
         return "datetime"
     return None
 
+
 @weather_skill(
     name="plot-compare",
     version=_SKILL_VERSION,
@@ -178,51 +205,52 @@ def _axis_kind(values):
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
-            "--variable-a",
-            default=None,
-            help="Variable for row A. Overrides --variable. Default: --variable or auto.",
-        )
+    "--variable-a",
+    default=None,
+    help="Variable for row A. Overrides --variable. Default: --variable or auto.",
+)
 @weather_skill.argument(
-            "--variable-b",
-            default=None,
-            help="Variable for row B. Overrides --variable. Default: --variable or auto.",
-        )
+    "--variable-b",
+    default=None,
+    help="Variable for row B. Overrides --variable. Default: --variable or auto.",
+)
 @weather_skill.argument(
-            "--colormap",
-            default=None,
-            help="matplotlib colormap. Shared-scale default: categorical precip BoundaryNorm.",
-        )
+    "--colormap",
+    default=None,
+    help="matplotlib colormap. Shared-scale default: categorical precip BoundaryNorm.",
+)
 @weather_skill.argument(
-            "--colormap-a",
-            default=None,
-            help="Colormap for row A in independent-scale mode.",
-        )
+    "--colormap-a",
+    default=None,
+    help="Colormap for row A in independent-scale mode.",
+)
 @weather_skill.argument(
-            "--colormap-b",
-            default=None,
-            help="Colormap for row B in independent-scale mode.",
-        )
+    "--colormap-b",
+    default=None,
+    help="Colormap for row B in independent-scale mode.",
+)
 @weather_skill.argument(
-            "--shared-scale",
-            action="store_true",
-            help="Force one shared color scale across both rows.",
-        )
+    "--shared-scale",
+    action="store_true",
+    help="Force one shared color scale across both rows.",
+)
 @weather_skill.argument(
-            "--independent-scale",
-            action="store_true",
-            help="Force per-row color scales.",
-        )
+    "--independent-scale",
+    action="store_true",
+    help="Force per-row color scales.",
+)
 @weather_skill.argument("--panels", type=int, default=3)
-@weather_skill.argument("--time-dim", default=None, help="Override the time axis. Defaults to time, else step.")
+@weather_skill.argument(
+    "--time-dim", default=None, help="Override the time axis. Defaults to time, else step."
+)
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
-            "--mask-geojson",
-            default=None,
-            help="GeoJSON polygon; gridded cells outside become NaN.",
-        )
+    "--mask-geojson",
+    default=None,
+    help="GeoJSON polygon; gridded cells outside become NaN.",
+)
 def plot_compare(
     ds,
-
     bbox,
     variable,
     variable_a,
@@ -420,7 +448,12 @@ def plot_compare(
     else:
         use_shared_scale = var_a == var_b and units_match
 
-    if use_shared_scale and not units_match and isinstance(units_a, str) and isinstance(units_b, str):
+    if (
+        use_shared_scale
+        and not units_match
+        and isinstance(units_a, str)
+        and isinstance(units_b, str)
+    ):
         print(
             f"Warning: the two rows have differing units "
             f"({label_a} {var_a!r} units={units_a!r}, "
@@ -458,7 +491,9 @@ def plot_compare(
                 if region_bbox is not None:
                     lons, lats = ds["longitude"].values, ds["latitude"].values
                     lon_keep = (
-                        (lons >= r_w) | (lons <= r_e) if r_w > r_e else (lons >= r_w) & (lons <= r_e)
+                        (lons >= r_w) | (lons <= r_e)
+                        if r_w > r_e
+                        else (lons >= r_w) & (lons <= r_e)
                     )
                     keep = lon_keep & (lats >= r_s) & (lats <= r_n)
                     keep_ids = ds["station_id"].values[keep]
@@ -479,7 +514,7 @@ def plot_compare(
                 if lat_dim is not None and lon_dim is not None:
                     lon_vals = da[lon_dim].values
                     if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-                        wrap = ((ds[lon_dim] + 180) % 360 - 180)
+                        wrap = (ds[lon_dim] + 180) % 360 - 180
                         ds = ds.assign_coords({lon_dim: wrap}).sortby(lon_dim)
                         da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(
                             lon_dim
@@ -655,6 +690,7 @@ def plot_compare(
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return output
+
 
 if __name__ == "__main__":
     plot_compare()

@@ -9,8 +9,6 @@
 # ///
 """Per-step diff of cumulative-since-init vars (clipped ≥0). Precip → rates."""
 
-from pathlib import Path
-
 from weather_skills_core import Dataset, weather_skill
 from weather_skills_core.units import deaccumulate_along_step
 
@@ -22,7 +20,7 @@ _SKILL_VERSION = "0.0.1"
     name="deaccumulate",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('forecast'), required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("forecast"), required=True)
 @weather_skill.argument("--variable", "-v")
 def deaccumulate(ds, variable, **kwargs):
     """Per-step diff along forecast step. Precip amounts become mm day-1 rates."""

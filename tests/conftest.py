@@ -73,7 +73,9 @@ def make_forecast(
     ds[name].attrs.update(units="mm", long_name="Total precipitation")
     ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
     ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
-    ds["step"].attrs.update(standard_name="forecast_period", long_name="time since forecast_reference_time")
+    ds["step"].attrs.update(
+        standard_name="forecast_period", long_name="time since forecast_reference_time"
+    )
     ds["time"].attrs.update(standard_name="forecast_reference_time", axis="T")
     return ds
 

@@ -7,8 +7,6 @@
 # ///
 """Summarize named dims with a statistic."""
 
-from pathlib import Path
-
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims
 from weather_skills_core.standard_utils import latitude_weights
@@ -21,7 +19,7 @@ _SKILL_VERSION = "0.0.1"
     name="summarize-dim",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('any'), required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument("--variable", "-v", action="append")
 @weather_skill.argument(
     "--dim",
@@ -66,9 +64,7 @@ def summarize_dim(ds, variable, dim, method, lat_weighted, **kwargs):
         elif method == "std":
             out[var] = da.std(dim=rdims, keep_attrs=True, ddof=1)
         elif method == "mean" and lat_weighted and lat_dim in rdims:
-            out[var] = da.weighted(latitude_weights(ds[lat_dim])).mean(
-                dim=rdims, keep_attrs=True
-            )
+            out[var] = da.weighted(latitude_weights(ds[lat_dim])).mean(dim=rdims, keep_attrs=True)
         else:
             out[var] = getattr(da, method)(dim=rdims, keep_attrs=True)
 

@@ -8,8 +8,6 @@
 # ///
 """Realize forecast step as wall-clock time (time = init + step)."""
 
-from pathlib import Path
-
 from weather_skills_core import Dataset, UsageError, weather_skill
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -20,7 +18,7 @@ _SKILL_VERSION = "0.0.1"
     name="step-to-time",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset('forecast'), required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("forecast"), required=True)
 def step_to_time(ds, **kwargs):
     """Realize forecast step as wall-clock time (time = init + step)."""
     import cftime
@@ -53,14 +51,12 @@ def step_to_time(ds, **kwargs):
             time_pairs = np.empty(pairs.shape, dtype=object)
             for i in range(pairs.shape[0]):
                 for j in range(2):
-                    time_pairs[i, j] = init_scalar + np.asarray(pairs[i, j]).astype(
-                        "timedelta64[us]"
-                    ).item()
+                    time_pairs[i, j] = (
+                        init_scalar + np.asarray(pairs[i, j]).astype("timedelta64[us]").item()
+                    )
         else:
             time_pairs = (init.values + pairs).astype("datetime64[ns]")
-        out = out.drop_vars(bound_name).assign_coords(
-            time_bounds=(("time", "nv"), time_pairs)
-        )
+        out = out.drop_vars(bound_name).assign_coords(time_bounds=(("time", "nv"), time_pairs))
         out["time"].attrs["bounds"] = "time_bounds"
     out.attrs["weather_skills_forecast_init"] = init_iso
     return out
