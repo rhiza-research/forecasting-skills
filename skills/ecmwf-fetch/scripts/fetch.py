@@ -186,7 +186,7 @@ def fetch(bbox, date, **kwargs):
             except ProcessingFailedError as exc:
                 if _is_s2s_embargo_error(exc):
                     raise DataError(
-                        f"init {date_iso} is inside the S2S real-time embargo "
+                        f"init {date_iso} is inside the 2-day S2S real-time embargo "
                         f"(access-restricted) ({exc}); use an older init date."
                     ) from None
                 raise DataError(
@@ -198,7 +198,7 @@ def fetch(bbox, date, **kwargs):
             except Exception as exc:  # noqa: BLE001
                 if _is_s2s_embargo_error(exc):
                     raise DataError(
-                        f"init {date_iso} is inside the S2S real-time embargo "
+                        f"init {date_iso} is inside the 2-day S2S real-time embargo "
                         f"(access-restricted) ({exc}); use an older init date."
                     ) from None
                 raise DataError(

@@ -27,6 +27,12 @@ Real-time ECMWF S2S forecasts run **daily** at 00 UTC since IFS Cycle 48r1
 only. (Re-forecast / hindcast calendars are separate and are not fetched by
 this skill.)
 
+## Real-time embargo
+
+ECDS restricts access to the most recent ECMWF S2S real-time forecasts for
+**2 days**. Request an init date at least 2 days before today; inits inside
+the embargo window fail with a clear error suggesting an older date.
+
 ## Named regions
 
 | Region | Bbox N/W/S/E |
