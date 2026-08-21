@@ -29,7 +29,13 @@ from weather_skills_core.standard_utils import (
     pick_time_dim,
     polygon_from_geojson,
 )
-from weather_skills_core.units import precip_for_display, to_standard_units, units_equal
+from weather_skills_core.units import (
+    format_units_for_display,
+    precip_for_display,
+    to_standard_units,
+    units_equal,
+    variable_units,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
@@ -436,8 +442,8 @@ def plot_compare(
 
     da_a = ds_a[var_a]
     da_b = ds_b[var_b]
-    units_a = da_a.attrs.get("units")
-    units_b = da_b.attrs.get("units")
+    units_a = variable_units(da_a)
+    units_b = variable_units(da_b)
     units_match = (
         isinstance(units_a, str) and isinstance(units_b, str) and units_equal(units_a, units_b)
     )
@@ -570,8 +576,7 @@ def plot_compare(
     b_station = _is_station(ds_b)
 
     def _row_units(da):
-        u = da.attrs.get("units")
-        return u if isinstance(u, str) else None
+        return variable_units(da)
 
     if use_shared_scale:
         if colormap is None:
@@ -676,8 +681,9 @@ def plot_compare(
 
     def _cbar_label(row):
         _ds, _da, _td, label, var, units, _scale = row
-        if not use_shared_scale and units:
-            return f"{label} {var} [{units}]"
+        shown = format_units_for_display(units)
+        if shown:
+            return f"{label} {var} [{shown}]"
         return f"{label} {var}"
 
     fig.colorbar(sc_top, ax=top_axes, label=_cbar_label(top), shrink=0.6, fraction=0.02, pad=0.02)

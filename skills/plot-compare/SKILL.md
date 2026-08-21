@@ -157,7 +157,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
   vmin, and vmax. In independent mode each row computes its own vmin/vmax
   from its own data, uses its own colormap (precedence `--colormap-a`/`-b`,
   then `--colormap`, then `viridis`) with a continuous norm, and gets its
-  own colorbar labeled `{file} {var} [{units}]`.
+  own colorbar labeled `{file} {var} [{units}]`. Shared-scale colorbars
+  include units too. Units on the figure are a short display form
+  (`mm/day`, `°C`), not the on-disk CF string.
 - **Input units.** In shared mode, when the two rows carry differing
   `units`, the figure colors values from different units on a single
   scale, so a warning naming both units is printed to stderr. This is a

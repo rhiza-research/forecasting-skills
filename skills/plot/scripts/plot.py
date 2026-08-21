@@ -28,9 +28,11 @@ from weather_skills_core.standard_utils import lat_slice, parse_bbox, polygon_fr
 from weather_skills_core.units import (
     PRECIP_AMOUNT_LONG_NAME,
     classify_variable,
+    format_units_for_display,
     looks_like_rate_display_name,
     precip_for_display,
     to_standard_units,
+    variable_units,
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -51,6 +53,18 @@ PRECIP_COLORS = [
     "red",
     "purple",
 ]
+
+# Natural Earth scale vs map span (max of lon/lat extent in degrees).
+# Admin-1 (states / provinces / counties) is only readable on country-to-regional
+# views; a continental or global map would be a thicket of province lines.
+_ADMIN1_MAX_SPAN_DEG = 45.0
+_HIRES_MAX_SPAN_DEG = 90.0
+
+_ADMIN1_STYLE = {"facecolor": "none", "edgecolor": "0.45", "linewidth": 0.4, "zorder": 3}
+_LAKES_STYLE = {"facecolor": "none", "edgecolor": "0.2", "linewidth": 0.5, "zorder": 3.5}
+_BORDERS_STYLE = {"facecolor": "none", "edgecolor": "0.15", "linewidth": 0.8, "zorder": 4}
+_COAST_STYLE = {"facecolor": "none", "edgecolor": "black", "linewidth": 0.8, "zorder": 4}
+_HIGHLIGHT_STYLE = {"facecolor": "none", "edgecolor": "black", "linewidth": 1.3, "zorder": 4.5}
 
 
 def _parse_index(spec):
@@ -118,7 +132,7 @@ def _heatmap_cmap(da, colormap):
         return _parse_colormap(colormap)
     kind = classify_variable(
         da.name or "",
-        units=da.attrs.get("units"),
+        units=variable_units(da),
         standard_name=da.attrs.get("standard_name"),
     )
     if kind in ("precip", "precip_amount"):
@@ -135,12 +149,12 @@ def _variable_label(da):
     label = da.attrs.get("GRIB_name") or da.attrs.get("long_name") or da.name or "value"
     kind = classify_variable(
         da.name or "",
-        units=da.attrs.get("units"),
+        units=variable_units(da),
         standard_name=da.attrs.get("standard_name"),
     )
     if kind == "precip_amount" and looks_like_rate_display_name(label):
         label = PRECIP_AMOUNT_LONG_NAME
-    units = da.attrs.get("units") or ""
+    units = format_units_for_display(variable_units(da))
     if units:
         return f"{label} [{units}]"
     return label
@@ -221,6 +235,125 @@ def _draw_boxes_on_ax(ax, boxes, transform):
                     zorder=5,
                 )
             )
+
+
+def _extent_span_deg(extent):
+    lon_min, lon_max, lat_min, lat_max = extent
+    return max(abs(lon_max - lon_min), abs(lat_max - lat_min))
+
+
+def _boundary_layers(extent):
+    """Natural Earth scale and whether to overlay admin-1 for this view."""
+    span = _extent_span_deg(extent)
+    if span > _HIRES_MAX_SPAN_DEG:
+        return {"scale": "110m", "admin1": False}
+    if span > _ADMIN1_MAX_SPAN_DEG:
+        return {"scale": "50m", "admin1": False}
+    return {"scale": "10m", "admin1": True}
+
+
+def _extent_clip_geom(extent):
+    """Shapely clip geometry for ``lon_min,lon_max,lat_min,lat_max``.
+
+    Antimeridian views store a continuous unwrapped lon (e.g. 170..190) which
+    is split back into ``[-180, 180]`` pieces for Natural Earth intersection.
+    """
+    from shapely.geometry import box
+
+    lon_min, lon_max, lat_min, lat_max = extent
+    if lon_max > 180.0:
+        return box(lon_min, lat_min, 180.0, lat_max).union(
+            box(-180.0, lat_min, lon_max - 360.0, lat_max)
+        )
+    if lon_min > lon_max:
+        return box(lon_min, lat_min, 180.0, lat_max).union(box(-180.0, lat_min, lon_max, lat_max))
+    return box(lon_min, lat_min, lon_max, lat_max)
+
+
+def _unwrap_geoms(geoms, lon_min):
+    """Shift western-hemisphere pieces so they match an unwrapped lon axis."""
+    import numpy as np
+    import shapely
+
+    def shift(coords):
+        out = np.asarray(coords).copy()
+        out[:, 0] = np.where(out[:, 0] < lon_min, out[:, 0] + 360.0, out[:, 0])
+        return out
+
+    shifted = []
+    for geom in geoms:
+        if geom is None or geom.is_empty:
+            continue
+        shifted.append(shapely.transform(geom, shift))
+    return shifted
+
+
+def _clip_ne_geoms(resolution, category, name, clip_geom):
+    """Natural Earth geometries intersecting ``clip_geom`` (eager download)."""
+    import cartopy.io.shapereader as shpreader
+
+    path = shpreader.natural_earth(resolution=resolution, category=category, name=name)
+    geoms = []
+    for geom in shpreader.Reader(path).geometries():
+        if geom is None or geom.is_empty:
+            continue
+        try:
+            if not geom.intersects(clip_geom):
+                continue
+            clipped = geom.intersection(clip_geom)
+        except Exception:  # noqa: BLE001
+            clipped = geom
+        if clipped is None or clipped.is_empty:
+            continue
+        if clipped.geom_type == "GeometryCollection":
+            geoms.extend(g for g in clipped.geoms if g is not None and not g.is_empty)
+        else:
+            geoms.append(clipped)
+    return geoms
+
+
+def _load_geo_overlays(extent):
+    """Scale-appropriate coastline / border / lake / admin-1 overlays.
+
+    Each layer is clipped to the map extent so a country-scale view does not
+    draw the rest of the world. Download or clip failures warn and skip that
+    layer — the heatmap still renders.
+    """
+    spec = _boundary_layers(extent)
+    try:
+        clip = _extent_clip_geom(extent)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: geographic overlays unavailable ({exc}); skipping.", file=sys.stderr)
+        return []
+    lon_min, lon_max = extent[0], extent[1]
+    layers = []
+
+    def add(category, name, style, resolution=None):
+        res = resolution or spec["scale"]
+        try:
+            geoms = _clip_ne_geoms(res, category, name, clip)
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"Warning: {name} overlay unavailable ({exc}); skipping.",
+                file=sys.stderr,
+            )
+            return
+        if lon_max > 180.0:
+            geoms = _unwrap_geoms(geoms, lon_min)
+        if geoms:
+            layers.append((geoms, style))
+
+    if spec["admin1"]:
+        add("cultural", "admin_1_states_provinces", _ADMIN1_STYLE, resolution="10m")
+    add("physical", "lakes", _LAKES_STYLE)
+    add("cultural", "admin_0_boundary_lines_land", _BORDERS_STYLE)
+    add("physical", "coastline", _COAST_STYLE)
+    return layers
+
+
+def _draw_geo_overlays(ax, overlays, crs):
+    for geoms, style in overlays:
+        ax.add_geometries(geoms, crs, **style)
 
 
 def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
@@ -309,9 +442,9 @@ def _heatmap(
     native_step_dim=None,
     native_steps=None,
     draw_boxes=None,
+    highlight_polygon=None,
 ):
     import cartopy.crs as ccrs
-    import cartopy.feature as cfeature
     import matplotlib.pyplot as plt
     import numpy as np
 
@@ -369,6 +502,12 @@ def _heatmap(
 
     contour = None
     boxes = draw_boxes or []
+    overlays = _load_geo_overlays(extent)
+    highlight_geoms = None
+    if highlight_polygon is not None:
+        highlight_geoms = [highlight_polygon]
+        if not wrap_lon:
+            highlight_geoms = _unwrap_geoms(highlight_geoms, extent[0])
     for i, s in enumerate(steps):
         ax = axes[i]
         slab = da if sdim is None else da.isel({sdim: i})
@@ -387,8 +526,9 @@ def _heatmap(
         else:
             ax.set_xlim(extent[0], extent[1])
             ax.set_ylim(extent[2], extent[3])
-        ax.add_feature(cfeature.COASTLINE, edgecolor="black")
-        ax.add_feature(cfeature.BORDERS, linestyle=":", alpha=0.7)
+        _draw_geo_overlays(ax, overlays, ccrs.PlateCarree())
+        if highlight_geoms:
+            ax.add_geometries(highlight_geoms, ccrs.PlateCarree(), **_HIGHLIGHT_STYLE)
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
@@ -650,6 +790,7 @@ def plot(
             native_step_dim=native_step_dim,
             native_steps=native_steps,
             draw_boxes=draw_boxes,
+            highlight_polygon=region_polygon,
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))

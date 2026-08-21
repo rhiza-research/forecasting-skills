@@ -18,7 +18,12 @@ from pathlib import Path
 
 from weather_skills_core import DataError, Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
-from weather_skills_core.units import precip_for_display, to_standard_units
+from weather_skills_core.units import (
+    format_units_for_display,
+    precip_for_display,
+    to_standard_units,
+    variable_units,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
@@ -147,7 +152,8 @@ def plot_mediogram(ds, variable, lat, lon, title, output, **kwargs):
             tick_labels.append(str(value))
     ax.set_xticklabels(tick_labels)
     ax.set_xlabel("Forecast step")
-    ax.set_ylabel(variable)
+    shown = format_units_for_display(variable_units(pt_fc))
+    ax.set_ylabel(variable if not shown else f"{variable} [{shown}]")
     ax.set_title(title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
     ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend(

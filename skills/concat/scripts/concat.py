@@ -31,16 +31,21 @@ def _coerce(values):
     name="concat",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset("any"), nargs="+", required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("any"), action="append", required=True)
 @weather_skill.argument("--dim", required=True)
 @weather_skill.argument("--coords", help="Comma-separated coord values for the new dim")
 def concat(ds, dim, coords, **kwargs):
     """Concatenate Zarr stores along a named dim."""
     import xarray as xr
 
-    dss = ds
+    # Repeat -i/--input per store. nargs="+" would treat a second -i as a
+    # replacement, so only the last input would be written.
+    if not isinstance(ds, (list, tuple)) or len(ds) < 2:
+        n = 1 if not isinstance(ds, (list, tuple)) else len(ds)
+        raise UsageError(f"concat requires at least two --input paths (repeat -i), got {n}")
+    dss = list(ds)
 
-    if dim not in dss[0].dims or not all(dim in ds.dims for ds in dss):
+    if dim not in dss[0].dims or not all(dim in item.dims for item in dss):
         if coords:
             vals = _coerce([c.strip() for c in coords.split(",")])
             if len(vals) != len(dss):

@@ -81,7 +81,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
 
 A PNG at `--output`, single axes (`figsize=(10, 6)`), one line per input,
 legend on the axes. The y-axis label is `<variable>` plus `[<units>]` when
-the variable carries a `units` attribute.
+the variable carries a `units` attribute. Units are a short display form
+(`mm/day`, `°C`), not the on-disk CF string.
 
 ### Input units
 

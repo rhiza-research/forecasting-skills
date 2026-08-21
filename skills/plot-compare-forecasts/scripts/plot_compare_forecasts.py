@@ -32,9 +32,11 @@ from weather_skills_core.standard_utils import (
 )
 from weather_skills_core.units import (
     classify_variable,
+    format_units_for_display,
     precip_for_display,
     to_standard_units,
     units_equal,
+    variable_units,
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -79,7 +81,7 @@ def _heatmap_cmap(da, colormap):
         return _parse_colormap(colormap)
     kind = classify_variable(
         da.name or "",
-        units=da.attrs.get("units"),
+        units=variable_units(da),
         standard_name=da.attrs.get("standard_name"),
     )
     if kind in ("precip", "precip_amount"):
@@ -89,7 +91,7 @@ def _heatmap_cmap(da, colormap):
 
 def _variable_label(da):
     label = da.attrs.get("GRIB_name") or da.attrs.get("long_name") or da.name or "value"
-    units = da.attrs.get("units") or ""
+    units = format_units_for_display(variable_units(da))
     if units:
         return f"{label} [{units}]"
     return label
@@ -534,7 +536,7 @@ def plot_compare_forecasts(
     unit_vals = []
     seen_units = {}
     for idx, ds in enumerate(datasets):
-        u = ds[variable].attrs.get("units")
+        u = variable_units(ds[variable])
         if isinstance(u, str) and u.strip():
             unit_vals.append(u)
             seen_units[labels[idx]] = u.strip()

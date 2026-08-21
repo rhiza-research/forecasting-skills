@@ -98,7 +98,10 @@ def test_amount_colorbar_drops_leftover_rate_name():
 
     rate = make_gridded()["precip"]
     rate.attrs["long_name"] = "precipitation rate"
-    assert plot_mod._variable_label(rate) == "precipitation rate [mm day-1]"
+    assert plot_mod._variable_label(rate) == "precipitation rate [mm/day]"
+
+    quantified = rate.pint.quantify()
+    assert plot_mod._variable_label(quantified) == "precipitation rate [mm/day]"
 
 
 def test_plot_converts_aggregated_precip_rate_to_totals():
@@ -119,6 +122,49 @@ def test_parse_draw_boxes():
     assert plot_mod._parse_draw_boxes(None) == []
     with pytest.raises(UsageError):
         plot_mod._parse_draw_boxes(["not-a-box"])
+
+
+def test_boundary_layers_country_scale_includes_admin1():
+    plot_mod = load_skill("plot", "plot")
+    # Kenya-sized view (~8° × 10°)
+    spec = plot_mod._boundary_layers((33.9, 41.9, -4.7, 5.0))
+    assert spec == {"scale": "10m", "admin1": True}
+
+
+def test_boundary_layers_continental_excludes_admin1():
+    plot_mod = load_skill("plot", "plot")
+    # Africa-sized view
+    spec = plot_mod._boundary_layers((-17.5, 51.5, -35.0, 37.5))
+    assert spec == {"scale": "50m", "admin1": False}
+
+
+def test_boundary_layers_global_is_coarse():
+    plot_mod = load_skill("plot", "plot")
+    spec = plot_mod._boundary_layers((-180.0, 180.0, -90.0, 90.0))
+    assert spec == {"scale": "110m", "admin1": False}
+
+
+def test_extent_clip_geom_splits_unwrapped_antimeridian():
+    plot_mod = load_skill("plot", "plot")
+    clip = plot_mod._extent_clip_geom((170.0, 190.0, -10.0, 10.0))
+    assert clip.intersects(plot_mod._extent_clip_geom((175.0, 179.0, -1.0, 1.0)))
+    # The +190 unwrapped piece lives at lon -170 in Natural Earth coords.
+    west = plot_mod._extent_clip_geom((-172.0, -168.0, -1.0, 1.0))
+    assert clip.intersects(west)
+
+
+def test_load_geo_overlays_skips_on_download_failure(monkeypatch, capsys):
+    plot_mod = load_skill("plot", "plot")
+    import cartopy.io.shapereader as shpreader
+
+    def _boom(**_kwargs):
+        raise OSError("offline")
+
+    monkeypatch.setattr(shpreader, "natural_earth", _boom)
+    overlays = plot_mod._load_geo_overlays((33.9, 41.9, -4.7, 5.0))
+    assert overlays == []
+    err = capsys.readouterr().err
+    assert "overlay unavailable" in err
 
 
 def test_heatmap_draw_box_writes_png(tmp_path, plot_fn):

@@ -1,6 +1,6 @@
 ---
 name: plot
-description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills standard dataset Zarr. Use when you need to visualize a single dataset as a map or as a time/step profile. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
+description: Render a 2D heatmap or 1D time series PNG from any gridded or station weather-skills standard dataset Zarr. Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Use when you need to visualize a single dataset as a map or as a time/step profile. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
@@ -11,7 +11,12 @@ metadata:
 # plot
 
 Source-agnostic single-dataset visualization. Two styles:
-- `heatmap` — CartoPy `PlateCarree` map with country/coastline boundaries. If
+- `heatmap` — CartoPy `PlateCarree` map with scale-appropriate geographic
+  overlays (Natural Earth, fetched and cached via `cartopy`): coastlines,
+  country borders, and lake outlines at 10m / 50m / 110m depending on the
+  view size, plus admin-1 (states / provinces / counties) on country-to-
+  regional maps (span ≤ 45°). Overlays are clipped to the map extent.
+  If `--mask-geojson` is set, that polygon is also outlined on top. If
   the input has a `step` (or `time`) dimension, panels are laid out one per
   step (up to 4 columns; rows added as needed) with a shared color scale and a
   horizontal colorbar spanning all panels at the bottom. Ensemble members
@@ -85,20 +90,20 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 - `--fontsize` — base font size for titles/colorbar label (default 16).
 - `--bbox` — optional `N/W/S/E` decimal degrees. Slices the gridded input to the
   bbox using `da.sel(...)` and sets the heatmap extent to that bbox. This is a
-  rectangular slice (admin boundaries are drawn as decoration by
-  `cfeature.BORDERS`/`cfeature.COASTLINE`, not used as a mask). To restrict to a
-  country, get its bbox from the `resolve-region` skill. Longitudes in
-  `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing so global grids
-  still intersect negative-lon bboxes. `--extent` (if passed) wins over the
-  bbox-derived extent. Heatmap-only — `--style timeseries` ignores `--bbox` with
-  a stderr warning. Default unset → no slice.
+  rectangular slice (geographic overlays are decoration, not a mask). To
+  restrict to a country, get its bbox from the `resolve-region` skill.
+  Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing so
+  global grids still intersect negative-lon bboxes. `--extent` (if passed) wins
+  over the bbox-derived extent. Heatmap-only — `--style timeseries` ignores
+  `--bbox` with a stderr warning. Default unset → no slice.
 - `--mask-geojson` — optional path to a GeoJSON boundary polygon (e.g. the
   `--geojson` output of the `resolve-region` skill). Gridded cells whose centers
   fall outside the polygon are set to NaN before plotting, so the heatmap shows
   the country shape rather than its bounding rectangle. All features in the file
-  are unioned. Combine with `--bbox` to crop to the rectangle first, then mask to
-  the polygon within it. Heatmap-only — `--style timeseries` ignores it with a
-  stderr warning. Default unset → no mask.
+  are unioned. The same polygon is outlined on top of the scale-appropriate
+  Natural Earth overlays. Combine with `--bbox` to crop to the rectangle first,
+  then mask to the polygon within it. Heatmap-only — `--style timeseries`
+  ignores it with a stderr warning. Default unset → no mask.
 - `--draw-box` — optional black outline rectangle(s) drawn on each heatmap panel.
   Same `N/W/S/E` form as `--bbox`. Repeat the flag for multiple boxes (e.g.
   IOD west `10/50/-10/70` and east `0/90/-10/110`). Unlike `--bbox`, this does
@@ -110,7 +115,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 
 A PNG at `--output`. The colorbar label resolves from variable attrs:
 `GRIB_name` → `long_name` → bare variable name → `"value"`, suffixed
-with `[units]` when the `units` attr is present. Prefer an amount Zarr from
+with `[units]` when the `units` attr is present. Units on the figure are a
+short display form (`mm/day`, `°C`, `mm`), not the on-disk CF string.
+Prefer an amount Zarr from
 `convert-to-totals` (labeled `Total precipitation [mm]`). If the input is
 still a precip **rate** with `aggregation_period`, plot converts it to a
 period total for the figure only. Unaggregated fetch rates stay `mm day-1`.

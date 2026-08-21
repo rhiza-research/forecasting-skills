@@ -21,17 +21,28 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable
 from weather_skills_core.standard_utils import dataset_label, pick_time_dim
-from weather_skills_core.units import precip_for_display, to_standard_units, units_equal
+from weather_skills_core.units import (
+    format_units_for_display,
+    precip_for_display,
+    to_standard_units,
+    units_equal,
+    variable_units,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
+
+
+def _y_label(variable, da):
+    shown = format_units_for_display(variable_units(da))
+    return variable if not shown else f"{variable} [{shown}]"
 
 
 @weather_skill(
     name="plot-timeseries",
     version=_SKILL_VERSION,
 )
-@weather_skill.argument("-i", "--input", type=Dataset("any"), nargs="+", required=True)
+@weather_skill.argument("-i", "--input", type=Dataset("any"), action="append", required=True)
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
     "--time-dim",
@@ -52,7 +63,10 @@ _SKILL_VERSION = "0.0.2"
 )
 def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, output, **kwargs):
     """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
-    datasets = ds
+    if not isinstance(ds, (list, tuple)):
+        datasets = [ds]
+    else:
+        datasets = list(ds)
     if len(datasets) > 26:
         raise UsageError(f"--input must be passed at most 26 times; got {len(datasets)}.")
 
@@ -80,7 +94,7 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
     unit_vals = []
     seen_units = {}
     for idx, ds in enumerate(datasets):
-        u = ds[variable].attrs.get("units")
+        u = variable_units(ds[variable])
         if isinstance(u, str) and u.strip():
             unit_vals.append(u)
             seen_units[dataset_label(ds, f"input {idx + 1}")] = u.strip()
@@ -95,7 +109,6 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
         )
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    units = None
     first_tdim = None
     axis_label = None
 
@@ -150,15 +163,13 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
                 xlabel = "valid time"
         ax.plot(xvals, da.values, label=label)
 
-        if units is None:
-            units = da.attrs.get("units")
         if first_tdim is None:
             first_tdim = tdim
         if axis_label is None:
             axis_label = xlabel
 
     ax.set_xlabel(axis_label or first_tdim or "time")
-    ax.set_ylabel(variable if not units else f"{variable} [{units}]")
+    ax.set_ylabel(_y_label(variable, datasets[0][variable]))
     if title:
         ax.set_title(title)
     ax.legend()
