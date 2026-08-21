@@ -31,11 +31,14 @@ Prefer small steps over stuffing every filter into one call:
 
 - **Fetchers:** Prefer `dynamical-fetch` whenever the dynamical.org catalog has
   the dataset (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, GFS/GEFS analyses,
-  IMERG early/late). It is credential-free and has no API queue. Use
-  `ecmwf-fetch` only for ECMWF S2S (subseasonal leads, ocean, full pressure
-  stack — ECDS credentials, 2-day embargo). Use a source-specific fetcher
-  (CHIRPS, TAHMO, OISST, ARCO-ERA5, daily IMERG, CMIP6, Kenya archive, …) only
-  when the catalog does not carry that product.
+  IMERG). It is credential-free and has no API queue. **IMERG default:**
+  `--dataset nasa-imerg-analysis-late` (or `nasa-imerg-analysis-early`),
+  `-v precipitation_surface`. Do not start with `imerg-fetch`; that is the
+  Earthdata daily Late/Final fallback only. Use `ecmwf-fetch` only for ECMWF
+  S2S (subseasonal leads, ocean, full pressure stack — ECDS credentials,
+  2-day embargo). Use a source-specific fetcher (CHIRPS, TAHMO, OISST,
+  ARCO-ERA5, CMIP6, Kenya archive, …) only when the catalog does not carry
+  that product.
 - **Dates:** Fetchers take absolute `YYYY-MM-DD` only (`--start-time`/`--end-time` or
   `--date`). Use `resolve-time` for calendar ideas like "today" or "the last two
   weeks" — it prints flags against UTC today (or `--as-of`). For the latest day
@@ -100,7 +103,8 @@ whenever you need a file's lineage.
 
 ## Credentials
 
-Prefer `dynamical-fetch` so you often need none. Credentialed fetchers run in a
+Prefer `dynamical-fetch` so you often need none — including for IMERG
+(`nasa-imerg-analysis-late` / `nasa-imerg-analysis-early`). Credentialed fetchers run in a
 sandbox that does **not** inherit host secrets. When you invoke one, inject
 every required env var on the **first** call — do not run once, read
 `missing required env var(s)`, then retry.

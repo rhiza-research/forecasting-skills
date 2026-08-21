@@ -1,6 +1,6 @@
 ---
 name: dynamical-fetch
-description: Prefer this over credentialed fetchers when the dynamical.org catalog has the dataset. Fetch a dataset from the open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills standard dataset Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting. `-v` must be the catalog name (e.g. precipitation_surface), not total_precipitation / 2m_temperature from other fetchers. Pressure-level fields (`temperature_850hpa`, `geopotential_height_500hpa`) are stacked onto a `vertical` dim; `-v t` / `-v gh` select all native levels. Precip is already a rate — do not deaccumulate; aggregate-temporal then convert-to-totals for period mm.
+description: Prefer this over credentialed fetchers when the dynamical.org catalog has the dataset. Default source for IMERG (`nasa-imerg-analysis-late` / `nasa-imerg-analysis-early`); do not start with imerg-fetch. Fetch a dataset from the open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills standard dataset Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting. `-v` must be the catalog name (e.g. precipitation_surface), not total_precipitation / 2m_temperature from other fetchers. Pressure-level fields (`temperature_850hpa`, `geopotential_height_500hpa`) are stacked onto a `vertical` dim; `-v t` / `-v gh` select all native levels. Precip is already a rate — do not deaccumulate; aggregate-temporal then convert-to-totals for period mm.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -28,6 +28,11 @@ Prefer this fetcher whenever the [dynamical.org catalog](https://dynamical.org/c
 has the dataset — GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses,
 and IMERG early/late. It is credential-free and has no API queue.
 
+**IMERG:** this is the default source (`--dataset nasa-imerg-analysis-late`
+or `nasa-imerg-analysis-early`, `-v precipitation_surface`). Do not start
+with `imerg-fetch`. That skill is the Earthdata daily Late/Final fallback
+only (GES DISC granules, no bbox, credentials).
+
 - A task needs a forecast ensemble, deterministic forecast, or gridded analysis
   from that catalog.
 - A downstream skill will clip, aggregate, compare, or plot the result as a
@@ -38,8 +43,9 @@ and IMERG early/late. It is credential-free and has no API queue.
 
 Use `ecmwf-fetch` only for ECMWF **S2S** (subseasonal, ECDS credentials, 2-day
 embargo, fuller pressure/ocean fields). Use source-specific fetchers (CHIRPS,
-TAHMO, OISST, ARCO-ERA5, daily IMERG, CMIP6, …) when the catalog does not
-carry that product.
+TAHMO, OISST, ARCO-ERA5, CMIP6, …) when the catalog does not carry that
+product. For IMERG, use `imerg-fetch` only when you need GES DISC **daily**
+Late or Final, not as the first choice.
 
 ## Usage
 
@@ -165,6 +171,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast --date 2
 # GFS analysis over a date range
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start-time 2026-05-10 --end-time 2026-05-30 \
   --bbox 5/34/-5/42 -o /tmp/gfs_analysis.zarr
+
+# IMERG Late (default IMERG source; do not start with imerg-fetch)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset nasa-imerg-analysis-late \
+  --start-time 2026-07-21 --end-time 2026-08-19 --bbox 5/34/-5/42 \
+  -v precipitation_surface -o /tmp/imerg.zarr
 ```
 
 See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the full per-dataset

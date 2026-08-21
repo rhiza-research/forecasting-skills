@@ -26,10 +26,10 @@ credentialed or source-specific fetcher only when it does not.
 
 | Skill | What it does |
 |---|---|
-| `dynamical-fetch` | **Preferred when the catalog has it.** dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses) via `--dataset`, credential-free → Zarr |
+| `dynamical-fetch` | **Preferred when the catalog has it.** dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses, **IMERG**) via `--dataset`, credential-free → Zarr. Default IMERG source: `nasa-imerg-analysis-late` / `nasa-imerg-analysis-early`. |
 | `ecmwf-fetch` | ECMWF **S2S** ensemble (cf + pf; default `tp`, also `t2m`, `sst`, ocean, pressure levels) over a `--bbox` via ECDS → Zarr. Prefer `dynamical-fetch` for medium-range IFS-ENS / AIFS. |
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
-| `imerg-fetch` | IMERG daily satellite precipitation (late/final) → Zarr. Prefer `dynamical-fetch` `nasa-imerg-analysis-*` for half-hourly. |
+| `imerg-fetch` | Earthdata **daily** IMERG Late/Final fallback (`GPM_3IMERGDL` / `GPM_3IMERGDF`) → Zarr. Default IMERG is `dynamical-fetch`, not this skill. |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
 | `kenya-forecast-fetch` | Kenya forecasts archive raw Zarr grids (`gs://kenya-forecasting-data/<date>/data/`) → standard dataset (compose with `plot` for figures) |
 
@@ -201,22 +201,26 @@ forecasting-skills plot \
     --variable tp \
     --output /tmp/weekly.png
 
-forecasting-skills imerg-fetch \
+forecasting-skills dynamical-fetch \
+    --dataset nasa-imerg-analysis-late \
     --start-time 2025-12-24 \
     --end-time 2026-02-13 \
-    --output /tmp/imerg.zarr
-forecasting-skills clip-region \
-    --input /tmp/imerg.zarr \
     --bbox 5/34/-5/42 \
-    --output /tmp/imerg_kenya.zarr
+    -v precipitation_surface \
+    --output /tmp/imerg.zarr
 forecasting-skills aggregate-temporal \
-    --input /tmp/imerg_kenya.zarr \
+    --input /tmp/imerg.zarr \
     --period dekadal \
     --method mean \
     --output /tmp/imerg_dekadal.zarr
 forecasting-skills convert-to-totals \
     --input /tmp/imerg_dekadal.zarr \
     --output /tmp/imerg_dekadal_totals.zarr
+forecasting-skills rename \
+    --input /tmp/imerg_dekadal_totals.zarr \
+    --variable precipitation_surface \
+    --to-name precip \
+    --output /tmp/imerg_dekadal_precip.zarr
 
 forecasting-skills tahmo-fetch \
     --country Kenya \
@@ -226,7 +230,7 @@ forecasting-skills tahmo-fetch \
 
 forecasting-skills plot-compare \
     -i /tmp/tahmo.zarr \
-    -i /tmp/imerg_dekadal_totals.zarr \
+    -i /tmp/imerg_dekadal_precip.zarr \
     --variable precip \
     --output /tmp/sat_vs_stations.png
 ```

@@ -1,6 +1,6 @@
 ---
 name: imerg-fetch
-description: Fetch live IMERG daily satellite precipitation for a date range and write a weather-skills standard dataset Zarr. Use when a task needs recent daily IMERG rainfall, e.g. for station-vs-satellite comparison or verification. For half-hourly IMERG, use dynamical-fetch `nasa-imerg-analysis-early` / `nasa-imerg-analysis-late`.
+description: "Do not use as the default IMERG source. Prefer dynamical-fetch --dataset nasa-imerg-analysis-late (or nasa-imerg-analysis-early): credential-free half-hourly, supports --bbox. Use this skill only for NASA GES DISC daily Late/Final via Earthdata (GPM_3IMERGDL / GPM_3IMERGDF) when you specifically need that daily product — e.g. IMERG Final. Choose --version from the window: final once dates are past the ~3.5-month Final embargo, late for more recent dates still under that embargo."
 license: MIT
 compatibility: Requires Python 3.12 and uv. Authenticates to NASA Earthdata via the `earthaccess` library — set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the environment, or use a `.netrc` entry for `urs.earthdata.nasa.gov`.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -18,15 +18,20 @@ metadata:
 
 # imerg-fetch
 
-Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess` for the requested date range and writes a global-grid Zarr store. For a calendar window use `resolve-time`; for the latest published day use `--probe-latest [late|final]` — do not guess the lag.
+Downloads IMERG daily precipitation granules from NASA GES DISC via `earthaccess` for the requested date range and writes a global-grid Zarr store. For a calendar window use `resolve-time`; for the latest published day use `--probe-latest [late|final]` — do not guess the lag. Match `--version` to that window: `final` when the dates are past the Final embargo, `late` for recent dates still inside it.
 
 ## When to use
 
-- Need recent IMERG rainfall for a forecast-verification or station-comparison task.
+**Default IMERG source is `dynamical-fetch`**, not this skill. Use
+`--dataset nasa-imerg-analysis-late` (or `nasa-imerg-analysis-early`):
+credential-free, `--bbox`, half-hourly. Aggregate to daily with
+`aggregate-temporal` if you need a day grid.
 
-Prefer `dynamical-fetch` `--dataset nasa-imerg-analysis-early` or
-`nasa-imerg-analysis-late` when half-hourly IMERG is enough (credential-free).
-This skill is **daily** late/final via Earthdata.
+Use **this** skill only when you need the NASA GES DISC **daily** Late or
+Final files (`GPM_3IMERGDL` / `GPM_3IMERGDF`) over Earthdata — typically
+IMERG Final, or a daily Late granule that the catalog does not replace.
+Daily GES DISC can have interior holes the catalog does not; it also has
+no `--bbox` (full 0.1° globe).
 
 ## Usage
 
@@ -39,7 +44,16 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest [late|final]
 - `--start-time`, `--end-time` — inclusive date range. Each value is an absolute ISO date `YYYY-MM-DD`. Calendar windows: `resolve-time last-2w`. Latest published day: `--probe-latest [late|final]`.
 - `--probe-latest [late|final]` — print the latest available `YYYY-MM-DD` on stdout and exit. No `-o`. IDENT selects the release (default `late`).
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
-- `--version` — `late` (default; ~4 days behind realtime, `GPM_3IMERGDL`) or `final` (`GPM_3IMERGDF`).
+- `--version` — which IMERG Daily product to fetch: `late` (default; `GPM_3IMERGDL`, ~4 days behind realtime) or `final` (`GPM_3IMERGDF`, research-quality, ~3.5 months after the observation month). Choose from the requested window, not habit — see below.
+
+### Choosing late vs final
+
+IMERG Daily publishes two products on different schedules. Pick `--version` from the time range:
+
+- **final** — gauge-adjusted research product. Typical latency is ~3.5 months (the Final embargo). Use it for historical windows that Final already covers.
+- **late** — near-realtime product (~4 days behind). Use it for recent dates still under the Final embargo, including verification of the last weeks or months.
+
+This skill fetches one product per call and does not fall back from Final to Late. If a window crosses the embargo (some days Final, some only Late), either use `late` for the whole window or split into two fetches. Do not request `final` for dates Final has not published yet. `--probe-latest final` and `--probe-latest late` report the latest day each product has on disk.
 
 ### Production lag and partial-tail behavior
 
