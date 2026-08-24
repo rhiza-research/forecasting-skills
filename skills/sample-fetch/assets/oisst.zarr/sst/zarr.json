@@ -1,0 +1,60 @@
+{
+  "shape": [
+    7,
+    39,
+    32
+  ],
+  "data_type": "float32",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [
+        7,
+        39,
+        32
+      ]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": "NaN",
+  "codecs": [
+    {
+      "name": "bytes",
+      "configuration": {
+        "endian": "little"
+      }
+    },
+    {
+      "name": "zstd",
+      "configuration": {
+        "level": 0,
+        "checksum": false
+      }
+    }
+  ],
+  "attributes": {
+    "long_name": "Daily Sea Surface Temperature",
+    "units": "degC",
+    "precision": 2.0,
+    "dataset": "NOAA High-resolution Blended Analysis",
+    "var_desc": "Sea Surface Temperature",
+    "level_desc": "Surface",
+    "statistic": "Mean",
+    "parent_stat": "Individual Observations",
+    "standard_name": "sea_surface_temperature",
+    "_FillValue": "AAAAAAAA+H8="
+  },
+  "dimension_names": [
+    "time",
+    "latitude",
+    "longitude"
+  ],
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}

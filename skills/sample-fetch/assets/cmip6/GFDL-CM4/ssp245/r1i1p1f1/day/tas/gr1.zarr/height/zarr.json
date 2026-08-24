@@ -1,0 +1,45 @@
+{
+  "shape": [],
+  "data_type": "float64",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": []
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "fill_value": "NaN",
+  "codecs": [
+    {
+      "name": "bytes",
+      "configuration": {
+        "endian": "little"
+      }
+    },
+    {
+      "name": "zstd",
+      "configuration": {
+        "level": 0,
+        "checksum": false
+      }
+    }
+  ],
+  "attributes": {
+    "axis": "Z",
+    "cell_methods": "time: point",
+    "description": "~2 m standard surface air temperature and surface humidity  height",
+    "long_name": "height",
+    "positive": "up",
+    "standard_name": "height",
+    "units": "m",
+    "_FillValue": "AAAAAAAA+H8="
+  },
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}
