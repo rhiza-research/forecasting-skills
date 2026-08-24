@@ -30,10 +30,10 @@ from weather_skills_core.standard_utils import (
     polygon_from_geojson,
 )
 from weather_skills_core.units import (
-    format_units_for_display,
     precip_for_display,
     to_standard_units,
     units_equal,
+    variable_label_for_display,
     variable_units,
 )
 
@@ -680,11 +680,8 @@ def plot_compare(
         ax.set_xlabel("lon" if col == n // 2 else "")
 
     def _cbar_label(row):
-        _ds, _da, _td, label, var, units, _scale = row
-        shown = format_units_for_display(units)
-        if shown:
-            return f"{label} {var} [{shown}]"
-        return f"{label} {var}"
+        _ds, da, _td, label, var, _units, _scale = row
+        return f"{label} {variable_label_for_display(da, fallback=var)}"
 
     fig.colorbar(sc_top, ax=top_axes, label=_cbar_label(top), shrink=0.6, fraction=0.02, pad=0.02)
     fig.colorbar(

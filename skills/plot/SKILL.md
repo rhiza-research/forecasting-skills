@@ -115,10 +115,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
 
 ### Output
 
-A PNG at `--output`. The colorbar label resolves from variable attrs:
-`GRIB_name` → `long_name` → bare variable name → `"value"`, suffixed
-with `[units]` when the `units` attr is present. Units on the figure are a
-short display form (`mm/day`, `°C`, `mm`), not the on-disk CF string.
+A PNG at `--output`. The colorbar (and timeseries y-axis) label resolves
+from variable attrs: `long_name` → `GRIB_name` → bare variable name →
+`"value"`, suffixed with `[units]` when the `units` attr is present. Units
+on the figure are a short display form (`mm/day`, `°C`, `mm`), not the
+on-disk CF string.
 Prefer an amount Zarr from
 `convert-to-totals` (labeled `Total precipitation [mm]`). If the input is
 still a precip **rate** with `aggregation_period`, plot converts it to a

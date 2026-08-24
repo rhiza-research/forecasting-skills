@@ -22,10 +22,10 @@ from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable
 from weather_skills_core.standard_utils import dataset_label, pick_time_dim
 from weather_skills_core.units import (
-    format_units_for_display,
     precip_for_display,
     to_standard_units,
     units_equal,
+    variable_label_for_display,
     variable_units,
 )
 
@@ -34,8 +34,7 @@ _SKILL_VERSION = "0.0.2"
 
 
 def _y_label(variable, da):
-    shown = format_units_for_display(variable_units(da))
-    return variable if not shown else f"{variable} [{shown}]"
+    return variable_label_for_display(da, fallback=variable)
 
 
 @weather_skill(

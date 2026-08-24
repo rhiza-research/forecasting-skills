@@ -93,7 +93,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare_forecasts.py -i <a.zarr> -i <b.z
 ### Output
 
 A PNG at `--output`: `nrows = n inputs`, `ncols = union columns` (or
-`--panels`). One horizontal colorbar under the grid.
+`--panels`). One horizontal colorbar under the grid, labeled from the
+variable `long_name` (then `GRIB_name`, then the variable name) plus
+`[<units>]`.
 
 ### Provenance
 

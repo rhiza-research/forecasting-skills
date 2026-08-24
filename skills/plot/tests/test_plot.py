@@ -96,6 +96,10 @@ def test_amount_colorbar_drops_leftover_rate_name():
     )
     assert plot_mod._variable_label(da) == "Total precipitation [mm]"
 
+    da.attrs["long_name"] = "Total precipitation"
+    da.attrs["GRIB_name"] = "Precipitation rate"
+    assert plot_mod._variable_label(da) == "Total precipitation [mm]"
+
     rate = make_gridded()["precip"]
     rate.attrs["long_name"] = "precipitation rate"
     assert plot_mod._variable_label(rate) == "precipitation rate [mm/day]"

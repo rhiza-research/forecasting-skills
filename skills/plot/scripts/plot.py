@@ -26,12 +26,10 @@ from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import lat_slice, parse_bbox, polygon_from_geojson
 from weather_skills_core.units import (
-    PRECIP_AMOUNT_LONG_NAME,
     classify_variable,
-    format_units_for_display,
-    looks_like_rate_display_name,
     precip_for_display,
     to_standard_units,
+    variable_label_for_display,
     variable_units,
 )
 
@@ -141,23 +139,8 @@ def _heatmap_cmap(da, colormap):
 
 
 def _variable_label(da):
-    """Colorbar / axis label: GRIB_name, then long_name, then the variable name.
-
-    After convert-to-totals, leftover fetch rate names (``precipitation rate``)
-    are shown as ``Total precipitation``.
-    """
-    label = da.attrs.get("GRIB_name") or da.attrs.get("long_name") or da.name or "value"
-    kind = classify_variable(
-        da.name or "",
-        units=variable_units(da),
-        standard_name=da.attrs.get("standard_name"),
-    )
-    if kind == "precip_amount" and looks_like_rate_display_name(label):
-        label = PRECIP_AMOUNT_LONG_NAME
-    units = format_units_for_display(variable_units(da))
-    if units:
-        return f"{label} [{units}]"
-    return label
+    """Colorbar / axis label from CF ``long_name`` (then GRIB_name, then the name)."""
+    return variable_label_for_display(da)
 
 
 def _parse_cities(spec):
@@ -803,7 +786,8 @@ def plot(
         ax.plot(xvals, reduced.values)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(_variable_label(reduced))
-        ax.set_title(title or f"{variable} ({style})")
+        qty = variable_label_for_display(reduced, include_units=False)
+        ax.set_title(title or f"{qty} ({style})")
         if xlabel == "valid time":
             fig.autofmt_xdate()
         fig.tight_layout()

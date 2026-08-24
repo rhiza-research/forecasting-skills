@@ -37,9 +37,29 @@ def test_convert_to_totals_from_attr(tmp_path, convert_to_totals):
     assert Path(out).exists()
     result = xr.open_zarr(out, consolidated=True)
     assert result["precip"].attrs["units"] == "mm"
+    assert result["precip"].attrs["long_name"] == PRECIP_AMOUNT_LONG_NAME
     assert result["precip"].values == pytest.approx(10.0)
     assert AGGREGATION_PERIOD_ATTR not in result["precip"].attrs
     assert load_history(out)[-1]["skill"] == "convert-to-totals"
+
+
+def test_convert_to_totals_sets_precip_long_name(tmp_path, convert_to_totals):
+    """Period totals get Total precipitation even when the rate had a product name."""
+    ds = make_gridded(n_time=2, fill=10.0)
+    ds["precip"].attrs.update(
+        {
+            AGGREGATION_PERIOD_ATTR: "1 day",
+            "long_name": "IMERG daily precipitation",
+        }
+    )
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(convert_to_totals, "-i", str(src), "-o", str(out))
+
+    result = xr.open_zarr(out, consolidated=True)
+    assert result["precip"].attrs["long_name"] == PRECIP_AMOUNT_LONG_NAME
+    assert result["precip"].attrs["standard_name"] == STANDARD["precip_amount"]["standard_name"]
 
 
 def test_convert_to_totals_rewrites_rate_display_names(tmp_path, convert_to_totals):

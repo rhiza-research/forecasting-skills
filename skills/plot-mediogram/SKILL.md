@@ -44,7 +44,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py -i <forecast.zarr> -i <mcli
 
 ### Output
 
-A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on the x-axis labeled with actual leads (`+7d`, `+10d`, …).
+A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on the x-axis labeled with actual leads (`+7d`, `+10d`, …). The y-axis (and default title) use the variable `long_name`.
 
 ### Provenance
 

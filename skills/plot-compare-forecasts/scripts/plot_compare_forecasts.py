@@ -32,10 +32,10 @@ from weather_skills_core.standard_utils import (
 )
 from weather_skills_core.units import (
     classify_variable,
-    format_units_for_display,
     precip_for_display,
     to_standard_units,
     units_equal,
+    variable_label_for_display,
     variable_units,
 )
 
@@ -90,11 +90,7 @@ def _heatmap_cmap(da, colormap):
 
 
 def _variable_label(da):
-    label = da.attrs.get("GRIB_name") or da.attrs.get("long_name") or da.name or "value"
-    units = format_units_for_display(variable_units(da))
-    if units:
-        return f"{label} [{units}]"
-    return label
+    return variable_label_for_display(da)
 
 
 def _is_cftime_axis(values):

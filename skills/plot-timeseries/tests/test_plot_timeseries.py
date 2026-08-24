@@ -122,3 +122,6 @@ def test_y_label_shows_units_from_pint():
     da = make_gridded()["precip"]
     assert mod._y_label("precip", da) == "precip [mm/day]"
     assert mod._y_label("precip", da.pint.quantify()) == "precip [mm/day]"
+    da.attrs["long_name"] = "IMERG daily precipitation"
+    da.attrs["GRIB_name"] = "Precipitation rate"
+    assert mod._y_label("precip", da) == "IMERG daily precipitation [mm/day]"
