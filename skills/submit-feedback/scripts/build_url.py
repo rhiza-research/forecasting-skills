@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 # ]
 # ///
 """Build a length-checked prefilled GitHub "new issue" URL for filing feedback."""
