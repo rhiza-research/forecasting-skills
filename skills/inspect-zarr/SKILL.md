@@ -16,7 +16,7 @@ does not print data-variable arrays (those can be huge) and it does not write
 an output store.
 
 Use `provenance` when you need the `weather_skills_history` lineage rather than
-the grid itself.
+the grid itself. For a generated plot PNG, use `inspect-figure`.
 
 ## When to use
 

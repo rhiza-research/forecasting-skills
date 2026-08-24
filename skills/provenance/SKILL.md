@@ -23,6 +23,8 @@ stdout, and the user redirects when they want a file.
   script rather than reconstructing the pipeline by hand.
 - The chain is unreadable directly: a zarr keeps it in store attrs, and a PNG
   keeps it in binary `tEXt` chunks.
+- You need lineage, not a visual check — for blank/wrong figures use
+  `inspect-figure` and look at the PNG.
 
 Read-only: it takes no `--output` and prints the result to stdout; it never
 writes a file or modifies its input.

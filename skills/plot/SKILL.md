@@ -37,6 +37,8 @@ Source-agnostic single-dataset visualization. Two styles:
 - Producing a time/step profile for a gridded or station standard dataset.
 - Precipitation: only after `aggregate-temporal` and `convert-to-totals`.
   Fetchers write rates; figures should show period totals (`mm`).
+- If the PNG looks empty or wrong, run `inspect-figure` on it (then
+  `inspect-zarr` on the input Zarr) before regenerating.
 
 For two-dataset comparisons, use the `plot-compare` skill. For N gridded
 datasets as a valid-time grid with blank cells where a dataset has no time,

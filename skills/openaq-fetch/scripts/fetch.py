@@ -291,14 +291,17 @@ def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
             ),
         )
         session = requests.Session()
-        session.headers.update({"X-API-Key": key})
+        session.headers.update({"X-API-Key": key.strip()})
         _rate_limit_wait()
-        resp = session.get(
-            f"{_API_BASE}/locations",
-            params={"limit": 1, "order_by": "datetimeLast", "sort_order": "desc"},
-            timeout=HTTP_TIMEOUT,
-        )
-        resp.raise_for_status()
+        try:
+            resp = session.get(
+                f"{_API_BASE}/locations",
+                params={"limit": 1, "order_by": "datetimeLast", "sort_order": "desc"},
+                timeout=HTTP_TIMEOUT,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            raise DataError(_classify_api_error(exc, "probing latest observation time")) from None
         results = resp.json().get("results") or []
         if not results:
             raise DataError("OpenAQ probe found no locations")
@@ -319,7 +322,7 @@ def fetch(start_time, end_time, bbox, workers, variable, **kwargs):
         message=("OPENAQ_API_KEY must be set (free key from https://explore.openaq.org/register)."),
     )
     session = requests.Session()
-    session.headers.update({"X-API-Key": key})
+    session.headers.update({"X-API-Key": key.strip()})
 
     sensors = _find_sensors(session, (north, west, south, east), set(variables))
     if not sensors:
