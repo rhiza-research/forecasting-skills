@@ -1,0 +1,316 @@
+{
+  "attributes": {
+    "Conventions": "CF-1.13",
+    "activity_id": "ScenarioMIP",
+    "branch_method": "standard",
+    "branch_time_in_child": 0.0,
+    "branch_time_in_parent": 60225.0,
+    "comment": "<null ref>",
+    "contact": "gfdl.climate.model.info@noaa.gov",
+    "creation_date": "2019-03-17T20:48:20Z",
+    "data_specs_version": "01.00.27",
+    "experiment": "update of RCP4.5 based on SSP2",
+    "experiment_id": "ssp245",
+    "external_variables": "areacella",
+    "forcing_index": 1,
+    "frequency": "day",
+    "further_info_url": "https://furtherinfo.es-doc.org/CMIP6.NOAA-GFDL.GFDL-CM4.ssp245.none.r1i1p1f1",
+    "grid": "atmos data regridded from Cubed-sphere (c96) to 180,288; interpolation method: conserve_order2",
+    "grid_label": "gr1",
+    "history": "File was processed by fremetar (GFDL analog of CMOR). TripleID: [exper_id_pZLB8SfBUG,realiz_id_2fqmIk3Z1w,run_id_xtycYrfjMF]\n2026-06-13T01:28:59Z cmip6-fetch: subset tas to 2026-04-06..2026-04-12 bbox 5.0/33.9/-4.7/41.9; mapped onto the weather-skills envelope and re-stamped CF-1.13.",
+    "initialization_index": 1,
+    "institution": "National Oceanic and Atmospheric Administration, Geophysical Fluid Dynamics Laboratory, Princeton, NJ 08540, USA",
+    "institution_id": "NOAA-GFDL",
+    "license": "CMIP6 model data produced by NOAA-GFDL is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License (https://creativecommons.org/licenses/). Consult https://pcmdi.llnl.gov/CMIP6/TermsOfUse for terms of use governing CMIP6 output, including citation requirements and proper acknowledgment. Further information about this data, including some limitations, can be found via the further_info_url (recorded as a global attribute in this file). The data producers and data providers make no warranty, either express or implied, including, but not limited to, warranties of merchantability and fitness for a particular purpose. All liabilities arising from the supply of the information (including any liability arising in negligence) are excluded to the fullest extent permitted by law.",
+    "mip_era": "CMIP6",
+    "nominal_resolution": "100 km",
+    "parent_activity_id": "CMIP",
+    "parent_experiment_id": "historical",
+    "parent_mip_era": "CMIP6",
+    "parent_source_id": "GFDL-CM4",
+    "parent_time_units": "days since 1850-1-1",
+    "parent_variant_label": "r1i1p1f1",
+    "physics_index": 1,
+    "product": "model-output",
+    "realization_index": 1,
+    "realm": "atmos",
+    "references": "see further_info_url attribute",
+    "source": "GFDL-CM4 (2018): \naerosol: interactive\natmos: GFDL-AM4.0.1 (Cubed-sphere (c96) - 1 degree nominal horizontal resolution; 360 x 180 longitude/latitude; 33 levels; top level 1 hPa)\natmosChem: fast chemistry, aerosol only\nland: GFDL-LM4.0.1 (1 degree nominal horizontal resolution; 360 x 180 longitude/latitude; 20 levels; bot level 10m); land:Veg:unnamed (dynamic vegetation, dynamic land use); land:Hydro:unnamed (soil water and ice, multi-layer snow, rivers and lakes)\nlandIce: GFDL-LM4.0.1\nocean: GFDL-OM4p25 (GFDL-MOM6, tripolar - nominal 0.25 deg; 1440 x 1080 longitude/latitude; 75 levels; top grid cell 0-2 m)\nocnBgchem: GFDL-BLINGv2\nseaIce: GFDL-SIM4p25 (GFDL-SIS2.0, tripolar - nominal 0.25 deg; 1440 x 1080 longitude/latitude; 5 layers; 5 thickness categories)\n(GFDL ID: 2019_0195)",
+    "source_id": "GFDL-CM4",
+    "source_type": "AOGCM",
+    "sub_experiment": "none",
+    "sub_experiment_id": "none",
+    "table_id": "day",
+    "title": "NOAA GFDL GFDL-CM4 model output prepared for CMIP6 update of RCP4.5 based on SSP2",
+    "tracking_id": "hdl:21.14100/f8bf5401-776b-4a2f-a892-ec5fc4d697c6\nhdl:21.14100/2fb216f8-df1d-47f5-a315-c817f5e4dbe1\nhdl:21.14100/72347a37-6b34-40b6-8d7e-29f656710976\nhdl:21.14100/aebfb88c-8a58-4792-8eb1-af1aa5a99f6c\nhdl:21.14100/5e27e931-bf65-4fa9-85cf-8fc904bfcdec",
+    "variable_id": "tas",
+    "variant_info": "N/A",
+    "variant_label": "r1i1p1f1",
+    "status": "2019-11-15;created;by nhn2@columbia.edu",
+    "weather_skills_source": "cmip6:GFDL-CM4/ssp245/r1i1p1f1/day/tas/gr1",
+    "weather_skills_history": "[{\"args\": {\"bbox\": \"5.0/33.9/-4.7/41.9\", \"data_version\": \"20180701\", \"end\": \"2026-04-12\", \"experiment\": \"ssp245\", \"grid\": \"gr1\", \"member\": \"r1i1p1f1\", \"model\": \"GFDL-CM4\", \"start\": \"2026-04-06\", \"table\": \"day\", \"variable\": \"tas\"}, \"input\": null, \"skill\": \"cmip6-fetch\", \"version\": \"0.1.4\"}]"
+  },
+  "zarr_format": 3,
+  "consolidated_metadata": {
+    "kind": "inline",
+    "must_understand": false,
+    "metadata": {
+      "height": {
+        "shape": [],
+        "data_type": "float64",
+        "chunk_grid": {
+          "name": "regular",
+          "configuration": {
+            "chunk_shape": []
+          }
+        },
+        "chunk_key_encoding": {
+          "name": "default",
+          "configuration": {
+            "separator": "/"
+          }
+        },
+        "fill_value": "NaN",
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "attributes": {
+          "axis": "Z",
+          "cell_methods": "time: point",
+          "description": "~2 m standard surface air temperature and surface humidity  height",
+          "long_name": "height",
+          "positive": "up",
+          "standard_name": "height",
+          "units": "m",
+          "_FillValue": "AAAAAAAA+H8="
+        },
+        "zarr_format": 3,
+        "node_type": "array",
+        "storage_transformers": []
+      },
+      "latitude": {
+        "shape": [
+          10
+        ],
+        "data_type": "float64",
+        "chunk_grid": {
+          "name": "regular",
+          "configuration": {
+            "chunk_shape": [
+              10
+            ]
+          }
+        },
+        "chunk_key_encoding": {
+          "name": "default",
+          "configuration": {
+            "separator": "/"
+          }
+        },
+        "fill_value": "NaN",
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "attributes": {
+          "axis": "Y",
+          "cell_methods": "time: point",
+          "long_name": "latitude",
+          "standard_name": "latitude",
+          "units": "degrees_north",
+          "_FillValue": "AAAAAAAA+H8="
+        },
+        "dimension_names": [
+          "latitude"
+        ],
+        "zarr_format": 3,
+        "node_type": "array",
+        "storage_transformers": []
+      },
+      "longitude": {
+        "shape": [
+          7
+        ],
+        "data_type": "float64",
+        "chunk_grid": {
+          "name": "regular",
+          "configuration": {
+            "chunk_shape": [
+              7
+            ]
+          }
+        },
+        "chunk_key_encoding": {
+          "name": "default",
+          "configuration": {
+            "separator": "/"
+          }
+        },
+        "fill_value": "NaN",
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "attributes": {
+          "axis": "X",
+          "cell_methods": "time: point",
+          "long_name": "longitude",
+          "standard_name": "longitude",
+          "units": "degrees_east",
+          "_FillValue": "AAAAAAAA+H8="
+        },
+        "dimension_names": [
+          "longitude"
+        ],
+        "zarr_format": 3,
+        "node_type": "array",
+        "storage_transformers": []
+      },
+      "tas": {
+        "shape": [
+          7,
+          10,
+          7
+        ],
+        "data_type": "float32",
+        "chunk_grid": {
+          "name": "regular",
+          "configuration": {
+            "chunk_shape": [
+              7,
+              10,
+              7
+            ]
+          }
+        },
+        "chunk_key_encoding": {
+          "name": "default",
+          "configuration": {
+            "separator": "/"
+          }
+        },
+        "fill_value": "NaN",
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "attributes": {
+          "cell_measures": "area: areacella",
+          "cell_methods": "area: time: mean",
+          "interp_method": "conserve_order2",
+          "long_name": "Near-Surface Air Temperature",
+          "original_name": "tas",
+          "standard_name": "air_temperature",
+          "units": "K",
+          "coordinates": "height",
+          "_FillValue": "AAAAgB2vFUQ="
+        },
+        "dimension_names": [
+          "time",
+          "latitude",
+          "longitude"
+        ],
+        "zarr_format": 3,
+        "node_type": "array",
+        "storage_transformers": []
+      },
+      "time": {
+        "shape": [
+          7
+        ],
+        "data_type": "int64",
+        "chunk_grid": {
+          "name": "regular",
+          "configuration": {
+            "chunk_shape": [
+              7
+            ]
+          }
+        },
+        "chunk_key_encoding": {
+          "name": "default",
+          "configuration": {
+            "separator": "/"
+          }
+        },
+        "fill_value": 0,
+        "codecs": [
+          {
+            "name": "bytes",
+            "configuration": {
+              "endian": "little"
+            }
+          },
+          {
+            "name": "zstd",
+            "configuration": {
+              "level": 0,
+              "checksum": false
+            }
+          }
+        ],
+        "attributes": {
+          "axis": "T",
+          "calendar_type": "noleap",
+          "description": "Temporal mean",
+          "long_name": "time",
+          "standard_name": "time",
+          "units": "days since 2015-01-01T12:00:00",
+          "calendar": "noleap"
+        },
+        "dimension_names": [
+          "time"
+        ],
+        "zarr_format": 3,
+        "node_type": "array",
+        "storage_transformers": []
+      }
+    }
+  },
+  "node_type": "group"
+}
