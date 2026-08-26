@@ -11,13 +11,14 @@
 #   "pint-xarray>=0.6",
 # ]
 # ///
-"""Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
+"""Fetch CHIRPS precipitation from the public GCS mirror (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
 
 import os
 import re
 import sys
 import tempfile
 import threading
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
@@ -26,18 +27,55 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
-CHIRPS_FINAL_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/sat"
-CHIRPS_PRELIM_BASE_URL = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/prelim/sat"
+_BUCKET = "sheerwater-public-datalake"
+_MIRROR = "chc-mirror"
+_GCS_MEDIA = f"https://storage.googleapis.com/{_BUCKET}"
+_GCS_API = f"https://storage.googleapis.com/storage/v1/b/{_BUCKET}/o"
+_CHIRPS_FINAL_PREFIX = f"{_MIRROR}/products/CHIRPS/v3.0/daily/final/sat"
+_CHIRPS_PRELIM_PREFIX = f"{_MIRROR}/products/CHIRPS/v3.0/daily/prelim/sat"
 CHIRPS_FINAL_START_YEAR = 1998
 CHIRPS_NODATA = -9999.0
 HTTP_TIMEOUT = 60
-DEFAULT_WORKERS = 2
+DEFAULT_WORKERS = 8
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
 
 _NOT_FOUND = object()
 _TIF_NAME_RE = re.compile(r"chirps-v3\.0\.(?:prelim|sat)\.(\d{4})\.(\d{2})\.(\d{2})\.tif")
+
+
+def _object_url(key: str) -> str:
+    return f"{_GCS_MEDIA}/{urllib.parse.quote(key, safe='/')}"
+
+
+def _list_object_names(prefix: str) -> list[str]:
+    """Object names under ``prefix`` on the public CHC mirror (paginated)."""
+    import requests
+
+    names: list[str] = []
+    token = None
+    while True:
+        params = {"prefix": prefix, "maxResults": 1000}
+        if token:
+            params["pageToken"] = token
+        try:
+            resp = requests.get(_GCS_API, params=params, timeout=HTTP_TIMEOUT)
+        except requests.RequestException as exc:
+            raise DataError(f"CHIRPS mirror listing failed for {prefix}: {exc}") from None
+        if resp.status_code != 200:
+            raise DataError(
+                f"CHIRPS mirror listing failed: HTTP {resp.status_code} for prefix {prefix}"
+            )
+        payload = resp.json()
+        for item in payload.get("items") or []:
+            name = item.get("name")
+            if isinstance(name, str) and not name.endswith("/"):
+                names.append(name)
+        token = payload.get("nextPageToken")
+        if not token:
+            break
+    return names
 
 
 class DayUnavailable(Exception):
@@ -121,13 +159,12 @@ def _http_refusal_message(exc, workers: int) -> str:
         detail = " ".join(f"HTTP {status} {resp.reason or ''} for {resp.url}".split())
     if status is None or status in (403, 429):
         return (
-            f"Error: the CHIRPS data server refused the request ({detail}). "
-            "This usually means rate limiting / a temporary IP block from "
-            "too many requests — wait and retry later, and consider "
-            f"lowering --workers (current: {workers})."
+            f"Error: the CHIRPS mirror refused the request ({detail}). "
+            "Wait and retry later, and consider lowering --workers "
+            f"(current: {workers})."
         )
     return (
-        f"Error: the CHIRPS data server refused the request ({detail}). "
+        f"Error: the CHIRPS mirror refused the request ({detail}). "
         f"This looks like a request/auth/layout problem (HTTP {status}); "
         "retrying will not help — check that the CHIRPS product layout "
         "has not changed."
@@ -139,9 +176,9 @@ def _download_day_tif(session, day: date, dest_dir: Path) -> Path:
     import requests
 
     final_name = f"chirps-v3.0.sat.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
-    final_url = f"{CHIRPS_FINAL_BASE_URL}/{day.year:04d}/{final_name}"
+    final_url = _object_url(f"{_CHIRPS_FINAL_PREFIX}/{day.year:04d}/{final_name}")
     prelim_name = f"chirps-v3.0.prelim.{day.year:04d}.{day.month:02d}.{day.day:02d}.tif"
-    prelim_url = f"{CHIRPS_PRELIM_BASE_URL}/{day.year:04d}/{prelim_name}"
+    prelim_url = _object_url(f"{_CHIRPS_PRELIM_PREFIX}/{day.year:04d}/{prelim_name}")
 
     try:
         body = _get_tif_body(session, final_url)
@@ -185,11 +222,7 @@ def _open_day(tif: Path, day: date):
     "--workers",
     type=int,
     default=DEFAULT_WORKERS,
-    help=(
-        f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}). "
-        "Deliberately conservative: CHC's data server can throttle and "
-        "temporarily block IPs under higher concurrency."
-    ),
+    help=f"Max concurrent per-day download threads (default {DEFAULT_WORKERS}).",
 )
 @weather_skill.argument(
     "--probe-latest",
@@ -205,38 +238,18 @@ def _open_day(tif: Path, day: date):
     ),
 )
 def fetch(start_time, end_time, workers, **kwargs):
-    """Fetch CHIRPS precipitation over HTTPS (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
+    """Fetch CHIRPS precipitation from the public GCS mirror (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
     if kwargs.get("probe_latest") is not None:
-        import requests
-
         found: list[date] = []
         today = date.today()
         for year in (today.year, today.year - 1):
-            for base in (CHIRPS_PRELIM_BASE_URL, CHIRPS_FINAL_BASE_URL):
-                url = f"{base}/{year:04d}/"
-                try:
-                    resp = requests.get(
-                        url,
-                        timeout=HTTP_TIMEOUT,
-                        headers={"User-Agent": "weather-skills-chirps-fetch"},
-                    )
-                except requests.RequestException as exc:
-                    raise DataError(f"CHIRPS directory listing failed for {url}: {exc}") from None
-                if resp.status_code == 404:
-                    continue
-                if resp.status_code in (403, 429):
-                    raise DataError(
-                        f"CHIRPS directory listing refused ({resp.status_code} for {url}). "
-                        "Wait and retry; do not GET the daily TIFs to probe."
-                    )
-                if resp.status_code != 200:
-                    raise DataError(
-                        f"CHIRPS directory listing failed: HTTP {resp.status_code} for {url}"
-                    )
-                for match in _TIF_NAME_RE.finditer(resp.text):
-                    found.append(
-                        date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
-                    )
+            for prefix in (_CHIRPS_PRELIM_PREFIX, _CHIRPS_FINAL_PREFIX):
+                for name in _list_object_names(f"{prefix}/{year:04d}/"):
+                    match = _TIF_NAME_RE.fullmatch(name.rsplit("/", 1)[-1])
+                    if match:
+                        found.append(
+                            date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+                        )
             if found:
                 break
         if not found:
@@ -302,18 +315,17 @@ def fetch(start_time, end_time, workers, **kwargs):
             if statuses and all(s is not None and s >= 500 for s in statuses):
                 codes = ", ".join(str(c) for c in sorted(set(statuses)))
                 raise UsageError(
-                    f"the CHIRPS data server refused every request in "
-                    f"range {start}..{end} (HTTP {codes} on all days). This "
-                    "usually means rate limiting / a temporary server-side "
-                    "block from too many requests — wait and retry later, and "
-                    f"consider lowering --workers (current: {workers})."
+                    f"the CHIRPS mirror refused every request in "
+                    f"range {start}..{end} (HTTP {codes} on all days). "
+                    "Wait and retry later, and consider lowering --workers "
+                    f"(current: {workers})."
                 )
             raise UsageError(
                 f"no days available in range {start}..{end} from the "
-                f"CHIRPS data server (final or prelim sat product). CHIRPS v3.0 "
+                f"CHIRPS mirror (final or prelim sat product). CHIRPS v3.0 "
                 f"sat coverage runs {CHIRPS_FINAL_START_YEAR}-to-present, so a "
                 "date before that range yields nothing; otherwise this is a "
-                "server-side data gap. The validated final product also lags, so "
+                "data gap. The validated final product also lags, so "
                 "very recent days come from the preliminary product (published 2 "
                 "days after each pentad closes — pentads end on days 5, 10, 15, "
                 "20, 25, and last of month, worst-case lag ~7 days); for a very "
