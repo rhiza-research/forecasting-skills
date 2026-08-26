@@ -22,7 +22,17 @@ _WHITE = 250
 _BLACK = 8
 _BLANK_FRAC = 0.92
 _UNIFORM_UNIQUE = 12
-_ARG_KEYS = ("style", "title", "variable", "bbox", "panels", "algorithm", "colormap")
+_ARG_KEYS = (
+    "style",
+    "title",
+    "variable",
+    "bbox",
+    "panels",
+    "rows",
+    "columns",
+    "algorithm",
+    "colormap",
+)
 
 
 def _hex(rgb):

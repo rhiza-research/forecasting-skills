@@ -17,8 +17,11 @@ Source-agnostic single-dataset visualization. Two styles:
   view size, plus admin-1 (states / provinces / counties) on country-to-
   regional maps (span ≤ 45°). Overlays are clipped to the map extent. If
   the input has a `step` (or `time`) dimension, panels are laid out one per
-  step (up to 4 columns; rows added as needed) with a shared color scale and a
-  horizontal colorbar spanning all panels at the bottom. Ensemble members
+  step with a shared color scale and a horizontal colorbar spanning all
+  panels at the bottom. Default layout is up to 4 columns (rows added as
+  needed). `--rows` and/or `--columns` override that and must pack the
+  panel count exactly (`rows × columns` equals the number of steps/times;
+  leftover blank cells are not allowed). Ensemble members
   (`number` dim) are averaged before plotting. Use `--index` to override the
   default reduction for any other extra dim. Precipitation variables default
   to the Kenya / ECMWF-S2S product palette (white–wheat–green–blue–yellow–
@@ -51,7 +54,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
     [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E] \
-    [--mask-geojson PATH] [--draw-box N/W/S/E ...]
+    [--mask-geojson PATH] [--draw-box N/W/S/E ...] \
+    [--rows N] [--columns N]
 ```
 
 ### Arguments
@@ -91,6 +95,15 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   `'{"Windhoek": [-22.55, 17.08]}'` or a path to such a JSON file. Off by
   default.
 - `--fontsize` — base font size for titles/colorbar label (default 16).
+- `--rows` / `--columns` — heatmap panel grid. Pass either or both. When
+  either is set, the layout must pack the data exactly: both given →
+  `rows × columns` must equal the number of panels (steps/times after
+  `--index`); only `--columns` → that count must divide the panel count
+  (rows = n / columns); only `--rows` → that count must divide (columns
+  = n / rows). A mismatch is an error. When both are omitted, the default
+  is up to 4 columns with extra rows as needed (blank leftover cells
+  allowed). Heatmap-only — `--style timeseries` ignores them with a
+  stderr warning.
 - `--bbox` — optional `N/W/S/E` decimal degrees. Slices the gridded input to the
   bbox using `da.sel(...)` and sets the heatmap extent to that bbox. This is a
   rectangular slice (geographic overlays are decoration, not a mask). To
@@ -152,6 +165,12 @@ Override the palette (e.g. magma):
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
     --variable tp --style heatmap --colormap magma --title "S2S precip"
+```
+
+Six weekly maps in two rows of three (`rows × columns` must equal the panel count):
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/weekly.zarr -o /tmp/weekly.png \
+    --variable tp --rows 2 --columns 3
 ```
 
 Single-step map with cities and an explicit extent:

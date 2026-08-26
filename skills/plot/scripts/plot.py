@@ -385,6 +385,45 @@ def _draw_geo_overlays(ax, overlays, crs):
         ax.add_geometries(geoms, crs, **style)
 
 
+def _panel_shape(n, rows=None, columns=None):
+    """``(nrows, ncols)`` for ``n`` heatmap panels.
+
+    Default: up to 4 columns, extra rows as needed (leftover cells stay blank).
+    When ``rows`` and/or ``columns`` are set, the grid must pack ``n`` exactly.
+    """
+    if rows is not None and rows < 1:
+        raise UsageError(f"--rows must be a positive integer; got {rows}")
+    if columns is not None and columns < 1:
+        raise UsageError(f"--columns must be a positive integer; got {columns}")
+    if rows is None and columns is None:
+        ncols = min(4, max(n, 1))
+        nrows = (n + ncols - 1) // ncols if n else 1
+        return nrows, ncols
+    if rows is not None and columns is not None:
+        product = rows * columns
+        if product != n:
+            raise UsageError(
+                f"--rows {rows} × --columns {columns} = {product} panels, "
+                f"but the data has {n}; they must match"
+            )
+        return rows, columns
+    if columns is not None:
+        if n % columns != 0:
+            raise UsageError(
+                f"--columns {columns} does not divide the data ({n} panels); "
+                f"choose a count that divides {n}, or pass --rows so that "
+                f"rows × columns equals {n}"
+            )
+        return n // columns, columns
+    if n % rows != 0:
+        raise UsageError(
+            f"--rows {rows} does not divide the data ({n} panels); "
+            f"choose a count that divides {n}, or pass --columns so that "
+            f"rows × columns equals {n}"
+        )
+    return rows, n // rows
+
+
 def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
     lat_range = abs(lat_max - lat_min)
     lon_range = abs(lon_max - lon_min)
@@ -474,6 +513,8 @@ def _heatmap(
     norm=None,
     flag_ticks=None,
     flag_labels=None,
+    rows=None,
+    columns=None,
 ):
     import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
@@ -499,8 +540,7 @@ def _heatmap(
     title_steps = native_steps if native_steps is not None and native_step_dim == sdim else steps
 
     num_steps = len(steps)
-    ncols = min(4, num_steps)
-    nrows = int(np.ceil(num_steps / ncols))
+    nrows, ncols = _panel_shape(num_steps, rows=rows, columns=columns)
 
     if extent is None:
         lat_vals = np.asarray(da[lat_dim].values)
@@ -619,6 +659,18 @@ def _heatmap(
 @weather_skill.argument("--fontsize", type=int, default=16)
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
 @weather_skill.argument(
+    "--rows",
+    type=int,
+    default=None,
+    help="Heatmap panel rows. Alone or with --columns, the grid must pack the data exactly.",
+)
+@weather_skill.argument(
+    "--columns",
+    type=int,
+    default=None,
+    help="Heatmap panel columns. Alone or with --rows, the grid must pack the data exactly.",
+)
+@weather_skill.argument(
     "--mask-geojson",
     default=None,
     help="GeoJSON polygon; cells outside become NaN (heatmap only).",
@@ -645,6 +697,8 @@ def plot(
     fontsize,
     mask_geojson,
     draw_box,
+    rows,
+    columns,
     output,
     **kwargs,
 ):
@@ -677,6 +731,8 @@ def plot(
         "--cities": bool(cities),
         "--index": bool(overrides),
         "--draw-box": bool(draw_boxes),
+        "--rows": rows is not None,
+        "--columns": columns is not None,
     }
     if style != "heatmap":
         for flag, set_ in heatmap_only.items():
@@ -829,6 +885,8 @@ def plot(
             norm=norm,
             flag_ticks=flag_ticks,
             flag_labels=flag_labels,
+            rows=rows,
+            columns=columns,
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))

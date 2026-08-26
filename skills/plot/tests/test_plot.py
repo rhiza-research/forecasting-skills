@@ -207,3 +207,55 @@ def test_flag_field_heatmap_writes_png(tmp_path, plot_fn):
     run_skill(plot_fn, "-i", str(src), "-o", str(out))
     assert Path(out).exists()
     assert out.stat().st_size > 0
+
+
+def test_panel_shape_default_caps_columns_at_four():
+    plot_mod = load_skill("plot", "plot")
+    assert plot_mod._panel_shape(1) == (1, 1)
+    assert plot_mod._panel_shape(3) == (1, 3)
+    assert plot_mod._panel_shape(4) == (1, 4)
+    assert plot_mod._panel_shape(5) == (2, 4)
+    assert plot_mod._panel_shape(8) == (2, 4)
+
+
+def test_panel_shape_rows_and_columns_must_match_data():
+    from weather_skills_core import UsageError
+
+    plot_mod = load_skill("plot", "plot")
+    assert plot_mod._panel_shape(6, rows=2, columns=3) == (2, 3)
+    assert plot_mod._panel_shape(6, columns=3) == (2, 3)
+    assert plot_mod._panel_shape(6, rows=2) == (2, 3)
+    with pytest.raises(UsageError, match="must match"):
+        plot_mod._panel_shape(6, rows=2, columns=4)
+    with pytest.raises(UsageError, match="does not divide"):
+        plot_mod._panel_shape(5, columns=3)
+    with pytest.raises(UsageError, match="does not divide"):
+        plot_mod._panel_shape(5, rows=2)
+    with pytest.raises(UsageError, match="positive integer"):
+        plot_mod._panel_shape(3, rows=0)
+
+
+def test_heatmap_rows_columns_writes_png(tmp_path, plot_fn):
+    src = write_zarr(make_forecast(n_step=6), tmp_path / "in.zarr")
+    out = tmp_path / "grid.png"
+    run_skill(plot_fn, "-i", str(src), "-o", str(out), "--rows", "2", "--columns", "3")
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_heatmap_rows_columns_mismatch_exits(tmp_path, plot_fn, capsys):
+    src = write_zarr(make_forecast(n_step=3), tmp_path / "in.zarr")
+    out = tmp_path / "bad.png"
+    with pytest.raises(SystemExit):
+        run_skill(
+            plot_fn,
+            "-i",
+            str(src),
+            "-o",
+            str(out),
+            "--rows",
+            "2",
+            "--columns",
+            "3",
+        )
+    assert "must match" in capsys.readouterr().err
