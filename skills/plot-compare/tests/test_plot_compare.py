@@ -32,6 +32,19 @@ def test_two_gridded_inputs_write_png(tmp_path, plot_compare):
     assert out.stat().st_size > 0
 
 
+def test_precip_shared_scale_is_discrete_kenya_palette():
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    plot_mod = load_skill("plot-compare", "plot_compare")
+    cmap, norm = plot_mod._precip_scale()
+    assert isinstance(cmap, ListedColormap)
+    assert cmap.name == "wgbrp"
+    assert cmap.N == 10
+    assert cmap(0.0)[:3] == pytest.approx((1.0, 1.0, 1.0), abs=0.02)
+    assert isinstance(norm, BoundaryNorm)
+    assert list(norm.boundaries) == pytest.approx(plot_mod.PRECIP_BOUNDS)
+
+
 def test_parse_colormap_accepts_comma_separated_colors():
     from matplotlib.colors import LinearSegmentedColormap
 

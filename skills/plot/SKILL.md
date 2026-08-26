@@ -24,9 +24,10 @@ Source-agnostic single-dataset visualization. Two styles:
   leftover blank cells are not allowed). Ensemble members
   (`number` dim) are averaged before plotting. Use `--index` to override the
   default reduction for any other extra dim. Precipitation variables default
-  to the Kenya / ECMWF-S2S product palette (white–wheat–green–blue–yellow–
-  orange–red–purple), matching `kenya-forecast-png` weekly/dekadal precip
-  maps; other variables default to `viridis`.
+  to the discrete Kenya / ECMWF-S2S product classes (white–wheat–green–blue–
+  yellow–orange–red–purple at 0, 10, 20, 40, 60, 80, 110, 150, 200, 250,
+  350 mm), matching `kenya-forecast-png` weekly/dekadal precip maps; other
+  variables default to `viridis`.
 - `timeseries` — 1D profile. Averages across all non-time dims. Line plus a
   marker at each time point. A forecast cube (`step` lead times + scalar init
   `time`) is plotted against **valid time** (`init + step`) with calendar dates
@@ -68,9 +69,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   list of colors to interpolate between (e.g. `white,wheat,green`). Named
   matplotlib colormaps cannot contain commas, so the presence of a comma
   unambiguously selects the custom-list form. When omitted, precipitation
-  (rate or amount) uses the Kenya / ECMWF-S2S product palette
-  (`white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple`);
-  every other variable uses `viridis`. A variable with CF `flag_values`
+  (rate or amount) uses the discrete Kenya / ECMWF-S2S product classes
+  (`white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple`
+  with `BoundaryNorm` over `[0, 10, 20, 40, 60, 80, 110, 150, 200, 250,
+  350]` mm); every other variable uses `viridis`. A variable with CF `flag_values`
   (e.g. `event-hits`) uses a discrete colormap and labeled colorbar ticks;
   `--colormap` as comma-separated colors must then match the flag count.
 - `--title` — optional plot title.

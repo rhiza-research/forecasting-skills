@@ -30,6 +30,7 @@ from weather_skills_core.standard_utils import (
     polygon_from_geojson,
 )
 from weather_skills_core.units import (
+    classify_variable,
     precip_for_display,
     to_standard_units,
     units_equal,
@@ -40,8 +41,9 @@ from weather_skills_core.units import (
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
 
+# ECMWF-S2S4AFRICA / Kenya product palette (same as plot).
 PRECIP_COLORS = [
-    "#bdbdbd",
+    "white",
     "wheat",
     "lightgreen",
     "green",
@@ -63,6 +65,46 @@ def _parse_colormap(spec):
 
     parts = [p.strip() for p in spec.split(",") if p.strip()]
     return LinearSegmentedColormap.from_list("custom", parts)
+
+
+def _is_precip(da):
+    kind = classify_variable(
+        da.name or "",
+        units=variable_units(da),
+        standard_name=da.attrs.get("standard_name"),
+    )
+    return kind in ("precip", "precip_amount")
+
+
+def _precip_scale():
+    """Discrete Kenya / S2S rainfall classes (ListedColormap + BoundaryNorm)."""
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    cmap = ListedColormap(PRECIP_COLORS, name="wgbrp")
+    return cmap, BoundaryNorm(PRECIP_BOUNDS, ncolors=cmap.N, clip=True)
+
+
+def _row_scale(da, colormap):
+    """Per-row ``(cmap, norm, vmin, vmax)``. Default precip is discrete Kenya classes."""
+    if colormap:
+        return (
+            _parse_colormap(colormap),
+            None,
+            float(da.min().values),
+            float(da.max().values),
+        )
+    if _is_precip(da):
+        cmap, norm = _precip_scale()
+        return cmap, norm, None, None
+    return "viridis", None, float(da.min().values), float(da.max().values)
+
+
+def _cbar_kwargs(norm):
+    from matplotlib.colors import BoundaryNorm
+
+    if isinstance(norm, BoundaryNorm):
+        return {"spacing": "uniform", "ticks": list(norm.boundaries)}
+    return {}
 
 
 def _is_station(ds):
@@ -235,7 +277,7 @@ def _axis_kind(values):
     default=None,
     help=(
         "matplotlib colormap name, or comma-separated colors. "
-        "Shared-scale default: categorical precip BoundaryNorm."
+        "Precip default: discrete Kenya/S2S classes (BoundaryNorm)."
     ),
 )
 @weather_skill.argument(
@@ -302,7 +344,6 @@ def plot_compare(
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import numpy as np
-    from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap
     from matplotlib.gridspec import GridSpec
 
     var_a = variable_a or variable or auto_variable(ds_a)
@@ -592,10 +633,14 @@ def plot_compare(
         return variable_units(da)
 
     if use_shared_scale:
-        if colormap is None:
-            shared_cmap = LinearSegmentedColormap.from_list("wgbrp", PRECIP_COLORS)
-            shared_norm = BoundaryNorm(PRECIP_BOUNDS, shared_cmap.N)
+        if colormap is None and _is_precip(da_a) and _is_precip(da_b):
+            shared_cmap, shared_norm = _precip_scale()
             shared_vmin = shared_vmax = None
+        elif colormap is None:
+            shared_cmap = "viridis"
+            shared_norm = None
+            shared_vmax = float(np.nanmax([da_a.max().values, da_b.max().values]))
+            shared_vmin = float(np.nanmin([da_a.min().values, da_b.min().values]))
         else:
             shared_cmap = _parse_colormap(colormap)
             shared_norm = None
@@ -603,18 +648,8 @@ def plot_compare(
             shared_vmin = float(np.nanmin([da_a.min().values, da_b.min().values]))
         scale_a = scale_b = (shared_cmap, shared_norm, shared_vmin, shared_vmax)
     else:
-        scale_a = (
-            _parse_colormap(colormap_a or colormap) or "viridis",
-            None,
-            float(da_a.min().values),
-            float(da_a.max().values),
-        )
-        scale_b = (
-            _parse_colormap(colormap_b or colormap) or "viridis",
-            None,
-            float(da_b.min().values),
-            float(da_b.max().values),
-        )
+        scale_a = _row_scale(da_a, colormap_a or colormap)
+        scale_b = _row_scale(da_b, colormap_b or colormap)
 
     side_a = (ds_a, da_a, td_a, label_a, var_a, _row_units(da_a), scale_a)
     side_b = (ds_b, da_b, td_b, label_b, var_b, _row_units(da_b), scale_b)
@@ -694,9 +729,23 @@ def plot_compare(
         _ds, da, _td, label, var, _units, _scale = row
         return f"{label} {variable_label_for_display(da, fallback=var)}"
 
-    fig.colorbar(sc_top, ax=top_axes, label=_cbar_label(top), shrink=0.6, fraction=0.02, pad=0.02)
     fig.colorbar(
-        im_bottom, ax=bottom_axes, label=_cbar_label(bottom), shrink=0.6, fraction=0.02, pad=0.02
+        sc_top,
+        ax=top_axes,
+        label=_cbar_label(top),
+        shrink=0.6,
+        fraction=0.02,
+        pad=0.02,
+        **_cbar_kwargs(top[-1][1]),
+    )
+    fig.colorbar(
+        im_bottom,
+        ax=bottom_axes,
+        label=_cbar_label(bottom),
+        shrink=0.6,
+        fraction=0.02,
+        pad=0.02,
+        **_cbar_kwargs(bottom[-1][1]),
     )
 
     output = Path(output)

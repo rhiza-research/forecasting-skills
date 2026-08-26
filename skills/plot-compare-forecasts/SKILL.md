@@ -59,9 +59,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare_forecasts.py -i <a.zarr> -i <b.z
 - `--variable`, `-v` — variable name. Defaults to the first data variable of
   the first input. Must exist in every input.
 - `--colormap` — matplotlib colormap name, or comma-separated colors to
-  interpolate. When omitted, precipitation uses the Kenya / ECMWF-S2S
-  palette; every other variable uses `viridis`. One shared scale across all
-  present cells.
+  interpolate. When omitted, precipitation uses the discrete Kenya /
+  ECMWF-S2S classes (same bins as `plot`); every other variable uses
+  `viridis`. One shared scale across all present cells.
 - `--title` — optional figure title.
 - `--panels` — cap on columns, keeping the earliest N of the union. Default
   unset → every union column.

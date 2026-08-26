@@ -51,6 +51,7 @@ PRECIP_COLORS = [
     "red",
     "purple",
 ]
+PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
 
 # Natural Earth scale vs map span (max of lon/lat extent in degrees).
 # Admin-1 (states / provinces / counties) is only readable on country-to-regional
@@ -164,24 +165,30 @@ def _discrete_flag_scale(da, colormap):
     return cmap, BoundaryNorm(bounds, cmap.N), values, labels
 
 
-def _precip_colormap():
-    from matplotlib.colors import LinearSegmentedColormap
-
-    return LinearSegmentedColormap.from_list("wgbrp", PRECIP_COLORS)
-
-
-def _heatmap_cmap(da, colormap):
-    """Explicit ``--colormap``, else the Kenya/S2S precip palette, else viridis."""
-    if colormap:
-        return _parse_colormap(colormap)
+def _is_precip(da):
     kind = classify_variable(
         da.name or "",
         units=variable_units(da),
         standard_name=da.attrs.get("standard_name"),
     )
-    if kind in ("precip", "precip_amount"):
-        return _precip_colormap()
-    return "viridis"
+    return kind in ("precip", "precip_amount")
+
+
+def _precip_scale():
+    """Discrete Kenya / S2S rainfall classes (ListedColormap + BoundaryNorm)."""
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    cmap = ListedColormap(PRECIP_COLORS, name="wgbrp")
+    return cmap, BoundaryNorm(PRECIP_BOUNDS, ncolors=cmap.N, clip=True)
+
+
+def _heatmap_scale(da, colormap):
+    """Return ``(cmap, norm)``. ``norm`` is set for the default precip scale."""
+    if colormap:
+        return _parse_colormap(colormap), None
+    if _is_precip(da):
+        return _precip_scale()
+    return "viridis", None
 
 
 def _variable_label(da):
@@ -519,6 +526,7 @@ def _heatmap(
     import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
     import numpy as np
+    from matplotlib.colors import BoundaryNorm
 
     if "number" in da.dims:
         da = da.mean("number", keep_attrs=True)
@@ -616,7 +624,11 @@ def _heatmap(
         fig.suptitle(title, fontsize=fontsize)
     fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
-    cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", fraction=5)
+    cbar_kw = {}
+    if isinstance(norm, BoundaryNorm):
+        cbar_kw["spacing"] = "uniform"
+        cbar_kw["ticks"] = list(norm.boundaries)
+    cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", fraction=5, **cbar_kw)
     if flag_ticks is not None:
         cbar.set_ticks(flag_ticks)
         if flag_labels is not None:
@@ -638,7 +650,7 @@ def _heatmap(
     default=None,
     help=(
         "matplotlib colormap name, or comma-separated colors. "
-        "Default: Kenya/S2S precip palette for precip variables, else viridis."
+        "Default: discrete Kenya/S2S precip classes for precip variables, else viridis."
     ),
 )
 @weather_skill.argument(
@@ -823,8 +835,8 @@ def plot(
         if flag_scale is not None:
             cmap, norm, flag_ticks, flag_labels = flag_scale
         else:
-            cmap = _heatmap_cmap(da, colormap)
-            norm, flag_ticks, flag_labels = None, None, None
+            cmap, norm = _heatmap_scale(da, colormap)
+            flag_ticks, flag_labels = None, None
         region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
         wrapped_bbox = bbox_nwse is not None and bbox_nwse[1] > bbox_nwse[3]
 

@@ -55,6 +55,7 @@ PRECIP_COLORS = [
     "red",
     "purple",
 ]
+PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
 
 _NS_PER_DAY = 86_400_000_000_000
 _TOL_NS = 1_000_000_000  # 1 s, matching plot-compare
@@ -69,24 +70,26 @@ def _parse_colormap(spec):
     return LinearSegmentedColormap.from_list("custom", parts)
 
 
-def _precip_colormap():
-    from matplotlib.colors import LinearSegmentedColormap
+def _precip_scale():
+    """Discrete Kenya / S2S rainfall classes (ListedColormap + BoundaryNorm)."""
+    from matplotlib.colors import BoundaryNorm, ListedColormap
 
-    return LinearSegmentedColormap.from_list("wgbrp", PRECIP_COLORS)
+    cmap = ListedColormap(PRECIP_COLORS, name="wgbrp")
+    return cmap, BoundaryNorm(PRECIP_BOUNDS, ncolors=cmap.N, clip=True)
 
 
-def _heatmap_cmap(da, colormap):
-    """Explicit ``--colormap``, else the Kenya/S2S precip palette, else viridis."""
+def _heatmap_scale(da, colormap):
+    """Return ``(cmap, norm)``. ``norm`` is set for the default precip scale."""
     if colormap:
-        return _parse_colormap(colormap)
+        return _parse_colormap(colormap), None
     kind = classify_variable(
         da.name or "",
         units=variable_units(da),
         standard_name=da.attrs.get("standard_name"),
     )
     if kind in ("precip", "precip_amount"):
-        return _precip_colormap()
-    return "viridis"
+        return _precip_scale()
+    return "viridis", None
 
 
 def _variable_label(da):
@@ -474,7 +477,7 @@ def _extent_from_da(da, lat_dim, lon_dim, bbox):
     default=None,
     help=(
         "matplotlib colormap name, or comma-separated colors. "
-        "Default: Kenya/S2S precip palette for precip variables, else viridis."
+        "Default: discrete Kenya/S2S precip classes for precip variables, else viridis."
     ),
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
@@ -514,6 +517,7 @@ def plot_compare_forecasts(
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import numpy as np
+    from matplotlib.colors import BoundaryNorm
 
     variable = variable or auto_variable(ds[0])
     if variable is None:
@@ -570,28 +574,29 @@ def plot_compare_forecasts(
     wrap_lon = not (bbox is not None and bbox[1] > bbox[3])
     extent = _extent_from_da(das[0], lat_dims[0], lon_dims[0], bbox)
 
-    present_min = []
-    present_max = []
-    for row, da in enumerate(das):
-        pdim = panel_dims[row]
-        for idx in matches[row]:
-            if idx is None:
-                continue
-            slab = da.isel({pdim: idx})
-            present_min.append(float(slab.min(skipna=True).values))
-            present_max.append(float(slab.max(skipna=True).values))
-    if present_max:
-        vmin = float(np.nanmin(present_min))
-        vmax = float(np.nanmax(present_max))
-        if vmax > 0 and vmin < 0:
-            m = max(abs(vmax), abs(vmin))
-            vmin, vmax = -m, m
-        if not np.isfinite(vmin) or not np.isfinite(vmax) or vmin == vmax:
+    cmap, norm = _heatmap_scale(das[0], colormap)
+    vmin = vmax = None
+    if norm is None:
+        present_min = []
+        present_max = []
+        for row, da in enumerate(das):
+            pdim = panel_dims[row]
+            for idx in matches[row]:
+                if idx is None:
+                    continue
+                slab = da.isel({pdim: idx})
+                present_min.append(float(slab.min(skipna=True).values))
+                present_max.append(float(slab.max(skipna=True).values))
+        if present_max:
+            vmin = float(np.nanmin(present_min))
+            vmax = float(np.nanmax(present_max))
+            if vmax > 0 and vmin < 0:
+                m = max(abs(vmax), abs(vmin))
+                vmin, vmax = -m, m
+            if not np.isfinite(vmin) or not np.isfinite(vmax) or vmin == vmax:
+                vmin, vmax = 0.0, 1.0
+        else:
             vmin, vmax = 0.0, 1.0
-    else:
-        vmin, vmax = 0.0, 1.0
-
-    cmap = _heatmap_cmap(das[0], colormap)
     fig, axes = plt.subplots(
         nrows,
         ncols,
@@ -648,6 +653,7 @@ def plot_compare_forecasts(
                     slab[lat_dim],
                     slab.values,
                     cmap=cmap,
+                    norm=norm,
                     vmin=vmin,
                     vmax=vmax,
                     transform=ccrs.PlateCarree(),
@@ -670,7 +676,11 @@ def plot_compare_forecasts(
     if contour is not None:
         fig.tight_layout(rect=[0, 0.06, 1, 0.94 if title else 0.98])
         cbar_ax = fig.add_axes([0.15, 0.02, 0.7, 0.02])
-        cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal")
+        cbar_kw = {}
+        if isinstance(norm, BoundaryNorm):
+            cbar_kw["spacing"] = "uniform"
+            cbar_kw["ticks"] = list(norm.boundaries)
+        cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", **cbar_kw)
         cbar.set_label(_variable_label(das[0]))
     else:
         fig.tight_layout()

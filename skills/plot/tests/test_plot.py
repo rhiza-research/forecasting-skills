@@ -55,34 +55,42 @@ def test_timeseries_forecast_writes_png(tmp_path, plot_fn):
 
 
 def test_precip_default_colormap_is_kenya_palette():
-    from matplotlib.colors import LinearSegmentedColormap
+    from matplotlib.colors import BoundaryNorm, ListedColormap
 
     plot_mod = load_skill("plot", "plot")
     da = make_forecast()["tp"]
     da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
-    cmap = plot_mod._heatmap_cmap(da, None)
-    assert isinstance(cmap, LinearSegmentedColormap)
+    cmap, norm = plot_mod._heatmap_scale(da, None)
+    assert isinstance(cmap, ListedColormap)
     assert cmap.name == "wgbrp"
+    assert cmap.N == 10
     assert cmap(0.0)[:3] == pytest.approx((1.0, 1.0, 1.0), abs=0.02)
+    assert isinstance(norm, BoundaryNorm)
+    assert list(norm.boundaries) == pytest.approx(plot_mod.PRECIP_BOUNDS)
 
     rate = make_gridded()["precip"]
-    cmap_rate = plot_mod._heatmap_cmap(rate, None)
-    assert isinstance(cmap_rate, LinearSegmentedColormap)
+    cmap_rate, norm_rate = plot_mod._heatmap_scale(rate, None)
+    assert isinstance(cmap_rate, ListedColormap)
     assert cmap_rate.name == "wgbrp"
+    assert isinstance(norm_rate, BoundaryNorm)
 
 
 def test_non_precip_default_colormap_is_viridis():
     plot_mod = load_skill("plot", "plot")
     da = make_gridded(name="t2m")["t2m"]
     da.attrs.update(units="degree_Celsius", standard_name="air_temperature")
-    assert plot_mod._heatmap_cmap(da, None) == "viridis"
+    cmap, norm = plot_mod._heatmap_scale(da, None)
+    assert cmap == "viridis"
+    assert norm is None
 
 
 def test_explicit_colormap_overrides_precip_default():
     plot_mod = load_skill("plot", "plot")
     da = make_forecast()["tp"]
     da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
-    assert plot_mod._heatmap_cmap(da, "magma") == "magma"
+    cmap, norm = plot_mod._heatmap_scale(da, "magma")
+    assert cmap == "magma"
+    assert norm is None
 
 
 def test_amount_colorbar_drops_leftover_rate_name():
