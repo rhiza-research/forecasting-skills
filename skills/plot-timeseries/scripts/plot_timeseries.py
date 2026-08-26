@@ -160,7 +160,7 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
             ):
                 xvals = (np.asarray(ds["time"].values) + np.asarray(xvals)).astype("datetime64[ns]")
                 xlabel = "valid time"
-        ax.plot(xvals, da.values, label=label)
+        ax.plot(xvals, da.values, label=label, marker="o", markersize=5)
 
         if first_tdim is None:
             first_tdim = tdim

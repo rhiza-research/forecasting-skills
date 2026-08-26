@@ -173,8 +173,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
 
 A PNG with a `(2, n)` `GridSpec` (`figsize=(22, 10)`,
 `wspace=0.08`, `hspace=0.15`). Each row gets its own colorbar.
-Station scatter points use `s=30`. Y-axis labels appear only on the
-leftmost panel of each row.
+Station scatter points use `s=30`. Each panel's y-axis is the row's
+dataset name (`weather_skills_source`, else `A` / `B`). Latitude ticks
+stay on the leftmost panel of each row.
 
 ### Provenance
 

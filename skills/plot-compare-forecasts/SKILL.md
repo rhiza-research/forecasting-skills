@@ -53,8 +53,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare_forecasts.py -i <a.zarr> -i <b.z
 
 ### Arguments
 - `--input`, `-i` — input Zarr; repeat once per dataset (at least twice).
-  Order is the row order. Row labels come from `weather_skills_source` when
-  stamped, else `input 1`, `input 2`, …
+  Order is the row order. Each panel's y-axis is that row's name
+  (`weather_skills_source` when stamped, else `input 1`, `input 2`, …).
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable of
   the first input. Must exist in every input.

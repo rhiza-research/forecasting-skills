@@ -657,14 +657,12 @@ def plot_compare(
                 last_im = _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax)
             else:
                 last_im = _grid_panel(ax, sel, cmap, norm, vmin, vmax)
-            ax.set_title(f"{label}: {title_t}", fontsize=9)
+            ax.set_title(title_t, fontsize=9)
             if boundaries is not None:
                 boundaries.boundary.plot(edgecolor="grey", linewidth=1.0, ax=ax)
+            ax.set_ylabel(label)
             if col != 0:
-                ax.set_ylabel("")
                 ax.tick_params(left=False, labelleft=False)
-            else:
-                ax.set_ylabel("lat")
         return last_im
 
     sc_top = _plot_row(top_axes, top, n)

@@ -25,11 +25,11 @@ Source-agnostic single-dataset visualization. Two styles:
   to the Kenya / ECMWF-S2S product palette (white–wheat–green–blue–yellow–
   orange–red–purple), matching `kenya-forecast-png` weekly/dekadal precip
   maps; other variables default to `viridis`.
-- `timeseries` — 1D profile. Averages across all non-time dims. A forecast
-  cube (`step` lead times + scalar init `time`) is plotted against **valid
-  time** (`init + step`) with calendar dates on the x-axis, not raw lead-time
-  nanoseconds. An analysis / obs cube with a `time` dim is plotted against
-  that axis as-is.
+- `timeseries` — 1D profile. Averages across all non-time dims. Line plus a
+  marker at each time point. A forecast cube (`step` lead times + scalar init
+  `time`) is plotted against **valid time** (`init + step`) with calendar dates
+  on the x-axis, not raw lead-time nanoseconds. An analysis / obs cube with a
+  `time` dim is plotted against that axis as-is.
 
 ## When to use
 

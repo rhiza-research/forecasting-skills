@@ -79,8 +79,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
 
 ### Output
 
-A PNG at `--output`, single axes (`figsize=(10, 6)`), one line per input,
-legend on the axes. The y-axis label is the variable `long_name` (then
+A PNG at `--output`, single axes (`figsize=(10, 6)`), one line per input
+with a marker at each time point, legend on the axes. The y-axis label is the variable `long_name` (then
 `GRIB_name`, then the variable name) plus `[<units>]` when the variable
 carries a `units` attribute. Units are a short display form (`mm/day`,
 `°C`), not the on-disk CF string.

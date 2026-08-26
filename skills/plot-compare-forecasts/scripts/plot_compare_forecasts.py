@@ -665,8 +665,7 @@ def plot_compare_forecasts(
                         fontsize=8,
                         color="0.2",
                     )
-            if col == 0:
-                ax.set_ylabel(labels[row])
+            ax.set_ylabel(labels[row])
 
     if contour is not None:
         fig.tight_layout(rect=[0, 0.06, 1, 0.94 if title else 0.98])

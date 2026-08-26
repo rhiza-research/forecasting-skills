@@ -783,7 +783,7 @@ def plot(
         reduce_dims = [d for d in da.dims if d != sdim]
         reduced = da.mean(reduce_dims, keep_attrs=True)
         xvals, xlabel = _timeseries_axis(reduced, sdim)
-        ax.plot(xvals, reduced.values)
+        ax.plot(xvals, reduced.values, marker="o", markersize=5)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(_variable_label(reduced))
         qty = variable_label_for_display(reduced, include_units=False)
