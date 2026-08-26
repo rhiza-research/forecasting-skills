@@ -55,6 +55,16 @@ PRECIP_COLORS = [
 PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
 
 
+def _parse_colormap(spec):
+    """Matplotlib name, or a LinearSegmentedColormap from comma-separated colors."""
+    if spec is None or "," not in spec:
+        return spec
+    from matplotlib.colors import LinearSegmentedColormap
+
+    parts = [p.strip() for p in spec.split(",") if p.strip()]
+    return LinearSegmentedColormap.from_list("custom", parts)
+
+
 def _is_station(ds):
     return "station_id" in ds.dims
 
@@ -223,17 +233,20 @@ def _axis_kind(values):
 @weather_skill.argument(
     "--colormap",
     default=None,
-    help="matplotlib colormap. Shared-scale default: categorical precip BoundaryNorm.",
+    help=(
+        "matplotlib colormap name, or comma-separated colors. "
+        "Shared-scale default: categorical precip BoundaryNorm."
+    ),
 )
 @weather_skill.argument(
     "--colormap-a",
     default=None,
-    help="Colormap for row A in independent-scale mode.",
+    help="Colormap for row A in independent-scale mode (name or comma-separated colors).",
 )
 @weather_skill.argument(
     "--colormap-b",
     default=None,
-    help="Colormap for row B in independent-scale mode.",
+    help="Colormap for row B in independent-scale mode (name or comma-separated colors).",
 )
 @weather_skill.argument(
     "--shared-scale",
@@ -584,20 +597,20 @@ def plot_compare(
             shared_norm = BoundaryNorm(PRECIP_BOUNDS, shared_cmap.N)
             shared_vmin = shared_vmax = None
         else:
-            shared_cmap = colormap
+            shared_cmap = _parse_colormap(colormap)
             shared_norm = None
             shared_vmax = float(np.nanmax([da_a.max().values, da_b.max().values]))
             shared_vmin = float(np.nanmin([da_a.min().values, da_b.min().values]))
         scale_a = scale_b = (shared_cmap, shared_norm, shared_vmin, shared_vmax)
     else:
         scale_a = (
-            colormap_a or colormap or "viridis",
+            _parse_colormap(colormap_a or colormap) or "viridis",
             None,
             float(da_a.min().values),
             float(da_a.max().values),
         )
         scale_b = (
-            colormap_b or colormap or "viridis",
+            _parse_colormap(colormap_b or colormap) or "viridis",
             None,
             float(da_b.min().values),
             float(da_b.max().values),

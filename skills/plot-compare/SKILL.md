@@ -94,15 +94,18 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
   (CF grid-mapping/CRS container vars such as `latitude_longitude` are
   skipped during auto-pick).
 - `--variable-b` — variable for row B (same resolution as `--variable-a`).
-- `--colormap` — matplotlib colormap. In shared-scale mode, when omitted
-  the categorical precipitation cmap (`["#bdbdbd", "wheat", "lightgreen",
-  "green", "lightblue", "blue", "yellow", "orange", "red", "purple"]`)
-  with `BoundaryNorm` over `[0, 10, 20, 40, 60, 80, 110, 150, 200, 250,
-  350]` mm is used. In independent-scale mode it is the per-row default
-  (falling back to `viridis`).
-- `--colormap-a` / `--colormap-b` — per-row matplotlib colormap in
-  independent-scale mode. Precedence per row: `--colormap-a`/`-b`, then
-  `--colormap`, then `viridis`.
+- `--colormap` — matplotlib colormap name, or a comma-separated list of
+  colors to interpolate (e.g. `white,wheat,green`). Named matplotlib
+  colormaps cannot contain commas, so a comma selects the custom-list
+  form. In shared-scale mode, when omitted the categorical precipitation
+  cmap (`["#bdbdbd", "wheat", "lightgreen", "green", "lightblue", "blue",
+  "yellow", "orange", "red", "purple"]`) with `BoundaryNorm` over
+  `[0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]` mm is used. In
+  independent-scale mode it is the per-row default (falling back to
+  `viridis`).
+- `--colormap-a` / `--colormap-b` — per-row matplotlib colormap name or
+  comma-separated colors in independent-scale mode. Precedence per row:
+  `--colormap-a`/`-b`, then `--colormap`, then `viridis`.
 - `--shared-scale` / `--independent-scale` — mutually exclusive; force one
   shared color scale across both rows or a per-row scale + colorbar. When
   neither is given, the mode is chosen automatically: shared when both
@@ -153,8 +156,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
 - **Color-scale mode.** By default the scale is shared when both rows
   resolve to the same variable AND matching (stripped) `units`, and
   independent otherwise. `--shared-scale` / `--independent-scale` force
-  the mode. In shared mode both rows use one colormap, normalization,
-  vmin, and vmax. In independent mode each row computes its own vmin/vmax
+  the mode. In shared mode both rows use one colormap (a matplotlib name
+  or comma-separated colors), normalization, vmin, and vmax. In independent
+  mode each row computes its own vmin/vmax
   from its own data, uses its own colormap (precedence `--colormap-a`/`-b`,
   then `--colormap`, then `viridis`) with a continuous norm, and gets its
   own colorbar labeled `{file} {long_name} [{units}]` (`long_name`, then
