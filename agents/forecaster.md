@@ -43,10 +43,11 @@ Prefer small steps over stuffing every filter into one call:
   that product.
 - **Dates:** Fetchers take absolute `YYYY-MM-DD` only (`--start-time`/`--end-time` or
   `--date`). Use `resolve-time` for calendar ideas like "today" or "the last two
-  weeks" — it prints flags against UTC today (or `--as-of`). For the latest day
-  a product has published, run that fetcher with `--probe-latest` (no `-o`);
-  pass the date through, or use it as resolve-time `--as-of` to end a rolling
-  window there. Do not invent lag days.
+  weeks" — it prints flags against UTC today (or `--as-of`). "The last month of
+  data" / "last 30 days" is `last-30d` (rolling). `last-month` is the previous
+  complete calendar month. For the latest day a product has published, run that
+  fetcher with `--probe-latest` (no `-o`); pass the date through, or use it as
+  resolve-time `--as-of` to end a rolling window there. Do not invent lag days.
 - **Region:** Use `resolve-region` for a country bbox, then `clip-region` (or
   pass `--bbox` on a fetcher when the download itself should be limited).
 - **Variables / dims:** Use `select` (and fetcher `--variable` when the source
