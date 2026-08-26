@@ -95,3 +95,25 @@ def test_step_forecast_without_time_is_refused(tmp_path, event_hits):
             str(tmp_path / "out.zarr"),
         )
     assert exc.value.code == 2
+
+
+def test_obs_finer_grid_is_refused(tmp_path, event_hits):
+    fc = write_zarr(
+        make_gridded(n_time=1, fill=5.0, lats=(1.0, 2.0), lons=(10.0, 11.0)),
+        tmp_path / "fc.zarr",
+    )
+    obs = write_zarr(
+        make_gridded(n_time=1, fill=5.0, lats=(1.0, 1.5, 2.0), lons=(10.0, 10.5, 11.0)),
+        tmp_path / "obs.zarr",
+    )
+    with pytest.raises(SystemExit) as exc:
+        run_skill(
+            event_hits,
+            "--forecast",
+            str(fc),
+            "--obs",
+            str(obs),
+            "-o",
+            str(tmp_path / "out.zarr"),
+        )
+    assert exc.value.code == 2

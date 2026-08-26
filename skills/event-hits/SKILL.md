@@ -1,6 +1,6 @@
 ---
 name: event-hits
-description: Classify event hits and misses between a forecast Zarr and a truth Zarr. An event is the named variable at or above --threshold (default 1). A hit is both above; a disagree is when they differ; both below is below. Writes a weather-skills Zarr for plotting. Use after aligning time (step-to-time) and grid.
+description: Classify event hits and misses between a forecast Zarr and a truth Zarr. An event is the named variable at or above --threshold (default 1). A hit is both above; a disagree is when they differ; both below is below. Writes a weather-skills Zarr for plotting. Coarsen --obs onto the forecast lat/lon grid (match obs to the forecast resolution, do not downscale the forecast). Align time with step-to-time / aggregate-temporal first.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/event_hits.py *)
@@ -32,9 +32,13 @@ red / gray / green map (disagree / below / hit).
 - A map of where both saw the event, where they disagreed, and where both
   were below the cutoff.
 
-Run `step-to-time` on a classic forecast first. If the variable names differ
-(`tp` vs `precip`), `rename` one of them and pass `-v`. For a precip
-threshold in `mm`, run `aggregate-temporal` then `convert-to-totals` first.
+**Match obs to the forecast, not the reverse.** Coarsen `--obs` onto the
+forecast's lat/lon spacing and offset (`coarsen --target-resolution` /
+`--offset` from the forecast grid). Do not `downscale` the forecast onto
+the obs grid. Run `step-to-time` on a classic forecast first. If the
+variable names differ (`tp` vs `precip`), `rename` one of them and pass
+`-v`. For a precip threshold in `mm`, run `aggregate-temporal` then
+`convert-to-totals` first.
 
 ## Usage
 
@@ -47,7 +51,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/event_hits.py \
 ### Arguments
 
 - `--forecast` — forecast Zarr (required).
-- `--obs` — truth / observation Zarr (required).
+- `--obs` — truth / observation Zarr (required). Must already be on the
+  forecast's spatial resolution (coarsen obs to the forecast grid first).
 - `--variable`, `-v` — data variable that must exist in both inputs.
   Default: each input's first usable variable (names may differ).
 - `--threshold` — event cutoff: value ≥ this counts as the event

@@ -19,6 +19,49 @@ from weather_skills_core.units import units_equal, variable_units
 _SKILL_VERSION = "0.0.2"
 
 
+def _dim(ds, *names: str) -> str | None:
+    return next((n for n in names if n in ds.dims), None)
+
+
+def _median_spacing(coord) -> float | None:
+    vals = coord.values
+    if getattr(vals, "size", 0) < 2:
+        return None
+    import numpy as np
+
+    return float(np.median(np.abs(np.diff(np.asarray(vals, dtype=float)))))
+
+
+def _require_obs_on_forecast_grid(forecast, obs) -> None:
+    """Obs must already be at the forecast's lat/lon spacing (coarsen obs, not the forecast)."""
+    import numpy as np
+
+    lat_fc = _dim(forecast, "latitude", "lat")
+    lon_fc = _dim(forecast, "longitude", "lon")
+    lat_obs = _dim(obs, "latitude", "lat")
+    lon_obs = _dim(obs, "longitude", "lon")
+    if not all((lat_fc, lon_fc, lat_obs, lon_obs)):
+        return
+    pairs = (
+        (_median_spacing(forecast[lat_fc]), _median_spacing(obs[lat_obs]), "latitude"),
+        (_median_spacing(forecast[lon_fc]), _median_spacing(obs[lon_obs]), "longitude"),
+    )
+    mismatched = [
+        axis
+        for d_fc, d_obs, axis in pairs
+        if d_fc is not None
+        and d_obs is not None
+        and not np.isclose(d_fc, d_obs, rtol=0.01, atol=1e-6)
+    ]
+    if mismatched:
+        raise UsageError(
+            "obs grid spacing does not match the forecast on "
+            f"{' and '.join(mismatched)}; coarsen --obs onto the forecast "
+            "lat/lon resolution (and offset) before event-hits. Do not "
+            "downscale the forecast to the obs grid."
+        )
+
+
 @weather_skill(
     name="event-hits",
     version=_SKILL_VERSION,
@@ -61,6 +104,8 @@ def event_hits(forecast, obs, variable, threshold, **kwargs):
             "so valid times can align with --obs."
         )
 
+    _require_obs_on_forecast_grid(forecast, obs)
+
     u_fc = variable_units(forecast[fc_name])
     u_obs = variable_units(obs[obs_name])
     if (
@@ -81,7 +126,9 @@ def event_hits(forecast, obs, variable, threshold, **kwargs):
     if any(size == 0 for size in fc.sizes.values()):
         raise UsageError(
             "no overlapping coordinates between --forecast and --obs; "
-            "align grids (coarsen/clip) and time (step-to-time / aggregate-temporal) first."
+            "coarsen --obs onto the forecast grid (match obs to the forecast "
+            "resolution, not the reverse) and align time "
+            "(step-to-time / aggregate-temporal) first."
         )
 
     fc_event = fc >= threshold
