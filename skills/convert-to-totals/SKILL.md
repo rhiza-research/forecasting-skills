@@ -35,10 +35,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/convert_to_totals.py \
 ### Arguments
 
 - `--min-coverage` — drop intervals whose `aggregation_coverage` is below this
-  (0–1). Default **1.0** (every native sample present). `aggregate-temporal`
-  keeps incomplete bins and only stamps coverage; this flag is what filters
-  them. A 21-day bin that only has 90% of the expected slots fails at the
-  default; pass `0.6` to allow it. If no intervals remain, the skill errors.
+  (0–1). Default **1.0** (every native sample has finite data).
+  `aggregate-temporal` keeps incomplete bins and only stamps coverage; this
+  flag is what filters them. All-NaN unpublished forecast leads stamp
+  coverage 0 and are dropped at the default. A 21-day bin that only has 90%
+  of the expected finite slots fails at the default; pass `0.6` to allow it.
+  If no intervals remain, the skill errors.
 - `--variable`, `-v` — limit to named data vars (default: all).
 - `--time-dim` — time/step dim for the overlap gate (default: CF time or `step`).
 

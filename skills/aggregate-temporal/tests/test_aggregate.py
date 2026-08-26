@@ -344,3 +344,55 @@ def test_gefs_like_mixed_step_weekly_then_totals(tmp_path, aggregate):
     assert weekly_ds.sizes["time"] >= out.sizes["time"] >= 1
     assert "aggregation_coverage" in weekly_ds.coords
     assert out["precipitation_surface"].attrs["units"] == "mm"
+
+
+def test_gefs_unfilled_long_leads_stay_nan(tmp_path, aggregate):
+    """Unpublished GEFS leads are NaN; duration-weighted mean must not turn them into 0."""
+    ds = _gefs_like_mixed_step()
+    ds["precipitation_surface"].attrs.pop("data_interval", None)
+    ds["precipitation_surface"] = ds["precipitation_surface"].where(
+        ds["step"] <= np.timedelta64(21, "D")
+    )
+    src = write_zarr(ds, tmp_path / "gefs_partial.zarr")
+    weekly = tmp_path / "gefs_partial_weekly.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(weekly), "--period", "weekly")
+
+    out = xr.open_zarr(weekly, consolidated=True)
+    days = np.asarray(out["step"].values).astype("timedelta64[D]").astype(int)
+    vals = np.asarray(out["precipitation_surface"].values).reshape(days.size)
+    filled = {int(d): v for d, v in zip(days, vals, strict=True)}
+    assert filled[7] == pytest.approx(1.0)
+    assert filled[14] == pytest.approx(1.0)
+    assert filled[21] == pytest.approx(1.0)
+    assert np.isnan(filled[28])
+    assert np.isnan(filled[35])
+    cov = {int(d): c for d, c in zip(days, out["aggregation_coverage"].values, strict=True)}
+    assert cov[7] == pytest.approx(1.0)
+    assert cov[14] == pytest.approx(1.0)
+    assert cov[21] == pytest.approx(1.0)
+    assert cov[28] == pytest.approx(0.0)
+    assert cov[35] == pytest.approx(0.0)
+
+
+def test_nan_days_do_not_count_as_coverage(tmp_path, aggregate):
+    """A missing day inside an otherwise complete week stamps coverage 6/7."""
+    ds = make_gridded(n_time=7, fill=2.0)
+    ds["precip"].values[3] = np.nan
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
+    weekly = xr.open_zarr(out, consolidated=True)
+    assert weekly.sizes["time"] == 1
+    assert float(weekly["aggregation_coverage"].values[0]) == pytest.approx(6 / 7)
+    assert float(weekly["precip"].values.flat[0]) == pytest.approx(2.0)
+
+
+def test_spatial_nan_hole_does_not_reduce_coverage(tmp_path, aggregate):
+    """A persistent spatial hole is not a missing time sample."""
+    ds = make_gridded(n_time=7, fill=2.0)
+    ds["precip"].values[:, 0, 0] = np.nan
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
+    weekly = xr.open_zarr(out, consolidated=True)
+    assert float(weekly["aggregation_coverage"].values[0]) == pytest.approx(1.0)

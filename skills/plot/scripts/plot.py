@@ -62,7 +62,6 @@ _ADMIN1_STYLE = {"facecolor": "none", "edgecolor": "0.45", "linewidth": 0.4, "zo
 _LAKES_STYLE = {"facecolor": "none", "edgecolor": "0.2", "linewidth": 0.5, "zorder": 3.5}
 _BORDERS_STYLE = {"facecolor": "none", "edgecolor": "0.15", "linewidth": 0.8, "zorder": 4}
 _COAST_STYLE = {"facecolor": "none", "edgecolor": "black", "linewidth": 0.8, "zorder": 4}
-_HIGHLIGHT_STYLE = {"facecolor": "none", "edgecolor": "black", "linewidth": 1.3, "zorder": 4.5}
 
 
 def _parse_index(spec):
@@ -116,6 +115,53 @@ def _parse_colormap(spec):
 
     parts = [p.strip() for p in spec.split(",") if p.strip()]
     return LinearSegmentedColormap.from_list("custom", parts)
+
+
+def _flag_values(da):
+    """Sorted CF ``flag_values``, or None."""
+    import numpy as np
+
+    raw = da.attrs.get("flag_values")
+    if raw is None:
+        return None
+    values = np.asarray(raw, dtype=float).ravel()
+    if values.size < 2:
+        return None
+    return np.sort(values)
+
+
+def _discrete_flag_scale(da, colormap):
+    """ListedColormap + BoundaryNorm for CF flag fields, or None."""
+    import numpy as np
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    values = _flag_values(da)
+    if values is None:
+        return None
+    meanings = da.attrs.get("flag_meanings")
+    labels = None
+    if isinstance(meanings, str) and meanings.strip():
+        parts = meanings.split()
+        raw = np.asarray(da.attrs.get("flag_values"), dtype=float).ravel()
+        if parts and len(parts) == raw.size:
+            labels = [parts[i] for i in np.argsort(raw)]
+    colors = None
+    if colormap and "," in colormap:
+        parts = [p.strip() for p in colormap.split(",") if p.strip()]
+        if len(parts) == values.size:
+            colors = parts
+    if colors is None:
+        if values.size == 3:
+            colors = ["#d73027", "#f0f0f0", "#1a9850"]
+        else:
+            from matplotlib import colormaps
+
+            tab = colormaps["tab10"](np.linspace(0, 1, values.size))
+            colors = [tuple(c) for c in tab]
+    mids = (values[:-1] + values[1:]) / 2.0
+    bounds = np.concatenate(([values[0] - 0.5], mids, [values[-1] + 0.5]))
+    cmap = ListedColormap(colors)
+    return cmap, BoundaryNorm(bounds, cmap.N), values, labels
 
 
 def _precip_colormap():
@@ -425,7 +471,9 @@ def _heatmap(
     native_step_dim=None,
     native_steps=None,
     draw_boxes=None,
-    highlight_polygon=None,
+    norm=None,
+    flag_ticks=None,
+    flag_labels=None,
 ):
     import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
@@ -471,6 +519,8 @@ def _heatmap(
     if vmax > 0 and vmin < 0:
         m = max(abs(vmax), abs(vmin))
         vmin, vmax = -m, m
+    if norm is not None:
+        vmin, vmax = None, None
 
     sw, sh = _figsize_from_extent(*extent)
     fig, axes = plt.subplots(
@@ -486,11 +536,6 @@ def _heatmap(
     contour = None
     boxes = draw_boxes or []
     overlays = _load_geo_overlays(extent)
-    highlight_geoms = None
-    if highlight_polygon is not None:
-        highlight_geoms = [highlight_polygon]
-        if not wrap_lon:
-            highlight_geoms = _unwrap_geoms(highlight_geoms, extent[0])
     for i, s in enumerate(steps):
         ax = axes[i]
         slab = da if sdim is None else da.isel({sdim: i})
@@ -500,6 +545,7 @@ def _heatmap(
             slab[lat_dim],
             slab.values,
             cmap=cmap,
+            norm=norm,
             vmin=vmin,
             vmax=vmax,
             transform=ccrs.PlateCarree(),
@@ -510,8 +556,6 @@ def _heatmap(
             ax.set_xlim(extent[0], extent[1])
             ax.set_ylim(extent[2], extent[3])
         _draw_geo_overlays(ax, overlays, ccrs.PlateCarree())
-        if highlight_geoms:
-            ax.add_geometries(highlight_geoms, ccrs.PlateCarree(), **_HIGHLIGHT_STYLE)
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
@@ -533,6 +577,10 @@ def _heatmap(
     fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
     cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", fraction=5)
+    if flag_ticks is not None:
+        cbar.set_ticks(flag_ticks)
+        if flag_labels is not None:
+            cbar.set_ticklabels(flag_labels)
     cbar.set_label(_variable_label(da), fontsize=fontsize)
     return fig
 
@@ -715,7 +763,12 @@ def plot(
 
         extent_vals = _parse_extent(extent)
         cities_map = _parse_cities(cities)
-        cmap = _heatmap_cmap(da, colormap)
+        flag_scale = _discrete_flag_scale(da, colormap)
+        if flag_scale is not None:
+            cmap, norm, flag_ticks, flag_labels = flag_scale
+        else:
+            cmap = _heatmap_cmap(da, colormap)
+            norm, flag_ticks, flag_labels = None, None, None
         region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
         wrapped_bbox = bbox_nwse is not None and bbox_nwse[1] > bbox_nwse[3]
 
@@ -773,7 +826,9 @@ def plot(
             native_step_dim=native_step_dim,
             native_steps=native_steps,
             draw_boxes=draw_boxes,
-            highlight_polygon=region_polygon,
+            norm=norm,
+            flag_ticks=flag_ticks,
+            flag_labels=flag_labels,
         )
     else:
         fig, ax = plt.subplots(figsize=(10, 6))

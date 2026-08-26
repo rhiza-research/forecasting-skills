@@ -15,8 +15,7 @@ Source-agnostic single-dataset visualization. Two styles:
   overlays (Natural Earth, fetched and cached via `cartopy`): coastlines,
   country borders, and lake outlines at 10m / 50m / 110m depending on the
   view size, plus admin-1 (states / provinces / counties) on country-to-
-  regional maps (span ≤ 45°). Overlays are clipped to the map extent.
-  If `--mask-geojson` is set, that polygon is also outlined on top. If
+  regional maps (span ≤ 45°). Overlays are clipped to the map extent. If
   the input has a `step` (or `time`) dimension, panels are laid out one per
   step (up to 4 columns; rows added as needed) with a shared color scale and a
   horizontal colorbar spanning all panels at the bottom. Ensemble members
@@ -67,7 +66,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   unambiguously selects the custom-list form. When omitted, precipitation
   (rate or amount) uses the Kenya / ECMWF-S2S product palette
   (`white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple`);
-  every other variable uses `viridis`.
+  every other variable uses `viridis`. A variable with CF `flag_values`
+  (e.g. `event-hits`) uses a discrete colormap and labeled colorbar ticks;
+  `--colormap` as comma-separated colors must then match the flag count.
 - `--title` — optional plot title.
 - `--index` — dim selections like `step=3,number=0`. A dim may take several
   comma-separated positions, e.g. `step=0,1,2`, which keeps the dim with just
@@ -102,8 +103,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   `--geojson` output of the `resolve-region` skill). Gridded cells whose centers
   fall outside the polygon are set to NaN before plotting, so the heatmap shows
   the country shape rather than its bounding rectangle. All features in the file
-  are unioned. The same polygon is outlined on top of the scale-appropriate
-  Natural Earth overlays. Combine with `--bbox` to crop to the rectangle first,
+  are unioned. Combine with `--bbox` to crop to the rectangle first,
   then mask to the polygon within it. Heatmap-only — `--style timeseries`
   ignores it with a stderr warning. Default unset → no mask.
 - `--draw-box` — optional black outline rectangle(s) drawn on each heatmap panel.

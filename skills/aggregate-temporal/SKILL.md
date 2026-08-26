@@ -71,10 +71,12 @@ On each aggregated data variable:
 On the time/step axis:
 
 - `aggregation_coverage` — completeness of each interval vs native cells
-  (0–1). Incomplete bins are kept. Uniform: expected count =
-  `aggregation_period / data_interval` (or vs the input `aggregation_period`
-  on a re-aggregate). Irregular CF bounds: covered duration / window.
-  convert-to-totals `--min-coverage` (default 1.0) drops incomplete bins.
+  (0–1). Incomplete bins are kept. A native sample counts only if it has
+  **finite data** (all-NaN unpublished forecast leads do not). A persistent
+  spatial hole (land mask) does not mark the time as missing. Uniform:
+  finite count / (`aggregation_period / data_interval`). Irregular CF
+  bounds: finite covered duration / window. convert-to-totals
+  `--min-coverage` (default 1.0) drops incomplete bins.
 
 Inputs with CF `{dim}_bounds` are duration-weighted (`sum(rate × dt) / sum(dt)`), so a 1-day cell and a 5-day cell in the same week are not equal-weighted. `--window` is a step count and is refused on those axes.
 

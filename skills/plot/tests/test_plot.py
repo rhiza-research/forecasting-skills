@@ -189,3 +189,21 @@ def test_heatmap_draw_box_writes_png(tmp_path, plot_fn):
     )
     assert Path(out).exists()
     assert out.stat().st_size > 0
+
+
+def test_flag_field_heatmap_writes_png(tmp_path, plot_fn):
+    ds = make_gridded(n_time=1, fill=0.0, name="event_hit")
+    ds["event_hit"].values[0, 0, 0] = 1
+    ds["event_hit"].values[0, 0, 1] = -1
+    ds["event_hit"].attrs.update(
+        units="1",
+        long_name="Event verification",
+        flag_values=np.array([-1, 0, 1], dtype=np.int8),
+        flag_meanings="disagree below hit",
+    )
+    ds["event_hit"].attrs.pop("standard_name", None)
+    src = write_zarr(ds, tmp_path / "hits.zarr")
+    out = tmp_path / "hits.png"
+    run_skill(plot_fn, "-i", str(src), "-o", str(out))
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
