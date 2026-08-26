@@ -71,8 +71,9 @@ is a fresh start; a populated one holds artifacts to reuse, not ignore.
 
 This is a data workspace, not a codebase: there is no project source to read or
 search for. For a zarr store, use `inspect-zarr` to print dimension sizes,
-coordinate values, and a data-variable summary — do not try to dump the
-arrays yourself. For a plot PNG, run `inspect-figure` (blank/uniform flags,
+coordinate values, and a bounded data-variable summary (min/max/mean,
+finite/NaN counts, truncated sample). Data arrays can be huge: do not dump
+them yourself — this skill already truncates. For a plot PNG, run `inspect-figure` (blank/uniform flags,
 size, last plot skill) and **look at the image** (`Read` the PNG) whenever you
 generated a figure or the user says it looks wrong. A file's *provenance* —
 how it came to exist — is recorded separately; read it with the `provenance`
