@@ -32,6 +32,7 @@ _ARG_KEYS = (
     "columns",
     "algorithm",
     "colormap",
+    "threshold",
 )
 
 
@@ -93,7 +94,9 @@ def _notes(payload):
             "or the map extent missed the data — inspect-zarr the input"
         )
     if payload["looks_uniform"] and not payload["looks_blank"]:
-        notes.append("few distinct colors; the color scale may be collapsed or the field is constant")
+        notes.append(
+            "few distinct colors; the color scale may be collapsed or the field is constant"
+        )
     if min(payload["width"], payload["height"]) < 64:
         notes.append("very small image; the plot may have failed before drawing")
     if payload["last_step"] is None:

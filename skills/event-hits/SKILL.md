@@ -23,7 +23,9 @@ NaNs in either input stay NaN. Ensemble `number` is averaged before the
 threshold. Inputs are inner-joined (overlapping coordinates only).
 
 Plot the output with `plot`; CF `flag_values` draw as a discrete
-red / gray / green map (disagree / below / hit).
+red / gray / green map (disagree / below / hit). For one obs week against
+week-4 through week-1 forecasts (obs, forecast values, and hits in one grid), use
+`plot-verify`.
 
 ## When to use
 

@@ -41,7 +41,8 @@ in every input (use `rename` if datasets use different names, e.g. `tp` vs
   rather than shrinking the grid.
 
 For one dataset, use `plot`. For exactly two datasets (including
-station-vs-grid), use `plot-compare`.
+station-vs-grid), use `plot-compare`. For one obs week versus week-4 through week-1
+forecasts with a hits row, use `plot-verify`.
 
 ## Usage
 

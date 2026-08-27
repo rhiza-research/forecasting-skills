@@ -45,7 +45,8 @@ Source-agnostic single-dataset visualization. Two styles:
 
 For two-dataset comparisons, use the `plot-compare` skill. For N gridded
 datasets as a valid-time grid with blank cells where a dataset has no time,
-use `plot-compare-forecasts`.
+use `plot-compare-forecasts`. For one obs week versus week-4 through week-1 forecasts
+with a hits row, use `plot-verify`.
 
 ## Usage
 
