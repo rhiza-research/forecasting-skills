@@ -73,6 +73,31 @@ def test_four_leads_write_png_and_stamp_history(tmp_path, plot_fn, capsys):
     assert "hit rate" in printed
 
 
+def test_row_labels_use_weather_skills_source(plot_mod):
+    obs = _week(event_at=[])
+    obs.attrs["weather_skills_source"] = "chirps"
+    a = _week(event_at=[])
+    a.attrs["weather_skills_source"] = "ecmwf-s2s"
+    b = _week(event_at=[])
+    b.attrs["weather_skills_source"] = "ecmwf-s2s"
+    assert plot_mod._row_labels(obs, [a, b]) == ("chirps", "ecmwf-s2s", "Hits")
+
+
+def test_row_labels_fallback_without_source(plot_mod):
+    obs = _week(event_at=[])
+    fc = _week(event_at=[])
+    assert plot_mod._row_labels(obs, [fc]) == ("Observation", "Forecast", "Hits")
+
+
+def test_row_labels_join_distinct_forecast_products(plot_mod):
+    obs = _week(event_at=[])
+    a = _week(event_at=[])
+    a.attrs["weather_skills_source"] = "ecmwf-s2s"
+    b = _week(event_at=[])
+    b.attrs["weather_skills_source"] = "gefs"
+    assert plot_mod._row_labels(obs, [a, b]) == ("Observation", "ecmwf-s2s / gefs", "Hits")
+
+
 def test_custom_lead_labels(tmp_path, plot_fn, capsys):
     obs = write_zarr(_week(event_at=[(0, 0)]), tmp_path / "obs.zarr")
     a = write_zarr(_week(event_at=[(0, 0)]), tmp_path / "a.zarr")

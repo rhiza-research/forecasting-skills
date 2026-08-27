@@ -56,7 +56,7 @@ credentialed or source-specific fetcher only when it does not.
 | `plot` | Heatmap (optionally restricted to a `--bbox` and/or masked to a `--mask-geojson` polygon) or timeseries PNG from one dataset |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-compare-forecasts` | N-dataset comparison grid (rows = forecasts and/or gridded obs; columns = union of times); missing times are blank `n/a` cells |
-| `plot-verify` | Lead-week event verification **map** grid for one obs week (columns = week-4..1, least recent to most recent; rows = obs, forecast, and hit maps) |
+| `plot-verify` | Lead-week event verification **map** grid for one obs week (columns = week-4..1; rows labeled with the obs product, forecast product, and hits) |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
 | `kenya-forecast-png` | Pre-rendered KMSA / Sheerwater Kenya forecast product PNGs from the public kenya-forecasts archive (credential-free) |
 

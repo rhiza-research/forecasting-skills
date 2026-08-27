@@ -1,6 +1,6 @@
 ---
 name: plot-verify
-description: Plot a lead-week event-verification grid of maps for one observation week. Columns are week-4 through week-1 forecasts (least recent to most recent); rows are observation, forecast, and hit maps. Use after coarsening obs onto the forecast grid and selecting each forecast's verifying week. For precipitation, aggregate-temporal then convert-to-totals first.
+description: Plot a lead-week event-verification grid of maps for one observation week. Columns are week-4 through week-1 forecasts (least recent to most recent); rows are the obs product, the forecast product, and hits. Use after coarsening obs onto the forecast grid and selecting each forecast's verifying week. For precipitation, aggregate-temporal then convert-to-totals first.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_verify.py *)
@@ -16,14 +16,16 @@ on the right):
 
 | | Week 4 | Week 3 | Week 2 | Week 1 |
 | --- | --- | --- | --- | --- |
-| Observation | obs map | obs map | obs map | obs map |
-| Forecast | week-4 map | week-3 map | week-2 map | week-1 map |
+| obs product | obs map | obs map | obs map | obs map |
+| forecast product | week-4 map | week-3 map | week-2 map | week-1 map |
 | Hits | hit map | hit map | hit map | hit map |
 
 Each panel is a CartoPy heatmap (same style as `plot` /
 `plot-compare-forecasts`), not a table of numbers. Each `--forecast` is
 one column (pass week-4 first, week-1 last). Observation is the same
-map in every column so you can read down a lead. Hits use the
+map in every column so you can read down a lead. The left of each row is
+labeled with that row's product (`weather_skills_source` when stamped,
+else Observation / Forecast / Hits). Hits use the
 `event-hits` classification (event = variable ≥ `--threshold`, default 1):
 
 | Value | Meaning |
@@ -107,7 +109,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_verify.py \
 ### Output
 
 A PNG at `--output`: a 3 × N heatmap grid (N = number of `--forecast`).
-One colorbar for the obs/forecast maps, one for the hit flags. Stdout one
+Rows are labeled on the left with the obs product, forecast product
+(`weather_skills_source` when stamped), and Hits. One colorbar for the
+obs/forecast maps, one for the hit flags. Stdout one
 line per column with the hit rate, e.g. `Week 4  hit rate 72%  (18/25 obs events)`.
 
 ### Provenance

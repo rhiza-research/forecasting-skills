@@ -23,7 +23,11 @@ from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
-from weather_skills_core.standard_utils import lat_slice, polygon_from_geojson
+from weather_skills_core.standard_utils import (
+    dataset_label,
+    lat_slice,
+    polygon_from_geojson,
+)
 from weather_skills_core.units import (
     classify_variable,
     format_units_for_display,
@@ -49,7 +53,16 @@ PRECIP_COLORS = [
     "purple",
 ]
 PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
-_ROW_LABELS = ("Observation", "Forecast", "Hits")
+_ROW_FALLBACKS = ("Observation", "Forecast", "Hits")
+
+
+def _row_labels(obs, forecasts):
+    """Y-axis product names: weather_skills_source when stamped, else Observation / Forecast / Hits."""
+    obs_label = dataset_label(obs, _ROW_FALLBACKS[0])
+    fc_names = [dataset_label(ds, _ROW_FALLBACKS[1]) for ds in forecasts]
+    unique = list(dict.fromkeys(fc_names))
+    forecast_label = unique[0] if len(unique) == 1 else " / ".join(unique)
+    return (obs_label, forecast_label, _ROW_FALLBACKS[2])
 
 
 def _as_list(value):
@@ -356,6 +369,7 @@ def plot_verify(
         )
     if not leads:
         leads = [f"Week {i}" for i in range(len(forecasts), 0, -1)]
+    row_labels = _row_labels(obs, forecasts)
 
     import matplotlib
 
@@ -488,10 +502,19 @@ def plot_verify(
         )
         if hits_mesh is None:
             hits_mesh = mesh
-        for row, row_label in enumerate(_ROW_LABELS):
-            axes[row][col].set_ylabel(row_label)
 
-    fig.tight_layout(rect=[0, 0.10, 1, 0.94 if title else 0.98])
+    fig.tight_layout(rect=[0.10, 0.10, 1, 0.94 if title else 0.98])
+    for row, row_label in enumerate(row_labels):
+        pos = axes[row][0].get_position()
+        fig.text(
+            pos.x0 - 0.05,
+            (pos.y0 + pos.y1) / 2,
+            row_label,
+            rotation=90,
+            va="center",
+            ha="right",
+            fontsize=10,
+        )
     if field_mesh is not None:
         cbar_ax = fig.add_axes([0.08, 0.055, 0.50, 0.02])
         cbar_kw = {}
