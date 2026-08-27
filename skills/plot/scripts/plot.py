@@ -15,7 +15,7 @@
 #   "pint-xarray>=0.6",
 # ]
 # ///
-"""Render a heatmap or timeseries PNG from a weather-skills standard dataset Zarr."""
+"""Render a heatmap, timeseries, wind-rose, or quiver PNG from a weather-skills standard dataset Zarr."""
 
 import json
 import re
@@ -29,6 +29,7 @@ from weather_skills_core.units import (
     classify_variable,
     precip_for_display,
     to_standard_units,
+    units_equal,
     variable_label_for_display,
     variable_units,
 )
@@ -52,6 +53,40 @@ PRECIP_COLORS = [
     "purple",
 ]
 PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
+
+# Meteorological wind rose: 16 compass sectors, speed stacked in m/s classes.
+WIND_ROSE_SECTORS = 16
+WIND_SPEED_EDGES_MS = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+WIND_SPEED_COLORS = [
+    "#c6dbef",
+    "#6baed6",
+    "#2171b5",
+    "#08306b",
+    "#fd8d3c",
+    "#d94801",
+    "#7f2704",
+]
+_UV_NAME_PAIRS = (
+    ("u10", "v10"),
+    ("u100", "v100"),
+    ("10u", "10v"),
+    ("uas", "vas"),
+    ("ua", "va"),
+    ("u", "v"),
+    ("eastward_wind", "northward_wind"),
+    ("10m_u_component_of_wind", "10m_v_component_of_wind"),
+    ("100m_u_component_of_wind", "100m_v_component_of_wind"),
+    ("u_component_of_wind", "v_component_of_wind"),
+    ("uwind", "vwind"),
+    ("uwnd", "vwnd"),
+)
+_SAMPLE_DIM_NAMES = {"step", "number", "point_id", "station_id", "valid_time"}
+
+# ECMWF-S2S4AFRICA quiver_plot_variable (plot_s2s 10 m / 700 hPa wind vectors).
+QUIVER_CMAP = "YlGn"
+QUIVER_SCALE = 40.0
+QUIVER_REGRID_SHAPE = 10
+QUIVER_KEY_MS = (5.0, 10.0)
 
 # Natural Earth scale vs map span (max of lon/lat extent in degrees).
 # Admin-1 (states / provinces / counties) is only readable on country-to-regional
@@ -96,6 +131,181 @@ def _parse_index(spec):
             raise ValueError(f"--index position {pos} is repeated for dimension {current!r}")
         values[current].append(pos)
     return {k: v[0] if len(v) == 1 else v for k, v in values.items()}
+
+
+def _apply_index(da, overrides, *, list_dims=()):
+    """Select integer positions from ``overrides`` (``--index``).
+
+    A dim in ``list_dims`` may keep several positions; any other dim must be a
+    single position (the dim is then dropped). Pass ``list_dims=None`` to allow
+    a list on every dim. Duplicate / out-of-range positions (including negative
+    aliases of the same element) are errors.
+    """
+    if not overrides:
+        return da
+    allow_all_lists = list_dims is None
+    list_dims = () if list_dims is None else list_dims
+    for dim, idx in overrides.items():
+        if dim not in da.dims:
+            raise UsageError(
+                f"--index dimension {dim!r} is not in the data (dims: {list(da.dims)})"
+            )
+        if isinstance(idx, list) and not allow_all_lists and dim not in list_dims:
+            panel_desc = ", ".join(repr(d) for d in list_dims) if list_dims else "step/time"
+            raise UsageError(
+                f"--index list selection on {dim!r} is only supported "
+                f"on the panel dimension ({panel_desc}); give a single position"
+            )
+    for dim, idx in overrides.items():
+        size = da.sizes[dim]
+        positions = idx if isinstance(idx, list) else [idx]
+        seen = {}
+        for pos in positions:
+            if not -size <= pos < size:
+                raise UsageError(
+                    f"--index position {pos} is out of range for dimension {dim!r} (size {size})"
+                )
+            norm = pos % size
+            if norm in seen:
+                raise UsageError(
+                    f"--index positions {seen[norm]} and {pos} address "
+                    f"the same element of dimension {dim!r} (size {size})"
+                )
+            seen[norm] = pos
+        da = da.isel({dim: idx}, drop=True)
+    return da
+
+
+def _subset_spatial(da, lat_dim, lon_dim, bbox_nwse, region_polygon, extent_vals):
+    """Slice ``da`` to ``--bbox`` / ``--mask-geojson``. Returns ``(da, extent_vals)``."""
+    if bbox_nwse is None and region_polygon is None:
+        return da, extent_vals
+    import numpy as np
+    import xarray as xr
+
+    lon_vals_pre = np.asarray(da[lon_dim].values)
+    if lon_vals_pre.size and float(np.nanmax(lon_vals_pre)) > 180.0:
+        da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+    if bbox_nwse is not None:
+        r_n, r_w, r_s, r_e = bbox_nwse
+        da = da.sel({lat_dim: lat_slice(da[lat_dim].values, r_n, r_s)})
+        if r_w > r_e:
+            da = da.where((da[lon_dim] >= r_w) | (da[lon_dim] <= r_e), drop=True)
+        else:
+            da = da.sel({lon_dim: slice(r_w, r_e)})
+    if region_polygon is not None:
+        import shapely
+
+        lon_grid, lat_grid = np.meshgrid(da[lon_dim].values, da[lat_dim].values)
+        mask = shapely.contains_xy(region_polygon, lon_grid, lat_grid)
+        if not bool(mask.any()):
+            print(
+                "Warning: --mask-geojson polygon does not intersect the grid; "
+                "the map will be entirely empty.",
+                file=sys.stderr,
+            )
+        da = da.where(xr.DataArray(mask, dims=(lat_dim, lon_dim)))
+    if bbox_nwse is not None:
+        r_n, r_w, r_s, r_e = bbox_nwse
+        if r_w > r_e:
+            shifted = ((da[lon_dim] - r_w) % 360.0) + r_w
+            da = da.assign_coords({lon_dim: shifted}).sortby(lon_dim)
+        if extent_vals is None:
+            if r_w > r_e:
+                extent_vals = [float(r_w), float(r_e) + 360.0, float(r_s), float(r_n)]
+            else:
+                extent_vals = [float(r_w), float(r_e), float(r_s), float(r_n)]
+    return da, extent_vals
+
+
+def _subset_points(da, bbox_nwse, region_polygon):
+    """Filter station / point samples to ``--bbox`` / ``--mask-geojson``."""
+    import numpy as np
+    import xarray as xr
+
+    lat_name = cf_dim(da, "latitude")
+    lon_name = cf_dim(da, "longitude")
+    if lat_name is None or lon_name is None:
+        raise UsageError(
+            f"--bbox/--mask-geojson need latitude/longitude coordinates; got dims {list(da.dims)}"
+        )
+    lat = np.asarray(da[lat_name].values)
+    lon = np.asarray(da[lon_name].values)
+    keep = np.ones(np.broadcast(lat, lon).shape, dtype=bool)
+    lat_b, lon_b = np.broadcast_arrays(lat, lon)
+    if bbox_nwse is not None:
+        r_n, r_w, r_s, r_e = bbox_nwse
+        keep &= (lat_b >= r_s) & (lat_b <= r_n)
+        if r_w > r_e:
+            keep &= (lon_b >= r_w) | (lon_b <= r_e)
+        else:
+            keep &= (lon_b >= r_w) & (lon_b <= r_e)
+    if region_polygon is not None:
+        import shapely
+
+        keep &= shapely.contains_xy(region_polygon, lon_b, lat_b)
+        if not bool(keep.any()):
+            print(
+                "Warning: --mask-geojson polygon does not intersect the points; "
+                "the rose will be empty.",
+                file=sys.stderr,
+            )
+    keep_da = xr.DataArray(keep, dims=da[lat_name].dims)
+    return da.where(keep_da, drop=True)
+
+
+def _prepare_gridded_map(da, overrides, bbox_nwse, mask_geojson, extent, *, style):
+    """Index, bbox, and mask a lat/lon field for a map panel. Returns a tuple.
+
+    ``(da, lat_dim, lon_dim, extent_vals, wrap_lon, native_step_dim, native_steps)``.
+    """
+    lat_dim = cf_dim(da, "latitude")
+    lon_dim = cf_dim(da, "longitude")
+    if lat_dim is None or lon_dim is None:
+        raise UsageError(f"{style} requires lat/lon coords; got {list(da.dims)}.")
+    if lat_dim not in da.dims or lon_dim not in da.dims:
+        raise UsageError(
+            f"{style} needs lat/lon as dimensions, but {lat_dim!r}/"
+            f"{lon_dim!r} are non-dimension coordinates here (dims: "
+            f"{list(da.dims)}); station data has no 2D grid to plot."
+        )
+    native_step_dim = _step_dim(da)
+    native_steps = list(da[native_step_dim].values) if native_step_dim else None
+    list_dims = (native_step_dim,) if native_step_dim else ()
+    da = _apply_index(da, overrides, list_dims=list_dims)
+    for spatial_dim in (lat_dim, lon_dim):
+        if spatial_dim in overrides and spatial_dim not in da.dims:
+            raise UsageError(
+                f"--index removed the {spatial_dim!r} dimension; {style} needs a 2D lat/lon grid"
+            )
+    panel_dim = _step_dim(da)
+    for dim in da.dims:
+        if dim not in (panel_dim, "number", lat_dim, lon_dim):
+            panel_desc = repr(panel_dim) if panel_dim else "step/time"
+            raise UsageError(
+                f"dimension {dim!r} remains after selection; {style} "
+                f"panels only the {panel_desc} dimension — select a position "
+                f"from {dim!r} with --index"
+            )
+    if panel_dim is not None and da.sizes[panel_dim] == 0:
+        raise UsageError(f"dimension {panel_dim!r} has size 0; nothing to plot.")
+    extent_vals = _parse_extent(extent)
+    region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
+    wrapped_bbox = bbox_nwse is not None and bbox_nwse[1] > bbox_nwse[3]
+    da, extent_vals = _subset_spatial(da, lat_dim, lon_dim, bbox_nwse, region_polygon, extent_vals)
+    if da.sizes[lat_dim] == 0 or da.sizes[lon_dim] == 0:
+        raise UsageError(
+            "selection produced an empty grid (no cells remain after "
+            "--index/--bbox selection); nothing to plot."
+        )
+    return da, lat_dim, lon_dim, extent_vals, not wrapped_bbox, native_step_dim, native_steps
+
+
+def _plain(da):
+    """Drop a pint wrapper so matplotlib sees a numpy array."""
+    if getattr(da.pint, "units", None) is not None:
+        return da.pint.dequantify()
+    return da
 
 
 def _parse_extent(spec):
@@ -504,6 +714,571 @@ def _panel_title(da, sdim, step_value, all_steps):
         return fallback
 
 
+def _wind_component_role(da):
+    """``'u'`` / ``'v'`` from CF ``standard_name``, or None."""
+    sn = da.attrs.get("standard_name")
+    if not isinstance(sn, str) or not sn.strip():
+        return None
+    key = sn.strip().lower()
+    if "eastward" in key and "wind" in key:
+        return "u"
+    if "northward" in key and "wind" in key:
+        return "v"
+    return None
+
+
+def _infer_uv_partner(name, *, want_v):
+    """Guess the complementary u/v variable name, or None."""
+    pairs = dict(_UV_NAME_PAIRS)
+    inv = {v: u for u, v in _UV_NAME_PAIRS}
+    if want_v:
+        if name in pairs:
+            return pairs[name]
+        swapped = name.replace("eastward", "northward").replace("u_component", "v_component")
+        if swapped != name:
+            return swapped
+        if name.startswith("u"):
+            return "v" + name[1:]
+        return None
+    if name in inv:
+        return inv[name]
+    swapped = name.replace("northward", "eastward").replace("v_component", "u_component")
+    if swapped != name:
+        return swapped
+    if name.startswith("v"):
+        return "u" + name[1:]
+    return None
+
+
+def _resolve_uv(ds, u_variable, v_variable):
+    """Eastward/northward variable names from flags, CF attrs, or common names."""
+    names = list(ds.data_vars)
+    if u_variable and u_variable not in ds:
+        raise UsageError(f"--u-variable {u_variable!r} is not in the data (have {names})")
+    if v_variable and v_variable not in ds:
+        raise UsageError(f"--v-variable {v_variable!r} is not in the data (have {names})")
+    if u_variable and v_variable:
+        return u_variable, v_variable
+    if u_variable:
+        partner = _infer_uv_partner(u_variable, want_v=True)
+        if partner and partner in ds:
+            return u_variable, partner
+        raise UsageError(
+            f"--u-variable {u_variable!r} is set but no northward partner was found; "
+            "pass --v-variable"
+        )
+    if v_variable:
+        partner = _infer_uv_partner(v_variable, want_v=False)
+        if partner and partner in ds:
+            return partner, v_variable
+        raise UsageError(
+            f"--v-variable {v_variable!r} is set but no eastward partner was found; "
+            "pass --u-variable"
+        )
+    u_cf, v_cf = [], []
+    for name in names:
+        role = _wind_component_role(ds[name])
+        if role == "u":
+            u_cf.append(name)
+        elif role == "v":
+            v_cf.append(name)
+    if len(u_cf) == 1 and len(v_cf) == 1:
+        return u_cf[0], v_cf[0]
+    present = set(names)
+    matches = [(u, v) for u, v in _UV_NAME_PAIRS if u in present and v in present]
+    if matches:
+        return matches[0]
+    raise UsageError(
+        "u/v plot needs eastward (u) and northward (v) wind components; "
+        f"could not auto-detect them in {names}. Pass --u-variable and --v-variable."
+    )
+
+
+def _is_sample_dim(da, dim):
+    """True if ``dim`` is flattened into wind-rose samples rather than indexed."""
+    if dim in _SAMPLE_DIM_NAMES:
+        return True
+    for cf_name in ("latitude", "longitude", "time"):
+        if cf_dim(da, cf_name) == dim:
+            return True
+    return False
+
+
+def _flat_numeric(da):
+    """Raveled float samples, stripping a pint wrapper if present."""
+    import numpy as np
+
+    if getattr(da.pint, "units", None) is not None:
+        da = da.pint.dequantify()
+    return np.asarray(da.values, dtype=float).reshape(-1)
+
+
+def _uv_to_speed_fromdir(u, v):
+    """Speed and meteorological FROM direction in degrees (0=N, 90=E)."""
+    import numpy as np
+
+    u = np.asarray(u, dtype=float)
+    v = np.asarray(v, dtype=float)
+    speed = np.hypot(u, v)
+    fromdir = (np.degrees(np.arctan2(-u, -v)) + 360.0) % 360.0
+    return speed, fromdir
+
+
+def _speed_units_display(da):
+    raw = variable_units(da)
+    if not raw:
+        return "m/s"
+    if units_equal(raw, "m s-1"):
+        return "m/s"
+    return raw
+
+
+def _speed_edges(speed, units):
+    """Speed-bin edges. Standard 2 m/s classes when units are m/s, else 6 linear bins."""
+    import numpy as np
+
+    vmax = float(np.nanmax(speed)) if speed.size else 0.0
+    ms = bool(units) and units_equal(units, "m s-1")
+    if ms:
+        return np.asarray([*WIND_SPEED_EDGES_MS, np.inf], dtype=float)
+    if not np.isfinite(vmax) or vmax <= 0:
+        return np.array([0.0, 1.0], dtype=float)
+    return np.linspace(0.0, vmax, 7)
+
+
+def _speed_bin_labels(edges):
+    import numpy as np
+
+    labels = []
+    n = len(edges) - 1
+    for i in range(n):
+        lo = float(edges[i])
+        hi = edges[i + 1]
+        if np.isinf(hi):
+            labels.append(f"≥{lo:g}")
+        else:
+            labels.append(f"{lo:g}–{hi:g}")
+    return labels
+
+
+def _speed_colors(n, colormap):
+    import numpy as np
+    from matplotlib import colormaps
+    from matplotlib.colors import LinearSegmentedColormap
+
+    if n < 1:
+        return []
+    if colormap is None:
+        cmap = LinearSegmentedColormap.from_list("windrose", WIND_SPEED_COLORS)
+    else:
+        parsed = _parse_colormap(colormap)
+        cmap = colormaps[parsed] if isinstance(parsed, str) else parsed
+    if n == 1:
+        return [cmap(0.5)]
+    return [cmap(x) for x in np.linspace(0.0, 1.0, n)]
+
+
+def _wind_rose_hist(speed, direction, speed_edges, nsector=WIND_ROSE_SECTORS):
+    """2D histogram ``(nsector, nspeed)``. Sector 0 is North-centered."""
+    import numpy as np
+
+    offset = 180.0 / nsector
+    shifted = (np.asarray(direction, dtype=float) + offset) % 360.0
+    dir_edges = np.linspace(0.0, 360.0, nsector + 1)
+    hist, _, _ = np.histogram2d(shifted, speed, bins=[dir_edges, speed_edges])
+    return hist
+
+
+def _windrose(speed, direction, *, title, fontsize, units_disp, colormap, units):
+    """Polar stacked-bar wind rose; radial axis is frequency percent."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.patches import Patch
+
+    speed_edges = _speed_edges(speed, units)
+    hist = _wind_rose_hist(speed, direction, speed_edges)
+    while hist.shape[1] > 1 and float(hist[:, -1].sum()) == 0:
+        hist = hist[:, :-1]
+        speed_edges = speed_edges[:-1]
+    total = float(hist.sum())
+    if total <= 0:
+        raise UsageError("windrose has no finite u/v samples to plot.")
+    freq = 100.0 * hist / total
+    n_speed = freq.shape[1]
+    colors = _speed_colors(n_speed, colormap)
+    unit_suffix = f" {units_disp}" if units_disp else ""
+    legend_labels = [f"{lab}{unit_suffix}" for lab in _speed_bin_labels(speed_edges)]
+
+    nsector = WIND_ROSE_SECTORS
+    width = 2.0 * np.pi / nsector
+    theta = np.arange(nsector) * width
+    fig = plt.figure(figsize=(8.5, 7.0))
+    ax = fig.add_subplot(111, projection="polar")
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    bottom = np.zeros(nsector)
+    for i in range(n_speed):
+        ax.bar(
+            theta,
+            freq[:, i],
+            width=width,
+            bottom=bottom,
+            color=colors[i],
+            edgecolor="white",
+            linewidth=0.4,
+            align="center",
+            zorder=2,
+        )
+        bottom += freq[:, i]
+    ax.set_thetagrids(
+        [0, 45, 90, 135, 180, 225, 270, 315],
+        ["N", "NE", "E", "SE", "S", "SW", "W", "NW"],
+    )
+    ax.tick_params(axis="y", labelsize=int(fontsize * 0.7))
+    ax.set_ylim(0, max(float(bottom.max()) * 1.08, 1.0))
+    ax.text(
+        0.5,
+        1.12,
+        "Frequency (%)",
+        transform=ax.transAxes,
+        ha="center",
+        fontsize=int(fontsize * 0.8),
+    )
+    handles = [
+        Patch(facecolor=colors[i], edgecolor="white", label=legend_labels[i])
+        for i in range(n_speed)
+    ]
+    ax.legend(
+        handles=handles,
+        title="Wind speed",
+        loc="center left",
+        bbox_to_anchor=(1.15, 0.5),
+        fontsize=int(fontsize * 0.7),
+        title_fontsize=int(fontsize * 0.75),
+        frameon=False,
+    )
+    if title:
+        fig.suptitle(title, fontsize=fontsize, y=0.98)
+    return fig
+
+
+def _plot_windrose(
+    ds,
+    u_variable,
+    v_variable,
+    variable,
+    overrides,
+    bbox_nwse,
+    mask_geojson,
+    title,
+    fontsize,
+    colormap,
+):
+    """Flatten u/v samples into one meteorological-from wind rose."""
+    import numpy as np
+
+    if variable:
+        print(
+            "Warning: --variable is ignored for --style windrose; "
+            "use --u-variable/--v-variable or auto-detection.",
+            file=sys.stderr,
+        )
+    u_name, v_name = _resolve_uv(ds, u_variable, v_variable)
+    ds = to_standard_units(ds, variables=[u_name, v_name])
+    u_da = ds[u_name]
+    v_da = ds[v_name]
+    u_da = _apply_index(u_da, overrides, list_dims=None)
+    v_da = _apply_index(v_da, overrides, list_dims=None)
+    extra = [d for d in u_da.dims if not _is_sample_dim(u_da, d)]
+    if extra:
+        raise UsageError(
+            f"dimension {extra[0]!r} remains after selection; windrose "
+            "flattens space/time/ensemble into samples — select a position "
+            f"from {extra[0]!r} with --index"
+        )
+    region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
+    if bbox_nwse is not None or region_polygon is not None:
+        lat_dim = cf_dim(u_da, "latitude")
+        lon_dim = cf_dim(u_da, "longitude")
+        if lat_dim and lon_dim and lat_dim in u_da.dims and lon_dim in u_da.dims:
+            u_da, _ = _subset_spatial(u_da, lat_dim, lon_dim, bbox_nwse, region_polygon, None)
+            v_da, _ = _subset_spatial(v_da, lat_dim, lon_dim, bbox_nwse, region_polygon, None)
+        else:
+            u_da = _subset_points(u_da, bbox_nwse, region_polygon)
+            v_da = _subset_points(v_da, bbox_nwse, region_polygon)
+    u_vals = _flat_numeric(u_da)
+    v_vals = _flat_numeric(v_da)
+    if u_vals.size != v_vals.size:
+        raise UsageError(
+            f"u {u_name!r} and v {v_name!r} have different sizes after selection "
+            f"({u_vals.size} vs {v_vals.size}); they must share coordinates"
+        )
+    valid = np.isfinite(u_vals) & np.isfinite(v_vals)
+    u_vals, v_vals = u_vals[valid], v_vals[valid]
+    if u_vals.size == 0:
+        raise UsageError("windrose has no finite u/v samples to plot.")
+    u_units = variable_units(u_da)
+    v_units = variable_units(v_da)
+    if u_units and v_units and not units_equal(u_units, v_units):
+        raise UsageError(f"u units {u_units!r} do not match v units {v_units!r}")
+    speed, direction = _uv_to_speed_fromdir(u_vals, v_vals)
+    return _windrose(
+        speed,
+        direction,
+        title=title,
+        fontsize=fontsize,
+        units_disp=_speed_units_display(u_da),
+        colormap=colormap,
+        units=u_units,
+    )
+
+
+def _wind_speed_da(u_da, v_da):
+    """Speed from eastward/northward components, with a Wind speed label."""
+    import numpy as np
+    import xarray as xr
+
+    u_da = _plain(u_da)
+    v_da = _plain(v_da)
+    speed = xr.apply_ufunc(np.hypot, u_da, v_da, keep_attrs=False)
+    units = variable_units(u_da) or "m s-1"
+    speed.name = "speed"
+    speed.attrs.update(long_name="Wind speed", units=units, standard_name="wind_speed")
+    return speed
+
+
+def _wind_speed_cbar_label(u_da):
+    units_disp = _speed_units_display(u_da)
+    blob = " ".join(str(u_da.attrs.get(key) or "") for key in ("long_name", "GRIB_name")).lower()
+    if "anomal" in blob:
+        return f"Wind speed anomaly [{units_disp}]"
+    return f"Wind speed [{units_disp}]"
+
+
+def _quiver_map(
+    speed,
+    u_da,
+    v_da,
+    lat_dim,
+    lon_dim,
+    cmap,
+    extent,
+    cities,
+    title,
+    fontsize,
+    wrap_lon=True,
+    native_step_dim=None,
+    native_steps=None,
+    draw_boxes=None,
+    rows=None,
+    columns=None,
+    quiver_scale=QUIVER_SCALE,
+    cbar_label=None,
+):
+    """S2S-style speed pcolormesh with regridded u/v arrows (quiver_plot_variable)."""
+    import cartopy.crs as ccrs
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    def _prep(da):
+        da = _plain(da)
+        if "number" in da.dims:
+            da = da.mean("number", keep_attrs=True)
+        if wrap_lon:
+            lon_vals = np.asarray(da[lon_dim].values)
+            if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
+                da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+        return da
+
+    speed = _prep(speed)
+    u_da = _prep(u_da)
+    v_da = _prep(v_da)
+
+    sdim = _step_dim(speed)
+    if sdim is None or speed.sizes.get(sdim, 1) == 1:
+        if sdim and sdim in speed.dims:
+            speed = speed.squeeze(sdim, drop=True)
+            u_da = u_da.squeeze(sdim, drop=True)
+            v_da = v_da.squeeze(sdim, drop=True)
+        steps = [None]
+        sdim = None
+    else:
+        steps = list(speed[sdim].values)
+
+    title_steps = native_steps if native_steps is not None and native_step_dim == sdim else steps
+    num_steps = len(steps)
+    nrows, ncols = _panel_shape(num_steps, rows=rows, columns=columns)
+
+    if extent is None:
+        lat_vals = np.asarray(speed[lat_dim].values)
+        lon_vals = np.asarray(speed[lon_dim].values)
+        dlat = float(np.abs(np.diff(np.sort(lat_vals))).mean()) if lat_vals.size > 1 else 0.0
+        dlon = float(np.abs(np.diff(np.sort(lon_vals))).mean()) if lon_vals.size > 1 else 0.0
+        extent = [
+            float(lon_vals.min()) - dlon / 2,
+            float(lon_vals.max()) + dlon / 2,
+            float(lat_vals.min()) - dlat / 2,
+            float(lat_vals.max()) + dlat / 2,
+        ]
+
+    vmax = float(speed.max(skipna=True).values)
+    vmin = float(speed.min(skipna=True).values)
+    if vmax > 0 and vmin < 0:
+        m = max(abs(vmax), abs(vmin))
+        vmin, vmax = -m, m
+
+    sw, sh = _figsize_from_extent(*extent)
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(sw * ncols, sh * nrows),
+        sharex=True,
+        sharey=True,
+        subplot_kw={"projection": ccrs.PlateCarree()},
+    )
+    axes = np.array(axes).reshape(nrows, ncols).flatten()
+
+    mesh = None
+    quiv = None
+    boxes = draw_boxes or []
+    overlays = _load_geo_overlays(extent)
+    for i, s in enumerate(steps):
+        ax = axes[i]
+        slab = speed if sdim is None else speed.isel({sdim: i})
+        u_slab = u_da if sdim is None else u_da.isel({sdim: i})
+        v_slab = v_da if sdim is None else v_da.isel({sdim: i})
+        slab = slab.transpose(lat_dim, lon_dim)
+        u_slab = u_slab.transpose(lat_dim, lon_dim)
+        v_slab = v_slab.transpose(lat_dim, lon_dim)
+        if wrap_lon:
+            ax.set_extent(extent, crs=ccrs.PlateCarree())
+        else:
+            ax.set_xlim(extent[0], extent[1])
+            ax.set_ylim(extent[2], extent[3])
+        mesh = ax.pcolormesh(
+            slab[lon_dim],
+            slab[lat_dim],
+            slab.values,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            transform=ccrs.PlateCarree(),
+        )
+        quiv = ax.quiver(
+            u_slab[lon_dim],
+            u_slab[lat_dim],
+            u_slab.values,
+            v_slab.values,
+            transform=ccrs.PlateCarree(),
+            regrid_shape=QUIVER_REGRID_SHAPE,
+            scale=quiver_scale,
+            color="k",
+            zorder=5,
+        )
+        _draw_geo_overlays(ax, overlays, ccrs.PlateCarree())
+        gl = ax.gridlines(draw_labels=True, alpha=0)
+        gl.top_labels = False
+        gl.right_labels = False
+        ax.set_xlabel("Longitude")
+        ax.set_ylabel("Latitude")
+        for city, (lat, lon) in cities.items():
+            ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=ccrs.PlateCarree())
+            ax.text(lon - 2.0, lat + 0.5, city, fontsize=10, transform=ccrs.PlateCarree())
+        if boxes:
+            _draw_boxes_on_ax(ax, boxes, ccrs.PlateCarree())
+        if s is not None:
+            ax.set_title(_panel_title(speed, sdim, s, title_steps), fontsize=int(fontsize * 0.8))
+
+    for j in range(num_steps, len(axes)):
+        axes[j].set_visible(False)
+
+    last = axes[num_steps - 1]
+    units_disp = _speed_units_display(u_da)
+    y_key = 0.18
+    for u_ref in QUIVER_KEY_MS:
+        last.quiverkey(
+            quiv,
+            1.18,
+            y_key,
+            u_ref,
+            f"{u_ref:g} {units_disp}",
+            labelpos="E",
+            coordinates="axes",
+        )
+        y_key -= 0.10
+
+    if title:
+        fig.suptitle(title, fontsize=fontsize)
+    fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
+    cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
+    cbar = fig.colorbar(mesh, cax=cbar_ax, orientation="horizontal", fraction=5)
+    cbar.set_label(cbar_label or _wind_speed_cbar_label(u_da), fontsize=fontsize)
+    return fig
+
+
+def _plot_quiver(
+    ds,
+    u_variable,
+    v_variable,
+    variable,
+    overrides,
+    bbox_nwse,
+    mask_geojson,
+    extent,
+    cities,
+    title,
+    fontsize,
+    colormap,
+    draw_boxes,
+    rows,
+    columns,
+    quiver_scale,
+):
+    """Map panels of wind speed with S2S-style u/v quiver overlay."""
+    if variable:
+        print(
+            "Warning: --variable is ignored for --style quiver; "
+            "use --u-variable/--v-variable or auto-detection.",
+            file=sys.stderr,
+        )
+    u_name, v_name = _resolve_uv(ds, u_variable, v_variable)
+    ds = to_standard_units(ds, variables=[u_name, v_name])
+    u_da = ds[u_name]
+    v_da = ds[v_name]
+    u_units = variable_units(u_da)
+    v_units = variable_units(v_da)
+    if u_units and v_units and not units_equal(u_units, v_units):
+        raise UsageError(f"u units {u_units!r} do not match v units {v_units!r}")
+    u_da, lat_dim, lon_dim, extent_vals, wrap_lon, native_step_dim, native_steps = (
+        _prepare_gridded_map(u_da, overrides, bbox_nwse, mask_geojson, extent, style="quiver")
+    )
+    v_da, *_ = _prepare_gridded_map(
+        v_da, overrides, bbox_nwse, mask_geojson, extent, style="quiver"
+    )
+    speed = _wind_speed_da(u_da, v_da)
+    cmap = _parse_colormap(colormap) if colormap else QUIVER_CMAP
+    return _quiver_map(
+        speed,
+        u_da,
+        v_da,
+        lat_dim,
+        lon_dim,
+        cmap,
+        extent_vals,
+        _parse_cities(cities),
+        title,
+        fontsize,
+        wrap_lon=wrap_lon,
+        native_step_dim=native_step_dim,
+        native_steps=native_steps,
+        draw_boxes=draw_boxes,
+        rows=rows,
+        columns=columns,
+        quiver_scale=quiver_scale if quiver_scale is not None else QUIVER_SCALE,
+        cbar_label=_wind_speed_cbar_label(u_da),
+    )
+
+
 def _heatmap(
     da,
     lat_dim,
@@ -644,29 +1419,48 @@ def _heatmap(
 @weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")
-@weather_skill.argument("--style", choices=["heatmap", "timeseries"], default="heatmap")
+@weather_skill.argument(
+    "--style",
+    choices=["heatmap", "timeseries", "windrose", "quiver"],
+    default="heatmap",
+)
+@weather_skill.argument(
+    "--u-variable",
+    default=None,
+    help="Eastward wind variable (windrose/quiver). Auto-detected when omitted.",
+)
+@weather_skill.argument(
+    "--v-variable",
+    default=None,
+    help="Northward wind variable (windrose/quiver). Auto-detected when omitted.",
+)
 @weather_skill.argument(
     "--colormap",
     default=None,
     help=(
         "matplotlib colormap name, or comma-separated colors. "
-        "Default: discrete Kenya/S2S precip classes for precip variables, else viridis."
+        "Heatmap default: discrete Kenya/S2S precip classes for precip "
+        "variables, else viridis. Windrose default: blue-to-orange speed classes. "
+        "Quiver default: YlGn (ECMWF S2S 10 m / 700 hPa wind vectors)."
     ),
 )
 @weather_skill.argument(
     "--index",
     default=None,
-    help="Slice like 'step=3,number=0' (heatmap only). Lists keep the dim as panels.",
+    help=(
+        "Slice like 'step=3,number=0' (heatmap, quiver, and windrose). "
+        "Heatmap/quiver lists keep the dim as panels; windrose lists keep samples."
+    ),
 )
 @weather_skill.argument(
     "--extent",
     default=None,
-    help="Map extent 'lon_min,lon_max,lat_min,lat_max' (heatmap only).",
+    help="Map extent 'lon_min,lon_max,lat_min,lat_max' (heatmap and quiver).",
 )
 @weather_skill.argument(
     "--cities",
     default=None,
-    help='City overlay JSON (heatmap only). Inline {"name": [lat, lon]} or file path.',
+    help='City overlay JSON (heatmap and quiver). Inline {"name": [lat, lon]} or file path.',
 )
 @weather_skill.argument("--fontsize", type=int, default=16)
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
@@ -674,26 +1468,39 @@ def _heatmap(
     "--rows",
     type=int,
     default=None,
-    help="Heatmap panel rows. Alone or with --columns, the grid must pack the data exactly.",
+    help=(
+        "Heatmap/quiver panel rows. Alone or with --columns, the grid must pack the data exactly."
+    ),
 )
 @weather_skill.argument(
     "--columns",
     type=int,
     default=None,
-    help="Heatmap panel columns. Alone or with --rows, the grid must pack the data exactly.",
+    help=(
+        "Heatmap/quiver panel columns. Alone or with --rows, the grid must pack the data exactly."
+    ),
 )
 @weather_skill.argument(
     "--mask-geojson",
     default=None,
-    help="GeoJSON polygon; cells outside become NaN (heatmap only).",
+    help="GeoJSON polygon; cells/points outside become NaN (heatmap, quiver, windrose).",
 )
 @weather_skill.argument(
     "--draw-box",
     action="append",
     default=None,
     help=(
-        "Draw a black outline box on the heatmap as N/W/S/E decimal degrees "
-        "(same form as --bbox). Repeat for multiple boxes. Heatmap-only."
+        "Draw a black outline box on the map as N/W/S/E decimal degrees "
+        "(same form as --bbox). Repeat for multiple boxes. Heatmap and quiver."
+    ),
+)
+@weather_skill.argument(
+    "--quiver-scale",
+    type=float,
+    default=None,
+    help=(
+        "Matplotlib quiver scale (S2S quiver_plot_variable default 40; "
+        "their anomaly maps use 20). Quiver-only."
     ),
 )
 def plot(
@@ -711,24 +1518,20 @@ def plot(
     draw_box,
     rows,
     columns,
+    u_variable,
+    v_variable,
+    quiver_scale,
     output,
     **kwargs,
 ):
-    """Render a heatmap or timeseries PNG from a weather-skills standard dataset Zarr."""
+    """Render a heatmap, timeseries, wind-rose, or quiver PNG from a weather-skills standard dataset Zarr."""
     import matplotlib
 
     matplotlib.use("Agg")
     import cf_xarray  # noqa: F401 — registers the .cf accessor
     import matplotlib.pyplot as plt
     import nc_time_axis  # noqa: F401 — registers the cftime→matplotlib axis converter
-    import xarray as xr
 
-    variable = variable or auto_variable(ds)
-    if not variable or variable not in ds:
-        raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
-    ds = to_standard_units(ds, variables=[variable])
-    ds = precip_for_display(ds, variable)
-    da = ds[variable]
     try:
         overrides = _parse_index(index)
     except ValueError as exc:
@@ -736,100 +1539,117 @@ def plot(
 
     bbox_nwse = bbox
     draw_boxes = _parse_draw_boxes(draw_box)
-    heatmap_only = {
-        "--bbox": bbox_nwse is not None,
-        "--mask-geojson": bool(mask_geojson),
+    map_only = {
         "--extent": bool(extent),
         "--cities": bool(cities),
-        "--index": bool(overrides),
         "--draw-box": bool(draw_boxes),
         "--rows": rows is not None,
         "--columns": columns is not None,
     }
-    if style != "heatmap":
-        for flag, set_ in heatmap_only.items():
-            if not set_:
-                continue
-            detail = (
-                f" {bbox_nwse[0]}/{bbox_nwse[1]}/{bbox_nwse[2]}/{bbox_nwse[3]}"
-                if flag == "--bbox"
-                else (
-                    f" {extent!r}"
-                    if flag == "--extent"
-                    else (
-                        f" {index!r}"
-                        if flag == "--index"
-                        else (f" {draw_box!r}" if flag == "--draw-box" else "")
-                    )
+    spatial = {
+        "--bbox": bbox_nwse is not None,
+        "--mask-geojson": bool(mask_geojson),
+        "--index": bool(overrides),
+    }
+    uv_flags = {
+        "--u-variable": bool(u_variable),
+        "--v-variable": bool(v_variable),
+    }
+    quiver_only = {
+        "--quiver-scale": quiver_scale is not None,
+    }
+
+    def _flag_detail(flag):
+        if flag == "--bbox" and bbox_nwse is not None:
+            return f" {bbox_nwse[0]}/{bbox_nwse[1]}/{bbox_nwse[2]}/{bbox_nwse[3]}"
+        if flag == "--extent":
+            return f" {extent!r}"
+        if flag == "--index":
+            return f" {index!r}"
+        if flag == "--draw-box":
+            return f" {draw_box!r}"
+        return ""
+
+    if style == "timeseries":
+        for flag, set_ in {**map_only, **spatial}.items():
+            if set_:
+                print(
+                    f"Warning: {flag}{_flag_detail(flag)} is a heatmap-only option; "
+                    f"ignored for --style {style}.",
+                    file=sys.stderr,
                 )
-            )
-            print(
-                f"Warning: {flag}{detail} is a heatmap-only option; ignored for --style {style}.",
-                file=sys.stderr,
-            )
+        for flag, set_ in {**uv_flags, **quiver_only}.items():
+            if set_:
+                print(
+                    f"Warning: {flag} is ignored for --style {style}.",
+                    file=sys.stderr,
+                )
+    elif style == "heatmap":
+        for flag, set_ in {**uv_flags, **quiver_only}.items():
+            if set_:
+                print(
+                    f"Warning: {flag} is only used with --style windrose or "
+                    f"--style quiver; ignored for --style heatmap.",
+                    file=sys.stderr,
+                )
+    elif style == "windrose":
+        for flag, set_ in {**map_only, **quiver_only}.items():
+            if set_:
+                print(
+                    f"Warning: {flag}{_flag_detail(flag)} is ignored for --style windrose.",
+                    file=sys.stderr,
+                )
+
+    if style == "windrose":
+        fig = _plot_windrose(
+            ds,
+            u_variable,
+            v_variable,
+            variable,
+            overrides,
+            bbox_nwse,
+            mask_geojson,
+            title,
+            fontsize,
+            colormap,
+        )
+    elif style == "quiver":
+        fig = _plot_quiver(
+            ds,
+            u_variable,
+            v_variable,
+            variable,
+            overrides,
+            bbox_nwse,
+            mask_geojson,
+            extent,
+            cities,
+            title,
+            fontsize,
+            colormap,
+            draw_boxes,
+            rows,
+            columns,
+            quiver_scale,
+        )
+    else:
+        variable = variable or auto_variable(ds)
+        if not variable or variable not in ds:
+            raise UsageError(f"no usable variable. Available: {list(ds.data_vars)}")
+        ds = to_standard_units(ds, variables=[variable])
+        ds = precip_for_display(ds, variable)
+        da = ds[variable]
 
     if style == "heatmap":
-        lat_dim = cf_dim(da, "latitude")
-        lon_dim = cf_dim(da, "longitude")
-        if lat_dim is None or lon_dim is None:
-            raise UsageError(f"heatmap requires lat/lon coords; got {list(da.dims)}.")
-        if lat_dim not in da.dims or lon_dim not in da.dims:
-            raise UsageError(
-                f"heatmap needs lat/lon as dimensions, but {lat_dim!r}/"
-                f"{lon_dim!r} are non-dimension coordinates here (dims: "
-                f"{list(da.dims)}); station data has no 2D grid to plot."
-            )
-        native_step_dim = _step_dim(da)
-        native_steps = list(da[native_step_dim].values) if native_step_dim else None
-
-        for dim, idx in overrides.items():
-            if dim not in da.dims:
-                raise UsageError(
-                    f"--index dimension {dim!r} is not in the data (dims: {list(da.dims)})"
-                )
-            if isinstance(idx, list) and dim != native_step_dim:
-                panel_desc = repr(native_step_dim) if native_step_dim else "step/time"
-                raise UsageError(
-                    f"--index list selection on {dim!r} is only supported "
-                    f"on the panel dimension ({panel_desc}); give a single position"
-                )
-        for dim, idx in overrides.items():
-            size = da.sizes[dim]
-            positions = idx if isinstance(idx, list) else [idx]
-            seen = {}
-            for pos in positions:
-                if not -size <= pos < size:
-                    raise UsageError(
-                        f"--index position {pos} is out of range for "
-                        f"dimension {dim!r} (size {size})"
-                    )
-                norm = pos % size
-                if norm in seen:
-                    raise UsageError(
-                        f"--index positions {seen[norm]} and {pos} address "
-                        f"the same element of dimension {dim!r} (size {size})"
-                    )
-                seen[norm] = pos
-            da = da.isel({dim: idx}, drop=True)
-
-        for spatial in (lat_dim, lon_dim):
-            if spatial in overrides and spatial not in da.dims:
-                raise UsageError(
-                    f"--index removed the {spatial!r} dimension; heatmap needs a 2D lat/lon grid"
-                )
-        panel_dim = _step_dim(da)
-        for dim in da.dims:
-            if dim not in (panel_dim, "number", lat_dim, lon_dim):
-                panel_desc = repr(panel_dim) if panel_dim else "step/time"
-                raise UsageError(
-                    f"dimension {dim!r} remains after selection; heatmap "
-                    f"panels only the {panel_desc} dimension — select a position "
-                    f"from {dim!r} with --index"
-                )
-        if panel_dim is not None and da.sizes[panel_dim] == 0:
-            raise UsageError(f"dimension {panel_dim!r} has size 0; nothing to plot.")
-
-        extent_vals = _parse_extent(extent)
+        (
+            da,
+            lat_dim,
+            lon_dim,
+            extent_vals,
+            wrap_lon,
+            native_step_dim,
+            native_steps,
+        ) = _prepare_gridded_map(da, overrides, bbox_nwse, mask_geojson, extent, style="heatmap")
         cities_map = _parse_cities(cities)
         flag_scale = _discrete_flag_scale(da, colormap)
         if flag_scale is not None:
@@ -837,50 +1657,6 @@ def plot(
         else:
             cmap, norm = _heatmap_scale(da, colormap)
             flag_ticks, flag_labels = None, None
-        region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
-        wrapped_bbox = bbox_nwse is not None and bbox_nwse[1] > bbox_nwse[3]
-
-        if bbox_nwse is not None or region_polygon is not None:
-            import numpy as np
-
-            lon_vals_pre = np.asarray(da[lon_dim].values)
-            if lon_vals_pre.size and float(np.nanmax(lon_vals_pre)) > 180.0:
-                da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
-            if bbox_nwse is not None:
-                r_n, r_w, r_s, r_e = bbox_nwse
-                da = da.sel({lat_dim: lat_slice(da[lat_dim].values, r_n, r_s)})
-                if r_w > r_e:
-                    da = da.where((da[lon_dim] >= r_w) | (da[lon_dim] <= r_e), drop=True)
-                else:
-                    da = da.sel({lon_dim: slice(r_w, r_e)})
-            if region_polygon is not None:
-                import shapely
-
-                lon_grid, lat_grid = np.meshgrid(da[lon_dim].values, da[lat_dim].values)
-                mask = shapely.contains_xy(region_polygon, lon_grid, lat_grid)
-                if not bool(mask.any()):
-                    print(
-                        "Warning: --mask-geojson polygon does not intersect the grid; "
-                        "the map will be entirely empty.",
-                        file=sys.stderr,
-                    )
-                da = da.where(xr.DataArray(mask, dims=(lat_dim, lon_dim)))
-            if bbox_nwse is not None:
-                r_n, r_w, r_s, r_e = bbox_nwse
-                if r_w > r_e:
-                    shifted = ((da[lon_dim] - r_w) % 360.0) + r_w
-                    da = da.assign_coords({lon_dim: shifted}).sortby(lon_dim)
-                if extent_vals is None:
-                    if r_w > r_e:
-                        extent_vals = [float(r_w), float(r_e) + 360.0, float(r_s), float(r_n)]
-                    else:
-                        extent_vals = [float(r_w), float(r_e), float(r_s), float(r_n)]
-
-        if da.sizes[lat_dim] == 0 or da.sizes[lon_dim] == 0:
-            raise UsageError(
-                "selection produced an empty grid (no cells remain after "
-                "--index/--bbox selection); nothing to plot."
-            )
         fig = _heatmap(
             da,
             lat_dim,
@@ -890,7 +1666,7 @@ def plot(
             cities_map,
             title,
             fontsize,
-            wrap_lon=not wrapped_bbox,
+            wrap_lon=wrap_lon,
             native_step_dim=native_step_dim,
             native_steps=native_steps,
             draw_boxes=draw_boxes,
@@ -900,7 +1676,7 @@ def plot(
             rows=rows,
             columns=columns,
         )
-    else:
+    elif style == "timeseries":
         fig, ax = plt.subplots(figsize=(10, 6))
         sdim = "step" if "step" in da.dims else cf_dim(da, "time")
         if sdim is None:

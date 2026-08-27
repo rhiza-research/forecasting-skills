@@ -267,3 +267,240 @@ def test_heatmap_rows_columns_mismatch_exits(tmp_path, plot_fn, capsys):
             "3",
         )
     assert "must match" in capsys.readouterr().err
+
+
+def _make_wind(
+    u=0.0,
+    v=-5.0,
+    name_u="u10",
+    name_v="v10",
+    *,
+    forecast=False,
+    **kwargs,
+):
+    """Gridded eastward/northward pair. Default is a uniform northerly wind."""
+    factory = make_forecast if forecast else make_gridded
+    ds = factory(name=name_u, fill=float(u), **kwargs)
+    ds[name_u].attrs.clear()
+    ds[name_u].attrs.update(units="m s-1", standard_name="eastward_wind")
+    ds[name_v] = ds[name_u].copy(deep=True)
+    ds[name_v].values[:] = float(v)
+    ds[name_v].attrs.update(units="m s-1", standard_name="northward_wind")
+    return ds
+
+
+def test_uv_to_speed_fromdir_cardinals():
+    plot_mod = load_skill("plot", "plot")
+    speed, fromdir = plot_mod._uv_to_speed_fromdir(
+        [0.0, -5.0, 0.0, 5.0],
+        [-5.0, 0.0, 5.0, 0.0],
+    )
+    assert speed == pytest.approx([5.0, 5.0, 5.0, 5.0])
+    assert fromdir == pytest.approx([0.0, 90.0, 180.0, 270.0])
+
+
+def test_wind_rose_hist_north_is_sector_zero():
+    plot_mod = load_skill("plot", "plot")
+    speed = np.full(20, 5.0)
+    direction = np.zeros(20)
+    edges = np.array([0.0, 2.0, 4.0, 6.0, np.inf])
+    hist = plot_mod._wind_rose_hist(speed, direction, edges)
+    assert hist.shape == (16, 4)
+    assert hist[0].sum() == 20
+    assert hist[1:].sum() == 0
+    assert hist[0, 2] == 20  # 4–6 m/s bin
+
+
+def test_resolve_uv_from_standard_names():
+    plot_mod = load_skill("plot", "plot")
+    ds = _make_wind(name_u="eastward_component", name_v="northward_component")
+    assert plot_mod._resolve_uv(ds, None, None) == (
+        "eastward_component",
+        "northward_component",
+    )
+
+
+def test_resolve_uv_from_u10_v10_names():
+    plot_mod = load_skill("plot", "plot")
+    ds = _make_wind()
+    ds["u10"].attrs.pop("standard_name")
+    ds["v10"].attrs.pop("standard_name")
+    assert plot_mod._resolve_uv(ds, None, None) == ("u10", "v10")
+
+
+def test_resolve_uv_explicit_infers_partner():
+    plot_mod = load_skill("plot", "plot")
+    ds = _make_wind()
+    assert plot_mod._resolve_uv(ds, "u10", None) == ("u10", "v10")
+    assert plot_mod._resolve_uv(ds, None, "v10") == ("u10", "v10")
+
+
+def test_resolve_uv_missing_pair_errors():
+    from weather_skills_core import UsageError
+
+    plot_mod = load_skill("plot", "plot")
+    ds = make_gridded()
+    with pytest.raises(UsageError, match="eastward"):
+        plot_mod._resolve_uv(ds, None, None)
+
+
+def test_windrose_writes_png(tmp_path, plot_fn):
+    src = write_zarr(_make_wind(), tmp_path / "wind.zarr")
+    out = tmp_path / "rose.png"
+    run_skill(plot_fn, "-i", str(src), "-o", str(out), "--style", "windrose")
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_windrose_stamps_history(tmp_path, plot_fn):
+    src = write_zarr(_make_wind(), tmp_path / "wind.zarr")
+    out = tmp_path / "rose.png"
+    run_skill(
+        plot_fn,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--style",
+        "windrose",
+        "--title",
+        "10 m wind",
+    )
+    history = load_figure_history(out)
+    assert history is not None
+    assert history[-1]["skill"] == "plot"
+    assert history[-1]["args"]["style"] == "windrose"
+    assert history[-1]["args"]["title"] == "10 m wind"
+
+
+def test_windrose_forecast_and_explicit_vars(tmp_path, plot_fn):
+    src = write_zarr(_make_wind(forecast=True, members=2), tmp_path / "fc.zarr")
+    out = tmp_path / "rose.png"
+    run_skill(
+        plot_fn,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--style",
+        "windrose",
+        "--u-variable",
+        "u10",
+        "--v-variable",
+        "v10",
+        "--index",
+        "step=0",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_windrose_bbox_writes_png(tmp_path, plot_fn):
+    ds = _make_wind(lats=(-5.0, 0.0, 5.0), lons=(30.0, 35.0, 40.0, 45.0))
+    src = write_zarr(ds, tmp_path / "wind.zarr")
+    out = tmp_path / "rose.png"
+    run_skill(
+        plot_fn,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--style",
+        "windrose",
+        "--bbox",
+        "3/32/-3/42",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_windrose_missing_uv_exits(tmp_path, plot_fn, capsys):
+    src = write_zarr(make_gridded(), tmp_path / "precip.zarr")
+    out = tmp_path / "rose.png"
+    with pytest.raises(SystemExit):
+        run_skill(plot_fn, "-i", str(src), "-o", str(out), "--style", "windrose")
+    assert "eastward" in capsys.readouterr().err
+
+
+def test_heatmap_ignores_uv_flags(tmp_path, plot_fn, capsys):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "map.png"
+    run_skill(
+        plot_fn,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--u-variable",
+        "u10",
+    )
+    err = capsys.readouterr().err
+    assert "only used with --style windrose or --style quiver" in err
+    assert Path(out).exists()
+
+
+def test_wind_speed_da_is_hypot():
+    plot_mod = load_skill("plot", "plot")
+    ds = _make_wind(u=3.0, v=4.0)
+    speed = plot_mod._wind_speed_da(ds["u10"], ds["v10"])
+    assert float(speed.mean()) == pytest.approx(5.0)
+    assert speed.attrs["long_name"] == "Wind speed"
+
+
+def test_quiver_writes_png(tmp_path, plot_fn):
+    src = write_zarr(_make_wind(), tmp_path / "wind.zarr")
+    out = tmp_path / "quiver.png"
+    run_skill(plot_fn, "-i", str(src), "-o", str(out), "--style", "quiver")
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_quiver_stamps_history(tmp_path, plot_fn):
+    src = write_zarr(_make_wind(), tmp_path / "wind.zarr")
+    out = tmp_path / "quiver.png"
+    run_skill(
+        plot_fn,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--style",
+        "quiver",
+        "--title",
+        "10 m wind",
+    )
+    history = load_figure_history(out)
+    assert history is not None
+    assert history[-1]["skill"] == "plot"
+    assert history[-1]["args"]["style"] == "quiver"
+    assert history[-1]["args"]["title"] == "10 m wind"
+
+
+def test_quiver_forecast_panels(tmp_path, plot_fn):
+    src = write_zarr(_make_wind(forecast=True, members=2, u=3.0, v=-4.0), tmp_path / "fc.zarr")
+    out = tmp_path / "quiver.png"
+    run_skill(
+        plot_fn,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--style",
+        "quiver",
+        "--u-variable",
+        "u10",
+        "--v-variable",
+        "v10",
+        "--quiver-scale",
+        "40",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_quiver_missing_uv_exits(tmp_path, plot_fn, capsys):
+    src = write_zarr(make_gridded(), tmp_path / "precip.zarr")
+    out = tmp_path / "quiver.png"
+    with pytest.raises(SystemExit):
+        run_skill(plot_fn, "-i", str(src), "-o", str(out), "--style", "quiver")
+    assert "eastward" in capsys.readouterr().err
