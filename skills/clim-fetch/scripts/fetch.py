@@ -34,6 +34,7 @@ import pandas as pd
 import xarray as xr
 from weather_skills_core import DataError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.standard_utils import bbox_subset
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -96,7 +97,8 @@ def _expand_climatology(clim: xr.Dataset, start, end) -> xr.Dataset:
     default=_DEFAULT_VARIABLE,
     help=f"Climate variable (default: {_DEFAULT_VARIABLE}).",
 )
-def fetch(dataset, start_time, end_time, variable, **kwargs):
+@weather_skill.argument("--bbox")
+def fetch(dataset, start_time, end_time, variable, bbox, **kwargs):
     """Fetch a cached daily climatology and expand it to the requested date range."""
     print(
         f"clim-fetch: fetching {dataset!r} variable={variable!r}",
@@ -108,6 +110,10 @@ def fetch(dataset, start_time, end_time, variable, **kwargs):
     mean_name, variance_name = f"{semantic_name}_avg", f"{semantic_name}_variance"
     clim = clim.rename({"avg": mean_name, "variance": variance_name})
     clim = to_standard_units(clim, variables=[mean_name, variance_name])
+
+    if bbox is not None:
+        # only get necessary chunks
+        clim = bbox_subset(clim, bbox)
 
     expanded = _expand_climatology(clim, start_time, end_time).load()
     expanded = expanded.drop_attrs(deep=False)

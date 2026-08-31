@@ -1,6 +1,6 @@
 ---
 name: clim-fetch
-description: Fetch a precomputed daily climatology (avg + variance) for a `--dataset` (imerg_final, era5, ...) from Sheerwater's public GCS mirror and expand it onto a requested `--start-time`/`--end-time` calendar window, so timestamps line up with the rest of a pipeline's data. Use when a task needs a climatological baseline for anomalies, verification, or comparison — not live observations (use imerg-fetch, dynamical-fetch, arco-era5-fetch, etc. for those).
+description: Fetch a precomputed daily climatology (avg + variance) for a `--dataset` (imerg_final, era5, ...) from Sheerwater's public GCS mirror and expand it onto a requested `--start-time`/`--end-time` calendar window, so timestamps line up with the rest of a pipeline's data. Optional `--bbox N/W/S/E` (compose with resolve-region) subsets before download. Use when a task needs a climatological baseline for anomalies, verification, or comparison — not live observations (use imerg-fetch, dynamical-fetch, arco-era5-fetch, etc. for those).
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads a static climatology Zarr from the public GCS bucket sheerwater-public-datalake over anonymous HTTPS; no credentials required.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -55,7 +55,7 @@ convention — no CLI change needed once added.
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
   --dataset <id> --start-time YYYY-MM-DD --end-time YYYY-MM-DD -o <path.zarr> \
-  [--variable precip]
+  [--variable precip] [--bbox N/W/S/E]
 ```
 
 ### Arguments
@@ -66,6 +66,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 - `--variable`, `-v` — climate variable (default: `precip`); used only as a
   fallback name if the cached Zarr has no `variable` global attr of its own.
+- `--bbox` — optional `N/W/S/E` bounding box; use `resolve-region` to turn a
+  country or named region into this value first. Applied before the
+  day-of-year expansion, on the still-lazy remote Zarr, so only the chunks
+  overlapping the bbox are pulled from GCS.
 
 ### Output
 
@@ -104,4 +108,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
   --dataset era5 --start-time 2020-06-01 --end-time 2021-06-30 \
   -o /tmp/era5_clim.zarr
+
+# Kenya only — resolve-region first, then pass its bbox through.
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
+  --dataset imerg_final --start-time 2020-01-01 --end-time 2020-12-31 \
+  --bbox 5.5/33.9/-4.7/41.9 -o /tmp/imerg_clim_2020_kenya.zarr
 ```
