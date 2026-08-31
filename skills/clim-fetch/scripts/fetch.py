@@ -81,7 +81,7 @@ def _expand_climatology(clim: xr.Dataset, start, end) -> xr.Dataset:
     return expanded.drop_vars("day_of_year")
 
 
-@weather_skill(name="fetch-clim", version=_SKILL_VERSION)
+@weather_skill(name="clim-fetch", version=_SKILL_VERSION)
 @weather_skill.argument(
     "--dataset",
     required=True,
@@ -99,7 +99,7 @@ def _expand_climatology(clim: xr.Dataset, start, end) -> xr.Dataset:
 def fetch(dataset, start_time, end_time, variable, **kwargs):
     """Fetch a cached daily climatology and expand it to the requested date range."""
     print(
-        f"fetch-clim: fetching {dataset!r} variable={variable!r}",
+        f"clim-fetch: fetching {dataset!r} variable={variable!r}",
         file=sys.stderr,
     )
     clim = _open_remote(dataset, variable)

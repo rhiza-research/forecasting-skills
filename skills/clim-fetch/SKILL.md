@@ -1,5 +1,5 @@
 ---
-name: fetch-clim
+name: clim-fetch
 description: Fetch a precomputed daily climatology (avg + variance) for a `--dataset` (imerg_final, era5, ...) from Sheerwater's public GCS mirror and expand it onto a requested `--start-time`/`--end-time` calendar window, so timestamps line up with the rest of a pipeline's data. Use when a task needs a climatological baseline for anomalies, verification, or comparison — not live observations (use imerg-fetch, dynamical-fetch, arco-era5-fetch, etc. for those).
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads a static climatology Zarr from the public GCS bucket sheerwater-public-datalake over anonymous HTTPS; no credentials required.
@@ -10,7 +10,7 @@ metadata:
     - precip
 ---
 
-# fetch-clim
+# clim-fetch
 
 Reads a static day-of-year climatology Zarr mirrored to a public GCS bucket
 (`gs://sheerwater-public-datalake/climatologies/<product>_global1_5_global_<variable>.zarr`)
@@ -87,7 +87,7 @@ that is the point of the day-of-year gather.
 
 The output stamps a JSON-encoded `weather_skills_history` attr: an append-only
 array of per-step entries `{skill, version, args, input}`. For this fetcher it
-is a length-1 array with `skill="fetch-clim"` and `input=null`; downstream
+is a length-1 array with `skill="clim-fetch"` and `input=null`; downstream
 zarr-writing skills append their own entry. Inspect a written output's
 provenance with the `provenance` skill.
 
