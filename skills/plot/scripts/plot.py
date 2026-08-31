@@ -9,6 +9,8 @@
 #   "matplotlib>=3.8,<3.10",
 #   "nc-time-axis",
 #   "numpy",
+#   # cartopy quiver(regrid_shape=...) interpolates via scipy
+#   "scipy",
 #   "shapely>=2.1",
 #   "xarray",
 #   "zarr",

@@ -45,7 +45,7 @@ Source-agnostic single-dataset visualization. Four styles:
 - `quiver` — ECMWF S2S Africa `quiver_plot_variable` wind-vector map: speed as
   `pcolormesh` (`YlGn` by default, matching `plot_s2s` 10 m / 700 hPa
   `10m-wind_vectors.png`) with `u`/`v` arrows regridded to a 10×10 projection
-  grid (`regrid_shape=10`, matplotlib `scale=40`). Same panel layout, geo
+  grid (`regrid_shape=10`, matplotlib `scale=40`; needs `scipy`). Same panel layout, geo
   overlays, `--bbox` / `--mask-geojson` / `--index` / `--cities` / `--draw-box`
   as heatmap. Ensemble `number` is averaged. Auto-detects u/v like windrose
   (`u10`/`v10`, CF `eastward_wind`/`northward_wind`, …). Colorbar is
