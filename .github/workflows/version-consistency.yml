@@ -1,8 +1,8 @@
 name: Version consistency
 
-# Skill version lives only in scripts/*.py as `_SKILL_VERSION`. This check
-# verifies every script carries the constant, siblings agree, and SKILL.md
-# does not reintroduce `metadata.version`.
+# Skill version lives in SKILL.md `metadata.version` (Agent Skills spec) and
+# a paired `_SKILL_VERSION` constant in scripts. This check verifies they
+# agree for every skill.
 
 on:
   pull_request:

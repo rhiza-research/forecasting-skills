@@ -2,7 +2,7 @@ name: Version bump
 
 # Trigger: every push to main, including post-merge pushes from the
 # merge button. The job inspects the push diff for changed skill
-# directories and bumps each affected skill's `_SKILL_VERSION`.
+# directories and bumps each affected skill's SKILL.md `version:`.
 #
 # Recursion: the bump commit this workflow itself creates carries
 # `[skip ci]` in its subject so the downstream push of that commit
@@ -259,37 +259,47 @@ jobs:
           # broad `git add` and shipped in the bump commit).
           bumps_file="${RUNNER_TEMP}/bumps.txt"
           : > "$bumps_file"
-          # Helper: read the current `_SKILL_VERSION` from scripts/*.py.
+          # Helper: read the current `metadata.version` value from a
+          # SKILL.md by delegating to the shared parser in tools/. The
+          # python invocation imports `find_metadata_version_line` so the
+          # YAML walk stays identical to the bump script's view; a
+          # divergent inline regex here would risk reading from the
+          # wrong key (e.g. a top-level `version:` rather than the
+          # nested `metadata.version`).
           read_version() {
             local skill="$1"
             python3 - "$skill" <<'PY'
           import sys
           from pathlib import Path
           sys.path.insert(0, str(Path("tools").resolve()))
-          from rhiza_version_re import _VERSION_LINE_RE_VALUE  # noqa: E402
+          from rhiza_version_re import find_metadata_version_line  # noqa: E402
 
           skill = sys.argv[1]
-          scripts = Path("skills") / skill / "scripts"
-          values = []
-          for py in sorted(scripts.rglob("*.py")):
-              match = _VERSION_LINE_RE_VALUE.search(py.read_text(encoding="utf-8"))
-              if match:
-                  values.append(match.group("value"))
-          if not values:
-              raise SystemExit(f"{scripts}: no _SKILL_VERSION constant")
-          if len(set(values)) != 1:
-              raise SystemExit(f"{scripts}: disagreeing _SKILL_VERSION values: {values}")
-          print(values[0])
+          text = Path("skills") / skill / "SKILL.md"
+          content = text.read_text(encoding="utf-8")
+          if not content.startswith("---"):
+              raise SystemExit(f"{text}: no YAML frontmatter")
+          end = content.find("\n---", 3)
+          if end < 0:
+              raise SystemExit(f"{text}: no closing --- for frontmatter")
+          front = content[3:end].split("\n")
+          _, raw, _ = find_metadata_version_line(front)
+          # Strip matching surrounding quotes (single or double) so the
+          # printed value is the bare semver string.
+          if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+              raw = raw[1:-1]
+          print(raw)
           PY
           }
           while IFS= read -r skill; do
             [ -z "$skill" ] && continue
-            if [ ! -d "skills/${skill}/scripts" ]; then
-              echo "Skipping ${skill}: no scripts/ (likely a deletion)"
+            if [ ! -f "skills/${skill}/SKILL.md" ]; then
+              echo "Skipping ${skill}: no SKILL.md (likely a deletion)"
               continue
             fi
             old_version=$(read_version "$skill")
-            # The bump script rewrites every script's `_SKILL_VERSION`.
+            # The bump script updates SKILL.md AND every script's
+            # _SKILL_VERSION constant for this skill in one shot.
             python3 .github/scripts/bump-skill-version.py --skill "$skill" --kind "$KIND"
             new_version=$(read_version "$skill")
             git add "skills/${skill}/"

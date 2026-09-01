@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Fetches from the public GCS CHC mirror (gs://sheerwater-public-datalake/chc-mirror); no credentials required.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: fetchers
   variables:
     - precip

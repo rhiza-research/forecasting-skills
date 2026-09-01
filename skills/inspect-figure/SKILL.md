@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Reads a `.png` file; writes nothing.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/inspect_figure.py *)
 metadata:
+  version: "0.0.1"
   catalog-group: agent-tooling
 ---
 
