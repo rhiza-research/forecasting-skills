@@ -67,7 +67,7 @@ for COUNTRY in "${COUNTRIES[@]}"; do
     forecasting-skills convert-to-totals  -i "$d/chirps_weekly.zarr"  -o "$d/chirps_weekly_totals.zarr"
     forecasting-skills convert-to-totals  -i "$d/chirps_dekadal.zarr" -o "$d/chirps_dekadal_totals.zarr"
 
-    forecasting-skills tahmo-fetch --country "$COUNTRY" --start "$START_DATE" --end "$END_DATE" --output "$d/tahmo.zarr"
+    forecasting-skills tahmo-fetch --bbox="$BBOX" --start-time "$START_DATE" --end-time "$END_DATE" --output "$d/tahmo.zarr"
 
     # plot-compare requires its two inputs to already share a time axis, so the
     # daily station data is pre-aggregated to the same window/anchor/method as

@@ -16,13 +16,21 @@
 """Fetch TAHMO station observations and write a point_obs weather-skills standard dataset Zarr.
 
 Uses the TAHMO Python SDK. Credentials: TAHMO_API_USERNAME and TAHMO_API_PASSWORD.
+
+List stations in a region from the deployment API (no ``-o``)::
+
+    tahmo-fetch --list-stations --bbox N/W/S/E
+
+Then fetch chosen station IDs (and/or every TA station in a bbox).
 """
 
+import csv
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.cf import udunits_error
 from weather_skills_core.standard_utils import is_transient, require_env
 from weather_skills_core.units import stamp_data_interval
 
@@ -30,33 +38,7 @@ from weather_skills_core.units import stamp_data_interval
 _SKILL_VERSION = "0.0.2"
 
 DEFAULT_WORKERS = 8
-
-COUNTRY_CODE = {
-    "Burkina Faso": "BF",
-    "Benin": "BJ",
-    "DR Congo": "CD",
-    "Côte d'Ivoire": "CI",
-    "Cameroon": "CM",
-    "Ethiopia": "ET",
-    "Ghana": "GH",
-    "Lesotho": "LS",
-    "Madagascar": "MG",
-    "Mali": "ML",
-    "Malawi": "MW",
-    "Mozambique": "MZ",
-    "Niger": "NE",
-    "Nigeria": "NG",
-    "Rwanda": "RW",
-    "Senegal": "SN",
-    "Chad": "TD",
-    "Togo": "TG",
-    "Tanzania": "TZ",
-    "Uganda": "UG",
-    "South Africa": "ZA",
-    "Zambia": "ZM",
-    "Zimbabwe": "ZW",
-    "Kenya": "KE",
-}
+_TAHMO_PREFIX = "TA"
 
 VAR_MAP = {
     "pr": "precip",
@@ -70,14 +52,101 @@ DAILY_AGG = {
     "humidity": "mean",
     "pressure": "mean",
 }
-# (standard_name, units_override). Units come from api.getVariables() except precip
-# (daily sum of mm measurements -> mm day-1).
+# (standard_name, units). Always CF/pint strings — TAHMO getVariables() uses
+# "-" for dimensionless (relative humidity) and that fails pint.quantify().
 CF_META = {
     "precip": ("lwe_precipitation_rate", "mm day-1"),
-    "temperature": ("air_temperature", None),
-    "humidity": ("relative_humidity", None),
-    "pressure": ("air_pressure", None),
+    "temperature": ("air_temperature", "degree_Celsius"),
+    "humidity": ("relative_humidity", "1"),
+    "pressure": ("air_pressure", "kPa"),
 }
+# TAHMO API leftovers if CF_META has no override.
+_TAHMO_UNITS = {
+    "-": "1",
+    "degrees Celsius": "degree_Celsius",
+    "degree Celsius": "degree_Celsius",
+}
+
+
+def _pint_units(raw) -> str | None:
+    """Map a TAHMO/API units string to a pint-parseable CF spelling, or None."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    text = raw.strip()
+    return _TAHMO_UNITS.get(text, text)
+
+
+def _coord_str(row, *keys) -> str:
+    for key in keys:
+        if key not in row.index:
+            continue
+        val = row[key]
+        if val is None or val != val:
+            continue
+        text = str(val).strip()
+        if text:
+            return text
+    return ""
+
+
+def _station_name(row) -> str:
+    return _coord_str(row, "location_name", "name")
+
+
+def _ta_stations(stations):
+    out = stations.dropna(subset=["location_latitude", "location_longitude"])
+    return out[out["code"].astype(str).str.startswith(_TAHMO_PREFIX)].copy()
+
+
+def _filter_bbox(stations, bbox):
+    north, west, south, east = bbox
+    lat = stations["location_latitude"]
+    lon = stations["location_longitude"]
+    lat_in = (lat >= south) & (lat <= north)
+    if west <= east:
+        lon_in = (lon >= west) & (lon <= east)
+    else:
+        lon_in = (lon >= west) | (lon <= east)
+    return stations.loc[lat_in & lon_in].copy()
+
+
+def _print_station_list(stations) -> None:
+    ordered = stations.sort_values("code")
+    writer = csv.writer(sys.stdout, dialect="excel-tab", lineterminator="\n")
+    writer.writerow(["station_id", "name", "latitude", "longitude", "country"])
+    for _, row in ordered.iterrows():
+        writer.writerow(
+            [
+                str(row["code"]),
+                _station_name(row),
+                f"{float(row['location_latitude']):.5f}",
+                f"{float(row['location_longitude']):.5f}",
+                _coord_str(row, "location_countrycode"),
+            ]
+        )
+    print(f"{len(ordered)} stations", file=sys.stderr)
+
+
+def _select_stations(stations, station_ids, bbox):
+    """Return deployment rows for explicit ``--station`` IDs, else TA stations in ``--bbox``."""
+    if station_ids:
+        wanted = [s.strip().upper() for s in station_ids]
+        by_code = stations.set_index(stations["code"].astype(str).str.upper())
+        missing = [s for s in wanted if s not in by_code.index]
+        if missing:
+            raise UsageError("unknown TAHMO station id(s): " + ", ".join(missing))
+        return by_code.loc[wanted].reset_index(drop=True)
+
+    if bbox is None:
+        raise UsageError("pass --station ID (repeatable) and/or --bbox N/W/S/E.")
+
+    selected = _filter_bbox(_ta_stations(stations), bbox)
+    if selected.empty:
+        north, west, south, east = bbox
+        raise DataError(
+            f"no TAHMO stations in --bbox {north:g}/{west:g}/{south:g}/{east:g}."
+        )
+    return selected
 
 
 def _fetch_raw(api, station_id: str, start: str, end: str):
@@ -129,8 +198,8 @@ def _station_frame(api, station_id: str, start: str, end: str):
     return daily
 
 
-def _ensure_setup(state, countries: list):
-    """Authenticate and load stations + variable metadata, at most once per run."""
+def _ensure_setup(state):
+    """Authenticate and load the deployment catalogue + variable metadata, at most once."""
     import pandas as pd
 
     if "api" not in state:
@@ -146,9 +215,6 @@ def _ensure_setup(state, countries: list):
                 f"could not import TAHMO ({exc}). Install via "
                 f"'pip install git+https://github.com/rhiza-research/tahmo-api'."
             ) from None
-        unknown = [c for c in countries if c not in COUNTRY_CODE]
-        if unknown:
-            raise UsageError(f"unknown countries {unknown}. Known: {sorted(COUNTRY_CODE)}")
         api_local = apiWrapper()
         api_local.setCredentials(username, password)
         stations_raw = api_local.getStations()
@@ -166,6 +232,19 @@ def _ensure_setup(state, countries: list):
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
 @weather_skill.argument(
+    "--bbox",
+    help=(
+        "Select every TA station in this box. With --list-stations, the region "
+        "to search on the TAHMO deployment API. Ignored for selection when "
+        "--station IDs are given."
+    ),
+)
+@weather_skill.argument(
+    "--station",
+    action="append",
+    help="TAHMO station id (repeatable), e.g. TA00025. Discover ids with --list-stations.",
+)
+@weather_skill.argument(
     "--workers",
     type=int,
     default=DEFAULT_WORKERS,
@@ -175,10 +254,14 @@ def _ensure_setup(state, countries: list):
     ),
 )
 @weather_skill.argument(
-    "--country",
-    action="append",
-    required=True,
-    help="Country name (pass once per country)",
+    "--list-stations",
+    action="store_true",
+    default=False,
+    probe=True,
+    help=(
+        "Print TA stations in --bbox from the TAHMO deployment API as TSV on "
+        "stdout (station_id, name, latitude, longitude, country) and exit. No -o."
+    ),
 )
 @weather_skill.argument(
     "--probe-latest",
@@ -193,20 +276,39 @@ def _ensure_setup(state, countries: list):
         "(dataset id, IMERG late/final, …)."
     ),
 )
-def fetch(start_time, end_time, workers, country, **kwargs):
+def fetch(start_time, end_time, workers, bbox, station, **kwargs):
     """Fetch TAHMO station observations and write a point_obs weather-skills standard dataset Zarr."""
     import pandas as pd
     import xarray as xr
 
+    list_stations = kwargs.get("list_stations")
+    if list_stations and bbox is None:
+        raise UsageError("--list-stations requires --bbox N/W/S/E.")
+    if (
+        not list_stations
+        and kwargs.get("probe_latest") is None
+        and not station
+        and bbox is None
+    ):
+        raise UsageError("pass --station ID (repeatable) and/or --bbox N/W/S/E.")
+
+    api, stations, var_meta = _ensure_setup({})
+
+    if list_stations:
+        _print_station_list(_filter_bbox(_ta_stations(stations), bbox))
+        return
+
     if kwargs.get("probe_latest") is not None:
         from datetime import UTC, datetime, timedelta
 
-        api, stations, _ = _ensure_setup({}, ["Kenya"])
         end = datetime.now(UTC).date()
         start = end - timedelta(days=14)
-        sub = stations[stations["code"].str.startswith("TA")]
+        if station or bbox is not None:
+            selected = _select_stations(stations, station, bbox)
+        else:
+            selected = _ta_stations(stations).head(3)
         latest = None
-        for _, row in sub.head(3).iterrows():
+        for _, row in selected.iterrows():
             daily = _station_frame(api, row["code"], start.isoformat(), end.isoformat())
             if daily is None or daily.empty:
                 continue
@@ -217,24 +319,15 @@ def fetch(start_time, end_time, workers, country, **kwargs):
         print(latest.isoformat())
         return
 
+    selected = _select_stations(stations, station, bbox)
     start = start_time.isoformat()
     end = end_time.isoformat()
+    print(
+        f"Fetching {len(selected)} TAHMO station(s) {start} → {end}",
+        file=sys.stderr,
+    )
 
-    api, stations, var_meta = _ensure_setup({}, sorted(country))
-    countries = list(country)
-
-    tasks = []
-    for country_name in countries:
-        code = COUNTRY_CODE[country_name]
-        sub = stations[stations["location_countrycode"] == code]
-        sub = sub[sub["code"].str.startswith("TA")]
-        if sub.empty:
-            print(f"{country_name}: no stations", file=sys.stderr)
-            continue
-        for _, row in sub.iterrows():
-            tasks.append((country_name, row))
-
-    def _fetch_one(country_name, row):
+    def _fetch_one(row):
         sid = row["code"]
         daily = _station_frame(api, sid, start, end)
         if daily is None:
@@ -243,32 +336,27 @@ def fetch(start_time, end_time, workers, country, **kwargs):
             "station_id": sid,
             "latitude": float(row["location_latitude"]),
             "longitude": float(row["location_longitude"]),
-            "country": country_name,
+            "country": _coord_str(row, "location_countrycode"),
+            "name": _station_name(row),
         }
 
     frames = []
     meta_rows = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {
-            pool.submit(_fetch_one, country_name, row): (country_name, row["code"])
-            for country_name, row in tasks
-        }
+        futures = {pool.submit(_fetch_one, row): row["code"] for _, row in selected.iterrows()}
         for fut in as_completed(futures):
-            country_name, sid = futures[fut]
+            sid = futures[fut]
             try:
                 result = fut.result()
             except Exception as exc:  # noqa: BLE001
-                print(
-                    f"{country_name} {sid}: DROPPED, worker error ({exc})",
-                    file=sys.stderr,
-                )
+                print(f"{sid}: DROPPED, worker error ({exc})", file=sys.stderr)
                 continue
             if result is None:
                 continue
             daily, meta_row = result
             frames.append(daily)
             meta_rows.append(meta_row)
-            print(f"{country_name} {sid}: {len(daily)} daily rows", file=sys.stderr)
+            print(f"{sid}: {len(daily)} daily rows", file=sys.stderr)
 
     if not frames:
         raise DataError("no data returned for any station.")
@@ -278,16 +366,19 @@ def fetch(start_time, end_time, workers, country, **kwargs):
     df = df.set_index(["time", "station_id"])
 
     ds = xr.Dataset.from_dataframe(df)
+    ids = ds["station_id"].values
     ds = ds.assign_coords(
-        latitude=("station_id", meta.loc[ds["station_id"].values, "latitude"].values),
-        longitude=("station_id", meta.loc[ds["station_id"].values, "longitude"].values),
-        country=("station_id", meta.loc[ds["station_id"].values, "country"].values),
+        latitude=("station_id", meta.loc[ids, "latitude"].values),
+        longitude=("station_id", meta.loc[ids, "longitude"].values),
+        country=("station_id", meta.loc[ids, "country"].values),
+        name=("station_id", meta.loc[ids, "name"].values),
     )
     ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
     ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
     ds["time"].attrs.update(standard_name="time", axis="T")
     ds["station_id"].attrs.update(cf_role="timeseries_id", long_name="TAHMO station identifier")
-    ds["country"].attrs.update(long_name="country name")
+    ds["country"].attrs.update(long_name="ISO 3166-1 alpha-2 country code")
+    ds["name"].attrs.update(long_name="station name")
     short_code_for = {v: k for k, v in VAR_MAP.items()}
     for canonical in ds.data_vars:
         short = short_code_for.get(canonical)
@@ -296,9 +387,18 @@ def fetch(start_time, end_time, workers, country, **kwargs):
         attrs = {"coordinates": "latitude longitude"}
         if std_name:
             attrs["standard_name"] = std_name
-        units = units_override or api_meta.get("units")
-        if units:
-            attrs["units"] = units
+        units = _pint_units(units_override) or _pint_units(api_meta.get("units"))
+        if not units:
+            raise DataError(
+                f"variable {canonical!r} has no pint-parseable units from TAHMO metadata."
+            )
+        exc = udunits_error(units)
+        if exc is not None:
+            raise DataError(
+                f"units {units!r} for variable {canonical!r} are not udunits-valid "
+                f"({exc}); refusing to write a non-CF store."
+            )
+        attrs["units"] = units
         description = api_meta.get("description")
         if description:
             attrs["long_name"] = description

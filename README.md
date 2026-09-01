@@ -226,8 +226,9 @@ forecasting-skills rename \
     --to-name precip \
     --output /tmp/imerg_dekadal_precip.zarr
 
+forecasting-skills tahmo-fetch --list-stations --bbox 5/34/-5/42
 forecasting-skills tahmo-fetch \
-    --country Kenya \
+    --station TA00025 \
     --start-time 2025-12-24 \
     --end-time 2026-02-13 \
     --output /tmp/tahmo.zarr
