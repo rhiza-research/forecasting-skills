@@ -38,6 +38,7 @@ credentialed or source-specific fetcher only when it does not.
 |---|---|
 | `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code or sub-national region to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) |
 | `resolve-time` | Resolve relative calendar dates ("the last two weeks", `latest`, `now-3d`) to `--start-time`/`--end-time` or `--date`. Latest published day is the fetcher's `--probe-latest`, not this skill. |
+| `analog-years` | Analog years for a `--date` (stub: 2026 → 1982, 1997, 2006, 2015, 2019, 2023; other years error) |
 | `inspect-zarr` | Print dimension sizes, coordinate values, and a bounded data-variable summary (min/max/mean, finite/NaN, truncated sample) of a Zarr (stdout only; never dumps full arrays) |
 | `inspect-figure` | Print size, blank/uniform flags, a color preview, and the last provenance step of a plot PNG (stdout only) |
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
@@ -67,6 +68,7 @@ dataset output.
 | Skill | What it does |
 |---|---|
 | `resolve-time` | Resolve relative calendar dates to absolute `--start-time`/`--end-time` or `--date`. |
+| `analog-years` | Analog years for a `--date` (stub: 2026 only). |
 | `inspect-zarr` | Print dims, coordinate values, and a bounded data-variable summary of a Zarr (stdout; no write). Data arrays can be huge — this skill never dumps them in full. |
 | `inspect-figure` | Print size, blank/uniform flags, a coarse color preview, and the last plot skill of a PNG (stdout; no write). Look at the PNG too when debugging a figure. |
 | `provenance` | Inspect `weather_skills_history` on a Zarr or plot PNG (lineage, JSON, or reproduction script). |
