@@ -62,18 +62,19 @@ def _open_remote(dataset: str, variable: str) -> xr.Dataset:
 
 
 def _select_lead(clim: xr.Dataset, lead_days: int) -> xr.Dataset:
-    """Select one --prediction-timedelta lead and realize valid time = init_time + lead."""
-    lead = np.timedelta64(lead_days, "D")
-    if lead not in clim["prediction_timedelta"].values:
-        available = sorted(
-            int(td / np.timedelta64(1, "D")) for td in clim["prediction_timedelta"].values
-        )
+    """Select one --prediction-timedelta lead and realize valid time = init_time + lead.
+    prediction_timedelta is an integer in days.
+    """
+    available = [int(v) for v in clim["prediction_timedelta"].values]
+    if lead_days not in available:
         raise UsageError(
             f"--prediction-timedelta {lead_days} not in this climatology; "
-            f"available (days): {available}"
+            f"available (days): {sorted(available)}"
         )
-    clim = clim.sel(prediction_timedelta=lead, drop=True)
-    clim = clim.assign_coords(init_time=clim["init_time"] + lead).rename({"init_time": "time"})
+    clim = clim.sel(prediction_timedelta=lead_days, drop=True)
+    clim = clim.assign_coords(
+        init_time=clim["init_time"] + np.timedelta64(lead_days, "D")
+    ).rename({"init_time": "time"})
     return clim
 
 
