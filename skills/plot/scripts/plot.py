@@ -9,8 +9,6 @@
 #   "matplotlib>=3.8,<3.10",
 #   "nc-time-axis",
 #   "numpy",
-#   # cartopy quiver(regrid_shape=...) interpolates via scipy
-#   "scipy",
 #   "shapely>=2.1",
 #   "xarray",
 #   "zarr",
@@ -28,7 +26,9 @@ from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import lat_slice, parse_bbox, polygon_from_geojson
 from weather_skills_core.units import (
+    DATA_INTERVAL_ATTR,
     classify_variable,
+    parse_aggregation_period,
     precip_for_display,
     to_standard_units,
     units_equal,
@@ -84,10 +84,12 @@ _UV_NAME_PAIRS = (
 )
 _SAMPLE_DIM_NAMES = {"step", "number", "point_id", "station_id", "valid_time"}
 
-# ECMWF-S2S4AFRICA quiver_plot_variable (plot_s2s 10 m / 700 hPa wind vectors).
+# Speed field matches plot_s2s 10 m / 700 hPa (YlGn). Arrows match
+# plot_wind_and_sst_anomaly: native grid, matplotlib scale=100, optional stride.
 QUIVER_CMAP = "YlGn"
-QUIVER_SCALE = 40.0
-QUIVER_REGRID_SHAPE = 10
+QUIVER_SCALE = 100.0
+QUIVER_STEP = 1
+QUIVER_TARGET_SPACING_DEG = 1.5
 QUIVER_KEY_MS = (5.0, 10.0)
 
 # Natural Earth scale vs map span (max of lon/lat extent in degrees).
@@ -692,7 +694,7 @@ def _timeseries_axis(da, sdim):
 
 
 def _panel_title(da, sdim, step_value, all_steps):
-    """'<start> until <end>' from time + step; else '<sdim>=<step>'."""
+    """'<start> until <end>' from time + left-labeled step; else '<sdim>=<step>'."""
     import numpy as np
 
     fallback = f"{sdim}={_format_step(step_value)}"
@@ -703,14 +705,18 @@ def _panel_title(da, sdim, step_value, all_steps):
         return fallback
     try:
         time_val = np.asarray(da["time"].values)
-        first = step_arr[0]
-        if step_value == first:
-            start = time_val
-            end = time_val + np.asarray(step_value)
-        else:
-            dt = step_arr[1] - step_arr[0] if step_arr.size > 1 else np.asarray(step_value) - first
-            end = time_val + np.asarray(step_value)
-            start = end - dt
+        start = time_val + np.asarray(step_value)
+        dt = None
+        interval = da.attrs.get(DATA_INTERVAL_ATTR)
+        if isinstance(interval, str) and interval.strip():
+            try:
+                seconds = float(parse_aggregation_period(interval).to("second").magnitude)
+                dt = np.timedelta64(int(round(seconds)), "s")
+            except (TypeError, ValueError):
+                dt = None
+        if dt is None:
+            dt = step_arr[1] - step_arr[0] if step_arr.size > 1 else np.timedelta64(1, "D")
+        end = start + dt
         return f"{str(start)[:16]} until {str(end)[:16]}"
     except Exception:  # noqa: BLE001
         return fallback
@@ -1057,6 +1063,63 @@ def _wind_speed_cbar_label(u_da):
     return f"Wind speed [{units_disp}]"
 
 
+def _mean_axis_spacing(values, axis):
+    """Mean absolute spacing along one axis of a 1-D or 2-D coordinate."""
+    import numpy as np
+
+    values = np.asarray(values, dtype=float)
+    if values.ndim == 0 or values.shape[axis] < 2:
+        return None
+    delta = np.diff(values, axis=axis)
+    delta = delta[np.isfinite(delta)]
+    if delta.size == 0:
+        return None
+    return float(np.mean(np.abs(delta)))
+
+
+def _quiver_step(lat, lon, requested=None, target_spacing=QUIVER_TARGET_SPACING_DEG):
+    """Stride for quiver arrows.
+
+    ``plot_wind_and_sst_anomaly`` uses ``quiver_step=1`` on the native S2S
+    ~1.5° grid. When ``requested`` is set, use that. Otherwise thin finer
+    grids (GFS 0.25°, ERA5) to about 1.5° so basin maps match that look.
+    """
+    if requested is not None:
+        if requested < 1:
+            raise UsageError("--quiver-step must be >= 1")
+        return int(requested)
+    import numpy as np
+
+    lat = np.asarray(lat)
+    lon = np.asarray(lon)
+    if lat.ndim == 1 and lon.ndim == 1:
+        spacings = [_mean_axis_spacing(lat, 0), _mean_axis_spacing(lon, 0)]
+    else:
+        spacings = [
+            _mean_axis_spacing(lat, 0),
+            _mean_axis_spacing(lon, 1 if lon.ndim > 1 else 0),
+        ]
+    candidates = [s for s in spacings if s is not None and s > 0]
+    if not candidates:
+        return QUIVER_STEP
+    spacing = min(candidates)
+    return max(QUIVER_STEP, int(round(target_spacing / spacing)))
+
+
+def _subsample_quiver(lon, lat, u, v, step):
+    """Native-grid u/v subsample, matching plot_wind_and_sst_anomaly."""
+    import numpy as np
+
+    lon = np.asarray(lon)
+    lat = np.asarray(lat)
+    u = np.asarray(u)
+    v = np.asarray(v)
+    if lon.ndim == 1 and lat.ndim == 1:
+        lon, lat = np.meshgrid(lon, lat)
+    step = max(1, int(step))
+    return lon[::step, ::step], lat[::step, ::step], u[::step, ::step], v[::step, ::step]
+
+
 def _quiver_map(
     speed,
     u_da,
@@ -1075,9 +1138,10 @@ def _quiver_map(
     rows=None,
     columns=None,
     quiver_scale=QUIVER_SCALE,
+    quiver_step=None,
     cbar_label=None,
 ):
-    """S2S-style speed pcolormesh with regridded u/v arrows (quiver_plot_variable)."""
+    """Speed pcolormesh with native-grid u/v arrows (plot_wind_and_sst_anomaly)."""
     import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
     import numpy as np
@@ -1166,13 +1230,20 @@ def _quiver_map(
             vmax=vmax,
             transform=ccrs.PlateCarree(),
         )
-        quiv = ax.quiver(
-            u_slab[lon_dim],
-            u_slab[lat_dim],
+        step = _quiver_step(u_slab[lat_dim].values, u_slab[lon_dim].values, quiver_step)
+        lon_q, lat_q, u_q, v_q = _subsample_quiver(
+            u_slab[lon_dim].values,
+            u_slab[lat_dim].values,
             u_slab.values,
             v_slab.values,
+            step,
+        )
+        quiv = ax.quiver(
+            lon_q,
+            lat_q,
+            u_q,
+            v_q,
             transform=ccrs.PlateCarree(),
-            regrid_shape=QUIVER_REGRID_SHAPE,
             scale=quiver_scale,
             color="k",
             zorder=5,
@@ -1235,6 +1306,7 @@ def _plot_quiver(
     rows,
     columns,
     quiver_scale,
+    quiver_step,
 ):
     """Map panels of wind speed with S2S-style u/v quiver overlay."""
     if variable:
@@ -1277,6 +1349,7 @@ def _plot_quiver(
         rows=rows,
         columns=columns,
         quiver_scale=quiver_scale if quiver_scale is not None else QUIVER_SCALE,
+        quiver_step=quiver_step,
         cbar_label=_wind_speed_cbar_label(u_da),
     )
 
@@ -1500,9 +1573,16 @@ def _heatmap(
     "--quiver-scale",
     type=float,
     default=None,
+    help=("Matplotlib quiver scale (S2S plot_wind_and_sst_anomaly default 100). Quiver-only."),
+)
+@weather_skill.argument(
+    "--quiver-step",
+    type=int,
+    default=None,
     help=(
-        "Matplotlib quiver scale (S2S quiver_plot_variable default 40; "
-        "their anomaly maps use 20). Quiver-only."
+        "Plot every Nth grid point for --style quiver "
+        "(S2S plot_wind_and_sst_anomaly quiver_step). "
+        "Default: 1 on ~1.5° grids; finer grids auto-thin to ~1.5°. Quiver-only."
     ),
 )
 def plot(
@@ -1523,6 +1603,7 @@ def plot(
     u_variable,
     v_variable,
     quiver_scale,
+    quiver_step,
     output,
     **kwargs,
 ):
@@ -1559,6 +1640,7 @@ def plot(
     }
     quiver_only = {
         "--quiver-scale": quiver_scale is not None,
+        "--quiver-step": quiver_step is not None,
     }
 
     def _flag_detail(flag):
@@ -1633,6 +1715,7 @@ def plot(
             rows,
             columns,
             quiver_scale,
+            quiver_step,
         )
     else:
         variable = variable or auto_variable(ds)

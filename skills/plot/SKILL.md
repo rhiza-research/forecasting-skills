@@ -1,6 +1,6 @@
 ---
 name: plot
-description: Render a 2D heatmap, 1D time series, wind-rose, or u/v quiver PNG from any gridded or station weather-skills standard dataset Zarr. Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Wind roses convert eastward/northward (u/v) components to meteorological-from direction and speed. Quiver maps match ECMWF S2S Africa 10 m / 700 hPa wind-vector panels (YlGn speed field, regridded arrows). Use when you need to visualize a single dataset as a map, a time/step profile, a wind rose, or wind vectors. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
+description: Render a 2D heatmap, 1D time series, wind-rose, or u/v quiver PNG from any gridded or station weather-skills standard dataset Zarr. Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Wind roses convert eastward/northward (u/v) components to meteorological-from direction and speed. Quiver maps overlay native-grid u/v arrows (S2S `plot_wind_and_sst_anomaly`: matplotlib `scale=100`). Use when you need to visualize a single dataset as a map, a time/step profile, a wind rose, or wind vectors. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
@@ -42,15 +42,16 @@ Source-agnostic single-dataset visualization. Four styles:
   members). `--bbox` / `--mask-geojson` / `--index` subset samples first.
   16 compass sectors; speed classes 0–2, 2–4, …, ≥12 m/s (empty high-speed
   bins dropped). `--colormap` colors the speed stacks (default blue→orange).
-- `quiver` — ECMWF S2S Africa `quiver_plot_variable` wind-vector map: speed as
-  `pcolormesh` (`YlGn` by default, matching `plot_s2s` 10 m / 700 hPa
-  `10m-wind_vectors.png`) with `u`/`v` arrows regridded to a 10×10 projection
-  grid (`regrid_shape=10`, matplotlib `scale=40`; needs `scipy`). Same panel layout, geo
+- `quiver` — wind-vector map: speed as `pcolormesh` (`YlGn` by default,
+  matching `plot_s2s` 10 m / 700 hPa `10m-wind_vectors.png`) with native-grid
+  `u`/`v` arrows like `plot_wind_and_sst_anomaly` (`scale=100`, optional
+  `--quiver-step` stride; no cartopy `regrid_shape`). Same panel layout, geo
   overlays, `--bbox` / `--mask-geojson` / `--index` / `--cities` / `--draw-box`
   as heatmap. Ensemble `number` is averaged. Auto-detects u/v like windrose
   (`u10`/`v10`, CF `eastward_wind`/`northward_wind`, …). Colorbar is
   `Wind speed [m/s]` (or `Wind speed anomaly` if the u field name says so).
-  Arrow keys for 5 and 10 m/s. `--quiver-scale 20` matches their anomaly maps.
+  Arrow keys for 5 and 10 m/s. Finer grids (GFS 0.25°) auto-thin to ~1.5°
+  (native S2S spacing) unless `--quiver-step` is set.
 
 ## When to use
 
@@ -73,7 +74,7 @@ with a hits row, use `plot-verify`.
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> \
     [--variable NAME] [--style heatmap|timeseries|windrose|quiver] \
-    [--u-variable NAME] [--v-variable NAME] [--quiver-scale N] \
+    [--u-variable NAME] [--v-variable NAME] [--quiver-scale N] [--quiver-step N] \
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
     [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E] \
@@ -167,7 +168,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   timeseries` and `--style windrose` ignore it with a stderr warning. Default
   unset → no boxes.
 - `--quiver-scale` — matplotlib quiver `scale` for `--style quiver`. Default
-  `40` (S2S `quiver_plot_variable`). Their anomaly vector maps use `20`.
+  `100` (`plot_wind_and_sst_anomaly`). Larger values draw shorter arrows.
+- `--quiver-step` — plot every Nth grid point for `--style quiver`. Matches
+  `plot_wind_and_sst_anomaly`'s `quiver_step`. When omitted, the skill uses
+  stride 1 on ~1.5° (S2S) grids and auto-thins finer grids to about 1.5° so
+  a GFS basin map looks like the S2S Indian Ocean wind overlay. Pass `1` to
+  plot every native point.
 
 ### Output
 

@@ -40,8 +40,17 @@ def test_timeseries_forecast_axis_is_valid_time(plot_fn):
     da = make_forecast(init="2026-01-01")["tp"]
     xvals, xlabel = plot_mod._timeseries_axis(da, "step")
     assert xlabel == "valid time"
-    assert np.datetime_as_string(xvals[0], unit="D") == "2026-01-02"
-    assert np.datetime_as_string(xvals[-1], unit="D") == "2026-01-04"
+    assert np.datetime_as_string(xvals[0], unit="D") == "2026-01-01"
+    assert np.datetime_as_string(xvals[-1], unit="D") == "2026-01-03"
+
+
+def test_panel_title_lead_zero_is_first_24h(plot_fn):
+    plot_mod = load_skill("plot", "plot")
+    da = make_forecast(init="2025-01-01", n_step=3)["tp"]
+    da.attrs["data_interval"] = "1 day"
+    title = plot_mod._panel_title(da, "step", da["step"].values[0], da["step"].values)
+    assert title.startswith("2025-01-01")
+    assert "until 2025-01-02" in title
 
 
 def test_timeseries_forecast_writes_png(tmp_path, plot_fn):
@@ -504,3 +513,59 @@ def test_quiver_missing_uv_exits(tmp_path, plot_fn, capsys):
     with pytest.raises(SystemExit):
         run_skill(plot_fn, "-i", str(src), "-o", str(out), "--style", "quiver")
     assert "eastward" in capsys.readouterr().err
+
+
+def test_quiver_step_s2s_grid_is_one():
+    plot_mod = load_skill("plot", "plot")
+    lat = np.arange(-20.0, 20.0, 1.5)
+    lon = np.arange(45.0, 120.0, 1.5)
+    assert plot_mod._quiver_step(lat, lon) == 1
+    assert plot_mod._quiver_step(lat, lon, requested=3) == 3
+
+
+def test_quiver_step_auto_thins_quarter_degree():
+    plot_mod = load_skill("plot", "plot")
+    lat = np.arange(-10.0, 10.0, 0.25)
+    lon = np.arange(40.0, 80.0, 0.25)
+    assert plot_mod._quiver_step(lat, lon) == 6
+
+
+def test_quiver_step_rejects_zero():
+    from weather_skills_core import UsageError
+
+    plot_mod = load_skill("plot", "plot")
+    with pytest.raises(UsageError, match=">= 1"):
+        plot_mod._quiver_step([0.0, 1.0], [10.0, 11.0], requested=0)
+
+
+def test_subsample_quiver_stride():
+    plot_mod = load_skill("plot", "plot")
+    lon = np.array([0.0, 1.0, 2.0, 3.0])
+    lat = np.array([10.0, 11.0, 12.0])
+    u = np.arange(12.0).reshape(3, 4)
+    v = -u
+    lon_q, lat_q, u_q, v_q = plot_mod._subsample_quiver(lon, lat, u, v, 2)
+    assert u_q.shape == (2, 2)
+    assert lon_q.shape == (2, 2)
+    np.testing.assert_array_equal(u_q, u[::2, ::2])
+    np.testing.assert_array_equal(v_q, v[::2, ::2])
+
+
+def test_quiver_step_flag_writes_png(tmp_path, plot_fn):
+    src = write_zarr(_make_wind(), tmp_path / "wind.zarr")
+    out = tmp_path / "quiver.png"
+    run_skill(
+        plot_fn,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--style",
+        "quiver",
+        "--quiver-step",
+        "1",
+        "--quiver-scale",
+        "100",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
