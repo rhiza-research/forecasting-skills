@@ -72,3 +72,40 @@ def test_select_value_station_id_stringdtype(tmp_path, select):
     result = xr.open_zarr(out, consolidated=True)
     assert list(result["station_id"].values) == ["TA00072", "TA00131"]
     assert load_history(out)[-1]["skill"] == "select"
+
+
+def test_select_one_station_keeps_identity_coords(tmp_path, select):
+    import pandas as pd
+
+    times = pd.to_datetime(["2026-08-19", "2026-08-20"])
+    long = pd.DataFrame(
+        {
+            "precip": [1.0, 2.0, 3.0, 4.0],
+            "station_id": ["TA00072", "TA00072", "TA00131", "TA00131"],
+            "time": list(times) * 2,
+        }
+    ).set_index(["time", "station_id"])
+    ds = xr.Dataset.from_dataframe(long)
+    ds = ds.assign_coords(
+        name=("station_id", ["Likoni", "Shimo la Tewa"]),
+        latitude=("station_id", [-4.08, -3.99]),
+        longitude=("station_id", [39.66, 39.74]),
+    )
+    ds["precip"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "one.zarr"
+    run_skill(
+        select,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--dim",
+        "station_id",
+        "--value",
+        "TA00072",
+    )
+    result = xr.open_zarr(out, consolidated=True)
+    assert "station_id" not in result.dims
+    assert str(result["station_id"].values) == "TA00072"
+    assert str(result["name"].values) == "Likoni"

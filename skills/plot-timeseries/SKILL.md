@@ -13,8 +13,9 @@ metadata:
 
 Source-agnostic multi-input timeseries plotting. Takes one or more weather-skills
 standard dataset Zarrs and draws each as a 1D line on a single set of axes against
-its time/step coord. Each trace is labeled in the legend by the input
-filename stem.
+its time/step coord. Each trace is labeled in the legend by a size-1
+`station_id` / `point_id` (plus `name` when present), else the input
+filename stem, else `weather_skills_source`.
 
 It plots data that is already 1D (only a time-like dim left after picking
 `--variable`) or data the caller has explicitly told it how to reduce to 1D

@@ -82,11 +82,10 @@ rejects `--value` with an error directing to `--index`.
 ### Output
 
 A single selection (one `--index` or one `--value`) collapses the dim — it
-disappears from the output — AND drops every coordinate variable the
-selection leaves scalar: the dim's own coord and any auxiliary coord on the
-collapsed dim (e.g. a `valid_time(step)` coord goes with `step`). Coordinates
-that were already scalar on the input pass through. The output is therefore
-ready to `concat` along a new dim. Multiple selections keep the dim with
+disappears from the output — AND drops leftover scalar coordinates on that dim
+(e.g. `step`, `valid_time`). Point identity is kept as scalar coords:
+`station_id` / `point_id`, `name`, `latitude` / `longitude`, `country`. Other
+coordinates that were already scalar on the input pass through. Multiple selections keep the dim with
 exactly those entries, in the order the flags were given (args order = output
 order; `--index 2 --index 0` reverses those two entries). Selecting by
 `--value` produces the same data as selecting the corresponding positions by

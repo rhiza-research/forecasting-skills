@@ -125,3 +125,34 @@ def test_y_label_shows_units_from_pint():
     da.attrs["long_name"] = "IMERG daily precipitation"
     da.attrs["GRIB_name"] = "Precipitation rate"
     assert mod._y_label("precip", da) == "IMERG daily precipitation [mm/day]"
+
+
+def test_trace_label_prefers_station_id_over_tahmo_source():
+    import numpy as np
+    import xarray as xr
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    ds = xr.Dataset(
+        {"precip": (("time",), [1.0, 2.0])},
+        coords={
+            "time": np.array(["2026-08-19", "2026-08-20"], dtype="datetime64[ns]"),
+            "station_id": "TA00072",
+            "name": "Likoni",
+        },
+    )
+    ds.attrs["weather_skills_source"] = "tahmo"
+    assert mod._trace_label(ds, 0) == "TA00072 Likoni"
+
+
+def test_trace_label_uses_filename_when_source_is_shared():
+    import numpy as np
+    import xarray as xr
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    ds = xr.Dataset(
+        {"precip": (("time",), [1.0, 2.0])},
+        coords={"time": np.array(["2026-08-19", "2026-08-20"], dtype="datetime64[ns]")},
+    )
+    ds.attrs["weather_skills_source"] = "tahmo"
+    ds.encoding["source"] = "/tmp/ta00072.zarr"
+    assert mod._trace_label(ds, 0) == "ta00072"

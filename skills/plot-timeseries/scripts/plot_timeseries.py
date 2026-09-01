@@ -33,6 +33,42 @@ from weather_skills_core.units import (
 _SKILL_VERSION = "0.0.2"
 
 
+def _size1_str(ds, *names) -> str | None:
+    for name in names:
+        if name not in ds.coords and name not in getattr(ds, "variables", ()):
+            continue
+        arr = ds[name]
+        if arr.size != 1:
+            continue
+        text = str(arr.values.reshape(-1)[0]).strip()
+        if text:
+            return text
+    return None
+
+
+def _source_stem(ds) -> str | None:
+    source = ds.encoding.get("source")
+    if isinstance(source, str) and source.strip():
+        stem = Path(source).stem
+        if stem:
+            return stem
+    return None
+
+
+def _trace_label(ds, idx: int) -> str:
+    """Legend label: station id, else filename stem, else weather_skills_source."""
+    station = _size1_str(ds, "station_id", "point_id")
+    if station:
+        name = _size1_str(ds, "name")
+        if name and name.casefold() != station.casefold():
+            return f"{station} {name}"
+        return station
+    stem = _source_stem(ds)
+    if stem:
+        return stem
+    return dataset_label(ds, f"input {idx + 1}")
+
+
 def _y_label(variable, da):
     return variable_label_for_display(da, fallback=variable)
 
@@ -96,7 +132,7 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
         u = variable_units(ds[variable])
         if isinstance(u, str) and u.strip():
             unit_vals.append(u)
-            seen_units[dataset_label(ds, f"input {idx + 1}")] = u.strip()
+            seen_units[_trace_label(ds, idx)] = u.strip()
     if unit_vals and any(not units_equal(unit_vals[0], u) for u in unit_vals[1:]):
         detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
         print(
@@ -130,7 +166,7 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
                 prefix=False,
             )
 
-        label = dataset_label(ds, f"input {idx + 1}")
+        label = _trace_label(ds, idx)
         xlabel = tdim
         if align_day_of_year:
             try:

@@ -16,6 +16,18 @@ from weather_skills_core import Dataset, UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
 
+_KEEP_SCALAR_COORDS = frozenset(
+    {
+        "station_id",
+        "point_id",
+        "name",
+        "latitude",
+        "lat",
+        "longitude",
+        "lon",
+        "country",
+    }
+)
 _INDEX_RE = re.compile(r"-?[0-9]+")
 _NUM_INT_RE = re.compile(r"-?[0-9]+")
 _NUM_FLOAT_RE = re.compile(r"-?([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)([eE][+-]?[0-9]+)?")
@@ -97,7 +109,12 @@ def select(ds, dim, index, value, **kwargs):
     if len(positions) == 1:
         pre_scalar = {c for c in ds.coords if ds[c].ndim == 0}
         out = ds.isel({dim: positions[0]})
-        return out.drop_vars([c for c in out.coords if out[c].ndim == 0 and c not in pre_scalar])
+        drop = [
+            c
+            for c in out.coords
+            if out[c].ndim == 0 and c not in pre_scalar and c not in _KEEP_SCALAR_COORDS
+        ]
+        return out.drop_vars(drop)
     return ds.isel({dim: positions})
 
 
