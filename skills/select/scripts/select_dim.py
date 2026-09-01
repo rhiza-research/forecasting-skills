@@ -21,6 +21,13 @@ _NUM_INT_RE = re.compile(r"-?[0-9]+")
 _NUM_FLOAT_RE = re.compile(r"-?([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)([eE][+-]?[0-9]+)?")
 
 
+def _is_string_coord(dtype, coord_vals) -> bool:
+    """True for unicode, bytes, NumPy 2 StringDType (kind 'T'), or object-of-str."""
+    if dtype.kind in "UST":
+        return True
+    return dtype.kind == "O" and coord_vals.size and isinstance(coord_vals.flat[0], str)
+
+
 def _parse_value(raw, coord_vals, dim):
     import numpy as np
     import pandas as pd
@@ -42,9 +49,7 @@ def _parse_value(raw, coord_vals, dim):
         if _NUM_FLOAT_RE.fullmatch(raw):
             return float(raw)
         raise UsageError(f"--value '{raw}' not a number literal")
-    if dtype.kind in "US" or (
-        dtype.kind == "O" and coord_vals.size and isinstance(coord_vals.flat[0], str)
-    ):
+    if _is_string_coord(dtype, coord_vals):
         return raw.encode() if dtype.kind == "S" else raw
     raise UsageError(f"coord '{dim}' dtype {dtype} needs --index, not --value")
 

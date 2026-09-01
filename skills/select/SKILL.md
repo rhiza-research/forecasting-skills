@@ -70,7 +70,7 @@ position, the dim, and its size.
 | `datetime64` | naive ISO datetime string (no timezone suffix, no `now`/`today`) | `2026-06-01`, `2026-06-01T06:00` |
 | `timedelta64` | pandas-style timedelta string | `7D`, `168h` |
 | numeric | int or float literal (no underscores, `nan`, or `inf`) | `0`, `1.5` |
-| string | verbatim | `TA00001` |
+| string | verbatim, including NumPy `StringDType` (Zarr v3 station ids) | `TA00001` |
 
 Matching is exact (no nearest-neighbor lookup). A value absent from the coord
 errors with a sample of the available values; a value matching more than one
