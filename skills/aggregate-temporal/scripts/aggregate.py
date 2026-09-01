@@ -442,150 +442,6 @@ def _rolling_aggregation_period(ds, dim, window, interval):
     return f"{window} day"
 
 
-def _run_aggregation(
-    ds,
-    dim,
-    method,
-    window,
-    align,
-    stride_val,
-    period,
-    end_time,
-    start_time,
-    has_bounds,
-    native_interval,
-    interval,
-):
-    """The existing window-vs-period dispatch, factored out so --climatology can call it twice.
-
-    Behavior for a normal (non-climatology) call is unchanged — this is the
-    same code that used to sit at the bottom of ``aggregate()`` directly.
-    ``native_interval`` and ``interval`` are two distinct values computed
-    once in ``aggregate()`` (the former only feeds the stamped
-    ``data_interval`` attr; the latter can additionally fall back to an
-    inferred timestep) — pass both through as-is, don't re-derive either.
-    """
-    if window is not None:
-        if has_bounds:
-            raise UsageError(
-                "--window is a step count; irregular axes with CF bounds require --period"
-            )
-        out = roll_and_agg(ds, window, dim, method, align=align, stride=stride_val)
-        n = out.sizes.get(dim, 0)
-        if n:
-            out = _assign_coverage(out, dim, [1.0] * n)
-        agg_period = _rolling_aggregation_period(ds, dim, window, interval)
-        return _stamp_attrs(out, dim, agg_period, method, interval, data_interval=native_interval)
-
-    spec = _resolve_period(period)
-    if dim == "step":
-        out = _aggregate_step(ds, spec, method)
-        if end_time is not None or start_time is not None:
-            print(
-                "--start-time/--end-time have no effect on step aggregation",
-                file=sys.stderr,
-            )
-    elif end_time is not None:
-        out = _aggregate_time_anchored(ds, dim, spec, method, end_time, start_time=start_time)
-    else:
-        out = _aggregate_time_resample(ds, dim, spec, method)
-
-    return _stamp_attrs(out, dim, spec["agg"], method, interval, data_interval=native_interval)
-
-
-def _expected_n_per_bin(labels, spec, interval):
-    """Nominal (not coverage-adjusted) sample count per output bin — same
-    days-in-month handling ``_expected_from_interval`` uses internally,
-    computed independently here since --climatology doesn't reach into that
-    private per-branch logic."""
-    import numpy as np
-    import pandas as pd
-
-    out = []
-    for label in labels:
-        if spec["key"] == "monthly":
-            days = int(pd.Timestamp(label).days_in_month)
-            period_str = f"{days} day"
-        else:
-            period_str = spec["agg"]
-        n = None
-        if interval:
-            try:
-                n = expected_samples_in_period(period_str, interval)
-            except UsageError:
-                n = None
-        if n is None:
-            n = max(1, spec.get("anchor_days", 1))
-        out.append(n)
-    return np.asarray(out, dtype=float)
-
-
-def _aggregate_climatology(
-    ds,
-    avg_name,
-    std_name,
-    dim,
-    window,
-    align,
-    stride_val,
-    period,
-    end_time,
-    start_time,
-    has_bounds,
-    native_interval,
-    interval,
-):
-    """Aggregate a climatology's <name>_avg/<name>_std pair correctly.
-
-    <name>_avg aggregates like any ordinary rate (duration-weighting doesn't
-    apply here — has_bounds is rejected below). <name>_std does NOT: mean is
-    linear, so a weighted average of means is correct, but variance/std is a
-    quadratic functional of the underlying samples, so no generic reduction
-    (mean/max/min) ever computes Var(window mean) correctly. Assuming
-    independent days, Var(window mean) = (1/N^2) * sum(std_i^2), so: square,
-    run through the SAME unmodified mean-aggregation machinery used for
-    <name>_avg (giving mean(std_i^2) = sum(std_i^2)/N), then divide by N once
-    more and take sqrt. Two independent black-box calls, combined only at the
-    end — never an intermediate wrong value for <name>_std.
-    """
-    import numpy as np
-    import xarray as xr
-
-    if has_bounds:
-        raise UsageError(
-            "--climatology does not support duration-weighted (CF-bounds) input; "
-            "days are assumed independent and equally weighted."
-        )
-
-    avg_out = _run_aggregation(
-        ds[[avg_name]], dim, "mean", window, align, stride_val, period, end_time, start_time,
-        has_bounds, native_interval, interval,
-    )
-
-    std_da = ds[std_name]
-    if getattr(std_da, "pint", None) is not None and std_da.pint.units is not None:
-        std_da = std_da.pint.dequantify()  # square/aggregate as plain floats, not pint quantities
-    squared = (std_da**2).to_dataset(name=std_name)
-    squared_mean = _run_aggregation(
-        squared, dim, "mean", window, align, stride_val, period, end_time, start_time, has_bounds,
-        native_interval, interval,
-    )
-
-    if window is not None:
-        n = float(window)
-    else:
-        spec = _resolve_period(period)
-        n_values = _expected_n_per_bin(avg_out[dim].values, spec, interval)
-        n = xr.DataArray(n_values, dims=[dim], coords={dim: avg_out[dim].values})
-
-    std_out = np.sqrt(squared_mean[std_name] / n)
-    std_out.attrs = dict(ds[std_name].attrs)  # sqrt(x^2) restores the original units exactly
-
-    out = avg_out.copy()
-    out[std_name] = std_out
-    return out
-
-
 @weather_skill(
     name="aggregate-temporal",
     version=_SKILL_VERSION,
@@ -618,19 +474,6 @@ def _aggregate_climatology(
     help="With --window: int step or stride_dates string (day/week/Monday/...).",
 )
 @weather_skill.argument("--method", default="mean", choices=["mean", "max", "min"])
-@weather_skill.argument(
-    "--climatology",
-    default=None,
-    help=(
-        "Semantic variable name whose <name>_avg/<name>_std pair (e.g. from "
-        "clim-fetch) gets standard-error-of-the-mean-aware aggregation, "
-        "instead of aggregating <name>_std like an ordinary --method mean "
-        "field (which silently computes the wrong statistic — variance/std "
-        "is not linear under averaging the way a mean is). Mutex with "
-        "--variable; requires --method mean. Assumes independent days; "
-        "not supported with duration-weighted (CF-bounds) input."
-    ),
-)
 @weather_skill.argument("--time-dim", default=None)
 @weather_skill.argument(
     "--end-time",
@@ -652,7 +495,6 @@ def aggregate(
     align,
     stride,
     method,
-    climatology,
     end_time,
     start_time,
     **kwargs,
@@ -671,21 +513,7 @@ def aggregate(
     if window is None and align != "left":
         raise UsageError("--align requires --window")
 
-    avg_name = std_name = None
-    if climatology is not None:
-        if variable is not None:
-            raise UsageError("--climatology cannot be combined with --variable")
-        if method != "mean":
-            raise UsageError("--climatology requires --method mean")
-        avg_name, std_name = f"{climatology}_avg", f"{climatology}_std"
-        missing = [n for n in (avg_name, std_name) if n not in ds.data_vars]
-        if missing:
-            raise UsageError(
-                f"--climatology {climatology!r} needs {missing} in the input "
-                f"(have {list(ds.data_vars)})"
-            )
-        ds = ds[[avg_name, std_name]]
-    elif variable is not None:
+    if variable is not None:
         ds = ds[list(dict.fromkeys(variable))]
 
     if time_dim:
@@ -725,16 +553,39 @@ def aggregate(
         except ValueError:
             pass
 
-    if climatology is not None:
-        return _aggregate_climatology(
-            ds, avg_name, std_name, dim, window, align, stride_val, period, end_time,
-            start_time, has_bounds, native_interval, interval,
-        )
+    if window is not None:
+        if has_bounds:
+            raise UsageError(
+                "--window is a step count; irregular axes with CF bounds require --period"
+            )
+        out = roll_and_agg(ds, window, dim, method, align=align, stride=stride_val)
+        n = out.sizes.get(dim, 0)
+        if n:
+            out = _assign_coverage(out, dim, [1.0] * n)
+        agg_period = _rolling_aggregation_period(ds, dim, window, interval)
+        return _stamp_attrs(out, dim, agg_period, method, interval, data_interval=native_interval)
 
-    return _run_aggregation(
-        ds, dim, method, window, align, stride_val, period, end_time, start_time, has_bounds,
-        native_interval, interval,
-    )
+    spec = _resolve_period(period)
+    if dim == "step":
+        out = _aggregate_step(ds, spec, method)
+        if end_time is not None or start_time is not None:
+            print(
+                "--start-time/--end-time have no effect on step aggregation",
+                file=sys.stderr,
+            )
+    elif end_time is not None:
+        out = _aggregate_time_anchored(
+            ds,
+            dim,
+            spec,
+            method,
+            end_time,
+            start_time=start_time,
+        )
+    else:
+        out = _aggregate_time_resample(ds, dim, spec, method)
+
+    return _stamp_attrs(out, dim, spec["agg"], method, interval, data_interval=native_interval)
 
 
 if __name__ == "__main__":
