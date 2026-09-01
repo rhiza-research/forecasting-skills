@@ -1,6 +1,6 @@
 ---
 name: plot-timeseries
-description: Render a single PNG with one 1D series per input Zarr overlaid on a shared time axis, as lines (default) or grouped bars. Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates.
+description: Render a single PNG with one 1D series per input Zarr overlaid on a shared time axis, as lines (default) or grouped bars. Repeatable --trace SELECTOR:k=v styles one series (color, linewidth, marker, zorder) by 1-based input index, legend label, or a unique token in the label (e.g. 2026). Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py *)
@@ -38,6 +38,7 @@ For a single-input quick-look, use the `plot` skill with
 - Comparing the same variable across two or more datasets (e.g. forecast vs.
   observation, or two forecast models) as line traces or grouped bars on one
   figure.
+- Highlighting one input among analog years (`--trace 2026:color=black,linewidth=2.5`).
 - Plotting a single dataset as a 1D timeseries when you want explicit
   control over which dims are reduced. Period totals (dekadal/monthly precip)
   often read better as `--style bar`.
@@ -50,7 +51,7 @@ For maps of N forecasts (or forecasts vs gridded obs) over time, use
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
     [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] \
-    [--style line|bar] [--align-day-of-year]
+    [--style line|bar] [--align-day-of-year] [--trace SELECTOR:k=v ...]
 ```
 
 ### Arguments
@@ -87,6 +88,18 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   - Leap vs non-leap years offset day-of-year by ~1 after Feb 29, so dates
     after February in a leap year land one day-of-year higher than the same
     date in a non-leap year.
+- `--trace` — repeatable per-series style `SELECTOR:k=v[,k=v...]`. Unstyled
+  series keep the matplotlib color cycle in `--input` order. Selectors:
+  - `*` — all series (applied first; later `--trace` flags override)
+  - a 1-based `--input` index (`4` is the fourth `-i`; only `1…N` count as
+    indices, so `2026` is a year token, not input 2026)
+  - the legend label (filename stem, or `station_id`)
+  - a unique alphanumeric token in that label (`2026` matches `chirps_2026`)
+  Keys: `color` (matplotlib name, hex, or grayscale `0-1`), `linewidth` /
+  `lw`, `linestyle` / `ls`, `marker`, `markersize` / `ms`, `alpha`,
+  `zorder`. Line-only keys (`linewidth`, `linestyle`, `marker`, `markersize`)
+  error with `--style bar`. Quote hex colors (`--trace '2026:color=#222'`).
+  An unmatched or ambiguous selector exits 2.
 
 ### Output
 
@@ -144,4 +157,16 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
     --reduce latitude --reduce longitude \
     --output /tmp/precip_bars.png \
     --title "Weekly precip totals"
+```
+
+Analog years in gray, current year emphasized (token match on the stem):
+
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
+    -i /tmp/chirps_2006.zarr -i /tmp/chirps_2015.zarr -i /tmp/chirps_2026.zarr \
+    --align-day-of-year --reduce latitude --reduce longitude \
+    --trace '*:color=0.65,linewidth=1.2' \
+    --trace '2026:color=black,linewidth=2.5,zorder=5,markersize=7' \
+    --output /tmp/analogs.png \
+    --title "Kenya OND analog rainfall"
 ```

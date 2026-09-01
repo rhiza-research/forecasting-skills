@@ -231,3 +231,152 @@ def test_bar_forecast_step_writes_png(tmp_path, plot_timeseries):
     )
     assert Path(out).exists()
     assert out.stat().st_size > 0
+
+
+def test_parse_trace_selector_and_aliases():
+    import argparse
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    spec = mod.parse_trace("2026:color=black,lw=2.5,ms=7,zorder=5")
+    assert spec.selector == "2026"
+    assert spec.options == {
+        "color": "black",
+        "linewidth": 2.5,
+        "markersize": 7.0,
+        "zorder": 5.0,
+    }
+    assert str(spec) == "2026:color=black,lw=2.5,ms=7,zorder=5"
+    with pytest.raises(argparse.ArgumentTypeError, match="SELECTOR:k=v"):
+        mod.parse_trace("black")
+    with pytest.raises(argparse.ArgumentTypeError, match="unknown --trace option"):
+        mod.parse_trace("1:colour=red")
+
+
+def test_resolve_trace_styles_star_then_token():
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    labels = ["chirps_2006", "chirps_2015", "chirps_2026"]
+    styles = mod.resolve_trace_styles(
+        labels,
+        [
+            mod.parse_trace("*:color=0.65,linewidth=1.2"),
+            mod.parse_trace("2026:color=black,linewidth=2.5,zorder=5"),
+        ],
+    )
+    assert styles[0] == {"color": "0.65", "linewidth": 1.2}
+    assert styles[1] == {"color": "0.65", "linewidth": 1.2}
+    assert styles[2] == {
+        "color": "black",
+        "linewidth": 2.5,
+        "zorder": 5.0,
+    }
+
+
+def test_resolve_trace_styles_index_and_unmatched():
+    from weather_skills_core.errors import UsageError
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    labels = ["a", "b"]
+    styles = mod.resolve_trace_styles(labels, [mod.parse_trace("2:color=red")])
+    assert styles[0] == {}
+    assert styles[1] == {"color": "red"}
+    with pytest.raises(UsageError, match="matched no series"):
+        mod.resolve_trace_styles(labels, [mod.parse_trace("9:color=red")])
+    with pytest.raises(UsageError, match="more than one series"):
+        mod.resolve_trace_styles(
+            ["yr_2026_a", "yr_2026_b"],
+            [mod.parse_trace("2026:color=black")],
+        )
+
+
+def test_draw_lines_applies_color_and_width():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    fig, ax = plt.subplots()
+    series = [([1, 2], [0.0, 1.0], "chirps_2006"), ([1, 2], [1.0, 2.0], "chirps_2026")]
+    styles = mod.resolve_trace_styles(
+        ["chirps_2006", "chirps_2026"],
+        [
+            mod.parse_trace("*:color=0.65"),
+            mod.parse_trace("2026:color=black,linewidth=3"),
+        ],
+    )
+    mod._draw_lines(ax, series, styles)
+    lines = ax.get_lines()
+    assert mcolors.to_hex(lines[0].get_color()) == mcolors.to_hex("0.65")
+    assert mcolors.to_hex(lines[1].get_color()) == "#000000"
+    assert lines[1].get_linewidth() == 3
+    plt.close(fig)
+
+
+def test_trace_writes_png_and_stamps_args(tmp_path, plot_timeseries):
+    a = write_zarr(make_gridded(fill=1.0), tmp_path / "chirps_2006.zarr")
+    b = write_zarr(make_gridded(fill=2.0), tmp_path / "chirps_2026.zarr")
+    out = tmp_path / "analogs.png"
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(a),
+        "-i",
+        str(b),
+        "-o",
+        str(out),
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+        "--trace",
+        "*:color=0.65,linewidth=1.2",
+        "--trace",
+        "2026:color=black,linewidth=2.5,zorder=5",
+    )
+    assert Path(out).exists()
+    history = load_figure_history(out)
+    assert history[-1]["args"]["trace"] == [
+        "*:color=0.65,linewidth=1.2",
+        "2026:color=black,linewidth=2.5,zorder=5",
+    ]
+
+
+def test_trace_bar_rejects_linewidth(tmp_path, plot_timeseries):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    with pytest.raises(SystemExit) as exc:
+        run_skill(
+            plot_timeseries,
+            "-i",
+            str(src),
+            "-o",
+            str(tmp_path / "bars.png"),
+            "--style",
+            "bar",
+            "--reduce",
+            "latitude",
+            "--reduce",
+            "longitude",
+            "--trace",
+            "1:linewidth=3",
+        )
+    assert exc.value.code == 2
+
+
+def test_trace_unmatched_selector_exits(tmp_path, plot_timeseries):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    with pytest.raises(SystemExit) as exc:
+        run_skill(
+            plot_timeseries,
+            "-i",
+            str(src),
+            "-o",
+            str(tmp_path / "ts.png"),
+            "--reduce",
+            "latitude",
+            "--reduce",
+            "longitude",
+            "--trace",
+            "2026:color=black",
+        )
+    assert exc.value.code == 2

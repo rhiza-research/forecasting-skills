@@ -15,6 +15,8 @@
 # ///
 """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
 
+import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -53,6 +55,183 @@ def _source_stem(ds) -> str | None:
         if stem:
             return stem
     return None
+
+
+_TRACE_KEYS = {
+    "color": "color",
+    "linewidth": "linewidth",
+    "lw": "linewidth",
+    "linestyle": "linestyle",
+    "ls": "linestyle",
+    "marker": "marker",
+    "markersize": "markersize",
+    "ms": "markersize",
+    "alpha": "alpha",
+    "zorder": "zorder",
+}
+_LINE_ONLY_KEYS = frozenset({"linewidth", "linestyle", "marker", "markersize"})
+_BAR_KEYS = frozenset({"color", "alpha", "zorder"})
+_TOKEN_SPLIT = re.compile(r"[^0-9A-Za-z]+")
+
+
+class TraceSpec:
+    """One ``--trace SELECTOR:k=v[,k=v...]`` entry."""
+
+    def __init__(self, selector, options, raw):
+        self.selector = selector
+        self.options = options
+        self.raw = raw
+
+    def __str__(self):
+        return self.raw
+
+    def __repr__(self):
+        return f"TraceSpec({self.raw!r})"
+
+
+def _parse_trace_options(blob: str) -> dict:
+    """Parse ``k=v,k=v`` into canonical matplotlib kwargs."""
+    if not blob.strip():
+        raise ValueError("--trace needs at least one k=v option (e.g. color=black)")
+    options = {}
+    for token in blob.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "=" not in token:
+            raise ValueError(
+                f"--trace option {token!r} is not k=v; expected color=, linewidth=, ..."
+            )
+        key, _, val = token.partition("=")
+        key, val = key.strip(), val.strip()
+        if not key:
+            raise ValueError(f"--trace option {token!r} has an empty key")
+        canon = _TRACE_KEYS.get(key)
+        if canon is None:
+            raise ValueError(
+                f"unknown --trace option {key!r}; expected one of "
+                f"{', '.join(sorted(set(_TRACE_KEYS.values())))}"
+            )
+        if not val:
+            raise ValueError(f"--trace option {key!r} has an empty value")
+        if canon in options:
+            raise ValueError(f"--trace option {key!r} is given more than once")
+        if canon in {"linewidth", "markersize", "alpha", "zorder"}:
+            try:
+                num = float(val)
+            except ValueError as exc:
+                raise ValueError(f"--trace {key}={val!r} is not a number") from exc
+            if canon == "alpha" and not 0.0 <= num <= 1.0:
+                raise ValueError(f"--trace alpha={val!r} must be between 0 and 1")
+            options[canon] = num
+        else:
+            options[canon] = val
+    if not options:
+        raise ValueError("--trace needs at least one k=v option (e.g. color=black)")
+    return options
+
+
+def parse_trace(value) -> TraceSpec:
+    """Argparse converter for ``SELECTOR:k=v[,k=v...]``."""
+    if not value or not str(value).strip():
+        raise argparse.ArgumentTypeError("--trace spec is empty")
+    raw = str(value).strip()
+    if ":" not in raw:
+        raise argparse.ArgumentTypeError(
+            f"--trace {raw!r} must be SELECTOR:k=v (e.g. 2026:color=black,linewidth=2.5)"
+        )
+    selector, _, blob = raw.partition(":")
+    selector = selector.strip()
+    if not selector:
+        raise argparse.ArgumentTypeError(f"--trace {raw!r} is missing a selector")
+    try:
+        options = _parse_trace_options(blob)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+    return TraceSpec(selector, options, raw)
+
+
+def _label_tokens(label: str) -> set[str]:
+    return {part.casefold() for part in _TOKEN_SPLIT.split(label) if part}
+
+
+def _trace_match_indices(selector: str, labels: list[str]) -> list[int]:
+    """1-based index, exact legend label, or a unique alphanumeric token in the label."""
+    if selector == "*":
+        return list(range(len(labels)))
+    if selector.isdigit():
+        idx = int(selector) - 1
+        if 0 <= idx < len(labels):
+            return [idx]
+    folded = selector.casefold()
+    exact = [i for i, label in enumerate(labels) if label.casefold() == folded]
+    if exact:
+        return exact
+    return [i for i, label in enumerate(labels) if folded in _label_tokens(label)]
+
+
+def resolve_trace_styles(labels: list[str], specs: list[TraceSpec] | None) -> list[dict]:
+    """Merge ``--trace`` specs onto one style dict per series (``*`` first, then specific)."""
+    styles = [{} for _ in labels]
+    if not specs:
+        return styles
+    wildcards = [spec for spec in specs if spec.selector == "*"]
+    specific = [spec for spec in specs if spec.selector != "*"]
+    for spec in wildcards:
+        for style in styles:
+            style.update(spec.options)
+    for spec in specific:
+        hits = _trace_match_indices(spec.selector, labels)
+        if not hits:
+            raise UsageError(
+                f"--trace {spec.raw!r} matched no series. Selectors are a 1-based --input "
+                f"index, a legend label, a unique token in a label (e.g. 2026), or *. "
+                f"Legend labels: {labels}."
+            )
+        if len(hits) > 1:
+            matched = [labels[i] for i in hits]
+            raise UsageError(
+                f"--trace {spec.raw!r} matched more than one series ({matched}). "
+                "Use a 1-based --input index or a more specific label."
+            )
+        styles[hits[0]].update(spec.options)
+    return styles
+
+
+def _validate_trace_colors(styles: list[dict]) -> None:
+    import matplotlib.colors as mcolors
+
+    for style in styles:
+        color = style.get("color")
+        if color is not None and not mcolors.is_color_like(color):
+            raise UsageError(
+                f"--trace color={color!r} is not a matplotlib color "
+                "(name, hex, or grayscale 0-1)."
+            )
+
+
+def _line_kwargs(style: dict) -> dict:
+    kw = {"marker": "o", "markersize": 5, **style}
+    marker = kw.get("marker")
+    if isinstance(marker, str) and marker.casefold() in {"none", "null"}:
+        kw["marker"] = "None"
+        kw.pop("markersize", None)
+    return kw
+
+
+def _bar_kwargs(style: dict) -> dict:
+    extra = [k for k in style if k in _LINE_ONLY_KEYS]
+    if extra:
+        raise UsageError(
+            f"--trace keys {sorted(extra)} apply to --style line, not --style bar. "
+            "Use color, alpha, or zorder."
+        )
+    return {k: v for k, v in style.items() if k in _BAR_KEYS}
+
+
+def _draw_lines(ax, series, styles):
+    for (xvals, yvals, label), style in zip(series, styles, strict=True):
+        ax.plot(xvals, yvals, label=label, **_line_kwargs(style))
 
 
 def _trace_label(ds, idx: int) -> str:
@@ -97,7 +276,7 @@ def _median_spacing(xnum):
     return float(np.median(np.diff(x)))
 
 
-def _draw_bars(ax, series):
+def _draw_bars(ax, series, styles):
     """Grouped bars on a shared numeric x (dates are converted and restored)."""
     converted = []
     any_dates = False
@@ -110,7 +289,14 @@ def _draw_bars(ax, series):
     bar_w = group_span / n
     for i, (xnum, yvals, label) in enumerate(converted):
         offset = (i - (n - 1) / 2) * bar_w
-        ax.bar(xnum + offset, yvals, width=bar_w * 0.9, label=label, align="center")
+        ax.bar(
+            xnum + offset,
+            yvals,
+            width=bar_w * 0.9,
+            label=label,
+            align="center",
+            **_bar_kwargs(styles[i]),
+        )
     if any_dates:
         ax.xaxis_date()
 
@@ -144,8 +330,20 @@ def _draw_bars(ax, series):
     action="store_true",
     help="Plot against day-of-year (1-366) instead of absolute date.",
 )
+@weather_skill.argument(
+    "--trace",
+    action="append",
+    default=[],
+    type=parse_trace,
+    help=(
+        "Per-series style SELECTOR:k=v. Repeatable. Selector is a 1-based "
+        "--input index (1..N), legend label, unique token in the label "
+        "(e.g. 2026), or * for all. Keys: color, linewidth, linestyle, "
+        "marker, markersize, alpha, zorder."
+    ),
+)
 def plot_timeseries(
-    ds, variable, time_dim, reduce, title, style, align_day_of_year, output, **kwargs
+    ds, variable, time_dim, reduce, title, style, align_day_of_year, trace, output, **kwargs
 ):
     """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
     if not isinstance(ds, (list, tuple)):
@@ -254,11 +452,12 @@ def plot_timeseries(
         if axis_label is None:
             axis_label = xlabel
 
+    styles = resolve_trace_styles([label for _, _, label in series], trace)
+    _validate_trace_colors(styles)
     if style == "bar":
-        _draw_bars(ax, series)
+        _draw_bars(ax, series, styles)
     else:
-        for xvals, yvals, label in series:
-            ax.plot(xvals, yvals, label=label, marker="o", markersize=5)
+        _draw_lines(ax, series, styles)
 
     ax.set_xlabel(axis_label or first_tdim or "time")
     ax.set_ylabel(_y_label(variable, datasets[0][variable]))

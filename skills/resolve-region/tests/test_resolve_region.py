@@ -212,6 +212,20 @@ def test_eastern_africa_matches_east_africa(capsys, resolve_region, monkeypatch)
     assert east == eastern
 
 
+def test_kenya_ond_region_prints_custom_bbox(capsys, resolve_region, monkeypatch):
+    def _fail_nominatim(query):
+        raise AssertionError(
+            f"Nominatim should not run for Kenya OND region; got {query!r}"
+        )
+
+    monkeypatch.setattr("weather_skills_core.region._load_nominatim", _fail_nominatim)
+
+    run_skill(resolve_region, "Kenya OND region")
+    assert capsys.readouterr().out.strip() == "1.0/36.5/-3.0/39.0"
+    run_skill(resolve_region, "Kenya OND")
+    assert capsys.readouterr().out.strip() == "1.0/36.5/-3.0/39.0"
+
+
 def test_landmark_geojson_write(tmp_path, resolve_mod, monkeypatch):
     from weather_skills_core.region import _nominatim_collection
 
