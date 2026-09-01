@@ -61,6 +61,10 @@ Prefer small steps over stuffing every filter into one call:
   but still run `convert-to-totals` so the PNG is from an amount Zarr.
   `deaccumulate` is only for leftover cumulative-since-init cubes that still
   have amount units.
+- **Plotters:** `plot` is the default figure skill, including overlays
+  (`--layer heatmap:… --layer scatter:…`). Use `plot-compare` for a two-row
+  side-by-side, `plot-compare-forecasts` for an N×time grid, `plot-verify` for
+  the obs/forecast/hits template.
 
 ## Working directory and output files
 

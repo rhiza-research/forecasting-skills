@@ -1,6 +1,6 @@
 ---
 name: plot
-description: Render a 2D heatmap, 1D time series, wind-rose, or u/v quiver PNG from any gridded or station weather-skills standard dataset Zarr. Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Wind roses convert eastward/northward (u/v) components to meteorological-from direction and speed. Quiver maps overlay native-grid u/v arrows (S2S `plot_wind_and_sst_anomaly` thinning; scale auto-fits typical wind to ~1.5× grid spacing). Use when you need to visualize a single dataset as a map, a time/step profile, a wind rose, or wind vectors. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
+description: Render a 2D heatmap, 1D time series, wind-rose, u/v quiver, or layered map PNG from weather-skills standard dataset Zarrs. Overlay multiple inputs with repeatable --layer KIND:PATH (heatmap, scatter, quiver, GeoJSON outline/mask). Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Use for a single dataset as a map/profile/rose/vectors, or stacked layers (e.g. precip heatmap + station scatter). For precipitation, run aggregate-temporal then convert-to-totals first. For side-by-side two-row comparison, use plot-compare.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
@@ -11,7 +11,8 @@ metadata:
 
 # plot
 
-Source-agnostic single-dataset visualization. Four styles:
+Source-agnostic visualization. Single-input styles (`-i`) plus layered maps
+(`--layer`, repeatable):
 - `heatmap` — CartoPy `PlateCarree` map with scale-appropriate geographic
   overlays (Natural Earth, fetched and cached via `cartopy`): coastlines,
   country borders, and lake outlines at 10m / 50m / 110m depending on the
@@ -57,8 +58,24 @@ Source-agnostic single-dataset visualization. Four styles:
   grids (GFS 0.25°) auto-thin to ~1.5° (native S2S spacing) unless
   `--quiver-step` is set.
 
+Layered maps (`--layer KIND:PATH`, repeatable) draw several inputs on the
+**same** axes. `-i` is the single-input shorthand and cannot mix with `--layer`.
+Kinds: `heatmap` (gridded Zarr), `scatter` (`station_id` / `point_id` Zarr),
+`quiver` (gridded u/v arrows; speed mesh only if there is no heatmap layer),
+`outline` (GeoJSON edges), `mask` (GeoJSON NaN mask, same as `--mask-geojson`).
+Optional `::k=v` suffix: `variable`, `colormap`, `index`, `u-variable`,
+`v-variable`, `quiver-scale`, `quiver-step`. Figure-level `--variable` /
+`--colormap` / `--index` are defaults a layer inherits. A forecast `step` axis
+still panels one map per lead; static layers (outline, cities, a single-time
+field) repeat on every panel. Another data layer on the same axis kind is
+intersected on labels. Overlaying calendar `time` on a raw `step` forecast is
+an error — run `step-to-time` first. Same-variable heatmap+scatter layers share
+one color scale unless `--independent-scale`.
+
 ## When to use
 
+- Overlaying stations or a GeoJSON outline on a forecast/obs heatmap
+  (`--layer heatmap:… --layer scatter:…`).
 - Producing a quick-look forecast map panel for any gridded dataset.
 - Producing a time/step profile for a gridded or station standard dataset.
 - Producing a wind rose from u/v (or eastward/northward) components.
@@ -68,7 +85,8 @@ Source-agnostic single-dataset visualization. Four styles:
 - If the PNG looks empty or wrong, run `inspect-figure` on it (then
   `inspect-zarr` on the input Zarr) before regenerating.
 
-For two-dataset comparisons, use the `plot-compare` skill. For N gridded
+For two-dataset **side-by-side** (two-row) comparison, use `plot-compare`.
+To overlay stations on a heatmap, use `--layer` here instead. For N gridded
 datasets as a valid-time grid with blank cells where a dataset has no time,
 use `plot-compare-forecasts`. For one obs week versus week-4 through week-1 forecasts
 with a hits row, use `plot-verify`.
@@ -84,10 +102,21 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
     [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E] \
     [--mask-geojson PATH] [--draw-box N/W/S/E ...] \
     [--rows N] [--columns N]
+
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
+    --layer heatmap:<a.zarr>[::variable=NAME] \
+    [--layer scatter:<b.zarr>] [--layer outline:<c.geojson>] \
+    [--layer quiver:<wind.zarr>] [--shared-scale | --independent-scale]
 ```
 
 ### Arguments
-- `--input`, `-i` — Zarr input.
+- `--input`, `-i` — Zarr input (single-dataset mode). Mutually exclusive with `--layer`.
+- `--layer` — repeatable map layer `KIND:PATH` or `KIND:PATH::k=v`. Kinds:
+  `heatmap`, `scatter`, `quiver`, `outline`, `mask`. Cannot mix with `-i` or
+  with `--style timeseries|windrose|quiver`.
+- `--shared-scale` / `--independent-scale` — layered heatmap/scatter color
+  scales. Default: share when the layers resolve to the same variable and
+  matching units.
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable.
   Ignored for `--style windrose` and `--style quiver` (use `--u-variable` /
@@ -252,6 +281,15 @@ Indian Ocean map with IOD west/east dipole boxes overlaid:
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ts_anom.zarr -o /tmp/iod_boxes.png \
     --variable ts_anomaly --extent 40,120,-20,20 \
     --draw-box 10/50/-10/70 --draw-box 0/90/-10/110
+```
+
+Precip heatmap with station scatter and a country outline on the same axes:
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -o /tmp/imerg_vs_tahmo.png \
+    --layer heatmap:/tmp/imerg.zarr::variable=precip \
+    --layer scatter:/tmp/tahmo.zarr::variable=precip \
+    --layer outline:/tmp/kenya.geojson \
+    --title "IMERG vs TAHMO"
 ```
 
 Time series:

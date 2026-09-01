@@ -4,7 +4,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from conftest import load_skill, make_forecast, make_gridded, run_skill, write_zarr
+from conftest import load_skill, make_forecast, make_gridded, make_point_obs, run_skill, write_zarr
+
 from weather_skills_core.provenance import load_figure_history
 
 
@@ -604,6 +605,253 @@ def test_quiver_step_flag_writes_png(tmp_path, plot_fn):
         "1",
         "--quiver-scale",
         "100",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def _write_box_geojson(path, lon_min=9.5, lon_max=13.5, lat_min=0.5, lat_max=3.5):
+    import json
+
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [lon_min, lat_min],
+                                    [lon_max, lat_min],
+                                    [lon_max, lat_max],
+                                    [lon_min, lat_max],
+                                    [lon_min, lat_min],
+                                ]
+                            ],
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    return path
+
+
+def test_parse_layer_kind_path_and_options():
+    plot_mod = load_skill("plot", "plot")
+    spec = plot_mod.parse_layer("heatmap:/tmp/a.zarr")
+    assert spec.kind == "heatmap"
+    assert spec.path.as_posix() == "/tmp/a.zarr"
+    assert spec.options == {}
+    spec = plot_mod.parse_layer(
+        "scatter:/tmp/b.zarr::variable=precip,index=step=0,1,2,colormap=magma"
+    )
+    assert spec.kind == "scatter"
+    assert spec.options["variable"] == "precip"
+    assert spec.options["index"] == "step=0,1,2"
+    assert spec.options["colormap"] == "magma"
+    spec = plot_mod.parse_layer("outline:/tmp/kenya.geojson")
+    assert spec.kind == "outline"
+    assert spec.zarr_paths() == []
+    spec = plot_mod.parse_layer("heatmap:/tmp/a.zarr")
+    assert spec.zarr_paths()[0].as_posix() == "/tmp/a.zarr"
+
+
+def test_parse_layer_rejects_unknown_kind():
+    import argparse
+
+    plot_mod = load_skill("plot", "plot")
+    with pytest.raises(argparse.ArgumentTypeError, match="unknown --layer kind"):
+        plot_mod.parse_layer("contour:/tmp/a.zarr")
+
+
+def test_layer_heatmap_writes_png(tmp_path, plot_fn):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "map.png"
+    run_skill(plot_fn, "--layer", f"heatmap:{src}", "-o", str(out))
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+    history = load_figure_history(out)
+    assert history[-1]["skill"] == "plot"
+    assert history[-1]["input"]["basename"] == "in.zarr"
+
+
+def test_layer_heatmap_and_scatter_overlay(tmp_path, plot_fn):
+    grid = write_zarr(make_gridded(), tmp_path / "grid.zarr")
+    pts = write_zarr(make_point_obs(n_time=2), tmp_path / "pts.zarr")
+    out = tmp_path / "overlay.png"
+    run_skill(
+        plot_fn,
+        "--layer",
+        f"heatmap:{grid}",
+        "--layer",
+        f"scatter:{pts}",
+        "-o",
+        str(out),
+        "--title",
+        "grid vs stations",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+    history = load_figure_history(out)
+    inp = history[-1]["input"]
+    assert isinstance(inp, list)
+    names = {item["basename"] for item in inp}
+    assert names == {"grid.zarr", "pts.zarr"}
+
+
+def test_layer_heatmap_and_outline(tmp_path, plot_fn):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    geo = _write_box_geojson(tmp_path / "box.geojson")
+    out = tmp_path / "outline.png"
+    run_skill(
+        plot_fn,
+        "--layer",
+        f"heatmap:{src}",
+        "--layer",
+        f"outline:{geo}",
+        "-o",
+        str(out),
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_layer_heatmap_scatter_outline(tmp_path, plot_fn):
+    grid = write_zarr(make_gridded(), tmp_path / "grid.zarr")
+    pts = write_zarr(make_point_obs(n_time=2), tmp_path / "pts.zarr")
+    geo = _write_box_geojson(tmp_path / "box.geojson")
+    out = tmp_path / "all.png"
+    run_skill(
+        plot_fn,
+        "--layer",
+        f"heatmap:{grid}",
+        "--layer",
+        f"scatter:{pts}",
+        "--layer",
+        f"outline:{geo}",
+        "-o",
+        str(out),
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_layer_forecast_panels_with_outline(tmp_path, plot_fn):
+    src = write_zarr(make_forecast(n_step=3), tmp_path / "fc.zarr")
+    geo = _write_box_geojson(tmp_path / "box.geojson")
+    out = tmp_path / "leads.png"
+    run_skill(
+        plot_fn,
+        "--layer",
+        f"heatmap:{src}",
+        "--layer",
+        f"outline:{geo}",
+        "-o",
+        str(out),
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_layer_forecast_heatmap_and_same_step_quiver(tmp_path, plot_fn):
+    precip = write_zarr(make_forecast(n_step=3), tmp_path / "tp.zarr")
+    wind = write_zarr(_make_wind(forecast=True, n_step=3), tmp_path / "wind.zarr")
+    out = tmp_path / "tp_wind.png"
+    run_skill(
+        plot_fn,
+        "--layer",
+        f"heatmap:{precip}",
+        "--layer",
+        f"quiver:{wind}",
+        "-o",
+        str(out),
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_layer_forecast_step_vs_obs_time_errors(tmp_path, plot_fn):
+    fc = write_zarr(make_forecast(n_step=3), tmp_path / "fc.zarr")
+    obs = write_zarr(make_point_obs(n_time=3), tmp_path / "obs.zarr")
+    out = tmp_path / "bad.png"
+    with pytest.raises(SystemExit):
+        run_skill(
+            plot_fn,
+            "--layer",
+            f"heatmap:{fc}",
+            "--layer",
+            f"scatter:{obs}",
+            "-o",
+            str(out),
+        )
+
+
+def test_layer_time_mismatch_no_overlap(tmp_path, plot_fn):
+    a = write_zarr(make_gridded(start="2026-01-01"), tmp_path / "a.zarr")
+    b = write_zarr(make_point_obs(n_time=2, start="2026-06-01"), tmp_path / "b.zarr")
+    out = tmp_path / "bad.png"
+    with pytest.raises(SystemExit):
+        run_skill(
+            plot_fn,
+            "--layer",
+            f"heatmap:{a}",
+            "--layer",
+            f"scatter:{b}",
+            "-o",
+            str(out),
+        )
+
+
+def test_layer_rejects_input_flag(tmp_path, plot_fn):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "bad.png"
+    with pytest.raises(SystemExit):
+        run_skill(
+            plot_fn,
+            "-i",
+            str(src),
+            "--layer",
+            f"heatmap:{src}",
+            "-o",
+            str(out),
+        )
+
+
+def test_layer_rejects_timeseries_style(tmp_path, plot_fn):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "bad.png"
+    with pytest.raises(SystemExit):
+        run_skill(
+            plot_fn,
+            "--layer",
+            f"heatmap:{src}",
+            "--style",
+            "timeseries",
+            "-o",
+            str(out),
+        )
+
+
+def test_layer_independent_scale(tmp_path, plot_fn):
+    grid = write_zarr(make_gridded(), tmp_path / "grid.zarr")
+    t2m = make_gridded(name="t2m")
+    t2m["t2m"].attrs.update(units="degree_Celsius", standard_name="air_temperature")
+    other = write_zarr(t2m, tmp_path / "t2m.zarr")
+    out = tmp_path / "indep.png"
+    run_skill(
+        plot_fn,
+        "--layer",
+        f"heatmap:{grid}::variable=precip",
+        "--layer",
+        f"heatmap:{other}::variable=t2m",
+        "--independent-scale",
+        "-o",
+        str(out),
     )
     assert Path(out).exists()
     assert out.stat().st_size > 0

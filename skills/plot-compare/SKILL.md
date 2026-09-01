@@ -1,6 +1,6 @@
 ---
 name: plot-compare
-description: Render a side-by-side multi-panel comparison PNG of two weather-skills standard dataset Zarr stores (gridded-vs-gridded or station-vs-gridded). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC. For precipitation, convert-to-totals after aggregate-temporal before plotting.
+description: Render a side-by-side two-row comparison PNG of two weather-skills standard dataset Zarr stores (gridded-vs-gridded or station-vs-gridded as separate rows, not overlaid). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC. To overlay stations on a heatmap, use plot --layer instead. For precipitation, convert-to-totals after aggregate-temporal before plotting.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py *)
@@ -16,7 +16,9 @@ with one panel per time slice; row A is one input, row B the other.
 Handles:
 
 - Gridded vs. gridded (pcolormesh maps).
-- Station (`station_id`-indexed) vs. gridded (scatter over mesh).
+- Station (`station_id`-indexed) vs. gridded as **two rows** (scatter in one
+  row, pcolormesh in the other — not overlaid on the same axes). To draw
+  stations on top of a heatmap, use `plot --layer heatmap:… --layer scatter:…`.
 
 When exactly one input is a point_obs Zarr, that input is placed
 on the top row to match the canonical "stations vs. satellite" layout.
