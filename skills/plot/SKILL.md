@@ -149,7 +149,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
   350]` mm); every other variable uses `viridis`. Windrose uses a blue→orange
   speed palette; `--colormap` recolors the speed stacks. Quiver defaults to
   `YlGn` (S2S 10 m / 700 hPa wind-vector maps); `--colormap PiYG` matches their
-  anomaly quivers. A variable with CF `flag_values` (e.g. `event-hits`) uses a
+  anomaly quivers. A variable with CF `flag_values` (e.g. `verify --metric hits`) uses a
   discrete colormap and labeled colorbar ticks; `--colormap` as comma-separated
   colors must then match the flag count.
 - `--title` — optional plot title.

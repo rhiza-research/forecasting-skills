@@ -1,4 +1,4 @@
-"""Correctness tests for event-hits."""
+"""Correctness tests for verify."""
 
 from pathlib import Path
 
@@ -10,8 +10,8 @@ from weather_skills_core.provenance import load_history
 
 
 @pytest.fixture(scope="module")
-def event_hits():
-    return load_skill("event-hits", "event_hits").event_hits
+def verify_fn():
+    return load_skill("verify", "verify").verify
 
 
 def _grid(*, event_at, fill=0.0, name="precip"):
@@ -21,13 +21,13 @@ def _grid(*, event_at, fill=0.0, name="precip"):
     return ds
 
 
-def test_hit_disagree_and_below(tmp_path, event_hits):
+def test_hit_disagree_and_below(tmp_path, verify_fn):
     fc = write_zarr(_grid(event_at=[(0, 0), (0, 1)]), tmp_path / "fc.zarr")
     obs = write_zarr(_grid(event_at=[(0, 0), (1, 0)]), tmp_path / "obs.zarr")
     out = tmp_path / "hits.zarr"
 
     run_skill(
-        event_hits,
+        verify_fn,
         "--forecast",
         str(fc),
         "--obs",
@@ -49,17 +49,19 @@ def test_hit_disagree_and_below(tmp_path, event_hits):
     assert hit[1, 1] == pytest.approx(0)
     assert ds["event_hit"].attrs["event_threshold"] == 1.0
     assert ds["event_hit"].attrs["event_variable"] == "precip"
-    assert load_history(out)[-1]["skill"] == "event-hits"
+    assert ds.attrs["verify_metric"] == "hits"
+    assert "hit rate" in ds.attrs.get("verify_score_summary", "")
+    assert load_history(out)[-1]["skill"] == "verify"
 
 
-def test_threshold_raises_the_bar(tmp_path, event_hits):
+def test_threshold_raises_the_bar(tmp_path, verify_fn):
     ds = make_gridded(n_time=1, fill=2.0)
     fc = write_zarr(ds, tmp_path / "fc.zarr")
     obs = write_zarr(ds.copy(), tmp_path / "obs.zarr")
     out = tmp_path / "hits.zarr"
 
     run_skill(
-        event_hits,
+        verify_fn,
         "--forecast",
         str(fc),
         "--obs",
@@ -73,20 +75,61 @@ def test_threshold_raises_the_bar(tmp_path, event_hits):
     np.testing.assert_array_equal(hit, 0)
 
 
-def test_different_variable_names(tmp_path, event_hits):
+def test_different_variable_names(tmp_path, verify_fn):
     fc = write_zarr(make_gridded(n_time=1, fill=5.0, name="tp"), tmp_path / "fc.zarr")
     obs = write_zarr(make_gridded(n_time=1, fill=5.0, name="precip"), tmp_path / "obs.zarr")
     out = tmp_path / "hits.zarr"
-    run_skill(event_hits, "--forecast", str(fc), "--obs", str(obs), "-o", str(out))
+    run_skill(verify_fn, "--forecast", str(fc), "--obs", str(obs), "-o", str(out))
     assert xr.open_zarr(out, consolidated=True)["event_hit"].values == pytest.approx(1)
 
 
-def test_step_forecast_without_time_is_refused(tmp_path, event_hits):
+def test_bias_writes_field(tmp_path, verify_fn, capsys):
+    fc = write_zarr(make_gridded(n_time=1, fill=3.0), tmp_path / "fc.zarr")
+    obs = write_zarr(make_gridded(n_time=1, fill=1.0), tmp_path / "obs.zarr")
+    out = tmp_path / "bias.zarr"
+    run_skill(
+        verify_fn,
+        "--forecast",
+        str(fc),
+        "--obs",
+        str(obs),
+        "--metric",
+        "bias",
+        "-o",
+        str(out),
+    )
+    ds = xr.open_zarr(out, consolidated=True)
+    assert "bias" in ds
+    assert ds.attrs["verify_metric"] == "bias"
+    assert "bias" in capsys.readouterr().out
+
+
+def test_mae_writes_field(tmp_path, verify_fn, capsys):
+    fc = write_zarr(make_gridded(n_time=1, fill=5.0), tmp_path / "fc.zarr")
+    obs = write_zarr(make_gridded(n_time=1, fill=2.0), tmp_path / "obs.zarr")
+    out = tmp_path / "mae.zarr"
+    run_skill(
+        verify_fn,
+        "--forecast",
+        str(fc),
+        "--obs",
+        str(obs),
+        "--metric",
+        "mae",
+        "-o",
+        str(out),
+    )
+    ds = xr.open_zarr(out, consolidated=True)
+    assert "mae" in ds
+    assert "MAE" in capsys.readouterr().out
+
+
+def test_step_forecast_without_time_is_refused(tmp_path, verify_fn):
     fc = write_zarr(make_forecast(n_step=2, fill=5.0), tmp_path / "fc.zarr")
     obs = write_zarr(make_gridded(n_time=2, fill=5.0), tmp_path / "obs.zarr")
     with pytest.raises(SystemExit) as exc:
         run_skill(
-            event_hits,
+            verify_fn,
             "--forecast",
             str(fc),
             "--obs",
@@ -97,7 +140,7 @@ def test_step_forecast_without_time_is_refused(tmp_path, event_hits):
     assert exc.value.code == 2
 
 
-def test_obs_finer_grid_is_refused(tmp_path, event_hits):
+def test_obs_finer_grid_is_refused(tmp_path, verify_fn):
     fc = write_zarr(
         make_gridded(n_time=1, fill=5.0, lats=(1.0, 2.0), lons=(10.0, 11.0)),
         tmp_path / "fc.zarr",
@@ -108,7 +151,7 @@ def test_obs_finer_grid_is_refused(tmp_path, event_hits):
     )
     with pytest.raises(SystemExit) as exc:
         run_skill(
-            event_hits,
+            verify_fn,
             "--forecast",
             str(fc),
             "--obs",

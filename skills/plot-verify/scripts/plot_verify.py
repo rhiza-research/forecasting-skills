@@ -14,17 +14,17 @@
 #   "pint-xarray>=0.6",
 # ]
 # ///
-"""Lead-week event verification as a grid of maps: obs, forecast, and hits."""
+"""Lead-week verification as a grid of maps: obs, forecast, and verify metric."""
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import (
-    dataset_label,
     ensure_normalized_longitude,
     lat_slice,
     polygon_from_geojson,
@@ -39,7 +39,13 @@ from weather_skills_core.units import (
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.1"
+_SKILL_VERSION = "0.0.3"
+
+_VERIFY_VARS = {
+    "hits": "event_hit",
+    "bias": "bias",
+    "mae": "mae",
+}
 
 PRECIP_COLORS = [
     "white",
@@ -54,28 +60,155 @@ PRECIP_COLORS = [
     "purple",
 ]
 PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
-_ROW_FALLBACKS = ("Observation", "Forecast", "Hits")
+_ROW_FALLBACKS = ("Observation", "Forecast", "Verification")
+_METRIC_ROW_LABELS = {"hits": "Hits", "bias": "Bias", "mae": "MAE"}
+_DATE_TAIL = re.compile(r"[_-]\d{4}-\d{2}-\d{2}(?:[_-]\d{2}-\d{2}-\d{2})?$")
+_VAR_TAIL = re.compile(r"[_-](?:precip|tp)$", re.I)
+_SOURCE_LABELS = {
+    "arco-era5": "ERA5",
+    "chirps": "CHIRPS",
+    "cmip6": "CMIP6",
+    "ecmwf-s2s": "ECMWF S2S",
+    "ecmwf_s2s": "ECMWF S2S",
+    "gefs": "GEFS",
+    "ghcn-daily": "GHCN-Daily",
+    "imerg": "IMERG",
+    "kenya-forecasting-data": "Kenya forecast",
+    "oisst": "OISST",
+    "openaq": "OpenAQ",
+    "smap": "SMAP",
+    "tahmo": "TAHMO",
+}
+_FETCH_SKILL_LABELS = {
+    "arco-era5-fetch": "ERA5",
+    "chirps-fetch": "CHIRPS",
+    "cmip6-fetch": "CMIP6",
+    "dynamical-fetch": "Dynamical",
+    "ecmwf-fetch": "ECMWF S2S",
+    "ghcn-daily-fetch": "GHCN-Daily",
+    "imerg-fetch": "IMERG",
+    "kenya-forecast-fetch": "Kenya forecast",
+    "oisst-fetch": "OISST",
+    "openaq-fetch": "OpenAQ",
+    "smap-fetch": "SMAP",
+    "tahmo-fetch": "TAHMO",
+}
 
 
-def _row_labels(obs, forecasts):
-    """Y-axis product names: weather_skills_source when stamped, else Observation / Forecast / Hits."""
-    obs_label = dataset_label(obs, _ROW_FALLBACKS[0])
-    fc_names = [dataset_label(ds, _ROW_FALLBACKS[1]) for ds in forecasts]
+def _prettify_token(text: str) -> str:
+    key = text.lower().replace("_", "-")
+    for src_key, display in sorted(_SOURCE_LABELS.items(), key=lambda item: -len(item[0])):
+        sk = src_key.replace("_", "-")
+        if key == sk or key.startswith(f"{sk}-"):
+            return display
+    parts = [p for p in re.split(r"[_-]+", text.strip()) if p]
+    if not parts:
+        return text
+    out = []
+    for part in parts:
+        low = part.lower()
+        if low in {"ecmwf", "s2s", "ghcn", "cmip6", "gefs", "oisst", "imerg", "smap"}:
+            out.append(part.upper())
+        elif low == "chirps":
+            out.append("CHIRPS")
+        else:
+            out.append(part.capitalize())
+    return " ".join(out)
+
+
+def _normalize_stem(stem: str) -> str:
+    base = _DATE_TAIL.sub("", stem)
+    return _VAR_TAIL.sub("", base)
+
+
+def _label_from_history(ds) -> str | None:
+    import json
+
+    raw = ds.attrs.get("weather_skills_history")
+    if not raw:
+        return None
+    try:
+        history = json.loads(raw) if isinstance(raw, str) else list(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not history or not isinstance(history[0], dict):
+        return None
+    skill = history[0].get("skill")
+    if not isinstance(skill, str) or not skill.strip():
+        return None
+    skill = skill.strip()
+    if skill in _FETCH_SKILL_LABELS:
+        return _FETCH_SKILL_LABELS[skill]
+    if skill.endswith("-fetch"):
+        return _prettify_token(skill[: -len("-fetch")])
+    return _prettify_token(skill)
+
+
+def _label_from_source_token(token: str) -> str:
+    text = token.strip()
+    if not text:
+        return ""
+    if ":" in text and "/" not in text and "\\" not in text and not text.endswith(".zarr"):
+        head, _, tail = text.partition(":")
+        if head in _SOURCE_LABELS:
+            return _SOURCE_LABELS[head]
+        if head in _FETCH_SKILL_LABELS:
+            return _FETCH_SKILL_LABELS[head]
+        return _prettify_token(tail or head)
+    if "/" in text or "\\" in text or text.endswith(".zarr"):
+        text = Path(text).stem
+    return _prettify_token(_normalize_stem(text))
+
+
+def _row_product_label(ds, fallback: str) -> str:
+    """Short product name for row titles — not per-init filenames."""
+    label = _label_from_history(ds)
+    if label:
+        return label
+    src = ds.attrs.get("weather_skills_source")
+    if isinstance(src, str) and src.strip():
+        label = _label_from_source_token(src)
+        if label:
+            return label
+    enc = ds.encoding.get("source")
+    if isinstance(enc, str) and enc.strip():
+        label = _label_from_source_token(enc)
+        if label:
+            return label
+    return fallback
+
+
+def _metric_from_verify(ds, role: str) -> str:
+    metric = ds.attrs.get("verify_metric")
+    if metric not in _VERIFY_VARS:
+        raise UsageError(
+            f"{role} is missing a supported verify_metric attr "
+            f"({list(_VERIFY_VARS)}); run the verify skill first."
+        )
+    return metric
+
+
+def _verify_field(ds, metric: str, role: str):
+    name = _VERIFY_VARS[metric]
+    if name not in ds:
+        raise UsageError(f"{role} missing verification variable {name!r}.")
+    return ds[name]
+
+
+def _row_labels(obs, forecasts, metric="hits"):
+    """Y-axis product names: one short label per row, not per --forecast file."""
+    obs_label = _row_product_label(obs, _ROW_FALLBACKS[0])
+    fc_names = [_row_product_label(ds, _ROW_FALLBACKS[1]) for ds in forecasts]
     unique = list(dict.fromkeys(fc_names))
     forecast_label = unique[0] if len(unique) == 1 else " / ".join(unique)
-    return (obs_label, forecast_label, _ROW_FALLBACKS[2])
+    verify_label = _METRIC_ROW_LABELS.get(metric, _ROW_FALLBACKS[2])
+    return (obs_label, forecast_label, verify_label)
 
 
 def _as_list(value):
     if value is None:
         return []
     return value if isinstance(value, list) else [value]
-
-
-def _dequant(da):
-    if getattr(getattr(da, "pint", None), "units", None) is not None:
-        return da.pint.dequantify()
-    return da
 
 
 def _dim(ds, *names: str) -> str | None:
@@ -168,6 +301,28 @@ def _hits_scale():
     return cmap, BoundaryNorm(bounds, cmap.N), ["disagree", "below", "hit"]
 
 
+def _error_scale(da, metric):
+    """Colormap and optional norm for bias/mae verification row."""
+    import numpy as np
+
+    vmin = float(da.min(skipna=True).values)
+    vmax = float(da.max(skipna=True).values)
+    if not np.isfinite(vmin) or not np.isfinite(vmax):
+        return "viridis", None, 0.0, 1.0
+    if metric == "bias":
+        if vmax > 0 and vmin < 0:
+            m = max(abs(vmax), abs(vmin))
+            vmin, vmax = -m, m
+        elif vmin == vmax:
+            vmin, vmax = vmin - 1.0, vmax + 1.0
+        return "RdBu_r", None, vmin, vmax
+    if vmin == vmax:
+        vmin, vmax = 0.0, max(vmax, 1.0)
+    elif vmin < 0:
+        vmin = 0.0
+    return "viridis", None, vmin, vmax
+
+
 def _lat_lon(da, role):
     lat_dim = cf_dim(da, "latitude")
     lon_dim = cf_dim(da, "longitude")
@@ -195,38 +350,6 @@ def _squeeze_map(da, role):
             )
         da = da.squeeze(dim, drop=True)
     return da
-
-
-def classify(forecast, obs, threshold):
-    """Return (event_hit DataArray, obs_event DataArray) on the inner-joined grid."""
-    import xarray as xr
-
-    fc, truth = xr.align(_dequant(forecast), _dequant(obs), join="inner")
-    if any(size == 0 for size in fc.sizes.values()):
-        raise UsageError(
-            "no overlapping coordinates between a --forecast and --obs; "
-            "coarsen --obs onto the forecast grid and select the same verifying week."
-        )
-    fc_event = fc >= threshold
-    obs_event = truth >= threshold
-    classified = xr.where(
-        fc_event & obs_event,
-        1,
-        xr.where(fc_event != obs_event, -1, 0),
-    ).astype("float32")
-    classified = classified.where(fc.notnull() & truth.notnull())
-    classified.name = "event_hit"
-    return classified, obs_event
-
-
-def hit_rate(classified, obs_event):
-    """POD: hits / obs-events among finite cells. ``(rate_or_None, n_hit, n_obs)``."""
-    finite = classified.notnull()
-    n_obs = int(obs_event.where(finite, False).sum())
-    n_hit = int(((classified == 1) & finite).sum())
-    if n_obs == 0:
-        return None, n_hit, n_obs
-    return n_hit / n_obs, n_hit, n_obs
 
 
 def _slice_bbox_mask(da, lat_dim, lon_dim, bbox, polygon, label):
@@ -301,12 +424,6 @@ def _prepare(ds, variable):
     return precip_for_display(to_standard_units(ds, variables=[variable]), variable)
 
 
-def _format_rate(rate, n_hit, n_obs):
-    if rate is None:
-        return "hit rate n/a  (0 obs events)"
-    return f"hit rate {100 * rate:.0f}%  ({n_hit}/{n_obs} obs events)"
-
-
 @weather_skill(
     name="plot-verify",
     version=_SKILL_VERSION,
@@ -318,14 +435,15 @@ def _format_rate(rate, n_hit, n_obs):
     action="append",
     required=True,
 )
+@weather_skill.argument(
+    "--verify",
+    type=Dataset("any"),
+    action="append",
+    required=True,
+    help="Verify Zarr from the verify skill, once per --forecast (same order).",
+)
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")
-@weather_skill.argument(
-    "--threshold",
-    type=float,
-    default=1.0,
-    help="Event cutoff: a cell is an event when the variable is >= this (default 1.0).",
-)
 @weather_skill.argument(
     "--lead",
     action="append",
@@ -349,9 +467,9 @@ def _format_rate(rate, n_hit, n_obs):
 def plot_verify(
     obs,
     forecast,
+    verify,
     bbox,
     variable,
-    threshold,
     lead,
     colormap,
     title,
@@ -359,10 +477,16 @@ def plot_verify(
     output,
     **kwargs,
 ):
-    """Lead-week event verification as a grid of maps: obs, forecast, and hits."""
+    """Lead-week verification grid from obs, forecast, and pre-computed verify Zarrs."""
     forecasts = _as_list(forecast)
+    verify_sets = _as_list(verify)
     if not forecasts:
         raise UsageError("expected at least one --forecast.")
+    if len(verify_sets) != len(forecasts):
+        raise UsageError(
+            f"--verify was passed {len(verify_sets)} time(s) but --forecast was passed "
+            f"{len(forecasts)} time(s); pass one --verify per --forecast."
+        )
     leads = _as_list(lead)
     if leads and len(leads) != len(forecasts):
         raise UsageError(
@@ -371,7 +495,14 @@ def plot_verify(
         )
     if not leads:
         leads = [f"Week {i}" for i in range(len(forecasts), 0, -1)]
-    row_labels = _row_labels(obs, forecasts)
+
+    metrics = [_metric_from_verify(ds, f"--verify {i + 1}") for i, ds in enumerate(verify_sets)]
+    if len(set(metrics)) != 1:
+        raise UsageError(
+            f"all --verify inputs must share the same verify_metric; got {metrics}."
+        )
+    metric = metrics[0]
+    row_labels = _row_labels(obs, forecasts, metric)
 
     import matplotlib
 
@@ -402,8 +533,7 @@ def plot_verify(
         ):
             print(
                 f"Warning: --forecast {i + 1} {fc_name!r} units={u_fc.strip()!r} and "
-                f"--obs {obs_name!r} units={u_obs.strip()!r} differ. The threshold "
-                "is applied to each field's numeric values as stored.",
+                f"--obs {obs_name!r} units={u_obs.strip()!r} differ.",
                 file=sys.stderr,
             )
 
@@ -417,22 +547,35 @@ def plot_verify(
     obs_da = _slice_bbox_mask(obs_da, obs_lat, obs_lon, bbox, polygon, "--obs")
 
     columns = []
-    for i, (fc_ds, fc_name, label) in enumerate(
-        zip(fc_datasets, fc_names, leads, strict=True), start=1
+    for i, (fc_ds, fc_name, verify_ds, label) in enumerate(
+        zip(fc_datasets, fc_names, verify_sets, leads, strict=True), start=1
     ):
         role = f"--forecast {i} ({label})"
         fc_da = _squeeze_map(fc_ds[fc_name], role)
         lat_dim, lon_dim = _lat_lon(fc_da, role)
         fc_da = _slice_bbox_mask(fc_da, lat_dim, lon_dim, bbox, polygon, role)
-        hits, obs_event = classify(fc_da, obs_da, threshold)
-        rate, n_hit, n_obs = hit_rate(hits, obs_event)
-        print(f"{label}  {_format_rate(rate, n_hit, n_obs)}")
-        columns.append((label, fc_da, hits, lat_dim, lon_dim))
+        verify_da = _squeeze_map(
+            _verify_field(verify_ds, metric, f"--verify {i}"),
+            f"--verify {i}",
+        )
+        verify_da = _slice_bbox_mask(verify_da, lat_dim, lon_dim, bbox, polygon, f"--verify {i}")
+        summary = verify_ds.attrs.get("verify_score_summary")
+        if isinstance(summary, str) and summary.strip():
+            print(f"{label}  {summary.strip()}")
+        columns.append((label, fc_da, verify_da, lat_dim, lon_dim))
 
     wrap_lon = not (bbox is not None and bbox[1] > bbox[3])
     extent = _extent_from_da(obs_da, obs_lat, obs_lon, bbox)
     cmap, norm = _heatmap_scale(obs_da, colormap)
-    hits_cmap, hits_norm, hits_labels = _hits_scale()
+    verify_cmap = verify_norm = verify_vmin = verify_vmax = verify_labels = None
+    if metric == "hits":
+        verify_cmap, verify_norm, verify_labels = _hits_scale()
+    else:
+        all_verify = [col[2] for col in columns]
+        import xarray as xr
+
+        stacked = xr.concat(all_verify, dim="panel")
+        verify_cmap, verify_norm, verify_vmin, verify_vmax = _error_scale(stacked, metric)
     vmin = vmax = None
     if norm is None:
         present = [float(obs_da.min(skipna=True).values), float(obs_da.max(skipna=True).values)]
@@ -485,8 +628,8 @@ def plot_verify(
             transform=ccrs.PlateCarree(),
         )
 
-    field_mesh = hits_mesh = None
-    for col, (label, fc_da, hits, lat_dim, lon_dim) in enumerate(columns):
+    field_mesh = verify_mesh = None
+    for col, (label, fc_da, verify_da, lat_dim, lon_dim) in enumerate(columns):
         left = col == 0
         axes[0][col].set_title(label, fontsize=9)
         mesh = _draw(
@@ -499,23 +642,44 @@ def plot_verify(
         )
         if field_mesh is None:
             field_mesh = mesh
-        mesh = _draw(
-            axes[2][col], hits, lat_dim, lon_dim, hits_cmap, hits_norm, None, None, left_labels=left
-        )
-        if hits_mesh is None:
-            hits_mesh = mesh
+        if metric == "hits":
+            mesh = _draw(
+                axes[2][col],
+                verify_da,
+                lat_dim,
+                lon_dim,
+                verify_cmap,
+                verify_norm,
+                None,
+                None,
+                left_labels=left,
+            )
+        else:
+            mesh = _draw(
+                axes[2][col],
+                verify_da,
+                lat_dim,
+                lon_dim,
+                verify_cmap,
+                verify_norm,
+                verify_vmin,
+                verify_vmax,
+                left_labels=left,
+            )
+        if verify_mesh is None:
+            verify_mesh = mesh
 
-    fig.tight_layout(rect=[0.10, 0.10, 1, 0.94 if title else 0.98])
+    fig.tight_layout(rect=[0.12, 0.10, 1, 0.94 if title else 0.98])
     for row, row_label in enumerate(row_labels):
         pos = axes[row][0].get_position()
         fig.text(
-            pos.x0 - 0.05,
+            pos.x0 - 0.04,
             (pos.y0 + pos.y1) / 2,
             row_label,
             rotation=90,
             va="center",
             ha="right",
-            fontsize=10,
+            fontsize=9,
         )
     if field_mesh is not None:
         cbar_ax = fig.add_axes([0.08, 0.055, 0.50, 0.02])
@@ -525,11 +689,19 @@ def plot_verify(
             cbar_kw["ticks"] = list(norm.boundaries)
         cbar = fig.colorbar(field_mesh, cax=cbar_ax, orientation="horizontal", **cbar_kw)
         cbar.set_label(_variable_label(obs_da))
-    if hits_mesh is not None:
-        hit_ax = fig.add_axes([0.66, 0.055, 0.26, 0.02])
-        hit_cbar = fig.colorbar(hits_mesh, cax=hit_ax, orientation="horizontal", ticks=[-1, 0, 1])
-        hit_cbar.set_ticklabels(hits_labels)
-        hit_cbar.set_label("event")
+    if verify_mesh is not None:
+        verify_ax = fig.add_axes([0.66, 0.055, 0.26, 0.02])
+        if metric == "hits":
+            verify_cbar = fig.colorbar(
+                verify_mesh, cax=verify_ax, orientation="horizontal", ticks=[-1, 0, 1]
+            )
+            verify_cbar.set_ticklabels(verify_labels)
+            verify_cbar.set_label("event")
+        else:
+            verify_cbar = fig.colorbar(verify_mesh, cax=verify_ax, orientation="horizontal")
+            units = format_units_for_display(u_obs)
+            label = _METRIC_ROW_LABELS[metric]
+            verify_cbar.set_label(f"{label} [{units}]" if units else label)
 
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
