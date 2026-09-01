@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: figure
 ---
 
@@ -61,10 +62,10 @@ is centered on the gridded base; station points outside that extent are
 clipped by matplotlib.
 
 Panel titles render the time-bin range as `YYYY-MM-DD to YYYY-MM-DD`
-with the bin coord interpreted as the inclusive right edge: start =
-end − bin_width + 1 day. Matches `aggregate-temporal` and
-`deaccumulate`'s right-edge convention so a 10-day dekad ending
-`2026-05-09` renders as `2026-04-30 to 2026-05-09` (10 days inclusive).
+with the bin coord interpreted as the inclusive **left** edge: end =
+start + bin_width − 1 day. Matches `aggregate-temporal` and
+`deaccumulate`'s period-start convention so a 10-day dekad starting
+`2026-04-30` renders as `2026-04-30 to 2026-05-09` (10 days inclusive).
 
 ## When to use
 

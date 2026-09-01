@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/step_to_time.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: transforms
 ---
 
@@ -16,7 +17,8 @@ the forecast init date — while observation datasets carry a wall-clock `time`
 dim (`datetime64`). Skills that compare the two need both inputs on the same
 kind of axis. This skill computes `valid_time = init + step` and rewrites the
 standard dataset with the `step` dim replaced by a `time` dim labeled with those valid
-times.
+times. After fetch, interval fields are left-labeled, so `step = 0` becomes
+the init calendar date (the first 24h of rain for daily precip).
 
 ## When to use
 

@@ -40,6 +40,22 @@ _HTTP_TIMEOUT = 60
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DEFAULT_DATASET = "precip"
 
+# Per-step amounts already (not cumulative-since-init). Convert by dividing
+# by the step interval; do not deaccumulate.
+_ALREADY_PERIOD_PRECIP = frozenset({"gefs", "medium_range_precip"})
+# Interval fields whose archive ticks start at +1 native period (or +1 week).
+_SHIFT_STEP_TO_ZERO = frozenset({"gefs", "daily_vars", "medium_range_precip"})
+
+# Auto-populated by the version-bump CI workflow. Do not edit manually.
+_SKILL_VERSION = "0.0.2"
+
+_BUCKET = "kenya-forecasting-data"
+_GCS_API = f"https://storage.googleapis.com/storage/v1/b/{_BUCKET}/o"
+_GCS_MEDIA = f"https://storage.googleapis.com/{_BUCKET}"
+_HTTP_TIMEOUT = 60
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DEFAULT_DATASET = "precip"
+
 # Short ids → object key under <date>/data/ (may include date in the basename).
 _DATASETS: dict[str, str] = {
     "precip": "ECMWF_s2s_precip_{date}.zarr",
@@ -145,6 +161,44 @@ def _open_remote(key: str):
         raise DataError(f"failed to open remote Zarr gs://{_BUCKET}/{key} ({exc}).") from None
 
 
+def _step_interval_stamp(ds) -> str:
+    """Pint duration for the native step spacing (or the first lead if singleton)."""
+    import numpy as np
+
+    steps = np.asarray(ds["step"].values)
+    if steps.size == 0:
+        return "1 day"
+    delta = steps[1] - steps[0] if steps.size >= 2 else steps[0]
+    days = float(delta / np.timedelta64(1, "D"))
+    ndays = max(1, int(round(days)))
+    return f"{ndays} day"
+
+
+def _shift_step_origin_to_zero(ds):
+    """Relabel ``step`` so the first tick is lead 0 (period start)."""
+    import numpy as np
+
+    if "step" not in ds.dims or ds.sizes["step"] == 0:
+        return ds
+    steps = np.asarray(ds["step"].values)
+    first = steps[0]
+    zero = np.asarray(0).astype(steps.dtype)
+    if first == zero:
+        return ds
+    new_step = steps - first
+    attrs = dict(ds["step"].attrs)
+    out = ds.assign_coords(step=("step", new_step))
+    out["step"].attrs.update(attrs)
+    if "valid_time" in out.variables:
+        out = out.drop_vars("valid_time")
+        if "time" in out.coords and getattr(out["time"], "ndim", 1) == 0:
+            try:
+                out = out.assign_coords(valid_time=("step", out["time"].values + new_step))
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
 @weather_skill(
     name="kenya-forecast-fetch",
     version=_SKILL_VERSION,
@@ -217,7 +271,12 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
     stamp_cf_attrs(ds)
     stamp_precip_amounts(ds)
     ds = to_standard_units(ds)
-    ds = precip_amounts_to_rates(ds)
+    if dataset in _ALREADY_PERIOD_PRECIP:
+        ds = precip_amounts_to_rates(ds, interval=_step_interval_stamp(ds), deaccumulate=False)
+    else:
+        ds = precip_amounts_to_rates(ds)
+    if dataset in _SHIFT_STEP_TO_ZERO:
+        ds = _shift_step_origin_to_zero(ds)
     return stamp_data_interval(ds)
 
 

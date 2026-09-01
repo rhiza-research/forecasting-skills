@@ -68,7 +68,7 @@ def test_different_inits_are_different_valid_time_columns(plot_mod):
     dates = [
         np.datetime_as_string(np.asarray(t).astype("datetime64[D]"), unit="D") for t in columns
     ]
-    assert dates == ["2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"]
+    assert dates == ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"]
     assert matches[0] == [0, 1, 2, None]
     assert matches[1] == [None, 0, 1, 2]
 
@@ -128,13 +128,13 @@ def test_two_obs_time_cubes_write_png(tmp_path, plot_fn, plot_mod):
 
 def test_forecast_and_obs_share_valid_times(tmp_path, plot_fn, plot_mod):
     fc = make_forecast(n_step=3, fill=1.0, init="2026-01-01", name="precip")
-    obs = make_gridded(n_time=2, fill=2.0, start="2026-01-02")
+    obs = make_gridded(n_time=2, fill=2.0, start="2026-01-01")
     columns, matches, _w, _steps, dims = plot_mod.align_valid_times([fc, obs])
     assert dims == ["step", "time"]
     dates = [
         np.datetime_as_string(np.asarray(t).astype("datetime64[D]"), unit="D") for t in columns
     ]
-    assert dates == ["2026-01-02", "2026-01-03", "2026-01-04"]
+    assert dates == ["2026-01-01", "2026-01-02", "2026-01-03"]
     assert matches[0] == [0, 1, 2]
     assert matches[1] == [0, 1, None]
 

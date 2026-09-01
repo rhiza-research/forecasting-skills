@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Opens public consolidated Zarr over HTTPS from Google Cloud Storage bucket kenya-forecasting-data; no credentials required. Older init folders may only have GRIB/NetCDF under data/ — this skill requires Zarr.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: fetchers
   variables:
     - tp
@@ -73,7 +74,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest [dataset-id]
 Output dims follow the classic forecast shape: scalar `time` (init) + `step`
 (+ `number` for ensembles) + `latitude`/`longitude`. Fetch writes precipitation
 as a per-step **rate** (`mm day-1`) and known air temperature as
-`degree_Celsius`. Aggregate then `convert-to-totals` for period `mm`; do not
+`degree_Celsius`. Interval fields (`precip`, `gefs`, `daily_vars`,
+`medium_range_precip`) are **left-labeled**: `step = 0` is the first native
+period (`[init, init+1d)` for daily precip — rain from init date through the
+next day). Instantaneous winds / Tminmax keep archive `step` (lead 0 = 00Z
+analysis). Aggregate then `convert-to-totals` for period `mm`; do not
 run `deaccumulate` after this skill.
 
 ### Arguments

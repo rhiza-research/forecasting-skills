@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: fetchers
   variables:
     - tp
@@ -127,7 +128,7 @@ with the **control forecast only** (`number=0`).
 
 ### Output
 
-A Zarr store with the selected data variables and dims `(number, step, latitude, longitude)` — plus `vertical` when a pressure-level or `pv` field is selected. `number=0` is the control; `number=1..100` are perturbed members. Pressure-level fields have only the control member. `step` is daily (00Z). `tp` is a precipitation **rate** (`mm day-1`); known temperature fields (`t2m`, `sst`, `t`, …) are `degree_Celsius`. Stamped with `weather_skills_source=ecmwf-s2s`.
+A Zarr store with the selected data variables and dims `(number, step, latitude, longitude)` — plus `vertical` when a pressure-level or `pv` field is selected. `number=0` is the control; `number=1..100` are perturbed members. Pressure-level fields have only the control member. `step` is daily (00Z). `tp` is a precipitation **rate** (`mm day-1`) left-labeled so `step = 0` is the first 24h (`[init, init+1d)`); known temperature fields (`t2m`, `sst`, `t`, …) are `degree_Celsius`. Stamped with `weather_skills_source=ecmwf-s2s`.
 
 ### Provenance
 

@@ -27,6 +27,10 @@ def test_deaccumulate_cumulative_tp(tmp_path, deaccumulate):
     assert Path(out).exists()
     result = xr.open_zarr(out, consolidated=True)
     assert result.sizes["step"] == 2
+    np.testing.assert_array_equal(
+        np.asarray(result["step"].values).astype("timedelta64[D]"),
+        np.array([0, 1], dtype="timedelta64[D]"),
+    )
     vals = result["tp"].values.flatten()
     assert vals[0] == pytest.approx(2.0)
     assert vals[1] == pytest.approx(3.0)

@@ -112,7 +112,7 @@ def _is_station(ds):
 
 
 def _format_single(t, bin_width=None):
-    """Render a time-bin label; with bin_width, ``YYYY-MM-DD to YYYY-MM-DD`` (right-edge)."""
+    """Render a time-bin label; with bin_width, ``YYYY-MM-DD to YYYY-MM-DD`` (left-edge)."""
     import datetime as _dt
 
     import pandas as pd
@@ -121,21 +121,21 @@ def _format_single(t, bin_width=None):
         if bin_width is None:
             return t.strftime("%Y-%m-%d")
         try:
-            start = t - bin_width + _dt.timedelta(days=1)
+            end = t + bin_width - _dt.timedelta(days=1)
         except (TypeError, ValueError):
             return t.strftime("%Y-%m-%d")
-        return f"{start.strftime('%Y-%m-%d')} to {t.strftime('%Y-%m-%d')}"
+        return f"{t.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}"
 
     try:
-        end = pd.Timestamp(t)
+        start = pd.Timestamp(t)
     except (TypeError, ValueError):
         return str(t)
     if bin_width is None:
-        return end.date().isoformat()
+        return start.date().isoformat()
     try:
-        start = end - bin_width + pd.Timedelta(days=1)
+        end = start + bin_width - pd.Timedelta(days=1)
     except (TypeError, ValueError):
-        return end.date().isoformat()
+        return start.date().isoformat()
     return f"{start.date().isoformat()} to {end.date().isoformat()}"
 
 

@@ -433,7 +433,7 @@ def _aggregate_step(ds, spec, method):
         bins = []
         for left in edges[:-1]:
             right = left + window
-            bins.append((left, right, left + window))
+            bins.append((left, right, left))
         return _aggregate_from_bounds(ds, "step", spec, method, bins)
     native_interval = _coverage_cell(ds)
     timestep_days = _timestep_days(ds, "step")
@@ -441,13 +441,13 @@ def _aggregate_step(ds, spec, method):
     chunks, labels, coverages = [], [], []
     for left in edges[:-1]:
         right = left + window
-        mask = (steps > left) & (steps <= right)
+        mask = (steps >= left) & (steps < right)
         if not mask.any():
             continue
         n_present = int(present[mask].sum())
         expected = _expected_from_interval(spec, right, native_interval, timestep_days)
         chunks.append(_reduce(ds.isel(step=np.where(mask)[0]), method=method, dim="step"))
-        labels.append(left + window)
+        labels.append(left)
         coverages.append(_coverage_fraction(n_present, expected))
     if not chunks:
         raise UsageError(_empty_bins_message(spec, "step"))

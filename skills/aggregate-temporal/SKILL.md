@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/aggregate.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: transforms
 ---
 
@@ -79,6 +80,9 @@ On the time/step axis:
   `--min-coverage` (default 1.0) drops incomplete bins.
 
 Inputs with CF `{dim}_bounds` are duration-weighted (`sum(rate × dt) / sum(dt)`), so a 1-day cell and a 5-day cell in the same week are not equal-weighted. `--window` is a step count and is refused on those axes.
+
+Forecast `step` bins are half-open `[left, right)` labeled at the **left**
+edge (`0d`, `7d`, `14d`, …) so week 1 starts at init (lead 0).
 
 Rate `units` are unchanged (still `mm day-1`, etc.).
 

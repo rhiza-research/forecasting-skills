@@ -225,8 +225,8 @@ def test_irregular_weekly_totals_match_tp_differences(tmp_path, aggregate):
         int(np.asarray(s).astype("timedelta64[D]").astype(int)): i
         for i, s in enumerate(weekly_ds.step.values)
     }
-    assert 21 in weekly_idx
-    assert float(weekly_ds["aggregation_coverage"].values[weekly_idx[21]]) == pytest.approx(1.0)
+    assert 14 in weekly_idx
+    assert float(weekly_ds["aggregation_coverage"].values[weekly_idx[14]]) == pytest.approx(1.0)
 
     out = xr.open_zarr(totals, consolidated=True)
     # convert-to-totals --min-coverage 1.0 may drop incomplete weeks, so index the output.
@@ -234,9 +234,9 @@ def test_irregular_weekly_totals_match_tp_differences(tmp_path, aggregate):
         int(np.asarray(s).astype("timedelta64[D]").astype(int)): i
         for i, s in enumerate(out.step.values)
     }
-    assert 21 in out_idx
-    # Week 3 is (14d, 21d] = tp[21] - tp[14]
-    assert float(out["tp"].values[out_idx[21]].flat[0]) == pytest.approx(
+    assert 14 in out_idx
+    # Week starting 14d is [14d, 21d) = tp[21] - tp[14]
+    assert float(out["tp"].values[out_idx[14]].flat[0]) == pytest.approx(
         accum[days.index(21)] - accum[days.index(14)]
     )
 
@@ -337,7 +337,7 @@ def test_gefs_like_mixed_step_weekly_then_totals(tmp_path, aggregate):
 
     run_skill(step_to_time, "-i", str(src), "-o", str(as_time))
     run_skill(aggregate, "-i", str(as_time), "-o", str(weekly), "--period", "weekly")
-    run_skill(convert, "-i", str(weekly), "-o", str(totals))
+    run_skill(convert, "-i", str(weekly), "-o", str(totals), "--min-coverage", "0.5")
 
     weekly_ds = xr.open_zarr(weekly, consolidated=True)
     out = xr.open_zarr(totals, consolidated=True)
@@ -361,17 +361,18 @@ def test_gefs_unfilled_long_leads_stay_nan(tmp_path, aggregate):
     days = np.asarray(out["step"].values).astype("timedelta64[D]").astype(int)
     vals = np.asarray(out["precipitation_surface"].values).reshape(days.size)
     filled = {int(d): v for d, v in zip(days, vals, strict=True)}
+    assert filled[0] == pytest.approx(1.0)
     assert filled[7] == pytest.approx(1.0)
     assert filled[14] == pytest.approx(1.0)
-    assert filled[21] == pytest.approx(1.0)
+    assert np.isnan(filled[21])
     assert np.isnan(filled[28])
-    assert np.isnan(filled[35])
+    assert 35 not in filled
     cov = {int(d): c for d, c in zip(days, out["aggregation_coverage"].values, strict=True)}
+    assert cov[0] == pytest.approx(1.0)
     assert cov[7] == pytest.approx(1.0)
     assert cov[14] == pytest.approx(1.0)
-    assert cov[21] == pytest.approx(1.0)
+    assert cov[21] == pytest.approx(0.0)
     assert cov[28] == pytest.approx(0.0)
-    assert cov[35] == pytest.approx(0.0)
 
 
 def test_nan_days_do_not_count_as_coverage(tmp_path, aggregate):

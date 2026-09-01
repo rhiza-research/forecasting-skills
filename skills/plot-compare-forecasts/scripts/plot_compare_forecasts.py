@@ -129,7 +129,7 @@ def _format_lead(step_value):
 
 
 def _format_column_title(t, bin_width_ns):
-    """``YYYY-MM-DD``, or a right-edge range when median spacing is ≥ 2 days."""
+    """``YYYY-MM-DD``, or a left-edge range when median spacing is ≥ 2 days."""
     import numpy as np
 
     use_range = bin_width_ns is not None and bin_width_ns >= 2 * _NS_PER_DAY
@@ -141,21 +141,21 @@ def _format_column_title(t, bin_width_ns):
         if width is None:
             return t.strftime("%Y-%m-%d")
         try:
-            start = t - width + _dt.timedelta(days=1)
+            end = t + width - _dt.timedelta(days=1)
         except (TypeError, ValueError):
             return t.strftime("%Y-%m-%d")
-        return f"{start.strftime('%Y-%m-%d')} to {t.strftime('%Y-%m-%d')}"
+        return f"{t.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}"
 
-    end = np.asarray(t).astype("datetime64[D]")
-    end_s = np.datetime_as_string(end, unit="D")
+    start = np.asarray(t).astype("datetime64[D]")
+    start_s = np.datetime_as_string(start, unit="D")
     if width is None:
-        return end_s
-    start = (
-        end.astype("datetime64[ns]")
-        - np.timedelta64(int(bin_width_ns), "ns")
-        + np.timedelta64(1, "D")
+        return start_s
+    end = (
+        start.astype("datetime64[ns]")
+        + np.timedelta64(int(bin_width_ns), "ns")
+        - np.timedelta64(1, "D")
     ).astype("datetime64[D]")
-    return f"{np.datetime_as_string(start, unit='D')} to {end_s}"
+    return f"{start_s} to {np.datetime_as_string(end, unit='D')}"
 
 
 def realize_valid_times(ds):
