@@ -25,6 +25,7 @@ from pathlib import Path
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.standard_utils import bbox_subset, ensure_normalized_longitude
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 _BUCKET = "sheerwater-public-datalake"
@@ -212,12 +213,21 @@ def _open_day(tif: Path, day: date):
     return da.expand_dims(time=[np.datetime64(day.isoformat(), "ns")])
 
 
+def _apply_bbox(da, bbox):
+    """Subset one day's field to ``--bbox``; no-op when bbox is omitted."""
+    if bbox is None:
+        return da
+    name = da.name or "precip"
+    return bbox_subset(da.to_dataset(name=name), bbox)[name]
+
+
 @weather_skill(
     name="chirps-fetch",
     version=_SKILL_VERSION,
 )
 @weather_skill.argument("--start-time", required=True)
 @weather_skill.argument("--end-time", required=True)
+@weather_skill.argument("--bbox")
 @weather_skill.argument(
     "--workers",
     type=int,
@@ -237,7 +247,7 @@ def _open_day(tif: Path, day: date):
         "(dataset id, IMERG late/final, …)."
     ),
 )
-def fetch(start_time, end_time, workers, **kwargs):
+def fetch(start_time, end_time, workers, bbox, **kwargs):
     """Fetch CHIRPS precipitation from the public GCS mirror (final product, prelim fallback) and write a weather-skills standard dataset Zarr."""
     if kwargs.get("probe_latest") is not None:
         found: list[date] = []
@@ -261,7 +271,12 @@ def fetch(start_time, end_time, workers, **kwargs):
 
     start = start_time.isoformat()
     end = end_time.isoformat()
-    print(f"Fetching CHIRPS {start} -> {end} (final product, prelim fallback)", file=sys.stderr)
+    region = f" bbox={bbox[0]:g}/{bbox[1]:g}/{bbox[2]:g}/{bbox[3]:g}" if bbox is not None else ""
+    print(
+        f"Fetching CHIRPS {start} -> {end} from gs://{_BUCKET}/{_MIRROR} "
+        f"(final product, prelim fallback){region}",
+        file=sys.stderr,
+    )
 
     expected_days = [
         start_time + timedelta(days=i) for i in range((end_time - start_time).days + 1)
@@ -308,7 +323,14 @@ def fetch(start_time, end_time, workers, **kwargs):
 
         missing_days.sort()
         for day, tif in sorted(downloaded, key=lambda dt: dt[0]):
-            succeeded.append((day, _open_day(tif, day)))
+            da = _open_day(tif, day)
+            da = da.sortby("latitude", ascending=True)
+            da.name = "precip"
+            da.attrs["units"] = "mm day-1"
+            da.attrs["standard_name"] = "lwe_precipitation_rate"
+            da.attrs["long_name"] = "CHIRPS daily precipitation"
+            da = _apply_bbox(da, bbox)
+            succeeded.append((day, da))
 
         if not succeeded:
             statuses = [missing_status.get(d) for d in missing_days]
@@ -355,19 +377,12 @@ def fetch(start_time, end_time, workers, **kwargs):
 
         import xarray as xr
 
-        pieces = []
-        for _, da in succeeded:
-            da = da.sortby("latitude", ascending=True)
-            da.name = "precip"
-            da.attrs["units"] = "mm day-1"
-            da.attrs["standard_name"] = "lwe_precipitation_rate"
-            da.attrs["long_name"] = "CHIRPS daily precipitation"
-            pieces.append(da)
-
+        pieces = [da for _, da in succeeded]
         ds = xr.concat(pieces, dim="time").to_dataset()
         ds.attrs["Conventions"] = "CF-1.13"
         ds.attrs["weather_skills_source"] = "chirps"
         stamp_cf_attrs(ds)
+        ds = ensure_normalized_longitude(ds, lon_dim="longitude")
         ds = to_standard_units(ds, variables=["precip"])
         return stamp_data_interval(ds, period="1 day")
 

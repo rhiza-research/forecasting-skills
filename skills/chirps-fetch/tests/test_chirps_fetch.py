@@ -91,3 +91,58 @@ def test_day_urls_use_chc_mirror(mod):
     )
     assert "sheerwater-public-datalake/chc-mirror/products/CHIRPS/" in final
     assert "storage.googleapis.com" in final
+
+
+def test_fetch_bbox_subsets_space(tmp_path, mod, fetch):
+    out = tmp_path / "out.zarr"
+
+    def fake_download(_session, day, dest_dir):
+        return dest_dir / f"{day.isoformat()}.tif"
+
+    with (
+        patch.object(mod, "_download_day_tif", side_effect=fake_download),
+        patch.object(mod, "_open_day", side_effect=_fake_open_day),
+    ):
+        run_skill(
+            fetch,
+            "--start-time",
+            "2026-01-01",
+            "--end-time",
+            "2026-01-01",
+            "--bbox",
+            "2.5/10.5/1.5/12.5",
+            "-o",
+            str(out),
+        )
+
+    ds = xr.open_zarr(out, consolidated=True)
+    assert float(ds.latitude.min()) >= 1.5
+    assert float(ds.latitude.max()) <= 2.5
+    assert float(ds.longitude.min()) >= 10.5
+    assert float(ds.longitude.max()) <= 12.5
+    assert ds.sizes["time"] == 1
+
+
+def test_empty_bbox_exits(tmp_path, mod, fetch):
+    out = tmp_path / "out.zarr"
+
+    def fake_download(_session, day, dest_dir):
+        return dest_dir / f"{day.isoformat()}.tif"
+
+    with (
+        patch.object(mod, "_download_day_tif", side_effect=fake_download),
+        patch.object(mod, "_open_day", side_effect=_fake_open_day),
+    ):
+        with pytest.raises(SystemExit) as exc:
+            run_skill(
+                fetch,
+                "--start-time",
+                "2026-01-01",
+                "--end-time",
+                "2026-01-01",
+                "--bbox",
+                "50/10/40/12",
+                "-o",
+                str(out),
+            )
+    assert exc.value.code == 1
