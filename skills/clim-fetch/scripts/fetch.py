@@ -15,24 +15,23 @@
 """Fetch a cached daily climatology from Sheerwater's public GCS mirror.
 
 The mirror stores one static day-of-year climatology per (dataset, variable)
-— 1904 dates on the ``time`` dim (a leap year, so it always covers
-day-of-year 1..366). This skill expands that static climatology onto every
-calendar day in a requested ``--start-time``/``--end-time`` window, repeating
-rows across years as needed, so timestamps line up with the rest of a
-pipeline's data.
-
-Grid and region are hardcoded to the only cache that exists today
-(``_GRID``/``_REGION`` below); add real ``--grid``/``--region`` support if and
-when more caches show up.
+with dims ``init_time``, ``prediction_timedelta``, ``lat``, ``lon`` — 1904
+init dates (a leap year, so it always covers day-of-year 1..366 once a lead
+is selected). This skill selects one ``--prediction-timedelta`` lead, realizes
+``time = init_time + prediction_timedelta``, then expands that static
+day-of-year climatology onto every calendar day in a requested
+``--start-time``/``--end-time`` window, repeating rows across years as
+needed, so timestamps line up with the rest of a pipeline's data.
 """
 
 from __future__ import annotations
 
 import sys
 
+import numpy as np
 import pandas as pd
 import xarray as xr
-from weather_skills_core import DataError, weather_skill
+from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.standard_utils import bbox_subset
 from weather_skills_core.units import stamp_data_interval, to_standard_units
@@ -40,21 +39,19 @@ from weather_skills_core.units import stamp_data_interval, to_standard_units
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
 
-# Public GCS mirror. Object keys: climatologies/<product>_<grid>_<region>_<variable>.zarr
+# Public GCS mirror. Object keys: climatologies/<dataset>_<variable>.zarr
 _BUCKET = "sheerwater-public-datalake"
 _GCS_MEDIA = f"https://storage.googleapis.com/{_BUCKET}"
 
-_GRID = "global1_5"
-_REGION = "global"
-
 # Valid --dataset ids — exactly the bucket's product prefix, no aliasing.
-_DATASETS = ("imerg_final", "era5")
+_DATASETS = ("imerg_final", "era5", "chirps")
 
 _DEFAULT_VARIABLE = "precip"
+_DEFAULT_LEAD_DAYS = 0
 
 
 def _open_remote(dataset: str, variable: str) -> xr.Dataset:
-    key = f"climatologies/{dataset}_{_GRID}_{_REGION}_{variable}.zarr"
+    key = f"climatologies/{dataset}_{variable}.zarr"
     url = f"{_GCS_MEDIA}/{key}"
     try:
         return xr.open_zarr(url, consolidated=True)
@@ -62,6 +59,22 @@ def _open_remote(dataset: str, variable: str) -> xr.Dataset:
         raise DataError(
             f"failed to open remote climatology gs://{_BUCKET}/{key} ({exc})."
         ) from None
+
+
+def _select_lead(clim: xr.Dataset, lead_days: int) -> xr.Dataset:
+    """Select one --prediction-timedelta lead and realize valid time = init_time + lead."""
+    lead = np.timedelta64(lead_days, "D")
+    if lead not in clim["prediction_timedelta"].values:
+        available = sorted(
+            int(td / np.timedelta64(1, "D")) for td in clim["prediction_timedelta"].values
+        )
+        raise UsageError(
+            f"--prediction-timedelta {lead_days} not in this climatology; "
+            f"available (days): {available}"
+        )
+    clim = clim.sel(prediction_timedelta=lead, drop=True)
+    clim = clim.assign_coords(init_time=clim["init_time"] + lead).rename({"init_time": "time"})
+    return clim
 
 
 def _expand_climatology(clim: xr.Dataset, start, end) -> xr.Dataset:
@@ -97,19 +110,27 @@ def _expand_climatology(clim: xr.Dataset, start, end) -> xr.Dataset:
     default=_DEFAULT_VARIABLE,
     help=f"Climate variable (default: {_DEFAULT_VARIABLE}).",
 )
+@weather_skill.argument(
+    "--prediction-timedelta",
+    type=int,
+    default=_DEFAULT_LEAD_DAYS,
+    help=f"Forecast lead in whole days to select (default: {_DEFAULT_LEAD_DAYS}).",
+)
 @weather_skill.argument("--bbox")
-def fetch(dataset, start_time, end_time, variable, bbox, **kwargs):
+def fetch(dataset, start_time, end_time, variable, prediction_timedelta, bbox, **kwargs):
     """Fetch a cached daily climatology and expand it to the requested date range."""
     print(
-        f"clim-fetch: fetching {dataset!r} variable={variable!r}",
+        f"clim-fetch: fetching {dataset!r} variable={variable!r} "
+        f"prediction_timedelta={prediction_timedelta}d",
         file=sys.stderr,
     )
     clim = _open_remote(dataset, variable)
+    clim = _select_lead(clim, prediction_timedelta)
 
     semantic_name = clim.attrs.get("variable", variable)
-    mean_name, variance_name = f"{semantic_name}_avg", f"{semantic_name}_variance"
-    clim = clim.rename({"avg": mean_name, "variance": variance_name})
-    clim = to_standard_units(clim, variables=[mean_name, variance_name])
+    mean_name, std_name = f"{semantic_name}_avg", f"{semantic_name}_std"
+    clim = clim.rename({"avg": mean_name, "std": std_name})
+    clim = to_standard_units(clim, variables=[mean_name, std_name])
 
     if bbox is not None:
         # only get necessary chunks
@@ -123,8 +144,7 @@ def fetch(dataset, start_time, end_time, variable, bbox, **kwargs):
         weather_skills_source=f"sheerwater-mirror:{dataset}",
         climatology_dataset=dataset,
         climatology_variable=semantic_name,
-        climatology_grid=_GRID,
-        climatology_region=_REGION,
+        climatology_prediction_timedelta_days=prediction_timedelta,
     )
     stamp_cf_attrs(expanded)
     return stamp_data_interval(expanded, period="1 day")

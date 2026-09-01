@@ -30,6 +30,7 @@ credentialed or source-specific fetcher only when it does not.
 | `ecmwf-fetch` | ECMWF **S2S** ensemble (cf + pf; default `tp`, also `t2m`, `sst`, ocean, pressure levels) over a `--bbox` via ECDS → Zarr. Prefer `dynamical-fetch` for medium-range IFS-ENS / AIFS. |
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
 | `imerg-fetch` | IMERG daily satellite precipitation (late/final) → Zarr. Prefer `dynamical-fetch` `nasa-imerg-analysis-*` for half-hourly. |
+| `clim-fetch` | Daily climatology (mean + std) for a `--dataset` (`imerg_final`, `era5`, `chirps`, …) via Sheerwater's public GCS mirror, at a selected `--prediction-timedelta` lead, expanded to a `--start-time`/`--end-time` window → Zarr |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
 | `kenya-forecast-fetch` | Kenya forecasts archive raw Zarr grids (`gs://kenya-forecasting-data/<date>/data/`) → standard dataset (compose with `plot` for figures) |
 
