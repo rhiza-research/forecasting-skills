@@ -1,6 +1,6 @@
 ---
 name: clim-fetch
-description: Fetch a precomputed daily climatology (avg + std) for a `--dataset` (imerg_final, era5, chirps, ...) from Sheerwater's public GCS mirror, select one `--prediction-timedelta` lead, and expand it onto a requested `--start-time`/`--end-time` calendar window, so timestamps line up with the rest of a pipeline's data. Optional `--bbox N/W/S/E` (compose with resolve-region) subsets before download. Use when a task needs a climatological baseline for anomalies, verification, or comparison — not live observations (use imerg-fetch, dynamical-fetch, arco-era5-fetch, etc. for those).
+description: Fetch a precomputed daily climatology (avg + std) for a `--dataset` (imerg_final, era5, chirps, ...) from Sheerwater's public GCS mirror, select one `--prediction-timedelta` lead, optionally roll it up to a coarser `--window` in days, and expand it onto a requested `--start-time`/`--end-time` calendar window, so timestamps line up with the rest of a pipeline's data. Optional `--bbox N/W/S/E` (compose with resolve-region) subsets before download. Use when a task needs a climatological baseline for anomalies, verification, or comparison — not live observations (use imerg-fetch, dynamical-fetch, arco-era5-fetch, etc. for those).
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads a static climatology Zarr from the public GCS bucket sheerwater-public-datalake over anonymous HTTPS; no credentials required.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -13,14 +13,17 @@ metadata:
 # clim-fetch
 
 Reads a static day-of-year climatology Zarr mirrored to a public GCS bucket
-(`gs://sheerwater-public-datalake/climatologies/<dataset>_<variable>.zarr`).
-The source Zarr has dims `init_time`, `prediction_timedelta`, `lat`, `lon` —
+(`gs://sheerwater-public-datalake/climatologies/<dataset>_<variable>_<window>d.zarr`
+— daily is `window=1`, one naming convention for every window). The source
+Zarr has dims `init_time`, `prediction_timedelta`, `lat`, `lon` —
 1904 init dates (a leap year, so once a lead is selected it always covers
 day-of-year 1..366 with no gaps). This skill:
 
 1. Selects one lead via `--prediction-timedelta` (days, default `0`) and
    realizes `time = init_time + prediction_timedelta`.
-2. Re-labels each date in `[--start-time, --end-time]` with its day-of-year
+2. Optionally rolls the climatology up to a coarser `--window` (days) —
+   see "Aggregating to a coarser window" below.
+3. Re-labels each date in `[--start-time, --end-time]` with its day-of-year
    and gathers the matching climatology row, repeating rows for windows
    spanning more than one year.
 
@@ -58,7 +61,7 @@ convention — no CLI change needed once added.
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
   --dataset <id> --start-time YYYY-MM-DD --end-time YYYY-MM-DD -o <path.zarr> \
-  [--variable precip] [--prediction-timedelta 0] [--bbox N/W/S/E]
+  [--variable precip] [--prediction-timedelta 0] [--window 1] [--bbox N/W/S/E]
 ```
 
 ### Arguments
@@ -72,10 +75,36 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
 - `--prediction-timedelta` — forecast lead in whole days to select from the
   source's `prediction_timedelta` dim (default: `0`). Errors listing the
   available leads if the requested value isn't cached.
+- `--window` — climatology window in whole days (default: `1`, i.e. daily).
+  See "Aggregating to a coarser window" below.
 - `--bbox` — optional `N/W/S/E` bounding box; use `resolve-region` to turn a
   country or named region into this value first. Applied before the
   day-of-year expansion, on the still-lazy remote Zarr, so only the chunks
   overlapping the bbox are pulled from GCS.
+
+### Aggregating to a coarser window
+
+Averaging a `_std` field the same way you average `_avg` computes the wrong
+statistic. `--window` handles this correctly so the agent never has to run a
+separate aggregation step itself which is prone to errors:
+
+1. Tries a pre-aggregated cache first:
+   `climatologies/<dataset>_<variable>_<window>d.zarr`.
+2. If that isn't available, falls back to the daily climatology and rolls it
+   up locally with a **centered** `--window`-day window (e.g.
+   `--window 7` on day-of-year 100 averages roughly days 97–103):
+   - `<variable>_avg` rolls like an ordinary rate.
+   - `<variable>_std` is computed correctly, assuming independent days:
+     `Std(window mean) = sqrt(mean(std_i²)) / sqrt(window)` — squaring,
+     rolling through the same mean machinery used for `_avg`, dividing by
+     `window`, then taking the square root.
+3. The climatology is circularly padded by `window` days on each end
+   before rolling (day 366 wraps to day 1), so days near Jan 1 / Dec 31 get a
+   full window instead of coming out `NaN` at the edges.
+
+Alignment is always centered — not configurable. If you need a
+left/right-aligned climatology instead, no shift skill exists yet in this
+repo; that would be a small separate skill (`time = time ± N days`).
 
 ### Output
 
@@ -89,7 +118,8 @@ for precip). Unlike variance, std shares the mean's units and converts
 linearly, so both variables go through the same unit-conversion path safely.
 Global attrs include `weather_skills_source=sheerwater-mirror:<dataset>`,
 `climatology_dataset`, `climatology_variable`,
-`climatology_prediction_timedelta_days`. Stamped with `data_interval` `1 day`.
+`climatology_prediction_timedelta_days`, `climatology_window_days`.
+Stamped with `data_interval` `1 day`.
 
 Two dates far apart within the window but sharing a day-of-year (e.g. two
 different years' June 15) get **identical** climatology values by design —
@@ -115,6 +145,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
   --dataset imerg_final --start-time 2020-01-01 --end-time 2020-12-31 \
   --prediction-timedelta 7 -o /tmp/imerg_clim_2020_7d.zarr
+
+# A 7-day (weekly) smoothed climatology instead of daily.
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
+  --dataset imerg_final --start-time 2020-01-01 --end-time 2020-12-31 \
+  --window 7 -o /tmp/imerg_clim_2020_weekly.zarr
 
 # ERA5 climatology spanning two years — June 2020 through June 2021 repeats
 # each day-of-year's row across the two Junes.
