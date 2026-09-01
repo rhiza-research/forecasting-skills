@@ -41,7 +41,7 @@ credentialed or source-specific fetcher only when it does not.
 | `resolve-time` | Resolve relative calendar dates ("the last two weeks", `latest`, `now-3d`) to `--start-time`/`--end-time` or `--date`. Latest published day is the fetcher's `--probe-latest`, not this skill. |
 | `inspect-zarr` | Print dimension sizes, coordinate values, and a data-variable summary of a Zarr (stdout only) |
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
-| `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); duration-weights CF bounds; keeps `data_interval` when uniform; stamps `aggregation_period` + `aggregation_coverage` + `cell_methods` |
+| `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); duration-weights CF bounds; keeps `data_interval` when uniform; stamps `aggregation_period` + `aggregation_coverage` + `cell_methods`. `--climatology NAME` correctly aggregates a `NAME_avg`/`NAME_std` pair (e.g. from `clim-fetch`) — a plain `--method mean` on `_std` silently computes the wrong statistic. |
 | `convert-to-totals` | Terminal: rate × stamped `aggregation_period` → amount (100% coverage default; refuses overlapping Δt < period — `select` first) |
 | `deaccumulate` | Convert a leftover cumulative-since-init forecast variable into per-step diffs along the `step` axis (fetchers already write rates) |
 | `step-to-time` | Realize a forecast's `step` lead-time axis as wall-clock valid times (`time = init + step`) so it can be compared against time-based observations |
