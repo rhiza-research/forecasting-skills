@@ -72,7 +72,7 @@ def test_aggregate_keeps_incomplete_trailing_month(tmp_path, aggregate):
 
 
 def test_aggregate_end_time_weekly_two_bins(tmp_path, aggregate):
-    """15 days ending 2026-08-30 → bins labeled 2026-08-23 and 2026-08-30."""
+    """15 days through 2026-08-30 → [Aug 16, Aug 23) and [Aug 23, Aug 30), left-labeled."""
     src = write_zarr(
         make_gridded(n_time=15, fill=2.0, start="2026-08-16"),
         tmp_path / "in.zarr",
@@ -94,12 +94,14 @@ def test_aggregate_end_time_weekly_two_bins(tmp_path, aggregate):
     ds = xr.open_zarr(out, consolidated=True)
     assert ds.sizes["time"] == 2
     labels = [str(t)[:10] for t in ds.time.values]
-    assert labels == ["2026-08-23", "2026-08-30"]
+    assert labels == ["2026-08-16", "2026-08-23"]
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(1.0)
+    assert float(ds["aggregation_coverage"].values[1]) == pytest.approx(1.0)
 
 
 def test_aggregate_end_time_keeps_incomplete_leading(tmp_path, aggregate, capsys):
     """Series starting mid-bin: leading short week is kept and stamped coverage < 1."""
-    # 2026-08-20 .. 2026-08-30 (11 days): full week ending 30, partial week ending 23.
+    # 2026-08-20 .. 2026-08-30 (11 days): full [Aug 23, Aug 30), partial [Aug 16, Aug 23).
     src = write_zarr(
         make_gridded(n_time=11, fill=1.0, start="2026-08-20"),
         tmp_path / "in.zarr",
@@ -120,10 +122,34 @@ def test_aggregate_end_time_keeps_incomplete_leading(tmp_path, aggregate, capsys
 
     ds = xr.open_zarr(out, consolidated=True)
     labels = [str(t)[:10] for t in ds.time.values]
-    assert labels == ["2026-08-23", "2026-08-30"]
+    assert labels == ["2026-08-16", "2026-08-23"]
     assert float(ds["aggregation_coverage"].values[0]) < 1.0
     assert float(ds["aggregation_coverage"].values[1]) == pytest.approx(1.0)
     assert "dropped" not in capsys.readouterr().err
+
+
+def test_end_time_weekly_left_edge_matches_forecast_week(tmp_path, aggregate):
+    """Obs week [Aug 24, Aug 31) is labeled Aug 24, same as forecast step 0 after step-to-time."""
+    src = write_zarr(
+        make_gridded(n_time=7, fill=1.0, start="2026-08-24"),
+        tmp_path / "obs.zarr",
+    )
+    out = tmp_path / "obs_weekly.zarr"
+    run_skill(
+        aggregate,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--period",
+        "weekly",
+        "--end-time",
+        "2026-08-31",
+    )
+    ds = xr.open_zarr(out, consolidated=True)
+    assert ds.sizes["time"] == 1
+    assert str(ds.time.values[0])[:10] == "2026-08-24"
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(1.0)
 
 
 def test_aggregate_duration_21_day(tmp_path, aggregate):

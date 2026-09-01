@@ -341,11 +341,13 @@ def _aggregate_time_resample(ds, dim, spec, method):
 
 
 def _aggregate_time_anchored(ds, dim, spec, method, end_time, *, start_time=None):
-    """Backward fixed-width bins ending at ``end_time``.
+    """Backward fixed-width bins whose last right edge is ``end_time``.
 
-    Walks while the bin's right edge is still after the effective data start,
-    then keeps bins that contain samples and stamps ``aggregation_coverage``.
-    Optional ``start_time`` raises the earliest coverage floor.
+    Same geometry as forecast ``step`` buckets: half-open ``[left, right)``,
+    labeled at the left edge. Walks while the bin's right edge is still after
+    the effective data start, then keeps bins that contain samples and stamps
+    ``aggregation_coverage``. Optional ``start_time`` raises the earliest
+    coverage floor.
     """
     import numpy as np
     import xarray as xr
@@ -400,16 +402,16 @@ def _aggregate_time_anchored(ds, dim, spec, method, end_time, *, start_time=None
         r = left
     bins.reverse()
     if _cf_bounds(ds, dim) is not None:
-        bound_bins = [(left, right, label(right)) for left, right in bins]
+        bound_bins = [(left, right, label(left)) for left, right in bins]
         return _aggregate_from_bounds(ds, dim, spec, method, bound_bins)
     chunks, labels, coverages = [], [], []
     for left, right in bins:
-        keep = np.nonzero((raw > left) & (raw <= right))[0]
+        keep = np.nonzero((raw >= left) & (raw < right))[0]
         if keep.size == 0:
             continue
-        expected = _expected_from_interval(spec, right, native_interval, timestep_days)
+        expected = _expected_from_interval(spec, left, native_interval, timestep_days)
         chunks.append(_reduce(ds.isel({dim: keep}), method=method, dim=dim))
-        labels.append(label(right))
+        labels.append(label(left))
         coverages.append(_coverage_fraction(int(present[keep].sum()), expected))
     if not chunks:
         raise UsageError(_empty_bins_message(spec, dim))
@@ -516,7 +518,10 @@ def _rolling_aggregation_period(ds, dim, window, interval):
 @weather_skill.argument(
     "--end-time",
     default=None,
-    help="With --period: date the final bin ends on (bins walk backward).",
+    help=(
+        "With --period: exclusive right edge of the final bin (bins walk "
+        "backward; labeled at the left edge, same as forecast step buckets)."
+    ),
 )
 @weather_skill.argument(
     "--start-time",

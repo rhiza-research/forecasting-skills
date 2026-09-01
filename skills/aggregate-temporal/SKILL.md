@@ -55,7 +55,11 @@ Exactly one of `--period` or `--window` is required.
 - `--method` — reducer: `mean` (default), `max`, `min`. There is no `sum`; totals are a separate skill.
 - `--variable`, `-v` — repeatable; restricts aggregation to the named data variable(s).
 - `--time-dim` — override; by default uses `time` if present, else `step`.
-- `--end-time` — with `--period` on a `time` axis: date the final bin ends on (bins walk backward). Same standard flag as fetchers. No effect on `step` or `--window`.
+- `--end-time` — with `--period` on a `time` axis: exclusive right edge of
+  the final bin (bins walk backward). Labeled at the **left** edge, same
+  as forecast `step` buckets — a week with `--end-time 2026-08-31` is
+  `[2026-08-24, 2026-08-31)` labeled `2026-08-24`. Copy the `YYYY-MM-DD`
+  from fetch / resolve-time. No effect on `step` or `--window`.
 - `--start-time` — with `--period` and `--end-time`: optional earliest coverage floor. Requires `--end-time`.
 
 ### Metadata stamped
@@ -81,8 +85,12 @@ On the time/step axis:
 
 Inputs with CF `{dim}_bounds` are duration-weighted (`sum(rate × dt) / sum(dt)`), so a 1-day cell and a 5-day cell in the same week are not equal-weighted. `--window` is a step count and is refused on those axes.
 
-Forecast `step` bins are half-open `[left, right)` labeled at the **left**
-edge (`0d`, `7d`, `14d`, …) so week 1 starts at init (lead 0).
+Forecast `step` bins and `--end-time` observation bins are the same
+geometry: half-open `[left, right)` labeled at the **left** edge. Week 1
+of a forecast initialized 24 Aug is `0d` / `2026-08-24`; the observation
+week for `--end-time 2026-08-31` is also `2026-08-24`. Both cover
+`[2026-08-24, 2026-08-31)`. Forward `--period` resample (no `--end-time`)
+is already left-labeled.
 
 Rate `units` are unchanged (still `mm day-1`, etc.).
 
