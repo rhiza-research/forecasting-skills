@@ -1,10 +1,11 @@
 ---
 name: plot
-description: Render a 2D heatmap, 1D time series, wind-rose, or u/v quiver PNG from any gridded or station weather-skills standard dataset Zarr. Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Wind roses convert eastward/northward (u/v) components to meteorological-from direction and speed. Quiver maps overlay native-grid u/v arrows (S2S `plot_wind_and_sst_anomaly`: matplotlib `scale=100`). Use when you need to visualize a single dataset as a map, a time/step profile, a wind rose, or wind vectors. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
+description: Render a 2D heatmap, 1D time series, wind-rose, or u/v quiver PNG from any gridded or station weather-skills standard dataset Zarr. Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Wind roses convert eastward/northward (u/v) components to meteorological-from direction and speed. Quiver maps overlay native-grid u/v arrows (S2S `plot_wind_and_sst_anomaly` thinning; scale auto-fits typical wind to ~1.5× grid spacing). Use when you need to visualize a single dataset as a map, a time/step profile, a wind rose, or wind vectors. For precipitation, run aggregate-temporal then convert-to-totals first — plot period totals (`mm`), not fetch rates (`mm day-1`).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: figure
 ---
 
@@ -44,14 +45,17 @@ Source-agnostic single-dataset visualization. Four styles:
   bins dropped). `--colormap` colors the speed stacks (default blue→orange).
 - `quiver` — wind-vector map: speed as `pcolormesh` (`YlGn` by default,
   matching `plot_s2s` 10 m / 700 hPa `10m-wind_vectors.png`) with native-grid
-  `u`/`v` arrows like `plot_wind_and_sst_anomaly` (`scale=100`, optional
-  `--quiver-step` stride; no cartopy `regrid_shape`). Same panel layout, geo
-  overlays, `--bbox` / `--mask-geojson` / `--index` / `--cities` / `--draw-box`
-  as heatmap. Ensemble `number` is averaged. Auto-detects u/v like windrose
-  (`u10`/`v10`, CF `eastward_wind`/`northward_wind`, …). Colorbar is
-  `Wind speed [m/s]` (or `Wind speed anomaly` if the u field name says so).
-  Arrow keys for 5 and 10 m/s. Finer grids (GFS 0.25°) auto-thin to ~1.5°
-  (native S2S spacing) unless `--quiver-step` is set.
+  `u`/`v` arrows like `plot_wind_and_sst_anomaly` (optional `--quiver-step`
+  stride; no cartopy `regrid_shape`). Arrow length is auto-scaled so a
+  typical wind is about 1.5× the subsampled grid spacing — a fixed matplotlib
+  `scale=100` matches S2S *anomaly* magnitudes and overdraws 10 m/s basin
+  winds. Same panel layout, geo overlays, `--bbox` / `--mask-geojson` /
+  `--index` / `--cities` / `--draw-box` as heatmap. Ensemble `number` is
+  averaged. Auto-detects u/v like windrose (`u10`/`v10`, CF `eastward_wind` /
+  `northward_wind`, …). Colorbar is `Wind speed [m/s]` (or `Wind speed
+  anomaly` if the u field name says so). Arrow keys for 5 and 10 m/s. Finer
+  grids (GFS 0.25°) auto-thin to ~1.5° (native S2S spacing) unless
+  `--quiver-step` is set.
 
 ## When to use
 
@@ -167,8 +171,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> 
   (`W > E`) are drawn as two segments. Heatmap and quiver — `--style
   timeseries` and `--style windrose` ignore it with a stderr warning. Default
   unset → no boxes.
-- `--quiver-scale` — matplotlib quiver `scale` for `--style quiver`. Default
-  `100` (`plot_wind_and_sst_anomaly`). Larger values draw shorter arrows.
+- `--quiver-scale` — matplotlib quiver `scale` for `--style quiver`. Larger
+  values draw shorter arrows. When omitted, the skill sizes a typical
+  (95th-percentile) wind to about 1.5× the subsampled grid spacing as a
+  fraction of the map width, so 10 m/s basin winds stay readable. Pass `100`
+  to match `plot_wind_and_sst_anomaly` (that default was tuned for small
+  *anomaly* vectors, not full 10 m wind).
 - `--quiver-step` — plot every Nth grid point for `--style quiver`. Matches
   `plot_wind_and_sst_anomaly`'s `quiver_step`. When omitted, the skill uses
   stride 1 on ~1.5° (S2S) grids and auto-thins finer grids to about 1.5° so

@@ -538,6 +538,44 @@ def test_quiver_step_rejects_zero():
         plot_mod._quiver_step([0.0, 1.0], [10.0, 11.0], requested=0)
 
 
+def test_auto_quiver_scale_uses_requested():
+    plot_mod = load_skill("plot", "plot")
+    assert plot_mod._auto_quiver_scale([10.0], [0.0], 60.0, 1.5, requested=100) == 100.0
+
+
+def test_auto_quiver_scale_rejects_nonpositive():
+    from weather_skills_core import UsageError
+
+    plot_mod = load_skill("plot", "plot")
+    with pytest.raises(UsageError, match="> 0"):
+        plot_mod._auto_quiver_scale([10.0], [0.0], 60.0, 1.5, requested=0)
+
+
+def test_auto_quiver_scale_fits_typical_wind_to_spacing():
+    plot_mod = load_skill("plot", "plot")
+    u = np.full((8, 8), 10.0)
+    v = np.zeros((8, 8))
+    scale = plot_mod._auto_quiver_scale(u, v, 60.0, 1.5)
+    assert scale == pytest.approx(10.0 * 60.0 / (plot_mod.QUIVER_ARROW_LEN_SPACING * 1.5))
+
+
+def test_auto_quiver_scale_grows_with_map_width():
+    plot_mod = load_skill("plot", "plot")
+    u = np.ones((4, 4))
+    v = np.zeros((4, 4))
+    narrow = plot_mod._auto_quiver_scale(u, v, 10.0, 1.5)
+    wide = plot_mod._auto_quiver_scale(u, v, 80.0, 1.5)
+    assert wide > narrow
+
+
+def test_auto_quiver_scale_full_wind_exceeds_s2s_anomaly_default():
+    """10 m/s on a 60° basin needs a larger matplotlib scale than S2S's 100."""
+    plot_mod = load_skill("plot", "plot")
+    u = np.full((6, 6), 10.0)
+    v = np.zeros((6, 6))
+    assert plot_mod._auto_quiver_scale(u, v, 60.0, 1.5) > plot_mod.QUIVER_SCALE
+
+
 def test_subsample_quiver_stride():
     plot_mod = load_skill("plot", "plot")
     lon = np.array([0.0, 1.0, 2.0, 3.0])

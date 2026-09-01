@@ -84,12 +84,15 @@ _UV_NAME_PAIRS = (
 )
 _SAMPLE_DIM_NAMES = {"step", "number", "point_id", "station_id", "valid_time"}
 
-# Speed field matches plot_s2s 10 m / 700 hPa (YlGn). Arrows match
-# plot_wind_and_sst_anomaly: native grid, matplotlib scale=100, optional stride.
+# Speed field matches plot_s2s 10 m / 700 hPa (YlGn). Arrows sit on the
+# native grid (plot_wind_and_sst_anomaly), thinned to ~1.5°. Scale is
+# auto-picked so a typical wind is ~1.5× that spacing — a fixed 100 matches
+# S2S *anomaly* magnitudes and overdraws 10 m/s basin winds.
 QUIVER_CMAP = "YlGn"
 QUIVER_SCALE = 100.0
 QUIVER_STEP = 1
 QUIVER_TARGET_SPACING_DEG = 1.5
+QUIVER_ARROW_LEN_SPACING = 1.5
 QUIVER_KEY_MS = (5.0, 10.0)
 
 # Natural Earth scale vs map span (max of lon/lat extent in degrees).
@@ -1077,17 +1080,8 @@ def _mean_axis_spacing(values, axis):
     return float(np.mean(np.abs(delta)))
 
 
-def _quiver_step(lat, lon, requested=None, target_spacing=QUIVER_TARGET_SPACING_DEG):
-    """Stride for quiver arrows.
-
-    ``plot_wind_and_sst_anomaly`` uses ``quiver_step=1`` on the native S2S
-    ~1.5° grid. When ``requested`` is set, use that. Otherwise thin finer
-    grids (GFS 0.25°, ERA5) to about 1.5° so basin maps match that look.
-    """
-    if requested is not None:
-        if requested < 1:
-            raise UsageError("--quiver-step must be >= 1")
-        return int(requested)
+def _native_spacing_deg(lat, lon):
+    """Finest mean lat/lon spacing in degrees, or None if it cannot be measured."""
     import numpy as np
 
     lat = np.asarray(lat)
@@ -1100,10 +1094,50 @@ def _quiver_step(lat, lon, requested=None, target_spacing=QUIVER_TARGET_SPACING_
             _mean_axis_spacing(lon, 1 if lon.ndim > 1 else 0),
         ]
     candidates = [s for s in spacings if s is not None and s > 0]
-    if not candidates:
+    return min(candidates) if candidates else None
+
+
+def _quiver_step(lat, lon, requested=None, target_spacing=QUIVER_TARGET_SPACING_DEG):
+    """Stride for quiver arrows.
+
+    ``plot_wind_and_sst_anomaly`` uses ``quiver_step=1`` on the native S2S
+    ~1.5° grid. When ``requested`` is set, use that. Otherwise thin finer
+    grids (GFS 0.25°, ERA5) to about 1.5° so basin maps match that look.
+    """
+    if requested is not None:
+        if requested < 1:
+            raise UsageError("--quiver-step must be >= 1")
+        return int(requested)
+    spacing = _native_spacing_deg(lat, lon)
+    if spacing is None:
         return QUIVER_STEP
-    spacing = min(candidates)
     return max(QUIVER_STEP, int(round(target_spacing / spacing)))
+
+
+def _auto_quiver_scale(u, v, lon_span, spacing_deg, requested=None):
+    """Matplotlib quiver ``scale`` (data units per axes-width).
+
+    Larger scale → shorter arrows. ``requested`` (``--quiver-scale``) wins.
+    Otherwise size a typical (95th-percentile) wind to about
+    ``QUIVER_ARROW_LEN_SPACING`` times the subsampled grid spacing, as a
+    fraction of the map width, so 10 m/s basin winds and small anomalies
+    both stay readable.
+    """
+    if requested is not None:
+        if requested <= 0:
+            raise UsageError("--quiver-scale must be > 0")
+        return float(requested)
+    import numpy as np
+
+    speed = np.hypot(np.asarray(u, dtype=float), np.asarray(v, dtype=float))
+    speed = speed[np.isfinite(speed)]
+    if speed.size == 0 or lon_span <= 0 or spacing_deg is None or spacing_deg <= 0:
+        return QUIVER_SCALE
+    typical = float(np.percentile(speed, 95))
+    if typical <= 0:
+        return QUIVER_SCALE
+    target_deg = QUIVER_ARROW_LEN_SPACING * float(spacing_deg)
+    return typical * float(lon_span) / target_deg
 
 
 def _subsample_quiver(lon, lat, u, v, step):
@@ -1137,7 +1171,7 @@ def _quiver_map(
     draw_boxes=None,
     rows=None,
     columns=None,
-    quiver_scale=QUIVER_SCALE,
+    quiver_scale=None,
     quiver_step=None,
     cbar_label=None,
 ):
@@ -1208,6 +1242,13 @@ def _quiver_map(
     quiv = None
     boxes = draw_boxes or []
     overlays = _load_geo_overlays(extent)
+    step = _quiver_step(speed[lat_dim].values, speed[lon_dim].values, quiver_step)
+    native_spacing = _native_spacing_deg(speed[lat_dim].values, speed[lon_dim].values)
+    arrow_spacing = None if native_spacing is None else native_spacing * step
+    lon_span = abs(extent[1] - extent[0])
+    scale = _auto_quiver_scale(
+        u_da.values, v_da.values, lon_span, arrow_spacing, requested=quiver_scale
+    )
     for i, s in enumerate(steps):
         ax = axes[i]
         slab = speed if sdim is None else speed.isel({sdim: i})
@@ -1230,7 +1271,6 @@ def _quiver_map(
             vmax=vmax,
             transform=ccrs.PlateCarree(),
         )
-        step = _quiver_step(u_slab[lat_dim].values, u_slab[lon_dim].values, quiver_step)
         lon_q, lat_q, u_q, v_q = _subsample_quiver(
             u_slab[lon_dim].values,
             u_slab[lat_dim].values,
@@ -1244,7 +1284,7 @@ def _quiver_map(
             u_q,
             v_q,
             transform=ccrs.PlateCarree(),
-            scale=quiver_scale,
+            scale=scale,
             color="k",
             zorder=5,
         )
@@ -1348,7 +1388,7 @@ def _plot_quiver(
         draw_boxes=draw_boxes,
         rows=rows,
         columns=columns,
-        quiver_scale=quiver_scale if quiver_scale is not None else QUIVER_SCALE,
+        quiver_scale=quiver_scale,
         quiver_step=quiver_step,
         cbar_label=_wind_speed_cbar_label(u_da),
     )
@@ -1573,7 +1613,11 @@ def _heatmap(
     "--quiver-scale",
     type=float,
     default=None,
-    help=("Matplotlib quiver scale (S2S plot_wind_and_sst_anomaly default 100). Quiver-only."),
+    help=(
+        "Matplotlib quiver scale (larger → shorter arrows). "
+        "Default sizes a typical wind to ~1.5× the subsampled grid spacing. "
+        "Quiver-only."
+    ),
 )
 @weather_skill.argument(
     "--quiver-step",
