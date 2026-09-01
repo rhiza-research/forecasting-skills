@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
 #   "cftime",
 #   "ecmwf-datastores-client==0.4.2",
 #   "requests",
@@ -13,59 +13,257 @@
 #   "eccodeslib",
 #   "zarr",
 #   "numpy",
+#   "pint-xarray>=0.6",
 # ]
 # ///
-"""Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
+"""Fetch ECMWF S2S ensemble fields (cf + pf) and write a weather-skills standard dataset Zarr."""
+
+from __future__ import annotations
 
 import datetime as dt
 import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import NamedTuple
 
-from weather_skills_core import DataError, UsageError, WroteSummary, weather_skill
-from weather_skills_core.envelope import parse_bbox, stamp_cf_attrs
-from weather_skills_core.util import require_env
+from weather_skills_core import DataError, UsageError, weather_skill
+from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.standard_utils import require_env
+from weather_skills_core.units import (
+    convert_dataarray,
+    precip_amounts_to_rates,
+    stamp_data_interval,
+    to_standard_units,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.12"
+_SKILL_VERSION = "0.0.2"
 
-# How far back from today the `latest` init probe looks. ECMWF S2S real-time
-# data is access-restricted (embargoed) for a recent window whose width is
-# variable: ECMWF documents restrictions on recent real-time data without a
-# fixed public width, and the window has been observed as small as ~2 days in
-# practice. 28 days is deliberate headroom over that variable embargo plus init
-# cycles and production lag — not a measured 3-week constant. The probe must be
-# able to step past the embargo to reach an init the user can actually
-# retrieve. Exhausting the probe without a usable init exits non-zero.
-_LATEST_LOOKBACK_DAYS = 28
-
-# Bounded poll for a single `latest` probe day. ECDS retrievals run minutes to
-# ~hour, so each probe job is polled every _PROBE_POLL_SECONDS up to a
-# _PROBE_POLL_MAX_SECONDS wall-clock cap. A job still not results-ready at the
-# cap is treated as stuck (not as "this init is unavailable"): the probe aborts
-# with a clear message rather than looping forever or silently stepping back to
-# an older init, since stepping back on a stuck-but-possibly-valid job would
-# report a misleadingly old `latest`. See SKILL.md.
 _PROBE_POLL_SECONDS = 30
 _PROBE_POLL_MAX_SECONDS = 3600
 
-# Global wall-clock budget for the whole `latest` discovery loop, across all
-# probed init days. Each probe day is separately capped by
-# _PROBE_POLL_MAX_SECONDS, but a sequence of slow probes could still run for
-# many hours across the full lookback; this caps total discovery time so a
-# degraded ECDS queue fails fast with a clear message instead of probing every
-# lookback day at maximum per-day cost. Checked between days; it does not cut a
-# probe off mid-poll.
-_DISCOVERY_MAX_SECONDS = 3600.0
-
-LEADTIME_HOURS = ["0", "168", "240", "336", "480", "504", "672", "720", "840", "960", "1008"]
+# S2S archives tp 6-hourly; request 00Z daily leads through the 46-day S2S range.
+_MAX_LEAD_HOURS = 46 * 24
+LEADTIME_HOURS = [str(h) for h in range(0, _MAX_LEAD_HOURS + 1, 24)]
 
 S2S_LICENCE_URL = "https://ecds.ecmwf.int/datasets/s2s-forecasts?tab=download#manage-licences"
 
+# Embargo detection: match this phrase on the exception chain (MarsRuntimeError
+# is not reliably importable from ecmwf.datastores). Keep narrow so generic
+# access/auth failures do not classify as embargo.
+_S2S_EMBARGO_SIGNATURES = ("restricted access to s2s",)
+_EMBARGO_CHAIN_MAX_DEPTH = 8
+
+# Keep dim-like coords; drop GRIB filter scalars that collide across parameters.
+_KEEP_COORDS = frozenset(
+    {
+        "time",
+        "step",
+        "latitude",
+        "longitude",
+        "number",
+        "valid_time",
+        "lat",
+        "lon",
+        "vertical",
+        "isobaricInhPa",
+        "isobaricInPa",
+        "level",
+        "theta",
+    }
+)
+
+PRESSURE_LEVELS_10 = ("1000", "925", "850", "700", "500", "300", "200", "100", "50", "10")
+PRESSURE_LEVELS_7 = ("1000", "925", "850", "700", "500", "300", "200")
+
+
+class _Var(NamedTuple):
+    ecds: str
+    family: str  # instant = integer hours; daily = 24 h averaging windows
+    level_type: str = "single_level"
+    levels: tuple[str, ...] = ()
+    level_key: str = "pressure_level"
+    control_only: bool = False
+
+
+# Most-used first, then the rest of S2S single-level + ocean. `-v` / Zarr
+# tokens are cfgrib short names (sst, not ARCO 2m_temperature).
+VARIABLES: dict[str, _Var] = {
+    "tp": _Var("total_precipitation", "instant"),
+    "t2m": _Var("2_m_temperature", "daily"),
+    "sst": _Var("sea_surface_temperature", "daily"),
+    "d2m": _Var("2_m_dewpoint_temperature", "daily"),
+    "mx2t6": _Var("maximum_2_m_temperature_in_the_last_6_hours", "instant"),
+    "mn2t6": _Var("minimum_2_m_temperature_in_the_last_6_hours", "instant"),
+    "u10": _Var("10_m_u_component_of_wind", "instant"),
+    "v10": _Var("10_m_v_component_of_wind", "instant"),
+    "msl": _Var("mean_sea_level_pressure", "instant"),
+    "cape": _Var("convective_available_potential_energy", "daily"),
+    "tcw": _Var("total_column_water", "daily"),
+    "gh": _Var(
+        "geopotential_height",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_10,
+        control_only=True,
+    ),
+    "t": _Var("temperature", "instant", "pressure_level", PRESSURE_LEVELS_10, control_only=True),
+    "u": _Var(
+        "u_component_of_wind",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_10,
+        control_only=True,
+    ),
+    "v": _Var(
+        "v_component_of_wind",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_10,
+        control_only=True,
+    ),
+    "w": _Var(
+        "vertical_velocity",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_10,
+        control_only=True,
+    ),
+    "q": _Var(
+        "specific_humidity",
+        "instant",
+        "pressure_level",
+        PRESSURE_LEVELS_7,
+        control_only=True,
+    ),
+    "pv": _Var(
+        "potential_vorticity",
+        "instant",
+        "potential_temperature",
+        ("320",),
+        "potential_temperature",
+        True,
+    ),
+    "skt": _Var("skin_temperature", "daily"),
+    "tcc": _Var("total_cloud_cover", "daily"),
+    "sp": _Var("surface_pressure", "instant"),
+    "lsm": _Var("land_sea_mask", "instant"),
+    "orog": _Var("orography", "instant"),
+    "slt": _Var("soil_type", "instant"),
+    "sd": _Var("snow_depth_water_equivalent", "daily"),
+    "rsn": _Var("snow_density", "daily"),
+    "asn": _Var("snow_albedo", "daily"),
+    "sm20": _Var("soil_moisture_top_20_cm", "daily"),
+    "sm100": _Var("soil_moisture_top_100_cm", "daily"),
+    "st20": _Var("soil_temperature_top_20_cm", "daily"),
+    "st100": _Var("soil_temperature_top_100_cm", "daily"),
+    "ci": _Var("sea_ice_area_fraction", "daily"),
+    "sshf": _Var("surface_sensible_heat_flux", "instant"),
+    "slhf": _Var("surface_latent_heat_flux", "instant"),
+    "ssr": _Var("surface_net_solar_radiation", "instant"),
+    "ssrd": _Var("surface_solar_radiation_downwards", "instant"),
+    "str": _Var("surface_net_thermal_radiation", "instant"),
+    "strd": _Var("surface_thermal_radiation_downwards", "instant"),
+    "ttr": _Var("top_net_thermal_radiation", "instant"),
+    "cp": _Var("convective_precipitation", "instant"),
+    "sf": _Var("snow_fall_water_equivalent", "instant"),
+    "ewss": _Var("eastward_turbulent_surface_stress", "instant"),
+    "nsss": _Var("northward_turbulent_surface_stress", "instant"),
+    "ro": _Var("water_runoff_and_drainage", "instant"),
+    "sro": _Var("surface_runoff", "instant"),
+    "t20d": _Var("depth_of_20_C_isotherm", "daily"),
+    "sav300": _Var("mean_sea_water_practical_salinity_in_the_upper_300_m", "daily"),
+    "mswpt300": _Var("mean_sea_water_potential_temperature_in_the_upper_300_m", "daily"),
+    "mlotst010": _Var("ocean_mixed_layer_thickness_defined_by_sigma_theta_0_01_kg_m_3", "daily"),
+    "ocu": _Var("u_component_of_surface_current", "daily"),
+    "ocv": _Var("v_component_of_surface_current", "daily"),
+    "sithick": _Var("sea_ice_thickness", "daily"),
+    "zos": _Var("sea_surface_height", "daily"),
+    "sos": _Var("sea_surface_pratical_salinity", "daily"),  # ECDS spelling
+}
+DEFAULT_VARIABLES = ["tp"]
+
+# cfgrib / S2S abbreviations that are not the canonical `-v` token.
+_GRIB_EXTRAS = {
+    "2t": "t2m",
+    "2d": "d2m",
+    "10u": "u10",
+    "10v": "v10",
+    "wtmp": "sst",
+    "z": "gh",
+}
+_GRIB_ALIASES = {name: name for name in VARIABLES} | _GRIB_EXTRAS
+
+# Kelvin fields `to_standard_units` does not treat as air temperature.
+_KELVIN_TEMPS = frozenset({"sst", "skt", "d2m", "mx2t6", "mn2t6", "st20", "st100", "mswpt300", "t"})
+
+
+def _canonical_name(token: str) -> str | None:
+    if token in VARIABLES:
+        return token
+    extra = _GRIB_EXTRAS.get(token)
+    if extra is not None:
+        return extra
+    for short, spec in VARIABLES.items():
+        if token == spec.ecds:
+            return short
+    return None
+
+
+def _resolve_variables(raw: list[str] | None) -> list[str]:
+    tokens = raw or list(DEFAULT_VARIABLES)
+    unknown = [token for token in tokens if _canonical_name(token) is None]
+    if unknown:
+        raise UsageError(
+            f"unknown variable(s): {', '.join(unknown)}.\n"
+            f"Available (most used first): {', '.join(VARIABLES)}"
+        )
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        name = _canonical_name(token)
+        if name not in seen:
+            seen.add(name)
+            resolved.append(name)
+    return resolved
+
+
+def _request_group_key(name: str) -> tuple:
+    spec = VARIABLES[name]
+    return (spec.family, spec.level_type, spec.levels, spec.control_only)
+
+
+def _group_for_request(names: list[str]) -> list[tuple[tuple, list[str]]]:
+    """Split variables so each ECDS request has one leadtime family and level set."""
+    groups: dict[tuple, list[str]] = {}
+    for name in names:
+        groups.setdefault(_request_group_key(name), []).append(name)
+    return list(groups.items())
+
+
+def _group_slug(key: tuple) -> str:
+    family, level_type, levels, control_only = key
+    nlev = f"{len(levels)}lev" if levels else "sfc"
+    extra = "cfonly" if control_only else "ens"
+    return f"{family}_{level_type}_{nlev}_{extra}"
+
+
+def _daily_leadtimes(hours: list[str]) -> list[str]:
+    """Map instant lead hours onto ECDS daily-averaged `start_end` windows."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in hours:
+        end = int(raw)
+        token = "0_24" if end == 0 else f"{end - 24}_{end}"
+        if token not in seen:
+            seen.add(token)
+            out.append(token)
+    return out
+
 
 def _submit(client, request: dict):
-    """Submit an s2s-forecasts retrieval; surface a clean message on the licence-not-accepted case."""
+    """Submit an s2s-forecasts retrieval; surface a clean message on licence-not-accepted."""
     import requests
 
     try:
@@ -86,54 +284,54 @@ def _submit(client, request: dict):
         raise
 
 
-def _build_request(date_iso: str, area: list[float], forecast_type: str) -> dict:
+def _build_request(
+    date_iso: str,
+    area: list[float],
+    forecast_type: str,
+    variables: list[str] | tuple[str, ...] = ("tp",),
+) -> dict:
+    names = list(variables)
+    families = {VARIABLES[name].family for name in names}
+    if len(families) != 1:
+        raise ValueError("internal: one leadtime family per ECDS request")
+    family = next(iter(families))
+    leadtimes = LEADTIME_HOURS if family == "instant" else _daily_leadtimes(LEADTIME_HOURS)
+    level_types = {VARIABLES[name].level_type for name in names}
+    if len(level_types) != 1:
+        raise ValueError("internal: one level_type per ECDS request")
+    level_sets = {VARIABLES[name].levels for name in names}
+    if len(level_sets) != 1:
+        raise ValueError("internal: one level list per ECDS request")
+    spec0 = VARIABLES[names[0]]
     d = dt.date.fromisoformat(date_iso)
-    return {
+    req = {
         "origin": "ecmwf",
-        "level_type": "single_level",
-        "variable": ["total_precipitation"],
+        "level_type": spec0.level_type,
+        "variable": [VARIABLES[name].ecds for name in names],
         "year": [str(d.year)],
         "month": [f"{d.month:02d}"],
         "day": [f"{d.day:02d}"],
         "time": ["00:00"],
-        "leadtime_hour": LEADTIME_HOURS,
+        "leadtime_hour": leadtimes,
         "forecast_type": forecast_type,
         "area": area,
         "data_format": "grib",
     }
-
-
-def _is_wrapped_area(area: list[float]) -> bool:
-    """True if the bbox crosses +-180 (west > east), an RFC 7946 sec 5.2 box.
-
-    ``area`` is [N, W, S, E]. resolve-region emits west > east for a country
-    that straddles the antimeridian (Russia, Fiji). MARS ``area`` requires
-    west < east west-to-east, so such a box must be split at +-180.
-    """
-    _, w, _, e = area
-    return w > e
+    if spec0.levels:
+        req[spec0.level_key] = list(spec0.levels)
+    return req
 
 
 def _split_wrapped_area(area: list[float]) -> list[list[float]]:
-    """Split a wrapped [N, W, S, E] (W > E) into two MARS-valid areas.
-
-    Returns the western band [N, W, S, 180] and the eastern band [N, -180, S, E],
-    each with west < east so MARS accepts it. For a non-wrapped area, returns the
-    single area unchanged.
-    """
+    """Split antimeridian-crossing [N, W, S, E] (W > E) into two MARS-valid areas."""
     n, w, s, e = area
-    if not _is_wrapped_area(area):
+    if w <= e:
         return [area]
     return [[n, w, s, 180.0], [n, -180.0, s, e]]
 
 
 def _concat_lon(datasets: list) -> object:
-    """Concatenate per-area decoded datasets along longitude into one envelope.
-
-    Each dataset covers a disjoint longitude band of a wrapped bbox. Concatenate
-    along the longitude dim, then drop any duplicated shared edge (the +-180
-    seam) and sort so the result is a single monotonic longitude axis.
-    """
+    """Concatenate per-area datasets along longitude; drop duplicated +-180 seam."""
     import numpy as np
     import xarray as xr
 
@@ -145,64 +343,104 @@ def _concat_lon(datasets: list) -> object:
             lon_name = cand
             break
     if lon_name is None:
-        # No identifiable longitude axis to concat on; fall back to the first
-        # piece rather than guessing.
         return datasets[0]
-    # Normalize each piece's longitude to a single [-180, 180) convention before
-    # concatenating so the +-180 seam coincides. Without this, a western band
-    # ending at 180.0 and an eastern band starting at -180.0 carry the same
-    # meridian under two distinct float values; np.unique would treat them as
-    # separate and the duplicate seam would survive. ((lon + 180) % 360) - 180
-    # maps 180.0 to -180.0, so the two pieces' shared meridian becomes one value.
     normed = [
         d.assign_coords({lon_name: ((d[lon_name] + 180.0) % 360.0) - 180.0}) for d in datasets
     ]
     combined = xr.concat(normed, dim=lon_name)
-    # Drop the now-coincident +-180 seam and any other repeated longitude, then
-    # sort to a monotonic axis.
     _, unique_idx = np.unique(combined[lon_name].values, return_index=True)
-    combined = combined.isel({lon_name: np.sort(unique_idx)})
-    return combined.sortby(lon_name)
+    return combined.isel({lon_name: np.sort(unique_idx)}).sortby(lon_name)
 
 
-# Signature of the ECMWF S2S real-time embargo, matched on the failed job's
-# error text. When a probed init falls inside the access-restricted window, the
-# ECDS/MARS job fails and the failure surfaces with a message containing this
-# phrase (e.g. "Restricted access to S2S data ..."). The relevant MARS exception
-# type (MarsRuntimeError) is not reliably importable from the ecmwf.datastores
-# stack, so detection is a substring match (case-insensitive) on the exception
-# text rather than an isinstance check. The signature is deliberately this
-# specific: a generic access/auth failure (e.g. one merely mentioning
-# "AccessError") must NOT classify as embargo.
-_S2S_EMBARGO_SIGNATURES = ("restricted access to s2s",)
+def _drop_grib_filters(ds):
+    drop = [name for name in ds.coords if name not in ds.dims and name not in _KEEP_COORDS]
+    return ds.drop_vars(drop) if drop else ds
 
-# How many links of an exception's __cause__/__context__ chain
-# _is_s2s_embargo_error inspects. Real chains here are one to three links; the
-# bound guards against pathological or cyclic chains.
-_EMBARGO_CHAIN_MAX_DEPTH = 8
 
-# Cap on how much of the original exception text the embargo step-back line
-# echoes. MARS error payloads can be long, and the step-back line prints once
-# per embargoed probe day.
-_EMBARGO_DETAIL_MAX_CHARS = 200
+def _open_grib(path: Path):
+    """Decode a (possibly mixed-parameter) GRIB into one Dataset."""
+    import cfgrib
+    import xarray as xr
+
+    parts = cfgrib.open_datasets(str(path))
+    if not parts:
+        raise DataError(f"ECDS GRIB {path.name} contained no messages.")
+    cleaned = [_drop_grib_filters(part) for part in parts]
+    if len(cleaned) == 1:
+        return cleaned[0]
+    return xr.merge(cleaned, compat="override", combine_attrs="override")
+
+
+def _promote_vertical(ds):
+    """Rename cfgrib pressure/theta coords onto the ontology ``vertical`` dim."""
+    if "vertical" in ds.dims:
+        return ds
+    for name, units, standard_name in (
+        ("isobaricInhPa", "hPa", "air_pressure"),
+        ("isobaricInPa", "Pa", "air_pressure"),
+        ("theta", "K", "air_potential_temperature"),
+        ("level", None, None),
+    ):
+        if name not in ds.coords and name not in ds.dims:
+            continue
+        if name not in ds.dims:
+            ds = ds.expand_dims(name)
+        ds = ds.rename({name: "vertical"})
+        if units:
+            ds["vertical"].attrs.setdefault("units", units)
+        if standard_name:
+            ds["vertical"].attrs.setdefault("standard_name", standard_name)
+            ds["vertical"].attrs.setdefault("positive", "down")
+        ds["vertical"].attrs.setdefault("axis", "Z")
+        return ds
+    return ds
+
+
+def _rename_to_short(ds, requested: list[str]):
+    """Map cfgrib names onto canonical `-v` tokens and keep only those fields."""
+    rename = {}
+    for name in ds.data_vars:
+        short = _GRIB_ALIASES.get(name)
+        if short is not None and short in requested and short != name:
+            rename[name] = short
+    if rename:
+        ds = ds.rename(rename)
+    extra = [name for name in ds.data_vars if name not in requested]
+    if extra:
+        ds = ds.drop_vars(extra)
+    missing = [name for name in requested if name not in ds.data_vars]
+    if missing:
+        have = ", ".join(ds.data_vars) if list(ds.data_vars) else "none"
+        raise DataError(f"ECDS GRIB did not contain {', '.join(missing)} (decoded: {have}).")
+    return ds[requested]
+
+
+def _to_celsius(da):
+    units = str(da.attrs.get("units") or "")
+    if units in {"degree_Celsius", "degC", "celsius"}:
+        return da
+    converted, _ = convert_dataarray(da, "degree_Celsius")
+    converted.attrs["units"] = "degree_Celsius"
+    return converted
+
+
+def _standardize(ds):
+    """CF attrs + standard units. S2S ``tp`` is cumulative; convert to a rate."""
+    stamp_cf_attrs(ds)
+    if "tp" in ds.data_vars:
+        ds["tp"].attrs["standard_name"] = "precipitation_amount"
+        ds["tp"].attrs["units"] = "kg m-2"
+        ds["tp"].attrs["long_name"] = "Total precipitation"
+    ds = to_standard_units(ds)
+    for name in _KELVIN_TEMPS:
+        if name in ds.data_vars:
+            ds[name] = _to_celsius(ds[name])
+    ds = precip_amounts_to_rates(ds)
+    return stamp_data_interval(ds)
 
 
 def _is_s2s_embargo_error(exc: BaseException) -> bool:
-    """True if `exc` is the ECMWF S2S real-time embargo (access-restriction) failure.
-
-    The most recent S2S real-time data are access-restricted (a window of
-    variable width); probing such an init makes the ECDS/MARS job fail with a
-    message containing "Restricted access to S2S". Such an init is not
-    retrievable *yet* but is also not a genuine transport/auth/HTTP problem —
-    during `latest` discovery it should be skipped (step back), not treated as
-    fatal.
-
-    Matching is defensive: the signature is checked against str() and the
-    exception type name of `exc` AND of each exception in its
-    __cause__/__context__ chain (bounded by _EMBARGO_CHAIN_MAX_DEPTH), all
-    lowercased, so a wrapped or re-raised restriction message still classifies.
-    The signature itself is narrow, so a generic access/auth error does not.
-    """
+    """True if `exc` (or its cause/context chain) matches the S2S real-time embargo."""
     parts: list[str] = []
     seen: set[int] = set()
     cur: BaseException | None = exc
@@ -215,225 +453,49 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
     return any(sig in haystack for sig in _S2S_EMBARGO_SIGNATURES)
 
 
-def _print_embargo_step_back(day: dt.date, exc: BaseException) -> None:
-    """Print the stderr line used everywhere the probe steps past an embargoed init."""
-    detail = str(exc)
-    if len(detail) > _EMBARGO_DETAIL_MAX_CHARS:
-        detail = detail[:_EMBARGO_DETAIL_MAX_CHARS] + "..."
-    print(
-        f"  {day.isoformat()} not accessible (S2S real-time embargo); stepping back ({detail})",
-        file=sys.stderr,
-    )
-
-
-def _discover_latest(client, area: list[float]) -> tuple[dt.date, object]:
-    """`latest` resolver for ECMWF S2S: newest accessible forecast init on or
-    before today (UTC), found by probing init dates backward.
-
-    For each candidate day back from today, submits a control-forecast retrieval
-    over the requested area and polls it (bounded by ``_PROBE_POLL_MAX_SECONDS``)
-    until results-ready. Two non-fatal cases step back one day: a job ECDS marks
-    failed/rejected/dismissed because that init is not published, and a failure
-    (on submit or on poll) that matches the S2S real-time embargo signature
-    ("Restricted access to S2S" in the error text or its exception chain),
-    because the most recent S2S real-time data are access-restricted. Since
-    `latest` means "the newest init you can actually get", an embargoed init is
-    skipped, not fatal — the probe steps past the embargo to the newest
-    accessible init. The signature is the dividing line: ONLY an
-    embargo-signature failure steps back. A credential/transport/HTTP failure
-    does not match it, is surfaced, and the run exits non-zero — as does a job
-    still not ready at the poll cap — so a stuck job or a credential problem is
-    never silently misreported as a missing init.
-
-    Returns ``(day, remote)`` for the winning init — the completed control
-    retrieval — so the caller reuses it as the control leg rather than
-    re-submitting it. This is the slow/async case (each probe is a real ECDS
-    submit) — acceptable because it is opt-in. Bounded three ways: per-day
-    polling by ``_PROBE_POLL_MAX_SECONDS``; the whole loop by
-    ``_DISCOVERY_MAX_SECONDS`` (exceeding it exits 1); and the lookback by
-    ``_LATEST_LOOKBACK_DAYS``. Exhausting the lookback without a usable init
-    exits 2 — with an access-restriction message when every probed init was
-    embargo-classified, else with the generic not-published message.
-
-    Existence cost: ECDS exposes no metadata-only "does this init exist" query
-    in the submit/poll model — a non-published init surfaces only as a
-    ProcessingFailedError on poll, and a published init is confirmed only when
-    its job reaches results_ready. So confirming the `latest` init's existence
-    unavoidably polls one control retrieval to completion. When the resolved
-    --date IS that probed init (bare `latest`), the fetch body reuses this
-    completed retrieval as the control leg. When the resolved --date is an
-    OFFSET off latest (`latest-Nd|w`), the probed init differs from the init
-    the body fetches, so this completed control retrieval cannot be reused and
-    is spent solely to confirm `latest` existed — one unavoidable probe
-    retrieval. The offset init is then submitted exactly once in the body; the
-    probed `latest` init is never re-submitted (it is only ever reused, never
-    resubmitted), so no init is ever submitted twice.
-    """
-    from ecmwf.datastores.processing import ProcessingFailedError
-
-    today = dt.datetime.now(dt.UTC).date()
-    started = time.monotonic()
-    probed = 0
-    embargo_step_backs = 0
-    for offset in range(_LATEST_LOOKBACK_DAYS + 1):
-        if time.monotonic() - started > _DISCOVERY_MAX_SECONDS:
-            raise DataError(
-                f"latest discovery exceeded its time budget "
-                f"({_DISCOVERY_MAX_SECONDS:.0f}s) after probing {probed} init(s); "
-                "aborting. Re-run, or pass an explicit init date."
-            )
-        day = today - dt.timedelta(days=offset)
-        req = _build_request(day.isoformat(), area, "control_forecast")
-        print(f"Probing ECMWF init {day.isoformat()} for 'latest'...", file=sys.stderr)
-        probed += 1
-        # _submit handles the licence-not-accepted case (exits). A submit
-        # failure matching the S2S embargo signature steps back one day, like
-        # the poll-side embargo cases below. Any other submit failure
-        # (transport/auth/HTTP) is a real error, not a missing init: surface it
-        # and exit rather than stepping back.
-        try:
-            remote = _submit(client, req)
-        except DataError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- classify; do not misreport as missing init
-            if _is_s2s_embargo_error(exc):
-                _print_embargo_step_back(day, exc)
-                embargo_step_backs += 1
-                continue
-            raise DataError(
-                f"ECDS submit failed while probing init {day.isoformat()} ({exc}); "
-                "this is a transport/auth problem, not a not-yet-published init."
-            ) from None
-
-        waited = 0
-        while True:
-            try:
-                if remote.results_ready:
-                    return day, remote
-            except ProcessingFailedError as exc:
-                # ECDS marked the job failed/rejected/dismissed. Two non-fatal
-                # cases both step back one day:
-                #   - the S2S real-time embargo (access restriction), whose detail
-                #     surfaces in the ProcessingFailedError message, and
-                #   - a not-yet-published init.
-                if _is_s2s_embargo_error(exc):
-                    _print_embargo_step_back(day, exc)
-                    embargo_step_backs += 1
-                else:
-                    print(
-                        f"  {day.isoformat()} not published ({exc}); stepping back",
-                        file=sys.stderr,
-                    )
-                break
-            except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't step back
-                # The S2S real-time embargo can also surface as a non-
-                # ProcessingFailedError (e.g. a MARS access error / MarsRuntimeError
-                # whose text or exception chain carries "Restricted access to
-                # S2S"). That init is access-restricted, not a real
-                # transport/auth problem, so step back like the not-published case
-                # rather than exiting. Genuine transport/auth/HTTP errors still exit.
-                if _is_s2s_embargo_error(exc):
-                    _print_embargo_step_back(day, exc)
-                    embargo_step_backs += 1
-                    break
-                raise DataError(
-                    f"polling ECDS job for init {day.isoformat()} failed ({exc}); "
-                    "this is a transport/auth problem, not a not-yet-published init."
-                ) from None
-            if waited >= _PROBE_POLL_MAX_SECONDS:
-                raise DataError(
-                    f"ECDS job for init {day.isoformat()} was still not ready after "
-                    f"{_PROBE_POLL_MAX_SECONDS}s; the job is stuck. Aborting rather than "
-                    "stepping back to an older init (which would report a misleadingly old "
-                    "'latest'). Re-run, or pass an explicit init date."
-                )
-            time.sleep(_PROBE_POLL_SECONDS)
-            waited += _PROBE_POLL_SECONDS
-    if embargo_step_backs == probed:
-        # Every probed day failed with the embargo signature: the lookback never
-        # reached an accessible init, which points at the account's S2S access
-        # rather than at publication lag.
-        raise UsageError(
-            f"every probed init in the last {_LATEST_LOOKBACK_DAYS + 1} days was "
-            "access-restricted (S2S real-time embargo); cannot resolve 'latest'. "
-            f"Check your S2S access and licence terms ({S2S_LICENCE_URL})."
-        )
-    raise UsageError(
-        f"no ECMWF S2S init available in the last {_LATEST_LOOKBACK_DAYS + 1} days "
-        f"(probed back to {(dt.datetime.now(dt.UTC).date() - dt.timedelta(days=_LATEST_LOOKBACK_DAYS)).isoformat()}); "
-        "cannot resolve 'latest'."
-    )
-
-
-def _latest_probe(area: list[float], state: dict) -> dt.date:
-    """Discover the newest accessible init, memoized in the run state.
-
-    `latest` discovery probes ECDS, which needs credentials and a Client.
-    Build them lazily and memoize in ``state`` (``RunContext.state``, shared
-    with the fetch body) so the probe runs at most once per run and only when
-    a `latest` token is present. An absolute or now-based --date performs no
-    ECDS call and no import here.
-    """
-    if "v" not in state:
-        require_env("ECMWF_DATASTORES_URL", "ECMWF_DATASTORES_KEY")
-        from ecmwf.datastores import Client
-
-        state["client"] = Client()
-        # _discover_latest returns (day, completed control retrieval). Cache
-        # the remote so the fetch body reuses the probe's control leg for the
-        # winning init instead of re-submitting it.
-        #
-        # The probe only confirms whether an init exists; the longitude band
-        # does not change which init dates are published. For a wrapped
-        # (west > east) bbox, probe with a single MARS-valid sub-area (the
-        # western band) so the existence probe submits a legal request; the
-        # full wrapped band is fetched as two split legs in the body and the
-        # probe retrieval is not reused as a leg in that case.
-        probe_area = _split_wrapped_area(area)[0]
-        day, cf_remote = _discover_latest(state["client"], probe_area)
-        state["v"] = day
-        state["cf_remote"] = cf_remote
-    return state["v"]
-
-
-def _latest(args, context) -> dt.date:
-    """`latest` resolver for the standard --date toggle.
-
-    Parses the required bbox into a MARS area and runs the ECDS
-    probe-submit-poll discovery for the newest accessible S2S init, memoized in
-    the run state (shared with the fetch body so the winning control retrieval
-    is reused rather than re-submitted). The decorator invokes this lazily, only
-    when the --date token references `latest`, and after the bbox has already
-    been parsed and validated (a malformed bbox exits 2 before any probe).
-    """
-    area = list(parse_bbox(args.bbox))
-    return _latest_probe(area, context.state)
-
-
 @weather_skill(
-    "ecmwf-fetch",
-    _SKILL_VERSION,
-    output_type="forecast",
-    source="ecmwf-s2s",
-    bbox="required",
-    date={
-        "required": True,
-        "context": "single forecast init date",
-        "help": (
-            "Forecast init date. Either YYYY-MM-DD, 'now'/'today', 'latest', or "
-            "an offset 'now-<int>{d|w}' / 'latest-<int>{d|w}' (w = 7 days). "
-            "'latest' probes init dates backward via ECDS submits (slow)."
-        ),
-    },
-    latest_resolver=_latest,
-    cache_hit_label="fetch",
+    name="ecmwf-fetch",
+    version=_SKILL_VERSION,
 )
-def fetch(bbox, date, context):
-    """Fetch ECMWF S2S precipitation (cf + pf) and write a weather-skills envelope Zarr."""
-    resolved_date = date
-    date_iso = resolved_date.isoformat()
+@weather_skill.argument("--bbox", required=True)
+@weather_skill.argument("--date", required=True)
+@weather_skill.argument(
+    "--variable",
+    "-v",
+    action="append",
+    help=(
+        "S2S field to retrieve (repeatable). Most used first: tp, t2m, sst. "
+        "Pressure-level: gh, t, u, v, w, q. Default tp. Names are cfgrib short "
+        "names (sst, t, not ARCO 2m_temperature)."
+    ),
+)
+@weather_skill.argument(
+    "--probe-latest",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="IDENT",
+    probe=True,
+    help=(
+        "Print the latest available YYYY-MM-DD (or none) on stdout and exit. "
+        "Does not download fields. Optional IDENT selects a product "
+        "(dataset id, IMERG late/final, …)."
+    ),
+)
+def fetch(bbox, date, variable, **kwargs):
+    """Fetch ECMWF S2S ensemble fields (cf + pf) and write a weather-skills standard dataset Zarr."""
+    if kwargs.get("probe_latest") is not None:
+        # ECDS has no cheap public date list; 2-day embargo, Mon/Thu before 2023-06-27.
+        day = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=2)
+        if day < dt.date(2023, 6, 27):
+            while day.weekday() not in (0, 3):
+                day -= dt.timedelta(days=1)
+        print(day.isoformat())
+        return
+
+    date_iso = date.isoformat()
     area = list(bbox)
-    state = context.state
+    names = _resolve_variables(variable)
 
     require_env("ECMWF_DATASTORES_URL", "ECMWF_DATASTORES_KEY")
 
@@ -441,86 +503,49 @@ def fetch(bbox, date, context):
     from ecmwf.datastores import Client
     from ecmwf.datastores.processing import ProcessingFailedError
 
-    print(f"Fetching ECMWF S2S for area={area} date={date_iso}", file=sys.stderr)
+    print(
+        f"Fetching ECMWF S2S for area={area} date={date_iso} variables={','.join(names)}",
+        file=sys.stderr,
+    )
     with tempfile.TemporaryDirectory(prefix="ecmwf-fetch-") as tmpdir:
         tmp = Path(tmpdir)
-        # MARS `area` requires west < east. A wrapped (west > east) bbox from
-        # resolve-region (Russia, Fiji) is split at +-180 into a western band
-        # [N, W, S, 180] and an eastern band [N, -180, S, E]; each forecast type
-        # (cf, pf) is then retrieved once per sub-area and the per-area decoded
-        # datasets are concatenated along longitude into one envelope. A normal
-        # (west <= east) bbox yields a single sub-area, so this is one retrieval
-        # per forecast type as before.
         sub_areas = _split_wrapped_area(area)
-        wrapped = len(sub_areas) > 1
+        client = Client()
+        groups = _group_for_request(names)
 
-        # Reuse the probe's Client when `latest` discovery already built one,
-        # else create it now.
-        client = state.get("client") or Client()
-
-        # A "leg" is one (forecast_type, sub-area) retrieval. Each leg gets its
-        # own remote, grib path, and (after decode) dataset. The probe's control
-        # retrieval is reused only for a non-wrapped fetch of THIS exact init:
-        # in the wrapped case the probe submitted a single sub-area, not the
-        # full split, so it cannot stand in for a leg.
         legs = []
-        for forecast_type, short in (("control_forecast", "cf"), ("perturbed_forecast", "pf")):
-            for i, sub in enumerate(sub_areas):
-                legs.append(
-                    {
-                        "forecast_type": forecast_type,
-                        "short": short,
-                        "area": sub,
-                        "grib": tmp / f"{short}_{i}.grib",
-                        "remote": None,
-                    }
-                )
+        for key, group_vars in groups:
+            slug = _group_slug(key)
+            control_only = key[3]
+            forecast_types = [("control_forecast", "cf")]
+            if not control_only:
+                forecast_types.append(("perturbed_forecast", "pf"))
+            for forecast_type, short in forecast_types:
+                for i, sub in enumerate(sub_areas):
+                    legs.append(
+                        {
+                            "key": key,
+                            "group_vars": group_vars,
+                            "forecast_type": forecast_type,
+                            "short": short,
+                            "area": sub,
+                            "grib": tmp / f"{short}_{slug}_{i}.grib",
+                            "remote": None,
+                        }
+                    )
 
-        reuse_cf = (
-            (not wrapped) and resolved_date == state.get("v") and state.get("cf_remote") is not None
-        )
-
-        # _submit handles the licence-not-accepted case (exits). Any other submit
-        # failure (transport/auth/HTTP) is surfaced here and the run exits
-        # non-zero, mirroring the probe's taxonomy so a bad init or a credential
-        # problem yields a clear message rather than a raw traceback.
-        if reuse_cf:
-            print(
-                "Reusing probe's control retrieval; submitting remaining legs...", file=sys.stderr
-            )
-        else:
-            print(f"Submitting {len(legs)} retrieval leg(s)...", file=sys.stderr)
+        print(f"Submitting {len(legs)} retrieval leg(s)...", file=sys.stderr)
         try:
             for leg in legs:
-                if (
-                    reuse_cf
-                    and leg["forecast_type"] == "control_forecast"
-                    and leg["remote"] is None
-                ):
-                    leg["remote"] = state.get("cf_remote")
-                    continue
-                req = _build_request(date_iso, leg["area"], leg["forecast_type"])
+                req = _build_request(date_iso, leg["area"], leg["forecast_type"], leg["group_vars"])
                 leg["remote"] = _submit(client, req)
         except DataError:
             raise
-        except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't traceback
+        except Exception as exc:  # noqa: BLE001
             raise DataError(
                 f"ECDS submit failed for init {date_iso} ({exc}); this is a transport/auth problem."
             ) from None
 
-        # Bounded poll with the same taxonomy as the probe (reusing its
-        # poll-interval/cap constants):
-        #   - a failure matching the S2S embargo signature means the requested
-        #     init is access-restricted (inside the real-time embargo). For an
-        #     explicit --date there is no stepping back: exit non-zero saying so
-        #     and pointing at 'latest' / an older init.
-        #   - ProcessingFailedError (ECDS marked a leg failed/rejected/dismissed)
-        #     otherwise means this init is not retrievable — most often because
-        #     the requested --date is not a valid S2S init day. Exit non-zero
-        #     with a clear message rather than a traceback.
-        #   - a transport/auth error on poll is surfaced and exits non-zero.
-        #   - still-not-ready at the wall-clock cap is a stuck job: abort rather
-        #     than looping forever.
         remotes = [leg["remote"] for leg in legs]
         waited = 0
         while True:
@@ -530,22 +555,20 @@ def fetch(bbox, date, context):
             except ProcessingFailedError as exc:
                 if _is_s2s_embargo_error(exc):
                     raise DataError(
-                        f"init {date_iso} is inside the S2S real-time embargo "
-                        f"(access-restricted) ({exc}); use --date latest or an older "
-                        "init date."
+                        f"init {date_iso} is inside the 2-day S2S real-time embargo "
+                        f"(access-restricted) ({exc}); use an older init date."
                     ) from None
                 raise DataError(
                     f"ECDS reported no data for init {date_iso} ({exc}); "
-                    "it may not be a valid S2S init day. ECMWF S2S runs init on "
-                    "fixed days, so 'now'/offset dates rarely align — use 'latest' "
-                    "or pass a known S2S init date."
+                    "there may be no published S2S real-time forecast for that date "
+                    "(daily since 2023-06-27; Mondays/Thursdays only before then), "
+                    "or the init is not yet available — try another date."
                 ) from None
-            except Exception as exc:  # noqa: BLE001 -- surface transport/auth, don't step
+            except Exception as exc:  # noqa: BLE001
                 if _is_s2s_embargo_error(exc):
                     raise DataError(
-                        f"init {date_iso} is inside the S2S real-time embargo "
-                        f"(access-restricted) ({exc}); use --date latest or an older "
-                        "init date."
+                        f"init {date_iso} is inside the 2-day S2S real-time embargo "
+                        f"(access-restricted) ({exc}); use an older init date."
                     ) from None
                 raise DataError(
                     f"polling ECDS job for init {date_iso} failed ({exc}); "
@@ -565,37 +588,37 @@ def fetch(bbox, date, context):
             leg["remote"].download(str(leg["grib"]))
 
         print("Decoding GRIB and writing Zarr...", file=sys.stderr)
-        # Decode each leg, then concatenate the sub-area pieces of each forecast
-        # type along longitude (a no-op for a non-wrapped, single-sub-area fetch).
-        cf_parts = [
-            xr.open_dataset(leg["grib"], engine="cfgrib")
-            for leg in legs
-            if leg["forecast_type"] == "control_forecast"
-        ]
-        pf_parts = [
-            xr.open_dataset(leg["grib"], engine="cfgrib")
-            for leg in legs
-            if leg["forecast_type"] == "perturbed_forecast"
-        ]
-        cf = _concat_lon(cf_parts).assign_coords(number=0)
-        pf = _concat_lon(pf_parts)
-        ds = xr.concat([pf, cf], dim="number").sortby("number")
-        ds.attrs.update(Conventions="CF-1.13")
-        stamp_cf_attrs(ds)
-        # Stamp explicit units on tp so downstream consumers don't have to reverse-engineer
-        # them from value ranges. GRIB carries `kg m-2` (numerically equivalent to mm depth
-        # over the accumulation period); we forward that quantity rather than convert.
-        ds["tp"].attrs["standard_name"] = "precipitation_amount"
-        ds["tp"].attrs["units"] = "kg m-2"
-        ds["tp"].attrs["long_name"] = "Total precipitation"
-
-        # The decoded dataset is lazily backed by the GRIB files in the
-        # temporary directory, which is removed when this block exits; the
-        # decorator writes the returned dataset after that, so materialize the
-        # values while the files are still alive.
+        family_ensembles = []
+        for key, group_vars in groups:
+            cf_parts = [
+                _open_grib(leg["grib"])
+                for leg in legs
+                if leg["key"] == key and leg["forecast_type"] == "control_forecast"
+            ]
+            pf_parts = [
+                _open_grib(leg["grib"])
+                for leg in legs
+                if leg["key"] == key and leg["forecast_type"] == "perturbed_forecast"
+            ]
+            cf = _promote_vertical(_concat_lon(cf_parts).assign_coords(number=0))
+            if pf_parts:
+                pf = _promote_vertical(_concat_lon(pf_parts))
+                ens = xr.concat([pf, cf], dim="number").sortby("number")
+            else:
+                ens = cf
+            family_ensembles.append(_rename_to_short(ens, group_vars))
+        ds = (
+            family_ensembles[0]
+            if len(family_ensembles) == 1
+            else xr.merge(family_ensembles, join="outer", compat="override")
+        )
+        ds = ds[names]
+        ds.attrs.update(Conventions="CF-1.13", weather_skills_source="ecmwf-s2s")
+        ds = _standardize(ds)
+        # Materialize while GRIB files in the temp dir still exist.
         ds = ds.load()
 
-    return ds, WroteSummary("", replace=True)
+    return ds
 
 
 if __name__ == "__main__":

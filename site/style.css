@@ -248,6 +248,10 @@ pre code {
   font-size: 0.9rem;
 }
 
+.notice + .notice {
+  margin-top: 0.75rem;
+}
+
 /* ---------- demo: replayed agent session ---------- */
 
 /* The replay "screen": a framed card holding the scrolling chat thread. */
@@ -670,13 +674,17 @@ pre code {
   margin: 1.5rem 0 0.35rem;
 }
 
-/* ---------- envelope schemas ---------- */
+/* ---------- dataset schemas ---------- */
 
 .schema-pair {
   display: flex;
   gap: 1rem;
   margin: 1.5rem 0;
   flex-wrap: wrap;
+}
+
+.schema-pair .schema {
+  min-width: 0;
 }
 
 .schema {

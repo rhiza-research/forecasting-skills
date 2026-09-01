@@ -1,557 +1,591 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
 #   "numpy",
 #   "pandas",
+#   "pint-xarray>=0.6",
 # ]
 # ///
-"""Temporal aggregation for weather-skills envelope Zarr stores.
-
-Supports a `time` dim (wall-clock) or a `step` dim (forecast lead time).
-For `time`, uses xarray.resample. For `step`, rolls fixed-length windows
-expressed as timedelta64 and aggregates each.
-"""
+"""Temporal aggregation: calendar resample, rolling window, or step buckets (rates)."""
 
 import datetime as _dt
 import sys
 
-from weather_skills_core import UsageError, WroteSummary, weather_skill
+from weather_skills_core import Dataset, UsageError, weather_skill
+from weather_skills_core.standard_utils import roll_and_agg
+from weather_skills_core.units import (
+    AGGREGATION_COVERAGE_COORD,
+    AGGREGATION_PERIOD_ATTR,
+    DATA_INTERVAL_ATTR,
+    PERIOD_TO_AGGREGATION,
+    data_interval_of,
+    expected_samples_in_period,
+    format_cell_methods,
+    format_duration,
+    infer_timestep,
+    parse_aggregation_period,
+    stamp_data_interval,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.1.13"
+_SKILL_VERSION = "0.0.2"
 
 PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10}
 RESAMPLE_FREQ = {"daily": "1D", "weekly": "7D", "dekadal": "10D", "monthly": "MS"}
-# Bin-width in days used by the backward-anchored time resample path
-# (`--anchor-end`). "monthly" uses a 30-day approximation rather than
-# calendar months; see SKILL.md for the caveat.
 ANCHOR_PERIOD_DAYS = {"daily": 1, "weekly": 7, "dekadal": 10, "monthly": 30}
-
-# Units that, on their own, mark a temperature (an intensive quantity that
-# cannot be summed). Compared case-insensitively against the stripped units
-# string. Kelvin, Celsius, Fahrenheit, and their common CF/UDUNITS spellings.
-_TEMPERATURE_UNITS = {
-    "k",
-    "degk",
-    "degc",
-    "celsius",
-    "degree_celsius",
-    "degrees_celsius",
-    "degreec",
-    "°c",
-    "degf",
-    "degree_fahrenheit",
-    "degrees_fahrenheit",
-    "fahrenheit",
-    "°f",
-}
-
-# Pressure units. A pressure value is intensive, but a bare pressure unit is
-# also used for non-pressure quantities in some conventions, so these only
-# count toward an intensive verdict when the variable's standard_name also
-# indicates pressure (see `_intensive_reason`).
-_PRESSURE_UNITS = {"pa", "hpa", "mbar", "bar"}
-
-# Percentage units. A percentage is intensive and summing it across a window
-# is not a physical total. The bare dimensionless unit `1` is excluded: in CF
-# it is also the units of dimensionless counts (e.g. number of wet days), which
-# are legitimately summable, so flagging it would be a false positive.
-_FRACTION_UNITS = {"%", "percent"}
+_METHOD_TO_CF = {"mean": "mean", "max": "maximum", "min": "minimum"}
+_NAMED_PERIODS = tuple(PERIOD_TO_AGGREGATION)
 
 
-def _intensive_reason(units, standard_name):
-    """Return a short reason string when the variable is clearly an intensive
-    quantity (one whose values describe a state, not an amount, so summing them
-    over a window is not meaningful), or None when there is no high-confidence
-    intensive signal.
-
-    Detection is deliberately conservative — it fires only on unambiguous
-    temperature, pressure, or fraction/percentage signals — so that extensive
-    quantities such as precipitation depth (`mm`, `kg m**-2`) are never flagged
-    and ambiguous metadata is left to proceed.
-    """
-    name = standard_name.strip().lower() if isinstance(standard_name, str) else ""
-    units_norm = units.strip().lower() if isinstance(units, str) else ""
-
-    # Temperature by standard_name: `air_temperature`, `sea_surface_temperature`,
-    # or any name ending in `_temperature`.
-    if name == "air_temperature" or name.endswith("_temperature"):
-        return f"standard_name={standard_name!r} denotes a temperature"
-
-    # Temperature by units.
-    if units_norm in _TEMPERATURE_UNITS:
-        return f"units={units!r} denotes a temperature"
-
-    # Pressure: require both a pressure unit and a pressure-ish standard_name so
-    # that a bare pressure unit on an unrelated variable is not misread.
-    if units_norm in _PRESSURE_UNITS and "pressure" in name:
-        return f"units={units!r} with standard_name={standard_name!r} denotes a pressure"
-
-    # Percentage (`%`/`percent`); the bare dimensionless unit `1` is not flagged
-    # because it also covers summable counts.
-    if units_norm in _FRACTION_UNITS:
-        return f"units={units!r} denotes a dimensionless fraction or percentage"
-
-    return None
+def _resolve_period(period: str) -> dict:
+    """Named period or a whole-day pint duration (e.g. ``21 day``)."""
+    if period in PERIOD_TO_AGGREGATION:
+        return {
+            "key": period,
+            "agg": PERIOD_TO_AGGREGATION[period],
+            "freq": RESAMPLE_FREQ[period],
+            "anchor_days": ANCHOR_PERIOD_DAYS[period],
+        }
+    try:
+        quantity = parse_aggregation_period(period)
+    except UsageError as exc:
+        raise UsageError(
+            f"--period {period!r} must be one of {', '.join(_NAMED_PERIODS)} "
+            f"or a pint duration in whole days (e.g. '21 day'): {exc}"
+        ) from None
+    days = float(quantity.to("day").magnitude)
+    if days <= 0 or abs(days - round(days)) > 1e-6:
+        raise UsageError(
+            f"--period {period!r} must be a named period "
+            f"({', '.join(_NAMED_PERIODS)}) or a whole number of days "
+            "(e.g. '21 day')"
+        )
+    ndays = int(round(days))
+    return {
+        "key": period,
+        "agg": format_duration(quantity),
+        "freq": f"{ndays}D",
+        "anchor_days": ndays,
+    }
 
 
-# Extensive depth units (an amount that accumulates, so a per-window SUM of a
-# rate expressed in "<depth>/day" lands in this depth). Keys are tolerated input
-# spellings (matched case-insensitively); values are the canonical spelling the
-# relabel emits.
-_DEPTH_UNITS = {
-    "mm": "mm",
-    "kg m**-2": "kg m**-2",
-    "kg m-2": "kg m**-2",
-    "kg m^-2": "kg m**-2",
-}
-
-# Per-day denominator tokens recognized in a "<depth>/day" rate. Restricted to
-# the day family on purpose: the sum of N rate samples equals the N-period total
-# depth only when each sample spans exactly one denominator unit, which holds
-# for daily-cadence inputs but not for sub-daily cadence. Extending to /hr or /s
-# would silently mis-total sub-daily inputs.
-#
-# The token set is split by spelling form so the two are not mixed:
-#   - slash form  ("mm/day"):   the divisor is a BARE word.
-#   - product form ("mm day-1"): the per-day factor carries a NEGATIVE power.
-# Mixing them ("mm/day-1") is a double negation (mm·day, a depth-days, not a
-# rate), so the slash path accepts only bare words and the product path accepts
-# only negative-power tokens.
-_PER_DAY_SLASH_DENOMINATORS = {"day", "days", "d"}
-_PER_DAY_POWER_DENOMINATORS = {"day-1", "d-1", "day**-1", "d**-1"}
-
-# CF standard_name remap applied when a recognized precipitation RATE is summed
-# into an accumulated depth. Restricted to verified CF rate/amount pairs; this
-# is the standard liquid-water-equivalent precipitation rate and its accumulated
-# depth. A rate-shaped name NOT in this table is dropped (not mapped to an
-# invented amount name) — see `_summed_units_and_name`.
-_RATE_TO_AMOUNT_STANDARD_NAME = {
-    "lwe_precipitation_rate": "lwe_thickness_of_precipitation_amount",
-}
-
-# Suffixes that mark a `standard_name` as a per-time rate (CF rate names end in
-# `_rate`; flux names in `_flux`). Same signal `deaccumulate` uses to detect a
-# rate. Case-insensitive, compared against the stripped name.
-_RATE_NAME_SUFFIXES = ("_rate", "_flux")
-
-
-def _rate_depth_numerator(units):
-    """If `units` is a recognized per-day depth rate (e.g. ``mm/day``,
-    ``mm day-1``), return the canonical extensive depth unit a per-window SUM
-    should carry (e.g. ``mm``). Otherwise return None.
-
-    Recognized numerators are precipitation depths (``mm``, ``kg m**-2`` and
-    tolerated spellings); recognized denominators are the ``day`` family only.
-    Matching is case- and whitespace-tolerant. The denominator is taken as the
-    slash-delimited tail (``mm/day``, a bare word) or, absent a slash, the
-    trailing whitespace-delimited UDUNITS negative-power token (``mm day-1``).
-    A bare word and a negative power are not mixed: ``mm/day-1`` is ``mm·day``
-    (a double negation), not a rate, so it returns None. Already-extensive units
-    (``mm``, ``kg m**-2``) and non-rate units have no such tail and return None.
-    """
-    if not isinstance(units, str):
+def _native_interval(ds, dim) -> str | None:
+    stamped = data_interval_of(ds)
+    if stamped:
+        return stamped
+    try:
+        return format_duration(infer_timestep(ds, dim))
+    except UsageError:
         return None
-    u = units.strip()
-    if not u:
+
+
+def _coverage_cell(ds) -> str | None:
+    """Current cell width for coverage: re-agg uses aggregation_period, else native."""
+    for name in ds.data_vars:
+        val = ds[name].attrs.get(AGGREGATION_PERIOD_ATTR)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return data_interval_of(ds)
+
+
+def _cf_bounds(ds, dim):
+    """``(N, 2)`` start/end array if CF bounds exist, else None."""
+    import numpy as np
+
+    name = ds[dim].attrs.get("bounds") if dim in ds.coords or dim in ds.dims else None
+    if not (isinstance(name, str) and name in ds):
+        name = f"{dim}_bounds" if f"{dim}_bounds" in ds else None
+    if name is None:
         return None
-    if "/" in u:
-        head, _, tail = u.rpartition("/")
-        valid_denominators = _PER_DAY_SLASH_DENOMINATORS
-    else:
-        head, _, tail = u.rpartition(" ")
-        valid_denominators = _PER_DAY_POWER_DENOMINATORS
-    if tail.strip().lower() not in valid_denominators:
-        return None
-    return _DEPTH_UNITS.get(head.strip().lower())
+    arr = np.asarray(ds[name].values)
+    if arr.ndim != 2 or arr.shape[-1] != 2:
+        raise UsageError(f"{name!r} must have shape ({dim}, 2) start/end")
+    return arr.reshape(arr.shape[0], 2)
 
 
-def _summed_units_and_name(units, standard_name):
-    """Return the ``(units, standard_name)`` a SUM output should carry.
+def _as_ns(val):
+    import numpy as np
 
-    When ``units`` is a recognized per-day depth rate, each summed value is an
-    accumulated depth, so the output must stay self-consistent — a rate
-    ``standard_name`` on depth units is invalid CF metadata:
+    arr = np.asarray(val)
+    if arr.dtype.kind == "m":
+        return arr.astype("timedelta64[ns]").astype(np.int64)
+    if arr.dtype.kind == "M":
+        return arr.astype("datetime64[ns]").astype(np.int64)
+    raise UsageError(f"cannot convert {arr.dtype} to a duration for CF bounds")
 
-    - units drop to the depth numerator;
-    - a known rate ``standard_name`` is remapped to its amount form;
-    - a rate-shaped name (``_rate``/``_flux`` suffix) with no known amount
-      equivalent is dropped — returned as ``None`` so the caller removes the
-      attr and warns — rather than left contradicting the new units;
-    - a non-rate or absent ``standard_name`` is returned unchanged.
 
-    When ``units`` is not a recognized rate, both values are returned unchanged.
-    """
-    depth = _rate_depth_numerator(units)
-    if depth is None:
-        return units, standard_name
-    if not isinstance(standard_name, str):
-        return depth, standard_name
-    stripped = standard_name.strip()
-    if stripped in _RATE_TO_AMOUNT_STANDARD_NAME:
-        return depth, _RATE_TO_AMOUNT_STANDARD_NAME[stripped]
-    if stripped.lower().endswith(_RATE_NAME_SUFFIXES):
-        return depth, None
-    return depth, standard_name
+def _drop_bounds(ds, dim):
+    name = ds[dim].attrs.get("bounds") if dim in ds.coords or dim in ds.dims else None
+    names = []
+    if isinstance(name, str) and name in ds:
+        names.append(name)
+    extra = f"{dim}_bounds"
+    if extra in ds and extra not in names:
+        names.append(extra)
+    if names:
+        ds = ds.drop_vars(names)
+    if dim in ds.coords:
+        attrs = dict(ds[dim].attrs)
+        attrs.pop("bounds", None)
+        ds[dim].attrs = attrs
+    return ds
+
+
+def _weighted_mean(ds, dim, indices, weights):
+    import numpy as np
+    import xarray as xr
+
+    w = np.asarray(weights, dtype=float)
+    sub = _drop_bounds(ds.isel({dim: indices}), dim)
+    for name in sub.data_vars:
+        da = sub[name]
+        if getattr(da, "pint", None) is not None and da.pint.units is not None:
+            sub[name] = da.pint.dequantify()
+    wda = xr.DataArray(w, dims=[dim], coords={dim: sub[dim].values})
+    return (sub * wda).sum(dim=dim, skipna=True, keep_attrs=True) / wda.sum()
+
+
+def _empty_bins_message(spec, dim):
+    return f"no {spec['key']} bins contained samples on {dim}"
+
+
+def _aggregate_from_bounds(ds, dim, spec, method, bins):
+    """Duration-weight samples into ``bins`` of ``(left, right, label)``."""
+    import numpy as np
+    import xarray as xr
+
+    bounds = _cf_bounds(ds, dim)
+    starts = _as_ns(bounds[:, 0])
+    ends = _as_ns(bounds[:, 1])
+    work = _drop_bounds(ds, dim)
+    chunks, labels, coverages = [], [], []
+    for left, right, label in bins:
+        left_ns = int(np.asarray(_as_ns(left)).reshape(-1)[0])
+        right_ns = int(np.asarray(_as_ns(right)).reshape(-1)[0])
+        period_ns = right_ns - left_ns
+        if period_ns <= 0:
+            continue
+        overlap = np.minimum(ends, right_ns) - np.maximum(starts, left_ns)
+        overlap = np.maximum(overlap, 0)
+        idx = np.flatnonzero(overlap > 0)
+        if idx.size == 0:
+            continue
+        covered = float(overlap[idx].sum())
+        coverage = min(1.0, covered / period_ns)
+        if method == "mean":
+            chunks.append(_weighted_mean(work, dim, idx, overlap[idx]))
+        else:
+            chunks.append(_reduce(work.isel({dim: idx}), method=method, dim=dim))
+        labels.append(label)
+        coverages.append(coverage)
+    if not chunks:
+        raise UsageError(_empty_bins_message(spec, dim))
+    out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+    return _assign_coverage(out, dim, coverages)
+
+
+def _coverage_fraction(n_present: int, expected: int) -> float:
+    if expected <= 0:
+        return 1.0
+    return min(1.0, n_present / expected)
+
+
+def _assign_coverage(out, dim, coverages):
+    import numpy as np
+
+    if out.sizes.get(dim, 0) == 0:
+        return out
+    values = np.asarray(coverages, dtype=float)
+    out = out.assign_coords({AGGREGATION_COVERAGE_COORD: (dim, values)})
+    out[AGGREGATION_COVERAGE_COORD].attrs.update(
+        long_name="fraction of native samples present in the interval",
+        units="1",
+        valid_min=0.0,
+        valid_max=1.0,
+    )
+    return out
 
 
 def _reduce(grouped, method, dim=None):
-    fn = {
-        "sum": grouped.sum,
-        "mean": grouped.mean,
-        "max": grouped.max,
-        "min": grouped.min,
-    }[method]
-    if dim is not None:
-        return fn(dim=dim, keep_attrs=True)
-    return fn(keep_attrs=True)
+    fn = {"mean": grouped.mean, "max": grouped.max, "min": grouped.min}[method]
+    return fn(dim=dim, keep_attrs=True) if dim is not None else fn(keep_attrs=True)
 
 
-def _aggregate_time_anchored(ds, dim, period, method, anchor_end):
-    """Backward-anchored time resample.
+def _group_indices(group, size: int):
+    import numpy as np
 
-    The LAST bin is the half-open-on-the-left interval
-    ``(anchor_end - period_days, anchor_end]``; previous bins are
-    ``period_days`` earlier, working backward as long as the bin's start
-    is ``>= ds[dim].min()``. Partial bins whose start would fall before
-    the first input timestamp are dropped. The output coord for each bin
-    is the bin's right edge (``anchor_end`` for the last bin), matching
-    the right-edge convention used by ``_aggregate_step``.
+    if isinstance(group, slice):
+        return list(range(*group.indices(size)))
+    return list(np.asarray(group).ravel())
+
+
+def _timestep_days(ds, dim) -> float:
+    try:
+        return float(infer_timestep(ds, dim).to("day").magnitude)
+    except UsageError:
+        return 1.0
+
+
+def _expected_samples(
+    period: str, label, timestep_days: float, *, period_days: int | None = None
+) -> int:
+    """How many input samples a complete bin of ``period`` should hold."""
+    if period_days is not None:
+        days = period_days
+    elif period == "monthly":
+        import pandas as pd
+
+        days = int(pd.Timestamp(label).days_in_month)
+    else:
+        days = PERIOD_DAYS[period]
+    return max(1, int(round(days / timestep_days)))
+
+
+def _expected_from_interval(spec, label, native_interval, timestep_days: float) -> int:
+    if native_interval:
+        try:
+            if spec["key"] == "monthly":
+                import pandas as pd
+
+                days = int(pd.Timestamp(label).days_in_month)
+                period = f"{days} day"
+            else:
+                period = spec["agg"]
+            return expected_samples_in_period(period, native_interval)
+        except UsageError:
+            pass
+    period_days = None if spec["key"] == "monthly" else spec["anchor_days"]
+    return _expected_samples(spec["key"], label, timestep_days, period_days=period_days)
+
+
+def _aggregate_time_resample(ds, dim, spec, method):
+    """Forward calendar resample; stamp ``aggregation_coverage`` on every bin with samples."""
+    import numpy as np
+    import xarray as xr
+
+    freq = spec["freq"]
+    if _cf_bounds(ds, dim) is not None:
+        resampler = ds.resample({dim: freq})
+        bins = []
+        for label in resampler.groups:
+            if spec["key"] == "monthly":
+                import pandas as pd
+
+                left, right = label, pd.Timestamp(label) + pd.offsets.MonthBegin(1)
+            elif hasattr(label, "calendar"):
+                left = label
+                right = label + _dt.timedelta(days=spec["anchor_days"])
+            else:
+                left = np.datetime64(label)
+                right = left + np.timedelta64(spec["anchor_days"], "D")
+            bins.append((left, right, left if hasattr(label, "calendar") else np.datetime64(label)))
+        return _aggregate_from_bounds(ds, dim, spec, method, bins)
+
+    timestep_days = _timestep_days(ds, dim)
+    native_interval = _coverage_cell(ds)
+    resampler = ds.resample({dim: freq})
+    n = ds.sizes[dim]
+    chunks, labels, coverages = [], [], []
+    for label, group in resampler.groups.items():
+        indices = _group_indices(group, n)
+        if not indices:
+            continue
+        expected = _expected_from_interval(spec, label, native_interval, timestep_days)
+        chunks.append(_reduce(ds.isel({dim: indices}), method=method, dim=dim))
+        labels.append(np.datetime64(label) if not hasattr(label, "calendar") else label)
+        coverages.append(_coverage_fraction(len(indices), expected))
+    if not chunks:
+        raise UsageError(_empty_bins_message(spec, dim))
+    out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+    return _assign_coverage(out, dim, coverages)
+
+
+def _aggregate_time_anchored(ds, dim, spec, method, end_time, *, start_time=None):
+    """Backward fixed-width bins ending at ``end_time``.
+
+    Walks while the bin's right edge is still after the effective data start,
+    then keeps bins that contain samples and stamps ``aggregation_coverage``.
+    Optional ``start_time`` raises the earliest coverage floor.
     """
     import numpy as np
     import xarray as xr
 
-    period_days = ANCHOR_PERIOD_DAYS[period]
+    period_days = spec["anchor_days"]
     raw = np.asarray(ds[dim].values)
     if raw.size == 0:
-        return ds.isel({dim: slice(0, 0)})
-
-    # The bins are fixed-day windows, so the arithmetic is the same for a
-    # datetime64 axis and an object-dtype cftime axis (non-standard model
-    # calendars such as `noleap`/`360_day`). The window step is a plain
-    # `datetime.timedelta(days=N)`; on a cftime object this respects that
-    # object's calendar. The only type-specific parts are: the value used to
-    # represent `anchor_end` in the same type as the axis, and the right-edge
-    # label appended for each bin (kept native to the axis type so the output
-    # coord round-trips). The datetime64 path is preserved exactly.
+        raise UsageError(_empty_bins_message(spec, dim))
     if raw.dtype.kind == "O" and hasattr(raw.flat[0], "calendar"):
         import cftime
 
         calendar = raw.flat[0].calendar
         bin_width = _dt.timedelta(days=period_days)
         data_min = raw.min()
-        ae = anchor_end
-        # The parsed anchor date may name a day that does not exist in this
-        # axis's model calendar (e.g. day 31 of any month in 360_day, or Feb 29
-        # in noleap). cftime.datetime raises ValueError for such a date; surface
-        # it as a clean exit-2 error rather than a raw traceback.
+        if start_time is not None:
+            try:
+                start_cf = cftime.datetime(
+                    start_time.year, start_time.month, start_time.day, calendar=calendar
+                )
+            except ValueError:
+                raise UsageError(
+                    f"--start-time {start_time.isoformat()} invalid in {calendar!r}"
+                ) from None
+            if start_cf > data_min:
+                data_min = start_cf
         try:
-            right = cftime.datetime(
-                ae.year,
-                ae.month,
-                ae.day,
-                ae.hour,
-                ae.minute,
-                ae.second,
-                ae.microsecond,
-                calendar=calendar,
-            )
+            right = cftime.datetime(end_time.year, end_time.month, end_time.day, calendar=calendar)
         except ValueError:
-            raise UsageError(
-                f"--anchor-end {ae.date().isoformat()} is not a valid "
-                f"date in calendar {calendar!r}."
-            ) from None
-
-        # Right-edge label kept as the native cftime object so the output coord
-        # stays on the input's calendar.
-        def _label(edge):
-            return edge
+            raise UsageError(f"--end-time {end_time.isoformat()} invalid in {calendar!r}") from None
+        label = lambda edge: edge  # noqa: E731
     else:
         import pandas as pd
 
-        times = pd.to_datetime(raw)
         bin_width = pd.Timedelta(days=period_days)
-        data_min = pd.Timestamp(times.min())
-        right = pd.Timestamp(anchor_end)
+        data_min = pd.Timestamp(pd.to_datetime(raw).min())
+        if start_time is not None:
+            start_ts = pd.Timestamp(start_time)
+            if start_ts > data_min:
+                data_min = start_ts
+        right = pd.Timestamp(end_time)
+        label = lambda edge: np.datetime64(edge)  # noqa: E731
 
-        def _label(edge):
-            return np.datetime64(edge)
-
-    bins = []
-    while True:
-        left = right - bin_width
-        if left < data_min:
-            break
-        bins.append((left, right))
-        right = left
+    timestep_days = _timestep_days(ds, dim)
+    native_interval = _coverage_cell(ds)
+    bins, r = [], right
+    # Stop once the right edge is at/before the first sample — do not require
+    # left >= data_min, or a bin that still holds data is never created.
+    while r > data_min:
+        left = r - bin_width
+        bins.append((left, r))
+        r = left
     bins.reverse()
-
-    chunks, labels = [], []
+    if _cf_bounds(ds, dim) is not None:
+        bound_bins = [(left, right, label(right)) for left, right in bins]
+        return _aggregate_from_bounds(ds, dim, spec, method, bound_bins)
+    chunks, labels, coverages = [], [], []
     for left, right in bins:
-        # (left, right] window: select strictly after `left` and up to and
-        # including `right` to match the left-open, right-closed convention.
-        # A boolean mask over the native coord values applies identically to a
-        # datetime64 axis and a cftime axis, where the per-microsecond `.sel`
-        # slice nudge used for datetime64 has no equivalent.
         keep = np.nonzero((raw > left) & (raw <= right))[0]
         if keep.size == 0:
             continue
-        sel = ds.isel({dim: keep})
-        chunks.append(_reduce(sel, method=method, dim=dim))
-        labels.append(_label(right))
-
+        expected = _expected_from_interval(spec, right, native_interval, timestep_days)
+        chunks.append(_reduce(ds.isel({dim: keep}), method=method, dim=dim))
+        labels.append(label(right))
+        coverages.append(_coverage_fraction(keep.size, expected))
     if not chunks:
-        return ds.isel({dim: slice(0, 0)})
-    return xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+        raise UsageError(_empty_bins_message(spec, dim))
+    out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
+    return _assign_coverage(out, dim, coverages)
 
 
-def _aggregate_step(ds, period, method):
+def _aggregate_step(ds, spec, method):
     import numpy as np
     import pandas as pd
+    import xarray as xr
 
-    if period == "monthly":
-        raise UsageError("monthly aggregation is not defined for a forecast step dim.")
-    days = PERIOD_DAYS[period]
-    window = pd.Timedelta(days=days).to_timedelta64()
+    if spec["key"] == "monthly":
+        raise UsageError("monthly aggregation is not defined for step")
+    window = pd.Timedelta(days=spec["anchor_days"]).to_timedelta64()
     steps = ds["step"].values
-    if steps.dtype.kind != "m":
-        raise UsageError(f"'step' dim must be timedelta64, got {steps.dtype}")
-    max_step = steps.max()
-    # Emit a bucket (left, right] only if it covers a full `window` of the
-    # input step axis, i.e. right <= max_step. Trailing partial buckets are
-    # dropped rather than synthesized past max_step. Buckets are left-open
-    # and right-closed so that a step value sitting on the period boundary
-    # (e.g. step=7d, the END of week 1 for end-of-period-labeled data such
-    # as deaccumulated forecasts) lands in the bucket it physically belongs
-    # to. The right edge is the bucket label, so downstream consumers
-    # (e.g. plot.py) can reconstruct the [right - window, right] panel title
-    # correctly.
+    bounds = _cf_bounds(ds, "step")
+    max_step = bounds[:, 1].max() if bounds is not None else steps.max()
     edges = np.arange(0, max_step + window, window, dtype=steps.dtype)
-    chunks, labels = [], []
+    if bounds is not None:
+        bins = []
+        for left in edges[:-1]:
+            right = left + window
+            bins.append((left, right, left + window))
+        return _aggregate_from_bounds(ds, "step", spec, method, bins)
+    native_interval = _coverage_cell(ds)
+    timestep_days = _timestep_days(ds, "step")
+    chunks, labels, coverages = [], [], []
     for left in edges[:-1]:
         right = left + window
-        if right > max_step:
-            continue
         mask = (steps > left) & (steps <= right)
         if not mask.any():
             continue
-        sel = ds.isel(step=np.where(mask)[0])
-        chunks.append(_reduce(sel, method=method, dim="step"))
+        n_present = int(mask.sum())
+        expected = _expected_from_interval(spec, right, native_interval, timestep_days)
+        chunks.append(_reduce(ds.isel(step=np.where(mask)[0]), method=method, dim="step"))
         labels.append(left + window)
-    import xarray as xr
+        coverages.append(_coverage_fraction(n_present, expected))
+    if not chunks:
+        raise UsageError(_empty_bins_message(spec, "step"))
+    out = xr.concat(chunks, dim="step").assign_coords(step=labels)
+    return _assign_coverage(out, "step", coverages)
 
-    return xr.concat(chunks, dim="step").assign_coords(step=labels)
+
+def _stamp_attrs(out, dim, agg_period, method, interval, *, data_interval=None):
+    cf_method = _METHOD_TO_CF[method]
+    cm = format_cell_methods(dim, cf_method, interval=interval)
+    for name in out.data_vars:
+        attrs = {**out[name].attrs, AGGREGATION_PERIOD_ATTR: agg_period, "cell_methods": cm}
+        native = attrs.get(DATA_INTERVAL_ATTR) or data_interval
+        if native:
+            attrs[DATA_INTERVAL_ATTR] = native
+        out[name].attrs = attrs
+    return out
 
 
-def _validate_args(args):
-    if args.anchor_end is not None:
+def _rolling_aggregation_period(ds, dim, window, interval):
+    """Pint duration for a rolling window of ``window`` input steps."""
+    if interval is not None:
         try:
-            _dt.date.fromisoformat(args.anchor_end)
-        except ValueError as exc:
-            raise UsageError(
-                f"--anchor-end '{args.anchor_end}' is not a valid ISO date (YYYY-MM-DD): {exc}"
-            ) from None
+            from weather_skills_core.units import parse_aggregation_period
+
+            step = parse_aggregation_period(interval)
+            return format_duration(step * window)
+        except UsageError:
+            pass
+    return f"{window} day"
 
 
 @weather_skill(
-    "aggregate-temporal",
-    _SKILL_VERSION,
-    input_type="any",
-    output_type="same",
-    input_paths=True,
-    variable={
-        "mode": "repeat",
-        "help": "Restrict aggregation to this data variable. Repeat once per "
-        "variable to select several. The selected data variables are "
-        "aggregated and relabeled as usual; other DATA variables are dropped "
-        "from the output (coordinates pass through). Default (unset) "
-        "aggregates all data variables.",
-    },
-    time_dim=True,
-    extra_args={
-        "period": {
-            "required": True,
-            "choices": ["daily", "weekly", "dekadal", "monthly"],
-        },
-        "method": {"default": "sum", "choices": ["sum", "mean", "max", "min"]},
-        "anchor_end": {
-            "default": None,
-            "help": "ISO date (YYYY-MM-DD). When set, anchors the obs/time "
-            "resample so the LAST bin ends at this date and previous bins "
-            "are synthesized backward in `period`-day windows. Partial bins "
-            "whose start falls before the input's first timestamp are "
-            "dropped. Has no effect on the forecast `step` path.",
-        },
-    },
-    validate_args=_validate_args,
-    hash_input=False,
-    cache_hit_label="aggregate",
+    name="aggregate-temporal",
+    version=_SKILL_VERSION,
 )
-def aggregate(ds, input_paths, variable, time_dim, period, method, anchor_end):
-    """Temporal aggregation for weather-skills envelope Zarr stores."""
-    import cf_xarray  # noqa: F401 — registers the .cf accessor
+@weather_skill.argument(
+    "-i",
+    "--input",
+    type=Dataset(["time", "prediction_timedelta"]),
+    required=True,
+)
+@weather_skill.argument("--variable", "-v", action="append")
+@weather_skill.argument(
+    "--period",
+    default=None,
+    help=(
+        "Calendar/step window: daily, weekly, dekadal, monthly, or a pint "
+        "duration in whole days (e.g. '21 day'). Mutex with --window."
+    ),
+)
+@weather_skill.argument(
+    "--window",
+    type=int,
+    default=None,
+    help="Rolling window in axis steps (mutex with --period).",
+)
+@weather_skill.argument("--align", default="left", choices=["left", "right", "center"])
+@weather_skill.argument(
+    "--stride",
+    default=None,
+    help="With --window: int step or stride_dates string (day/week/Monday/...).",
+)
+@weather_skill.argument("--method", default="mean", choices=["mean", "max", "min"])
+@weather_skill.argument("--time-dim", default=None)
+@weather_skill.argument(
+    "--end-time",
+    default=None,
+    help="With --period: date the final bin ends on (bins walk backward).",
+)
+@weather_skill.argument(
+    "--start-time",
+    default=None,
+    help="With --period and --end-time: optional earliest coverage floor.",
+)
+def aggregate(
+    ds,
+    output,
+    variable,
+    time_dim,
+    period,
+    window,
+    align,
+    stride,
+    method,
+    end_time,
+    start_time,
+    **kwargs,
+):
+    """Temporal aggregation of rates: calendar resample, rolling, or step buckets."""
+    import cf_xarray  # noqa: F401
 
-    src = input_paths[0]
+    if (period is None) == (window is None):
+        raise UsageError("exactly one of --period or --window is required")
+    if window is not None and (end_time is not None or start_time is not None):
+        raise UsageError("--start-time/--end-time cannot be combined with --window")
+    if start_time is not None and end_time is None:
+        raise UsageError("--start-time requires --end-time")
+    if window is None and stride is not None:
+        raise UsageError("--stride requires --window")
+    if window is None and align != "left":
+        raise UsageError("--align requires --window")
 
-    # Variable selection. When --variable is given, restrict the dataset to the
-    # named DATA variable(s) BEFORE aggregating, so that selecting only an
-    # extensive variable (e.g. precip) from a mixed precip+temperature input
-    # does not trip the intensive-quantity guard on the unselected variable.
-    # Indexing with a list of data-var names keeps all coordinates; the
-    # unselected data variables are dropped. Each name must be an actual data
-    # variable (not a coordinate or a missing name).
     if variable is not None:
-        data_vars = list(ds.data_vars)
-        invalid = [v for v in variable if v not in ds.data_vars]
-        if invalid:
-            raise UsageError(
-                f"--variable {invalid} not data variable(s) of {src}. "
-                f"Valid data variables: {data_vars}"
-            )
-        # De-duplicate while preserving first-seen order so a repeated name
-        # doesn't duplicate a column.
-        selected = list(dict.fromkeys(variable))
-        dropped = [v for v in data_vars if v not in selected]
-        if dropped:
-            print(
-                f"Note: dropping unselected data variable(s) {dropped}; "
-                f"aggregating only {selected}.",
-                file=sys.stderr,
-            )
-        ds = ds[selected]
+        ds = ds[list(dict.fromkeys(variable))]
 
     if time_dim:
         dim = time_dim
-        if dim not in ds.dims:
-            raise UsageError(f"--time-dim '{dim}' not in dims {list(ds.dims)}")
     else:
-        # CF "T" axis first (finds wall-clock time even when named unusually),
-        # then `step` (forecast lead time — timedelta64, not CF T). Only accept
-        # the cf-resolved name if it is an actual dimension: on a forecast
-        # envelope `time` is a scalar init-date coordinate, not a dim, so cf
-        # returns "time" but the real aggregation axis is `step`.
         try:
             cf_time = ds.cf["time"].name
         except KeyError:
-            # cf resolution failed (no T axis, or multiple candidates make it
-            # ambiguous). Prefer a literal `time` dim before falling back to
-            # `step` below.
             cf_time = "time" if "time" in ds.dims else None
         if cf_time is not None and cf_time in ds.dims:
-            if ds.sizes[cf_time] == 1 and "step" in ds.dims:
-                # Forecast-shaped: a size-1 init-time dim alongside a lead
-                # axis. Aggregating the size-1 dim would yield one degenerate
-                # bin, so aggregate the lead axis instead.
-                print(
-                    f"Note: time dim '{cf_time}' has size 1 alongside a "
-                    f"'step' dim; aggregating over step instead. Pass "
-                    f"--time-dim {cf_time} to override.",
-                    file=sys.stderr,
-                )
-                dim = "step"
-            else:
-                if "step" in ds.dims:
-                    print(
-                        f"Note: both '{cf_time}' and 'step' dims are present; "
-                        f"aggregating over {cf_time}. Pass --time-dim step to "
-                        f"aggregate the forecast lead axis instead.",
-                        file=sys.stderr,
-                    )
-                dim = cf_time
+            dim = "step" if ds.sizes[cf_time] == 1 and "step" in ds.dims else cf_time
         elif "step" in ds.dims:
             dim = "step"
         else:
-            dim = None
-        if dim is None:
-            non_dim_time = cf_time
-            if non_dim_time is None and "time" in ds.coords:
-                non_dim_time = "time"
-            if non_dim_time is not None:
-                raise UsageError(
-                    f"found a '{non_dim_time}' coordinate, but it is "
-                    f"not a dimension of the data (a scalar coordinate has no "
-                    f"axis to aggregate over) and no 'step' dim is present. "
-                    f"Dims: {list(ds.dims)}. Pass --time-dim to override."
-                )
+            raise UsageError(f"no time/step dim in {list(ds.dims)}; pass --time-dim")
+
+    has_bounds = _cf_bounds(ds, dim) is not None
+    if not has_bounds:
+        try:
+            ds = stamp_data_interval(ds, dim=dim)
+        except UsageError:
+            pass
+        has_bounds = _cf_bounds(ds, dim) is not None
+    native_interval = None if has_bounds else _native_interval(ds, dim)
+    interval = native_interval
+    if not has_bounds:
+        try:
+            if interval is None:
+                interval = format_duration(infer_timestep(ds, dim))
+        except UsageError:
+            pass
+
+    stride_val = stride
+    if stride is not None:
+        try:
+            stride_val = int(stride)
+        except ValueError:
+            pass
+
+    if window is not None:
+        if has_bounds:
             raise UsageError(
-                f"no time/step dim identified in {list(ds.dims)}. Pass --time-dim to override."
+                "--window is a step count; irregular axes with CF bounds require --period"
             )
+        out = roll_and_agg(ds, window, dim, method, align=align, stride=stride_val)
+        n = out.sizes.get(dim, 0)
+        if n:
+            out = _assign_coverage(out, dim, [1.0] * n)
+        agg_period = _rolling_aggregation_period(ds, dim, window, interval)
+        return _stamp_attrs(out, dim, agg_period, method, interval, data_interval=native_interval)
 
-    print(
-        f"Aggregating dim={dim} period={period} method={method}",
-        file=sys.stderr,
-    )
-
-    # Method guard. `--method sum` adds the values within each window into a
-    # period total. That is meaningful only for an extensive quantity (an
-    # amount that accumulates, e.g. precipitation depth), not for an intensive
-    # quantity (a state value such as temperature, pressure, or a fraction):
-    # the sum of intensive values has no physical interpretation. Reject only
-    # high-confidence intensive cases when the method is `sum`; the other
-    # reducers (`mean`/`max`/`min`) are always valid and ambiguous metadata is
-    # left to proceed.
-    if method == "sum":
-        for var in ds.data_vars:
-            reason = _intensive_reason(
-                ds[var].attrs.get("units"),
-                ds[var].attrs.get("standard_name"),
-            )
-            if reason is not None:
-                raise UsageError(
-                    f"variable '{var}' is an intensive quantity "
-                    f"({reason}); '--method sum' adds its values within each "
-                    f"window into a period total, but the sum of an intensive "
-                    f"quantity is not a physical total and has no meaningful "
-                    f"interpretation."
-                )
-
+    spec = _resolve_period(period)
     if dim == "step":
-        out_ds = _aggregate_step(ds, period, method)
-    elif anchor_end is not None:
-        import pandas as pd
-
-        out_ds = _aggregate_time_anchored(ds, dim, period, method, pd.Timestamp(anchor_end))
+        out = _aggregate_step(ds, spec, method)
+        if end_time is not None or start_time is not None:
+            print(
+                "--start-time/--end-time have no effect on step aggregation",
+                file=sys.stderr,
+            )
+    elif end_time is not None:
+        out = _aggregate_time_anchored(
+            ds,
+            dim,
+            spec,
+            method,
+            end_time,
+            start_time=start_time,
+        )
     else:
-        resampled = ds.resample({dim: RESAMPLE_FREQ[period]})
-        out_ds = _reduce(resampled, method)
+        out = _aggregate_time_resample(ds, dim, spec, method)
 
-    # Units after sum: `_reduce` keeps the input attrs (keep_attrs=True), so a
-    # summed precipitation RATE (e.g. mm/day) would otherwise keep its rate
-    # units even though each output value is now an accumulated per-window
-    # depth. Relabel recognized per-day depth rates to the extensive depth and
-    # remap the precipitation-rate standard_name. Only `sum` accumulates into a
-    # total; mean/max/min keep the rate units. See SKILL.md "Units after sum".
-    if method == "sum":
-        for var in out_ds.data_vars:
-            attrs = out_ds[var].attrs
-            old_units = attrs.get("units")
-            old_name = attrs.get("standard_name")
-            new_units, new_name = _summed_units_and_name(old_units, old_name)
-            if new_units == old_units:
-                continue
-            attrs["units"] = new_units
-            if new_name == old_name:
-                continue
-            if new_name is None:
-                # A rate-shaped standard_name with no known amount equivalent:
-                # dropping it keeps the output self-consistent (depth units, no
-                # rate name) instead of contradicting the relabeled units.
-                attrs.pop("standard_name", None)
-                print(
-                    f"Warning: variable '{var}' summed to an accumulated depth; "
-                    f"relabeled units {old_units!r} -> {new_units!r} and dropped "
-                    f"the now-inconsistent rate standard_name {old_name!r} "
-                    f"(no known amount equivalent). Restamp standard_name if needed.",
-                    file=sys.stderr,
-                )
-            else:
-                attrs["standard_name"] = new_name
-
-    return out_ds, WroteSummary(f"{out_ds.sizes}", replace=True)
+    return _stamp_attrs(out, dim, spec["agg"], method, interval, data_interval=native_interval)
 
 
 if __name__ == "__main__":
