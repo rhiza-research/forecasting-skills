@@ -48,9 +48,6 @@ Prefer small steps over stuffing every filter into one call:
   complete calendar month. For the latest day a product has published, run that
   fetcher with `--probe-latest` (no `-o`); pass the date through, or use it as
   resolve-time `--as-of` to end a rolling window there. Do not invent lag days.
-  For historically similar years (ENSO / El Niño analogs, analog-year
-  composites), run `analog-years --date YYYY-MM-DD`. It is a stub: 2026 is
-  implemented, other years error.
 - **Region:** Use `resolve-region` for a country bbox, then `clip-region` (or
   pass `--bbox` on a fetcher when the download itself should be limited).
 - **Variables / dims:** Use `select` (and fetcher `--variable` when the source
