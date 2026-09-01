@@ -202,12 +202,14 @@ def fetch(dataset, start_time, end_time, variable, prediction_timedelta, window,
     clim = clim.rename({"avg": mean_name, "std": std_name})
     clim = to_standard_units(clim, variables=[mean_name, std_name])
 
+    if bbox is not None:
+        # Before the roll: only pull/compute the bbox's chunks, not the
+        # whole global grid — rolling+padding the full globe is far more
+        # expensive than the subset for a local (non-pre-aggregated) window.
+        clim = bbox_subset(clim, bbox)
+
     if window > 1 and not is_pre_aggregated:
         clim = _roll_climatology(clim, mean_name, std_name, window)
-
-    if bbox is not None:
-        # only get necessary chunks
-        clim = bbox_subset(clim, bbox)
 
     expanded = _expand_climatology(clim, start_time, end_time).load()
     expanded = expanded.drop_attrs(deep=False)
