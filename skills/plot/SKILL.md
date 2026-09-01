@@ -1,6 +1,6 @@
 ---
 name: plot
-description: Render a 2D heatmap, 1D time series, wind-rose, u/v quiver, or layered map PNG from weather-skills standard dataset Zarrs. Overlay multiple inputs with repeatable --layer KIND:PATH (heatmap, scatter, quiver, GeoJSON outline/mask). Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Use for a single dataset as a map/profile/rose/vectors, or stacked layers (e.g. precip heatmap + station scatter). For precipitation, run aggregate-temporal then convert-to-totals first. For side-by-side two-row comparison, use plot-compare.
+description: Render a 2D heatmap, filled-contour map, 1D time series, wind-rose, u/v quiver, or layered map PNG from weather-skills standard dataset Zarrs. Overlay multiple inputs with repeatable --layer KIND:PATH (heatmap, scatter, quiver, GeoJSON outline/mask). Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Use for a single dataset as a map/profile/rose/vectors, or stacked layers (e.g. precip heatmap + station scatter). For precipitation, run aggregate-temporal then convert-to-totals first. For side-by-side two-row comparison, use plot-compare.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
@@ -30,6 +30,12 @@ Source-agnostic visualization. Single-input styles (`-i`) plus layered maps
   yellow–orange–red–purple at 0, 10, 20, 40, 60, 80, 110, 150, 200, 250,
   350 mm), matching `kenya-forecast-png` weekly/dekadal precip maps; other
   variables default to `viridis`.
+- `contour` — the same map layout as `heatmap` (panels, shared color scale,
+  colorbar, geo overlays, `--bbox` / `--mask-geojson` / `--extent` /
+  `--cities` / `--index` / `--draw-box` / `--rows` / `--columns`), but filled
+  isolines (`contourf`) plus thin black contour lines. Values are interpolated
+  between grid points rather than drawn as cell rectangles. Cannot mix with
+  `--layer`.
 - `timeseries` — 1D profile. Averages across all non-time dims. Line plus a
   marker at each time point. A forecast cube (`step` lead times + scalar init
   `time`) is plotted against **valid time** (`init + step`) with calendar dates
@@ -95,7 +101,7 @@ with a hits row, use `plot-verify`.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> \
-    [--variable NAME] [--style heatmap|timeseries|windrose|quiver] \
+    [--variable NAME] [--style heatmap|contour|timeseries|windrose|quiver] \
     [--u-variable NAME] [--v-variable NAME] [--quiver-scale N] [--quiver-step N] \
     [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
@@ -113,7 +119,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
 - `--input`, `-i` — Zarr input (single-dataset mode). Mutually exclusive with `--layer`.
 - `--layer` — repeatable map layer `KIND:PATH` or `KIND:PATH::k=v`. Kinds:
   `heatmap`, `scatter`, `quiver`, `outline`, `mask`. Cannot mix with `-i` or
-  with `--style timeseries|windrose|quiver`.
+  with `--style timeseries|contour|windrose|quiver`.
 - `--shared-scale` / `--independent-scale` — layered heatmap/scatter color
   scales. Default: share when the layers resolve to the same variable and
   matching units.
@@ -121,9 +127,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
 - `--variable`, `-v` — variable name. Defaults to the first data variable.
   Ignored for `--style windrose` and `--style quiver` (use `--u-variable` /
   `--v-variable`).
-- `--style` — `heatmap` (default), `timeseries`, `windrose`, or `quiver`.
-  Timeseries of a forecast (`step` + scalar init) uses valid times on the
-  x-axis. Windrose converts u/v to meteorological-from direction (the
+- `--style` — `heatmap` (default), `contour`, `timeseries`, `windrose`, or
+  `quiver`. `contour` is the heatmap layout with filled isolines instead of
+  grid cells. Timeseries of a forecast (`step` + scalar init) uses valid times
+  on the x-axis. Windrose converts u/v to meteorological-from direction (the
   direction the wind blows **from**) and speed, then histograms every remaining
   sample. Quiver is the S2S wind-vector map (speed field + arrows).
 - `--u-variable` / `--v-variable` — eastward and northward wind variables for
@@ -247,6 +254,12 @@ Multi-step forecast panel (precip uses the Kenya/S2S palette by default):
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
     --variable tp --style heatmap --title "S2S precip"
+```
+
+Filled-contour map of the same field:
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf_contour.png \
+    --variable tp --style contour --title "S2S precip"
 ```
 
 Override the palette (e.g. magma):

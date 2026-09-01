@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from conftest import load_skill, make_forecast, make_gridded, run_skill, write_zarr
+from weather_skills_core.provenance import load_figure_history
 
 
 @pytest.fixture(scope="module")
@@ -156,3 +157,77 @@ def test_trace_label_uses_filename_when_source_is_shared():
     ds.attrs["weather_skills_source"] = "tahmo"
     ds.encoding["source"] = "/tmp/ta00072.zarr"
     assert mod._trace_label(ds, 0) == "ta00072"
+
+
+def test_bar_writes_png(tmp_path, plot_timeseries):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "bars.png"
+
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--style",
+        "bar",
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+    )
+
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_bar_grouped_multi_input_writes_png(tmp_path, plot_timeseries):
+    a = write_zarr(make_gridded(fill=1.0), tmp_path / "a.zarr")
+    b = write_zarr(make_gridded(fill=2.0), tmp_path / "b.zarr")
+    out = tmp_path / "grouped.png"
+
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(a),
+        "-i",
+        str(b),
+        "-o",
+        str(out),
+        "--style",
+        "bar",
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+        "--title",
+        "Grouped",
+    )
+
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+    history = load_figure_history(out)
+    assert history[-1]["skill"] == "plot-timeseries"
+    assert history[-1]["args"]["style"] == "bar"
+
+
+def test_bar_forecast_step_writes_png(tmp_path, plot_timeseries):
+    ds = make_forecast()
+    ds["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    src = write_zarr(ds, tmp_path / "fc.zarr")
+    out = tmp_path / "bars.png"
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--style",
+        "bar",
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0

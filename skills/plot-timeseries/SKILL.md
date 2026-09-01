@@ -1,6 +1,6 @@
 ---
 name: plot-timeseries
-description: Render a single PNG with one 1D trace per input Zarr overlaid on a shared time axis. Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs as line traces. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates.
+description: Render a single PNG with one 1D series per input Zarr overlaid on a shared time axis, as lines (default) or grouped bars. Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py *)
@@ -12,8 +12,10 @@ metadata:
 # plot-timeseries
 
 Source-agnostic multi-input timeseries plotting. Takes one or more weather-skills
-standard dataset Zarrs and draws each as a 1D line on a single set of axes against
-its time/step coord. Each trace is labeled in the legend by a size-1
+standard dataset Zarrs and draws each as a 1D series on a single set of axes against
+its time/step coord. `--style line` (default) is a polyline with a marker at each
+time; `--style bar` is a grouped bar chart (one bar group per time, one bar per
+input). Each series is labeled in the legend by a size-1
 `station_id` / `point_id` (plus `name` when present), else the input
 filename stem, else `weather_skills_source`.
 
@@ -34,9 +36,11 @@ For a single-input quick-look, use the `plot` skill with
 ## When to use
 
 - Comparing the same variable across two or more datasets (e.g. forecast vs.
-  observation, or two forecast models) as line traces on one figure.
+  observation, or two forecast models) as line traces or grouped bars on one
+  figure.
 - Plotting a single dataset as a 1D timeseries when you want explicit
-  control over which dims are reduced.
+  control over which dims are reduced. Period totals (dekadal/monthly precip)
+  often read better as `--style bar`.
 
 For maps of N forecasts (or forecasts vs gridded obs) over time, use
 `plot-compare-forecasts`.
@@ -45,7 +49,8 @@ For maps of N forecasts (or forecasts vs gridded obs) over time, use
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
-    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] [--align-day-of-year]
+    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] \
+    [--style line|bar] [--align-day-of-year]
 ```
 
 ### Arguments
@@ -61,6 +66,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   has any non-time dims after variable selection; the skill exits with an
   error rather than silently averaging.
 - `--title` — optional figure title.
+- `--style` — `line` (default) or `bar`. `bar` draws grouped bars (one group
+  per time step; one bar per `--input`, offset within the group). Bar width is
+  80% of the median time spacing, split across inputs. Single-input `bar` is
+  just one bar per time.
 - `--align-day-of-year` — opt-in (default off). Plot each trace against its
   day-of-year (1–366) instead of its absolute date, so inputs from different
   years overlay on a shared x-axis; the x-axis label becomes `day of year`.
@@ -81,8 +90,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
 
 ### Output
 
-A PNG at `--output`, single axes (`figsize=(10, 6)`), one line per input
-with a marker at each time point, legend on the axes. The y-axis label is the variable `long_name` (then
+A PNG at `--output`, single axes (`figsize=(10, 6)`), one series per input
+(line with markers, or bars), legend on the axes. The y-axis label is the variable `long_name` (then
 `GRIB_name`, then the variable name) plus `[<units>]` when the variable
 carries a `units` attribute. Units are a short display form (`mm/day`,
 `°C`), not the on-disk CF string.
@@ -90,7 +99,7 @@ carries a `units` attribute. Units are a short display form (`mm/day`,
 ### Input units
 
 All traces share one y-axis whose label takes the units of the first input.
-When the overlaid inputs carry the plotted variable in differing `units`, lines
+When the overlaid inputs carry the plotted variable in differing `units`, series
 in different units are drawn against a single scale and labeled with only one of
 them. The skill prints a warning to stderr naming the distinct units and still
 renders the figure (exit status 0); it is a rendering caveat, not a hard error.
@@ -124,4 +133,15 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
     --variable tp \
     --reduce number --reduce latitude --reduce longitude \
     --output /tmp/precip_ts.png
+```
+
+Period totals as grouped bars (forecast vs observations):
+
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
+    -i /tmp/ecmwf_weekly.zarr -i /tmp/imerg_weekly.zarr \
+    --variable tp --style bar \
+    --reduce latitude --reduce longitude \
+    --output /tmp/precip_bars.png \
+    --title "Weekly precip totals"
 ```

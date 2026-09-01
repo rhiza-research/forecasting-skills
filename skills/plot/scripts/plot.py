@@ -2311,6 +2311,21 @@ def _plot_layers(
     return fig
 
 
+def _contour_levels(vmin, vmax, n=10, norm=None):
+    """Shared isoline edges for every contour panel (and a constant-field pad)."""
+    import numpy as np
+
+    boundaries = getattr(norm, "boundaries", None) if norm is not None else None
+    if boundaries is not None:
+        return list(boundaries)
+    if vmin is None or vmax is None or not np.isfinite(vmin) or not np.isfinite(vmax):
+        return n
+    if vmin == vmax:
+        pad = abs(vmin) * 0.05 if vmin != 0 else 1.0
+        return np.linspace(vmin - pad, vmax + pad, n + 1)
+    return np.linspace(vmin, vmax, n + 1)
+
+
 def _heatmap(
     da,
     lat_dim,
@@ -2329,6 +2344,7 @@ def _heatmap(
     flag_labels=None,
     rows=None,
     columns=None,
+    kind="heatmap",
 ):
     import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
@@ -2340,6 +2356,10 @@ def _heatmap(
 
     if wrap_lon:
         da = ensure_normalized_longitude(da, lon_dim)
+    if kind == "contour":
+        lat_vals = np.asarray(da[lat_dim].values)
+        if lat_vals.size > 1 and float(lat_vals[0]) > float(lat_vals[-1]):
+            da = da.sortby(lat_dim)
 
     sdim = _step_dim(da)
     if sdim is None or da.sizes.get(sdim, 1) == 1:
@@ -2377,23 +2397,46 @@ def _heatmap(
     )
     axes = np.array(axes).reshape(nrows, ncols).flatten()
 
-    contour = None
+    mappable = None
     boxes = draw_boxes or []
     overlays = _load_geo_overlays(extent)
+    levels = _contour_levels(vmin, vmax, norm=norm) if kind == "contour" else None
     for i, s in enumerate(steps):
         ax = axes[i]
         slab = da if sdim is None else da.isel({sdim: i})
         slab = slab.transpose(lat_dim, lon_dim)
-        contour = ax.pcolormesh(
-            slab[lon_dim],
-            slab[lat_dim],
-            slab.values,
-            cmap=cmap,
-            norm=norm,
-            vmin=vmin,
-            vmax=vmax,
-            transform=ccrs.PlateCarree(),
-        )
+        lon_1d = slab[lon_dim]
+        lat_1d = slab[lat_dim]
+        if kind == "contour":
+            mappable = ax.contourf(
+                lon_1d,
+                lat_1d,
+                slab.values,
+                levels=levels,
+                cmap=cmap,
+                transform=ccrs.PlateCarree(),
+                extend="neither",
+            )
+            ax.contour(
+                lon_1d,
+                lat_1d,
+                slab.values,
+                levels=levels,
+                colors="k",
+                linewidths=0.4,
+                transform=ccrs.PlateCarree(),
+            )
+        else:
+            mappable = ax.pcolormesh(
+                lon_1d,
+                lat_1d,
+                slab.values,
+                cmap=cmap,
+                norm=norm,
+                vmin=vmin,
+                vmax=vmax,
+                transform=ccrs.PlateCarree(),
+            )
         if wrap_lon:
             ax.set_extent(extent, crs=ccrs.PlateCarree())
         else:
@@ -2424,7 +2467,7 @@ def _heatmap(
     if isinstance(norm, BoundaryNorm):
         cbar_kw["spacing"] = "uniform"
         cbar_kw["ticks"] = list(norm.boundaries)
-    cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", fraction=5, **cbar_kw)
+    cbar = fig.colorbar(mappable, cax=cbar_ax, orientation="horizontal", fraction=5, **cbar_kw)
     if flag_ticks is not None:
         cbar.set_ticks(flag_ticks)
         if flag_labels is not None:
@@ -2454,7 +2497,7 @@ def _heatmap(
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
     "--style",
-    choices=["heatmap", "timeseries", "windrose", "quiver"],
+    choices=["heatmap", "contour", "timeseries", "windrose", "quiver"],
     default="heatmap",
 )
 @weather_skill.argument(
@@ -2481,19 +2524,19 @@ def _heatmap(
     "--index",
     default=None,
     help=(
-        "Slice like 'step=3,number=0' (heatmap, quiver, and windrose). "
-        "Heatmap/quiver lists keep the dim as panels; windrose lists keep samples."
+        "Slice like 'step=3,number=0' (heatmap, contour, quiver, and windrose). "
+        "Heatmap/contour/quiver lists keep the dim as panels; windrose lists keep samples."
     ),
 )
 @weather_skill.argument(
     "--extent",
     default=None,
-    help="Map extent 'lon_min,lon_max,lat_min,lat_max' (heatmap and quiver).",
+    help="Map extent 'lon_min,lon_max,lat_min,lat_max' (heatmap, contour, and quiver).",
 )
 @weather_skill.argument(
     "--cities",
     default=None,
-    help='City overlay JSON (heatmap and quiver). Inline {"name": [lat, lon]} or file path.',
+    help='City overlay JSON (heatmap, contour, and quiver). Inline {"name": [lat, lon]} or file path.',
 )
 @weather_skill.argument("--fontsize", type=int, default=16)
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
@@ -2502,7 +2545,7 @@ def _heatmap(
     type=int,
     default=None,
     help=(
-        "Heatmap/quiver panel rows. Alone or with --columns, the grid must pack the data exactly."
+        "Heatmap/contour/quiver panel rows. Alone or with --columns, the grid must pack the data exactly."
     ),
 )
 @weather_skill.argument(
@@ -2510,13 +2553,13 @@ def _heatmap(
     type=int,
     default=None,
     help=(
-        "Heatmap/quiver panel columns. Alone or with --rows, the grid must pack the data exactly."
+        "Heatmap/contour/quiver panel columns. Alone or with --rows, the grid must pack the data exactly."
     ),
 )
 @weather_skill.argument(
     "--mask-geojson",
     default=None,
-    help="GeoJSON polygon; cells/points outside become NaN (heatmap, quiver, windrose).",
+    help="GeoJSON polygon; cells/points outside become NaN (heatmap, contour, quiver, windrose).",
 )
 @weather_skill.argument(
     "--draw-box",
@@ -2582,7 +2625,7 @@ def plot(
     independent_scale=False,
     **kwargs,
 ):
-    """Render a heatmap, timeseries, wind-rose, quiver, or layered map PNG from weather-skills Zarrs."""
+    """Render a heatmap, contour, timeseries, wind-rose, quiver, or layered map PNG from weather-skills Zarrs."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -2595,7 +2638,7 @@ def plot(
         raise UsageError("pass either -i/--input or --layer, not both")
     if not layers and ds is None:
         raise UsageError("pass -i/--input or at least one --layer")
-    if layers and style in ("timeseries", "windrose"):
+    if layers and style in ("timeseries", "windrose", "contour"):
         raise UsageError(f"--layer cannot be used with --style {style}")
     if layers and style == "quiver":
         raise UsageError(
@@ -2673,7 +2716,7 @@ def plot(
         for flag, set_ in {**map_only, **spatial}.items():
             if set_:
                 print(
-                    f"Warning: {flag}{_flag_detail(flag)} is a heatmap-only option; "
+                    f"Warning: {flag}{_flag_detail(flag)} is a map-only option; "
                     f"ignored for --style {style}.",
                     file=sys.stderr,
                 )
@@ -2683,12 +2726,12 @@ def plot(
                     f"Warning: {flag} is ignored for --style {style}.",
                     file=sys.stderr,
                 )
-    elif style == "heatmap":
+    elif style in ("heatmap", "contour"):
         for flag, set_ in {**uv_flags, **quiver_only}.items():
             if set_:
                 print(
                     f"Warning: {flag} is only used with --style windrose or "
-                    f"--style quiver; ignored for --style heatmap.",
+                    f"--style quiver; ignored for --style {style}.",
                     file=sys.stderr,
                 )
     elif style == "windrose":
@@ -2740,7 +2783,7 @@ def plot(
         ds = precip_for_display(ds, variable)
         da = ds[variable]
 
-    if style == "heatmap":
+    if style in ("heatmap", "contour"):
         (
             da,
             lat_dim,
@@ -2749,7 +2792,7 @@ def plot(
             wrap_lon,
             native_step_dim,
             native_steps,
-        ) = _prepare_gridded_map(da, overrides, bbox_nwse, mask_geojson, extent, style="heatmap")
+        ) = _prepare_gridded_map(da, overrides, bbox_nwse, mask_geojson, extent, style=style)
         cities_map = _parse_cities(cities)
         flag_scale = _discrete_flag_scale(da, colormap)
         if flag_scale is not None:
@@ -2775,6 +2818,7 @@ def plot(
             flag_labels=flag_labels,
             rows=rows,
             columns=columns,
+            kind=style,
         )
     elif style == "timeseries":
         fig, ax = plt.subplots(figsize=(10, 6))

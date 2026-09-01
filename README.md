@@ -53,7 +53,7 @@ credentialed or source-specific fetcher only when it does not.
 | `summarize-dim` | Summarize named dims with a statistic (mean/std/min/max/sum/median) — e.g. ensemble spread as the std across `number`, or a time-mean baseline |
 | `difference` | Subtract one dataset from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
 | `event-hits` | Event hits / misses: forecast vs truth, event = `--variable` ≥ `--threshold` (default 1). Plot the output with `plot`. |
-| `plot` | Heatmap, timeseries, wind-rose, quiver, or **layered** map (repeatable `--layer heatmap:…` / `scatter:…` / `outline:…`) from one or more datasets |
+| `plot` | Heatmap, filled-contour, timeseries, wind-rose, quiver, or **layered** map (repeatable `--layer heatmap:…` / `scatter:…` / `outline:…`) from one or more datasets |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-compare-forecasts` | N-dataset comparison grid (rows = forecasts and/or gridded obs; columns = union of times); missing times are blank `n/a` cells |
 | `plot-verify` | Lead-week event verification **map** grid for one obs week (columns = week-4..1; rows labeled with the obs product, forecast product, and hits) |

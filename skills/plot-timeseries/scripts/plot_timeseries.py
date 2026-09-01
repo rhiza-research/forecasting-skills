@@ -73,6 +73,48 @@ def _y_label(variable, da):
     return variable_label_for_display(da, fallback=variable)
 
 
+def _numeric_x(xvals):
+    """Map plot x values to a numeric axis; True when they were calendar dates."""
+    import matplotlib.dates as mdates
+    import numpy as np
+
+    x = np.asarray(xvals)
+    if x.dtype.kind == "M":
+        return mdates.date2num(x), True
+    if x.dtype == object:
+        first = next((v for v in x.flat if v is not None), None)
+        if first is not None and hasattr(first, "timetuple"):
+            return np.asarray(mdates.date2num(x), dtype=float), True
+    return np.asarray(x, dtype=float), False
+
+
+def _median_spacing(xnum):
+    import numpy as np
+
+    x = np.sort(np.unique(xnum))
+    if x.size < 2:
+        return 1.0
+    return float(np.median(np.diff(x)))
+
+
+def _draw_bars(ax, series):
+    """Grouped bars on a shared numeric x (dates are converted and restored)."""
+    converted = []
+    any_dates = False
+    for xvals, yvals, label in series:
+        xnum, is_dates = _numeric_x(xvals)
+        any_dates = any_dates or is_dates
+        converted.append((xnum, yvals, label))
+    n = len(converted)
+    group_span = 0.8 * min(_median_spacing(x) for x, _, _ in converted)
+    bar_w = group_span / n
+    for i, (xnum, yvals, label) in enumerate(converted):
+        offset = (i - (n - 1) / 2) * bar_w
+        ax.bar(xnum + offset, yvals, width=bar_w * 0.9, label=label, align="center")
+    if any_dates:
+        ax.xaxis_date()
+
+
 @weather_skill(
     name="plot-timeseries",
     version=_SKILL_VERSION,
@@ -92,11 +134,19 @@ def _y_label(variable, da):
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
+    "--style",
+    choices=["line", "bar"],
+    default="line",
+    help="line (default) or grouped bar.",
+)
+@weather_skill.argument(
     "--align-day-of-year",
     action="store_true",
     help="Plot against day-of-year (1-366) instead of absolute date.",
 )
-def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, output, **kwargs):
+def plot_timeseries(
+    ds, variable, time_dim, reduce, title, style, align_day_of_year, output, **kwargs
+):
     """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
     if not isinstance(ds, (list, tuple)):
         datasets = [ds]
@@ -137,8 +187,8 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
         detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
         print(
             f"Warning: variable '{variable}' has differing units across the "
-            f"overlaid inputs ({detail}). The traces share one y-axis labeled "
-            f"with a single unit, so lines in different units are not directly "
+            f"overlaid inputs ({detail}). The series share one y-axis labeled "
+            f"with a single unit, so values in different units are not directly "
             f"comparable in this figure.",
             file=sys.stderr,
         )
@@ -146,6 +196,7 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
     fig, ax = plt.subplots(figsize=(10, 6))
     first_tdim = None
     axis_label = None
+    series = []
 
     for idx, ds in enumerate(datasets):
         da = ds[variable]
@@ -196,12 +247,18 @@ def plot_timeseries(ds, variable, time_dim, reduce, title, align_day_of_year, ou
             ):
                 xvals = (np.asarray(ds["time"].values) + np.asarray(xvals)).astype("datetime64[ns]")
                 xlabel = "valid time"
-        ax.plot(xvals, da.values, label=label, marker="o", markersize=5)
+        series.append((xvals, da.values, label))
 
         if first_tdim is None:
             first_tdim = tdim
         if axis_label is None:
             axis_label = xlabel
+
+    if style == "bar":
+        _draw_bars(ax, series)
+    else:
+        for xvals, yvals, label in series:
+            ax.plot(xvals, yvals, label=label, marker="o", markersize=5)
 
     ax.set_xlabel(axis_label or first_tdim or "time")
     ax.set_ylabel(_y_label(variable, datasets[0][variable]))

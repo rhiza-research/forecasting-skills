@@ -24,6 +24,43 @@ def test_heatmap_writes_png(tmp_path, plot_fn):
     assert out.stat().st_size > 0
 
 
+def test_contour_levels_span_and_pad_constant():
+    plot_mod = load_skill("plot", "plot")
+    levels = plot_mod._contour_levels(0.0, 10.0, n=10)
+    assert levels[0] == 0.0
+    assert levels[-1] == 10.0
+    assert len(levels) == 11
+    constant = plot_mod._contour_levels(5.0, 5.0, n=10)
+    assert constant[0] < 5.0 < constant[-1]
+    assert len(constant) == 11
+
+
+def test_contour_writes_png(tmp_path, plot_fn):
+    ds = make_gridded()
+    ds["precip"] = ds["precip"] + ds["latitude"] + 0.01 * ds["longitude"]
+    ds["precip"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "contour.png"
+
+    run_skill(plot_fn, "-i", str(src), "-o", str(out), "--style", "contour")
+
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_contour_stamps_history(tmp_path, plot_fn):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "contour.png"
+
+    run_skill(plot_fn, "-i", str(src), "-o", str(out), "--style", "contour", "--title", "Isolines")
+
+    history = load_figure_history(out)
+    assert history is not None
+    assert history[-1]["skill"] == "plot"
+    assert history[-1]["args"]["style"] == "contour"
+    assert history[-1]["args"]["title"] == "Isolines"
+
+
 def test_heatmap_stamps_history(tmp_path, plot_fn):
     src = write_zarr(make_gridded(), tmp_path / "in.zarr")
     out = tmp_path / "map.png"
