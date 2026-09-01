@@ -133,7 +133,8 @@ out of scope for this fetcher.
 A consolidated weather-skills standard dataset Zarr. Forecast datasets carry a scalar `time`
 coord (the init date), `step` (forecast lead time, `timedelta64`), and — for
 ensembles — `number` (member 0 is the control). Analysis datasets carry a
-`time` dimension. Pressure-level fields add `vertical` (hPa). Known precip is converted to `mm day-1` and known air
+`time` dimension. Pressure-level fields add `vertical` (hPa). Longitude is
+normalized to `[-180, 180)` even when `--bbox` is omitted. Known precip is converted to `mm day-1` and known air
 temperature to `degree_Celsius`; other variables keep source units. Skip
 `deaccumulate` — precip is already a rate. Stamped with `weather_skills_source=dynamical:<id>`.
 

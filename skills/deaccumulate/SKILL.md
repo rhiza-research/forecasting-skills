@@ -27,7 +27,7 @@ per-step increments via `arr[i+1] - arr[i]`, clipped at zero.
 ## When not to use
 
 - **Current fetcher outputs** (`ecmwf-fetch` `tp`, `dynamical-fetch`
-  `precipitation_surface`, `kenya-forecast-fetch` precip) — already rates
+  `precipitation_surface`, `kenya-forecast-fetch` precip / precip_downscaled) — already rates
   (`mm day-1`). The skill refuses them. For period amounts, run
   `aggregate-temporal` then `convert-to-totals`.
 - CHIRPS, IMERG, station precip, and any variable whose `units` are per-time

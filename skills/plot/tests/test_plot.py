@@ -175,6 +175,30 @@ def test_extent_clip_geom_splits_unwrapped_antimeridian():
     assert clip.intersects(west)
 
 
+def test_pad_cell_extent_wrapped_global_is_full_globe():
+    # GFS-like 0–360 wrap → [-180, 180−Δ]. Half-cell padding is a 360° span
+    # whose endpoints are the same meridian; Cartopy then draws a ~9° sliver.
+    plot_mod = load_skill("plot", "plot")
+    lon = np.arange(0.0, 360.0, 10.0)
+    lat = np.arange(-20.0, 21.0, 10.0)
+    wrapped = np.sort((lon + 180.0) % 360.0 - 180.0)
+    ext = plot_mod._pad_cell_extent(lat, wrapped)
+    assert ext[0] == -180.0
+    assert ext[1] == 180.0
+    assert ext[3] - ext[2] == pytest.approx(50.0)
+
+
+def test_pad_cell_extent_indian_ocean_keeps_basin():
+    plot_mod = load_skill("plot", "plot")
+    lon = np.arange(40.0, 121.0, 10.0)
+    lat = np.arange(-20.0, 21.0, 10.0)
+    ext = plot_mod._pad_cell_extent(lat, lon)
+    assert ext[0] == pytest.approx(35.0)
+    assert ext[1] == pytest.approx(125.0)
+    assert ext[2] == pytest.approx(-25.0)
+    assert ext[3] == pytest.approx(25.0)
+
+
 def test_load_geo_overlays_skips_on_download_failure(monkeypatch, capsys):
     plot_mod = load_skill("plot", "plot")
     import cartopy.io.shapereader as shpreader

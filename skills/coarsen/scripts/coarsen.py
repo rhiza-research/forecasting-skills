@@ -14,7 +14,7 @@ import math
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims
-from weather_skills_core.standard_utils import grid_spacing
+from weather_skills_core.standard_utils import ensure_normalized_longitude, grid_spacing
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
@@ -52,9 +52,7 @@ def coarsen(ds, variable, target_resolution, offset, **kwargs):
     lat_dim, lon_dim = detect_spatial_dims(ds)
     if variable:
         ds = ds[[variable]]
-    lon_vals = np.asarray(ds[lon_dim].values)
-    if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-        ds = ds.assign_coords({lon_dim: ((ds[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+    ds = ensure_normalized_longitude(ds, lon_dim)
     # Reject finer targets (that's downscale)
     for axis in (lat_dim, lon_dim):
         if target_resolution < grid_spacing(ds[axis].values):

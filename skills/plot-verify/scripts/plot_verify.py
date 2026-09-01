@@ -25,6 +25,7 @@ from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import (
     dataset_label,
+    ensure_normalized_longitude,
     lat_slice,
     polygon_from_geojson,
 )
@@ -234,9 +235,7 @@ def _slice_bbox_mask(da, lat_dim, lon_dim, bbox, polygon, label):
 
     if bbox is None and polygon is None:
         return da
-    lon_vals = np.asarray(da[lon_dim].values)
-    if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-        da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+    da = ensure_normalized_longitude(da, lon_dim)
     if bbox is not None:
         r_n, r_w, r_s, r_e = bbox
         da = da.sel({lat_dim: lat_slice(da[lat_dim].values, r_n, r_s)})
@@ -280,12 +279,15 @@ def _extent_from_da(da, lat_dim, lon_dim, bbox):
     lon_vals = np.asarray(da[lon_dim].values)
     dlat = float(np.abs(np.diff(np.sort(lat_vals))).mean()) if lat_vals.size > 1 else 0.0
     dlon = float(np.abs(np.diff(np.sort(lon_vals))).mean()) if lon_vals.size > 1 else 0.0
-    return [
-        float(lon_vals.min()) - dlon / 2,
-        float(lon_vals.max()) + dlon / 2,
-        float(lat_vals.min()) - dlat / 2,
-        float(lat_vals.max()) + dlat / 2,
-    ]
+    lon_min = float(lon_vals.min()) - dlon / 2
+    lon_max = float(lon_vals.max()) + dlon / 2
+    lat_min = float(lat_vals.min()) - dlat / 2
+    lat_max = float(lat_vals.max()) + dlat / 2
+    # Half-cell padding on a wrapped global lon axis is a 360° span whose
+    # endpoints are the same meridian; Cartopy then collapses to a sliver.
+    if lon_max - lon_min >= 360.0 - 1e-6:
+        lon_min, lon_max = -180.0, 180.0
+    return [lon_min, lon_max, max(lat_min, -90.0), min(lat_max, 90.0)]
 
 
 def _pick_variable(ds, variable, role):

@@ -25,6 +25,7 @@ from weather_skills_core import DataError, Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
 from weather_skills_core.standard_utils import (
     dataset_label,
+    ensure_normalized_longitude,
     lat_slice,
     pick_time_dim,
     polygon_from_geojson,
@@ -572,13 +573,8 @@ def plot_compare(
                 lat_dim = cf_dim(da, "latitude")
                 lon_dim = cf_dim(da, "longitude")
                 if lat_dim is not None and lon_dim is not None:
-                    lon_vals = da[lon_dim].values
-                    if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-                        wrap = (ds[lon_dim] + 180) % 360 - 180
-                        ds = ds.assign_coords({lon_dim: wrap}).sortby(lon_dim)
-                        da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(
-                            lon_dim
-                        )
+                    ds = ensure_normalized_longitude(ds, lon_dim)
+                    da = ensure_normalized_longitude(da, lon_dim)
                     if region_bbox is not None:
                         lat_sl = lat_slice(da[lat_dim].values, r_n, r_s)
                         ds = ds.sel({lat_dim: lat_sl})

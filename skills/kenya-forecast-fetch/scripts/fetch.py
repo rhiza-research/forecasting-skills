@@ -9,9 +9,10 @@
 #   "aiohttp",
 #   "numpy",
 #   "pint-xarray>=0.6",
+#   "netcdf4",
 # ]
 # ///
-"""Fetch a Kenya forecasts archive Zarr grid and write a weather-skills standard dataset."""
+"""Fetch a Kenya forecasts archive grid and write a weather-skills standard dataset."""
 
 import json
 import re
@@ -22,7 +23,7 @@ import urllib.request
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
-from weather_skills_core.standard_utils import bbox_subset
+from weather_skills_core.standard_utils import bbox_subset, ensure_normalized_longitude
 from weather_skills_core.units import (
     precip_amounts_to_rates,
     stamp_data_interval,
@@ -42,23 +43,14 @@ _DEFAULT_DATASET = "precip"
 
 # Per-step amounts already (not cumulative-since-init). Convert by dividing
 # by the step interval; do not deaccumulate.
-_ALREADY_PERIOD_PRECIP = frozenset({"gefs", "medium_range_precip"})
+_ALREADY_PERIOD_PRECIP = frozenset({"gefs", "medium_range_precip", "precip_downscaled"})
 # Interval fields whose archive ticks start at +1 native period (or +1 week).
-_SHIFT_STEP_TO_ZERO = frozenset({"gefs", "daily_vars", "medium_range_precip"})
-
-# Auto-populated by the version-bump CI workflow. Do not edit manually.
-_SKILL_VERSION = "0.0.2"
-
-_BUCKET = "kenya-forecasting-data"
-_GCS_API = f"https://storage.googleapis.com/storage/v1/b/{_BUCKET}/o"
-_GCS_MEDIA = f"https://storage.googleapis.com/{_BUCKET}"
-_HTTP_TIMEOUT = 60
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_DEFAULT_DATASET = "precip"
+_SHIFT_STEP_TO_ZERO = frozenset({"gefs", "daily_vars", "medium_range_precip", "precip_downscaled"})
 
 # Short ids → object key under <date>/data/ (may include date in the basename).
 _DATASETS: dict[str, str] = {
     "precip": "ECMWF_s2s_precip_{date}.zarr",
+    "precip_downscaled": "data_weekly_Kenya_downscaled.nc",
     "daily_vars": "ECMWF_s2s_daily_vars_{date}.zarr",
     "Tminmax": "ECMWF_s2s_Tminmax_{date}.zarr",
     "10wind": "ECMWF_s2s_10wind_{date}.zarr",
@@ -67,6 +59,7 @@ _DATASETS: dict[str, str] = {
     "medium_range_precip": "medium_range_precip.zarr",
     "gefs": "gefs/gefs_kenya.zarr",
 }
+_NETCDF_SUFFIXES = (".nc", ".nc4")
 
 
 def _get_json(url: str) -> dict:
@@ -106,8 +99,8 @@ def _store_key(dataset: str, iso: str) -> str:
 
 
 def _store_exists(key: str) -> bool:
-    """True if the Zarr root metadata object is present."""
-    meta_key = f"{key.rstrip('/')}/zarr.json"
+    """True if the Zarr root metadata object (or a NetCDF file) is present."""
+    meta_key = key if key.lower().endswith(_NETCDF_SUFFIXES) else f"{key.rstrip('/')}/zarr.json"
     url = f"{_GCS_MEDIA}/{urllib.parse.quote(meta_key, safe='/')}"
     req = urllib.request.Request(url, method="HEAD")
     try:
@@ -127,10 +120,10 @@ def _resolve_date(date, dataset: str) -> str:
         key = _store_key(dataset, iso)
         if not _store_exists(key):
             raise DataError(
-                f"no {dataset!r} Zarr under init date {iso} in gs://{_BUCKET}/ "
+                f"no {dataset!r} store under init date {iso} in gs://{_BUCKET}/ "
                 f"(expected gs://{_BUCKET}/{key}). Older folders may only have "
-                "GRIB/NetCDF under data/ — pick a more recent init, or use "
-                "ecmwf-fetch / dynamical-fetch for live grids. Browse "
+                "legacy GRIB/NetCDF under data/ — pick a more recent init, or "
+                "use ecmwf-fetch / dynamical-fetch for live grids. Browse "
                 "https://kenya-forecasts.sheerwater.rhizaresearch.org/files/ "
                 "or omit --date to take the latest available."
             )
@@ -146,7 +139,7 @@ def _resolve_date(date, dataset: str) -> str:
         if _store_exists(_store_key(dataset, iso)):
             return iso
     raise DataError(
-        f"no {dataset!r} Zarr found under any init-date data/ folder in "
+        f"no {dataset!r} store found under any init-date data/ folder in "
         f"gs://{_BUCKET}/. Available --dataset ids: {', '.join(_DATASETS)}."
     )
 
@@ -156,9 +149,37 @@ def _open_remote(key: str):
 
     url = f"{_GCS_MEDIA}/{key}"
     try:
+        if key.lower().endswith(_NETCDF_SUFFIXES):
+            return _open_remote_netcdf(url)
         return xr.open_zarr(url, consolidated=True)
+    except DataError:
+        raise
     except Exception as exc:  # noqa: BLE001 — surface remote open failures cleanly
-        raise DataError(f"failed to open remote Zarr gs://{_BUCKET}/{key} ({exc}).") from None
+        raise DataError(f"failed to open remote store gs://{_BUCKET}/{key} ({exc}).") from None
+
+
+def _open_remote_netcdf(url: str):
+    """Download a public NetCDF to a temp file and return an in-memory Dataset."""
+    import tempfile
+
+    import xarray as xr
+
+    with tempfile.NamedTemporaryFile(suffix=".nc") as tmp:
+        urllib.request.urlretrieve(url, tmp.name)
+        with xr.open_dataset(tmp.name) as ds:
+            return ds.load()
+
+
+def _prepare_downscaled(ds):
+    """CHIRPS-grid weekly downscale: lon-first NetCDF → (step, lat, lon) cube."""
+    drop = [name for name in ("rank", "year", "surface") if name in ds.variables]
+    if drop:
+        ds = ds.drop_vars(drop)
+    spatial = [d for d in ("step", "number", "latitude", "longitude") if d in ds.dims]
+    others = [d for d in ds.dims if d not in spatial]
+    if spatial:
+        ds = ds.transpose(*others, *spatial)
+    return ds
 
 
 def _step_interval_stamp(ds) -> str:
@@ -207,7 +228,10 @@ def _shift_step_origin_to_zero(ds):
     "--dataset",
     default=_DEFAULT_DATASET,
     choices=list(_DATASETS),
-    help=(f"Archive data product under <date>/data/ (default {_DEFAULT_DATASET})."),
+    help=(
+        f"Archive product under <date>/data/ (default {_DEFAULT_DATASET}; "
+        "precip_downscaled is the CHIRPS-resolution weekly precip)."
+    ),
 )
 @weather_skill.argument("--date")
 @weather_skill.argument("--bbox")
@@ -226,13 +250,12 @@ def _shift_step_origin_to_zero(ds):
     ),
 )
 def fetch(dataset, date, bbox, variable, output, **kwargs):
-    """Fetch a Kenya forecasts archive Zarr and write a weather-skills standard dataset.
+    """Fetch a Kenya forecasts archive grid and write a weather-skills standard dataset.
 
-    Opens a consolidated Zarr under ``gs://kenya-forecasting-data/<date>/data/``
-    over HTTPS (credential-free), optionally subsets by ``--bbox`` and
-    ``--variable``, normalizes units/CF attrs, and returns a Dataset for the
-    decorator to write. Compose with ``plot``, ``plot-timeseries``, ``summarize-dim``,
-    etc. for flexible figures — this skill does not render PNGs.
+    Opens a store under ``gs://kenya-forecasting-data/<date>/data/`` over HTTPS
+    (credential-free): native S2S Zarr grids, or the CHIRPS-resolution weekly
+    downscaled precip NetCDF. Optionally subsets by ``--bbox`` and ``--variable``,
+    normalizes units/CF attrs, and returns a Dataset for the decorator to write.
     """
     if kwargs.get("probe_latest") is not None:
         dsid = kwargs["probe_latest"] or dataset
@@ -249,6 +272,8 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
     print(f"Opening gs://{_BUCKET}/{key}", file=sys.stderr)
 
     ds = _open_remote(key)
+    if dataset == "precip_downscaled":
+        ds = _prepare_downscaled(ds)
 
     if variable:
         missing = [v for v in variable if v not in ds.data_vars]
@@ -261,6 +286,8 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
 
     if bbox is not None:
         ds = bbox_subset(ds, bbox)
+    else:
+        ds = ensure_normalized_longitude(ds)
 
     # Materialize while the remote store is open so to_zarr does not re-fetch.
     ds = ds.load()

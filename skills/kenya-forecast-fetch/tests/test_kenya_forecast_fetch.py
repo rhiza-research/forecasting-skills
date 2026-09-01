@@ -217,3 +217,61 @@ def test_fetch_winds_do_not_shift_step(tmp_path, fetch_mod, monkeypatch):
         days = np.asarray(ds["step"].values).astype("timedelta64[D]").astype(int)
         assert list(days) == [0, 1, 2]
         assert ds.sizes["step"] == 3
+
+
+def _downscaled_weekly():
+    """Lon-first weekly totals matching data_weekly_Kenya_downscaled.nc."""
+    lons = np.linspace(33.0, 34.0, 3)
+    lats = np.array([2.0, 1.0, 0.0])
+    steps = np.array([np.timedelta64(d, "D") for d in (7, 14)])
+    tp = np.full((3, 3, 2), 7.0, dtype=np.float32)
+    ds = xr.Dataset(
+        {"tp": (("longitude", "latitude", "step"), tp)},
+        coords={
+            "longitude": lons,
+            "latitude": lats,
+            "step": steps,
+            "time": np.datetime64("2026-08-30", "ns"),
+            "rank": (("longitude", "latitude", "step"), np.zeros((3, 3, 2), dtype=np.int64)),
+            "year": 2026,
+        },
+    )
+    ds["tp"].attrs.update(units="kg m-2", long_name="Total Precipitation")
+    return ds
+
+
+def test_fetch_precip_downscaled_opens_nc_and_writes_weekly_rates(tmp_path, fetch_mod, monkeypatch):
+    out = tmp_path / "downscaled.zarr"
+    seen = {}
+
+    monkeypatch.setattr(
+        fetch_mod,
+        "_store_exists",
+        lambda key: seen.setdefault("key", key) or True,
+    )
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: _downscaled_weekly())
+
+    run_skill(
+        fetch_mod.fetch,
+        "--dataset",
+        "precip_downscaled",
+        "--date",
+        "2026-08-30",
+        "-o",
+        str(out),
+    )
+
+    assert seen["key"] == "2026-08-30/data/data_weekly_Kenya_downscaled.nc"
+    with xr.open_zarr(out, consolidated=True) as ds:
+        assert list(ds["tp"].dims) == ["step", "latitude", "longitude"]
+        assert "rank" not in ds.variables
+        days = np.asarray(ds["step"].values).astype("timedelta64[D]").astype(int)
+        assert list(days) == [0, 7]
+        np.testing.assert_allclose(ds["tp"].values[:, 0, 0], [1.0, 1.0])
+        assert ds["tp"].attrs["units"] == "mm day-1"
+        assert ds["tp"].attrs.get("data_interval") == "7 day"
+
+
+def test_store_key_precip_downscaled_is_weekly_netcdf(fetch_mod):
+    key = fetch_mod._store_key("precip_downscaled", "2026-08-30")
+    assert key == "2026-08-30/data/data_weekly_Kenya_downscaled.nc"

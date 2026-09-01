@@ -12,7 +12,7 @@
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims, detect_time_dim
-from weather_skills_core.standard_utils import grid_spacing
+from weather_skills_core.standard_utils import ensure_normalized_longitude, grid_spacing
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
@@ -87,6 +87,7 @@ def downscale(
     lat_dim, lon_dim = detect_spatial_dims(ds)
     if variable:
         ds = ds[[variable]]
+    ds = ensure_normalized_longitude(ds, lon_dim)
     in_lat, in_lon = _spacing(ds, lat_dim), _spacing(ds, lon_dim)
 
     if reference_grid is not None:

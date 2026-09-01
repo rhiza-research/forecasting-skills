@@ -91,3 +91,81 @@ def test_clip_accepts_precip_totals(tmp_path, clip_region):
     result = xr.open_zarr(out, consolidated=True)
     assert "sum" in result["precip"].attrs["cell_methods"]
     assert list(result.latitude.values) == [1.0, 2.0]
+
+
+def _tahmo_like():
+    """TAHMO-style point_obs: station_id + time, unsorted lat/lon coords."""
+    import numpy as np
+
+    times = np.array(["2026-08-19", "2026-08-20"], dtype="datetime64[ns]")
+    ds = xr.Dataset(
+        {"precip": (("time", "station_id"), np.ones((2, 3)))},
+        coords={
+            "time": times,
+            "station_id": ["TA00001", "TA00002", "TA00003"],
+            "latitude": ("station_id", [1.28, -4.04, 0.51]),
+            "longitude": ("station_id", [36.82, 39.67, 34.77]),
+            "name": ("station_id", ["Nairobi", "Mombasa", "Kisumu"]),
+        },
+    )
+    ds["precip"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    ds["latitude"].attrs.update(standard_name="latitude", units="degrees_north")
+    ds["longitude"].attrs.update(standard_name="longitude", units="degrees_east")
+    ds["time"].attrs.update(standard_name="time", axis="T")
+    ds["station_id"].attrs.update(cf_role="timeseries_id")
+    return ds
+
+
+def test_clip_bbox_tahmo_stations(tmp_path, clip_region):
+    src = write_zarr(_tahmo_like(), tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    # Mombasa city bbox (N/W/S/E); only TA00002 sits inside.
+    run_skill(
+        clip_region,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--bbox",
+        "-3.9187/39.5667/-4.1550/39.7639",
+    )
+    ds = xr.open_zarr(out, consolidated=True)
+    assert list(ds.station_id.values) == ["TA00002"]
+    assert ds["name"].values[0] == "Mombasa"
+    assert ds.sizes["time"] == 2
+    assert load_history(out)[-1]["skill"] == "clip-region"
+
+
+def test_clip_bbox_point_id_obs(tmp_path, clip_region):
+    from conftest import make_point_obs
+
+    src = write_zarr(make_point_obs(), tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(clip_region, "-i", str(src), "-o", str(out), "--bbox", "1.6/9.5/0.5/10.6")
+    ds = xr.open_zarr(out, consolidated=True)
+    assert list(ds.point_id.values) == ["S0"]
+
+
+def test_clip_geojson_tahmo_stations(tmp_path, clip_region):
+    src = write_zarr(_tahmo_like(), tmp_path / "in.zarr")
+    geo = tmp_path / "mombasa.geojson"
+    geo.write_text(
+        json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [39.56, -4.16],
+                        [39.77, -4.16],
+                        [39.77, -3.91],
+                        [39.56, -3.91],
+                        [39.56, -4.16],
+                    ]
+                ],
+            }
+        )
+    )
+    out = tmp_path / "out.zarr"
+    run_skill(clip_region, "-i", str(src), "-o", str(out), "--geojson", str(geo))
+    ds = xr.open_zarr(out, consolidated=True)
+    assert list(ds.station_id.values) == ["TA00002"]

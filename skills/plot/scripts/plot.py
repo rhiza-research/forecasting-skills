@@ -25,7 +25,12 @@ from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
-from weather_skills_core.standard_utils import lat_slice, parse_bbox, polygon_from_geojson
+from weather_skills_core.standard_utils import (
+    ensure_normalized_longitude,
+    lat_slice,
+    parse_bbox,
+    polygon_from_geojson,
+)
 from weather_skills_core.units import (
     DATA_INTERVAL_ATTR,
     classify_variable,
@@ -286,9 +291,7 @@ def _subset_spatial(da, lat_dim, lon_dim, bbox_nwse, region_polygon, extent_vals
     import numpy as np
     import xarray as xr
 
-    lon_vals_pre = np.asarray(da[lon_dim].values)
-    if lon_vals_pre.size and float(np.nanmax(lon_vals_pre)) > 180.0:
-        da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+    da = ensure_normalized_longitude(da, lon_dim)
     if bbox_nwse is not None:
         r_n, r_w, r_s, r_e = bbox_nwse
         da = da.sel({lat_dim: lat_slice(da[lat_dim].values, r_n, r_s)})
@@ -1284,9 +1287,7 @@ def _quiver_map(
         if "number" in da.dims:
             da = da.mean("number", keep_attrs=True)
         if wrap_lon:
-            lon_vals = np.asarray(da[lon_dim].values)
-            if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-                da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+            da = ensure_normalized_longitude(da, lon_dim)
         return da
 
     speed = _prep(speed)
@@ -1309,16 +1310,7 @@ def _quiver_map(
     nrows, ncols = _panel_shape(num_steps, rows=rows, columns=columns)
 
     if extent is None:
-        lat_vals = np.asarray(speed[lat_dim].values)
-        lon_vals = np.asarray(speed[lon_dim].values)
-        dlat = float(np.abs(np.diff(np.sort(lat_vals))).mean()) if lat_vals.size > 1 else 0.0
-        dlon = float(np.abs(np.diff(np.sort(lon_vals))).mean()) if lon_vals.size > 1 else 0.0
-        extent = [
-            float(lon_vals.min()) - dlon / 2,
-            float(lon_vals.max()) + dlon / 2,
-            float(lat_vals.min()) - dlat / 2,
-            float(lat_vals.max()) + dlat / 2,
-        ]
+        extent = _extent_from_field(speed, lat_dim, lon_dim)
 
     vmax = float(speed.max(skipna=True).values)
     vmin = float(speed.min(skipna=True).values)
@@ -1625,19 +1617,32 @@ def _align_panel_labels(driver_dim, driver_values, driver_kind, da, spec):
     return other_dim, _common_labels(driver_values, other_values, spec)
 
 
-def _extent_from_field(da, lat_dim, lon_dim):
+def _pad_cell_extent(lat_vals, lon_vals):
+    """Map extent from cell centers, padded by half a grid step.
+
+    A global 0–360 (or −180…180−ε) longitude axis pads to a 360° span whose
+    endpoints are the same meridian. Cartopy ``set_extent`` then collapses the
+    map to a ~9° sliver at the antimeridian instead of a basin/world view.
+    """
     import numpy as np
 
-    lat_vals = np.asarray(da[lat_dim].values)
-    lon_vals = np.asarray(da[lon_dim].values)
-    dlat = float(np.abs(np.diff(np.sort(lat_vals))).mean()) if lat_vals.size > 1 else 0.5
-    dlon = float(np.abs(np.diff(np.sort(lon_vals))).mean()) if lon_vals.size > 1 else 0.5
-    return [
-        float(lon_vals.min()) - dlon / 2,
-        float(lon_vals.max()) + dlon / 2,
-        float(lat_vals.min()) - dlat / 2,
-        float(lat_vals.max()) + dlat / 2,
-    ]
+    lat_vals = np.asarray(lat_vals)
+    lon_vals = np.asarray(lon_vals)
+    dlat = float(np.abs(np.diff(np.sort(lat_vals))).mean()) if lat_vals.size > 1 else 0.0
+    dlon = float(np.abs(np.diff(np.sort(lon_vals))).mean()) if lon_vals.size > 1 else 0.0
+    lon_min = float(np.nanmin(lon_vals)) - dlon / 2
+    lon_max = float(np.nanmax(lon_vals)) + dlon / 2
+    lat_min = float(np.nanmin(lat_vals)) - dlat / 2
+    lat_max = float(np.nanmax(lat_vals)) + dlat / 2
+    if lon_max - lon_min >= 360.0 - 1e-6:
+        lon_min, lon_max = -180.0, 180.0
+    lat_min = max(lat_min, -90.0)
+    lat_max = min(lat_max, 90.0)
+    return [lon_min, lon_max, lat_min, lat_max]
+
+
+def _extent_from_field(da, lat_dim, lon_dim):
+    return _pad_cell_extent(da[lat_dim].values, da[lon_dim].values)
 
 
 def _extent_from_points(da):
@@ -1680,11 +1685,7 @@ def _prep_heatmap_layer(spec, bbox_nwse, region_polygon, extent):
         )
     )
     if wrap_lon:
-        import numpy as np
-
-        lon_vals = np.asarray(da[lon_dim].values)
-        if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-            da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+        da = ensure_normalized_longitude(da, lon_dim)
     if "number" in da.dims:
         da = da.mean("number", keep_attrs=True)
     flag_scale = _discrete_flag_scale(da, spec.options.get("colormap"))
@@ -1811,16 +1812,8 @@ def _prep_quiver_layer(spec, bbox_nwse, region_polygon, extent):
         region_polygon=region_polygon,
     )
     if wrap_lon:
-        import numpy as np
-
-        lon_vals = np.asarray(u_da[lon_dim].values)
-        if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-            u_da = u_da.assign_coords({lon_dim: ((u_da[lon_dim] + 180) % 360 - 180)}).sortby(
-                lon_dim
-            )
-            v_da = v_da.assign_coords({lon_dim: ((v_da[lon_dim] + 180) % 360 - 180)}).sortby(
-                lon_dim
-            )
+        u_da = ensure_normalized_longitude(u_da, lon_dim)
+        v_da = ensure_normalized_longitude(v_da, lon_dim)
     if "number" in u_da.dims:
         u_da = u_da.mean("number", keep_attrs=True)
         v_da = v_da.mean("number", keep_attrs=True)
@@ -2346,9 +2339,7 @@ def _heatmap(
         da = da.mean("number", keep_attrs=True)
 
     if wrap_lon:
-        lon_vals = np.asarray(da[lon_dim].values)
-        if lon_vals.size and float(np.nanmax(lon_vals)) > 180.0:
-            da = da.assign_coords({lon_dim: ((da[lon_dim] + 180) % 360 - 180)}).sortby(lon_dim)
+        da = ensure_normalized_longitude(da, lon_dim)
 
     sdim = _step_dim(da)
     if sdim is None or da.sizes.get(sdim, 1) == 1:
@@ -2365,16 +2356,7 @@ def _heatmap(
     nrows, ncols = _panel_shape(num_steps, rows=rows, columns=columns)
 
     if extent is None:
-        lat_vals = np.asarray(da[lat_dim].values)
-        lon_vals = np.asarray(da[lon_dim].values)
-        dlat = float(np.abs(np.diff(np.sort(lat_vals))).mean()) if lat_vals.size > 1 else 0.0
-        dlon = float(np.abs(np.diff(np.sort(lon_vals))).mean()) if lon_vals.size > 1 else 0.0
-        extent = [
-            float(lon_vals.min()) - dlon / 2,
-            float(lon_vals.max()) + dlon / 2,
-            float(lat_vals.min()) - dlat / 2,
-            float(lat_vals.max()) + dlat / 2,
-        ]
+        extent = _extent_from_field(da, lat_dim, lon_dim)
 
     vmax = float(da.max(skipna=True).values)
     vmin = float(da.min(skipna=True).values)

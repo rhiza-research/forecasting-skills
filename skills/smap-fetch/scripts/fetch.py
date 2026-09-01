@@ -26,6 +26,7 @@ from weather_skills_core.cf import stamp_cf_coords, udunits_error
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
+    ensure_normalized_longitude,
     verify_cf_decode,
 )
 from weather_skills_core.units import stamp_data_interval
@@ -358,6 +359,7 @@ def fetch(start_time, end_time, bbox, overpass, **kwargs):
             day_datasets.append(ds_day)
 
     ds = xr.concat(day_datasets, dim="time")
+    ds = ensure_normalized_longitude(ds, lon_dim="longitude")
     ds.attrs["weather_skills_source"] = "smap"
     verify_cf_decode(ds)
     apply_write_encoding(

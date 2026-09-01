@@ -10,6 +10,7 @@
 """Subtract A − B (xarray-aligned)."""
 
 from weather_skills_core import Dataset, UsageError, weather_skill
+from weather_skills_core.standard_utils import ensure_normalized_longitude
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
@@ -28,6 +29,8 @@ def difference(ds, variable, output, **kwargs):
     if len(ds) != 2:
         raise UsageError(f"expected exactly two --input paths, got {len(ds)}")
     ds_a, ds_b = ds
+    ds_a = ensure_normalized_longitude(ds_a)
+    ds_b = ensure_normalized_longitude(ds_b)
     import numpy as np
     import xarray as xr
 

@@ -17,7 +17,11 @@ import sys
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
-from weather_skills_core.standard_utils import bbox_subset, np_to_date
+from weather_skills_core.standard_utils import (
+    bbox_subset,
+    ensure_normalized_longitude,
+    np_to_date,
+)
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -218,6 +222,8 @@ def fetch(bbox, dataset, date, start_time, end_time, variable, **kwargs):
 
     if bbox is not None:
         ds = bbox_subset(ds, bbox, lat_dim="latitude", lon_dim="longitude")
+    else:
+        ds = ensure_normalized_longitude(ds, lon_dim="longitude")
 
     if is_forecast:
         inits = ds["init_time"].values
