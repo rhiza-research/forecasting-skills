@@ -22,7 +22,8 @@ from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable
-from weather_skills_core.standard_utils import dataset_label, pick_time_dim
+from weather_skills_core.display_labels import dataset_display_label, resolve_input_labels
+from weather_skills_core.standard_utils import pick_time_dim
 from weather_skills_core.units import (
     precip_for_display,
     to_standard_units,
@@ -234,8 +235,10 @@ def _draw_lines(ax, series, styles):
         ax.plot(xvals, yvals, label=label, **_line_kwargs(style))
 
 
-def _trace_label(ds, idx: int) -> str:
-    """Legend label: station id, else filename stem, else weather_skills_source."""
+def _trace_label(ds, idx: int, override: str | None = None) -> str:
+    """Legend label: explicit --label, station id, filename stem, else provenance."""
+    if override:
+        return override
     station = _size1_str(ds, "station_id", "point_id")
     if station:
         name = _size1_str(ds, "name")
@@ -245,11 +248,54 @@ def _trace_label(ds, idx: int) -> str:
     stem = _source_stem(ds)
     if stem:
         return stem
-    return dataset_label(ds, f"input {idx + 1}")
+    return dataset_display_label(ds, f"input {idx + 1}")
 
 
 def _y_label(variable, da):
     return variable_label_for_display(da, fallback=variable)
+
+
+def _day_of_year_tick_label(doy: float) -> str:
+    """Map a 1-based day-of-year tick value to a short calendar label."""
+    import datetime as dt
+
+    day = int(round(doy))
+    if day < 1 or day > 366:
+        return ""
+    if day == 366:
+        return "Dec 31"
+    date = dt.date(2023, 1, 1) + dt.timedelta(days=day - 1)
+    return f"{date.strftime('%b')} {date.day}"
+
+
+def _month_start_day_of_year_ticks(xmin: float, xmax: float) -> tuple[list[float], list[str]]:
+    """First-of-month tick positions and labels within ``[xmin, xmax]``."""
+    import datetime as dt
+
+    positions: list[float] = []
+    labels: list[str] = []
+    for month in range(1, 13):
+        date = dt.date(2023, month, 1)
+        doy = float(date.timetuple().tm_yday)
+        if xmin <= doy <= xmax:
+            positions.append(doy)
+            labels.append(f"{date.strftime('%b')} {date.day}")
+    return positions, labels
+
+
+def _apply_day_of_year_ticks(ax) -> None:
+    """Label day-of-year x ticks with calendar dates (e.g. Oct 1, not 274)."""
+    from matplotlib.ticker import FixedFormatter, FixedLocator, FuncFormatter, MaxNLocator
+
+    xmin, xmax = ax.get_xlim()
+    positions, labels = _month_start_day_of_year_ticks(xmin, xmax)
+    if len(positions) >= 2:
+        ax.xaxis.set_major_locator(FixedLocator(positions))
+        ax.xaxis.set_major_formatter(FixedFormatter(labels))
+        return
+
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=8, integer=True, min_n_ticks=3))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _pos: _day_of_year_tick_label(x)))
 
 
 def _numeric_x(xvals):
@@ -331,6 +377,12 @@ def _draw_bars(ax, series, styles):
     help="Plot against day-of-year (1-366) instead of absolute date.",
 )
 @weather_skill.argument(
+    "--label",
+    action="append",
+    default=None,
+    help="Legend label for each --input, in order. Omit to infer from metadata.",
+)
+@weather_skill.argument(
     "--trace",
     action="append",
     default=[],
@@ -343,7 +395,7 @@ def _draw_bars(ax, series, styles):
     ),
 )
 def plot_timeseries(
-    ds, variable, time_dim, reduce, title, style, align_day_of_year, trace, output, **kwargs
+    ds, variable, time_dim, reduce, title, style, align_day_of_year, label, trace, output, **kwargs
 ):
     """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
     if not isinstance(ds, (list, tuple)):
@@ -352,6 +404,7 @@ def plot_timeseries(
         datasets = list(ds)
     if len(datasets) > 26:
         raise UsageError(f"--input must be passed at most 26 times; got {len(datasets)}.")
+    label_slots = resolve_input_labels(label, len(datasets))
 
     import matplotlib
 
@@ -380,7 +433,7 @@ def plot_timeseries(
         u = variable_units(ds[variable])
         if isinstance(u, str) and u.strip():
             unit_vals.append(u)
-            seen_units[_trace_label(ds, idx)] = u.strip()
+            seen_units[_trace_label(ds, idx, label_slots[idx])] = u.strip()
     if unit_vals and any(not units_equal(unit_vals[0], u) for u in unit_vals[1:]):
         detail = ", ".join(f"{name} units={u!r}" for name, u in seen_units.items())
         print(
@@ -415,7 +468,7 @@ def plot_timeseries(
                 prefix=False,
             )
 
-        label = _trace_label(ds, idx)
+        label = _trace_label(ds, idx, label_slots[idx])
         xlabel = tdim
         if align_day_of_year:
             try:
@@ -433,7 +486,7 @@ def plot_timeseries(
                     f"rendering anyway.",
                     file=sys.stderr,
                 )
-            xlabel = "day of year"
+            xlabel = "calendar day"
         else:
             xvals = da[tdim].values
             if (
@@ -466,7 +519,10 @@ def plot_timeseries(
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.5)
 
-    fig.autofmt_xdate()
+    if align_day_of_year:
+        _apply_day_of_year_ticks(ax)
+    else:
+        fig.autofmt_xdate()
     fig.tight_layout()
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

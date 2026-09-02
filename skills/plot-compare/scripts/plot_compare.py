@@ -23,8 +23,8 @@ from pathlib import Path
 
 from weather_skills_core import DataError, Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
+from weather_skills_core.display_labels import dataset_display_label, resolve_input_labels
 from weather_skills_core.standard_utils import (
-    dataset_label,
     ensure_normalized_longitude,
     lat_slice,
     pick_time_dim,
@@ -45,6 +45,7 @@ _SKILL_VERSION = "0.0.2"
 # ECMWF-S2S4AFRICA / Kenya product palette (same as plot).
 PRECIP_COLORS = [
     "white",
+    "linen",
     "wheat",
     "lightgreen",
     "green",
@@ -52,10 +53,9 @@ PRECIP_COLORS = [
     "blue",
     "yellow",
     "orange",
-    "red",
     "purple",
 ]
-PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
+PRECIP_BOUNDS = [0, 1, 2, 5, 7, 10, 20, 50, 100, 200, 350]
 
 
 def _parse_colormap(spec):
@@ -307,6 +307,12 @@ def _axis_kind(values):
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
+    "--label",
+    action="append",
+    default=None,
+    help="Row label for each --input, in order. Omit to infer from metadata.",
+)
+@weather_skill.argument(
     "--mask-geojson",
     default=None,
     help="GeoJSON polygon; gridded cells outside become NaN.",
@@ -325,6 +331,7 @@ def plot_compare(
     title,
     panels,
     time_dim,
+    label,
     mask_geojson,
     output,
     **kwargs,
@@ -336,8 +343,9 @@ def plot_compare(
     if shared_scale and independent_scale:
         raise UsageError("--shared-scale and --independent-scale are mutually exclusive.")
 
-    label_a = dataset_label(ds_a, "A")
-    label_b = dataset_label(ds_b, "B")
+    label_slots = resolve_input_labels(label, 2)
+    label_a = label_slots[0] or dataset_display_label(ds_a, "A")
+    label_b = label_slots[1] or dataset_display_label(ds_b, "B")
 
     import matplotlib
 

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
+from weather_skills_core.display_labels import dataset_display_label, resolve_input_labels
 from weather_skills_core.standard_utils import (
     ensure_normalized_longitude,
     lat_slice,
@@ -48,8 +49,10 @@ _SKILL_VERSION = "0.0.2"
 _INDEX_INT_RE = re.compile(r"[+-]?[0-9]+")
 
 # ECMWF-S2S4AFRICA / Kenya product palette (get_ECMWF_functions.cmap).
+# Weekly/dekadal totals (mm): fine classes through 10, coarser above 20.
 PRECIP_COLORS = [
     "white",
+    "linen",
     "wheat",
     "lightgreen",
     "green",
@@ -57,10 +60,9 @@ PRECIP_COLORS = [
     "blue",
     "yellow",
     "orange",
-    "red",
     "purple",
 ]
-PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
+PRECIP_BOUNDS = [0, 1, 2, 5, 7, 10, 20, 50, 100, 200, 350]
 
 # Meteorological wind rose: 16 compass sectors, speed stacked in m/s classes.
 WIND_ROSE_SECTORS = 16
@@ -2056,6 +2058,7 @@ def _plot_layers(
     quiver_step,
     shared_scale,
     independent_scale,
+    layer_labels=None,
 ):
     """Stack ``--layer`` entries on shared Cartopy panels."""
     import cartopy.crs as ccrs
@@ -2065,6 +2068,8 @@ def _plot_layers(
 
     if shared_scale and independent_scale:
         raise UsageError("--shared-scale and --independent-scale are mutually exclusive")
+
+    label_slots = resolve_input_labels(layer_labels, len(layers), input_flag="--layer")
 
     inherited = []
     for spec in layers:
@@ -2101,6 +2106,13 @@ def _plot_layers(
             item = _prep_outline_layer(spec)
         else:
             raise UsageError(f"unknown --layer kind {spec.kind!r}")
+        label_override = label_slots[i]
+        if label_override:
+            item["cbar_label"] = label_override
+        elif spec.ds is not None and spec.kind in {"heatmap", "scatter", "quiver"}:
+            item["cbar_label"] = dataset_display_label(
+                spec.ds, item.get("cbar_label") or spec.path
+            )
         item["zorder"] = item["zorder"] + i * 0.01
         prepared.append(item)
 
@@ -2591,6 +2603,12 @@ def _heatmap(
     ),
 )
 @weather_skill.argument(
+    "--label",
+    action="append",
+    default=None,
+    help="Colorbar label for each --layer, in order. Omit to infer from metadata.",
+)
+@weather_skill.argument(
     "--shared-scale",
     action="store_true",
     help="Force one shared color scale across heatmap/scatter layers.",
@@ -2621,6 +2639,7 @@ def plot(
     quiver_step,
     output,
     layer=None,
+    label=None,
     shared_scale=False,
     independent_scale=False,
     **kwargs,
@@ -2674,6 +2693,7 @@ def plot(
             quiver_step,
             shared_scale,
             independent_scale,
+            layer_labels=label,
         )
         output = Path(output)
         output.parent.mkdir(parents=True, exist_ok=True)

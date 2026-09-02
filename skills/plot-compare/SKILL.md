@@ -90,6 +90,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
 
 ### Arguments
 - `--input`, `-i` — pass exactly twice. The first input is row A, the second is row B. Station-schema is allowed on either.
+- `--label` — row label for each `--input`, in order. When omitted, labels are
+  inferred from provenance (`weather_skills_source`, fetch skill history).
 - `--output`, `-o` — PNG path.
 - `--variable`, `-v` — variable for both rows. Per-row `--variable-a`/`-b`
   override it. Each resolved variable must exist in its own input.
@@ -102,9 +104,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
   colors to interpolate (e.g. `white,wheat,green`). Named matplotlib
   colormaps cannot contain commas, so a comma selects the custom-list
   form. When omitted, precipitation uses the discrete Kenya / ECMWF-S2S
-  classes (`white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,
-  purple` with `BoundaryNorm` over `[0, 10, 20, 40, 60, 80, 110, 150, 200,
-  250, 350]` mm). In independent-scale mode a non-precip row falls back
+  classes (`white,linen,wheat,lightgreen,green,lightblue,blue,yellow,orange,
+  purple` with `BoundaryNorm` over `[0, 1, 2, 5, 7, 10, 20, 50, 100, 200,
+  350]` mm). In independent-scale mode a non-precip row falls back
   to `viridis`.
 - `--colormap-a` / `--colormap-b` — per-row matplotlib colormap name or
   comma-separated colors in independent-scale mode. Precedence per row:

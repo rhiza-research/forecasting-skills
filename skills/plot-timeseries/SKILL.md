@@ -57,6 +57,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
 ### Arguments
 - `--input`, `-i` — input Zarr; repeat the flag for each input. Order is
   preserved and controls the legend order.
+- `--label` — legend label for each `--input`, in order. When omitted, labels
+  are inferred from station metadata, filename, or provenance.
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable of
   the first input. Must exist in every input.
@@ -73,7 +75,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   just one bar per time.
 - `--align-day-of-year` — opt-in (default off). Plot each trace against its
   day-of-year (1–366) instead of its absolute date, so inputs from different
-  years overlay on a shared x-axis; the x-axis label becomes `day of year`.
+  years overlay on a shared x-axis. Tick labels show calendar dates (e.g.
+  `Oct 1`); the x-axis label is `calendar day`.
   Caveats:
   - Requires a calendar-date time axis. It errors (exit 2) on a non-date axis,
     such as a forecast `step` timedelta; drop the flag or select a date dim

@@ -24,8 +24,8 @@ from pathlib import Path
 
 from weather_skills_core import DataError, Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
+from weather_skills_core.display_labels import dataset_display_label, resolve_input_labels
 from weather_skills_core.standard_utils import (
-    dataset_label,
     ensure_normalized_longitude,
     lat_slice,
     pick_time_dim,
@@ -46,6 +46,7 @@ _SKILL_VERSION = "0.0.2"
 # ECMWF-S2S4AFRICA / Kenya product palette (same as plot).
 PRECIP_COLORS = [
     "white",
+    "linen",
     "wheat",
     "lightgreen",
     "green",
@@ -53,10 +54,9 @@ PRECIP_COLORS = [
     "blue",
     "yellow",
     "orange",
-    "red",
     "purple",
 ]
-PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
+PRECIP_BOUNDS = [0, 1, 2, 5, 7, 10, 20, 50, 100, 200, 350]
 
 _NS_PER_DAY = 86_400_000_000_000
 _TOL_NS = 1_000_000_000  # 1 s, matching plot-compare
@@ -490,6 +490,12 @@ def _extent_from_da(da, lat_dim, lon_dim, bbox):
     help="Cap on columns (earliest N of the union). Default: all union columns.",
 )
 @weather_skill.argument(
+    "--label",
+    action="append",
+    default=None,
+    help="Row label for each --input, in order. Omit to infer from metadata.",
+)
+@weather_skill.argument(
     "--mask-geojson",
     default=None,
     help="GeoJSON polygon; gridded cells outside become NaN.",
@@ -501,6 +507,7 @@ def plot_compare_forecasts(
     colormap,
     title,
     panels,
+    label,
     mask_geojson,
     output,
     **kwargs,
@@ -530,10 +537,14 @@ def plot_compare_forecasts(
                 f"variable '{variable}' missing from input {idx + 1}. "
                 f"Available: {list(one.data_vars)}"
             )
+    label_slots = resolve_input_labels(label, len(ds))
     datasets = [
         precip_for_display(to_standard_units(one, variables=[variable]), variable) for one in ds
     ]
-    labels = [dataset_label(ds, f"input {idx + 1}") for idx, ds in enumerate(datasets)]
+    labels = [
+        slot or dataset_display_label(one, f"input {idx + 1}")
+        for idx, (slot, one) in enumerate(zip(label_slots, datasets, strict=True))
+    ]
 
     unit_vals = []
     seen_units = {}

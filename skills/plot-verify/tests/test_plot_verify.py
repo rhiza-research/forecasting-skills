@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from conftest import load_skill, make_forecast, make_gridded, run_skill, write_zarr
+from weather_skills_core.errors import UsageError
 from weather_skills_core.provenance import load_figure_history
 
 
@@ -119,6 +120,22 @@ def test_row_labels_fallback_without_source(plot_mod):
     obs = _week(event_at=[])
     fc = _week(event_at=[])
     assert plot_mod._row_labels(obs, [fc]) == ("Observation", "Forecast", "Hits")
+
+
+def test_row_labels_explicit_overrides(plot_mod):
+    obs = _week(event_at=[])
+    a = _week(event_at=[])
+    b = _week(event_at=[])
+    assert plot_mod._row_labels(
+        obs, [a, b], "hits", labels=["Obs custom", "Fc A", "Fc B"]
+    ) == ("Obs custom", "Fc A / Fc B", "Hits")
+
+
+def test_label_count_mismatch_is_refused(plot_mod):
+    obs = _week(event_at=[])
+    fc = _week(event_at=[])
+    with pytest.raises(UsageError, match="expected 2 --label"):
+        plot_mod._row_labels(obs, [fc], labels=["Only obs"])
 
 
 def test_custom_lead_labels(tmp_path, plot_fn, verify_fn, capsys):

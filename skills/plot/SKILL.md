@@ -27,7 +27,7 @@ Source-agnostic visualization. Single-input styles (`-i`) plus layered maps
   (`number` dim) are averaged before plotting. Use `--index` to override the
   default reduction for any other extra dim. Precipitation variables default
   to the discrete Kenya / ECMWF-S2S product classes (white–wheat–green–blue–
-  yellow–orange–red–purple at 0, 10, 20, 40, 60, 80, 110, 150, 200, 250,
+  yellow–orange–purple at 0, 1, 2, 5, 7, 10, 20, 50, 100, 200,
   350 mm), matching `kenya-forecast-png` weekly/dekadal precip maps; other
   variables default to `viridis`.
 - `contour` — the same map layout as `heatmap` (panels, shared color scale,
@@ -120,6 +120,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
 - `--layer` — repeatable map layer `KIND:PATH` or `KIND:PATH::k=v`. Kinds:
   `heatmap`, `scatter`, `quiver`, `outline`, `mask`. Cannot mix with `-i` or
   with `--style timeseries|contour|windrose|quiver`.
+- `--label` — colorbar label for each `--layer`, in order. When omitted,
+  heatmap/scatter/quiver layers infer a short product name from provenance;
+  outline/mask layers ignore it.
 - `--shared-scale` / `--independent-scale` — layered heatmap/scatter color
   scales. Default: share when the layers resolve to the same variable and
   matching units.
@@ -144,8 +147,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
   matplotlib colormaps cannot contain commas, so the presence of a comma
   unambiguously selects the custom-list form. When omitted, precipitation
   (rate or amount) uses the discrete Kenya / ECMWF-S2S product classes
-  (`white,wheat,lightgreen,green,lightblue,blue,yellow,orange,red,purple`
-  with `BoundaryNorm` over `[0, 10, 20, 40, 60, 80, 110, 150, 200, 250,
+  (`white,linen,wheat,lightgreen,green,lightblue,blue,yellow,orange,purple`
+  with `BoundaryNorm` over `[0, 1, 2, 5, 7, 10, 20, 50, 100, 200,
   350]` mm); every other variable uses `viridis`. Windrose uses a blue→orange
   speed palette; `--colormap` recolors the speed stacks. Quiver defaults to
   `YlGn` (S2S 10 m / 700 hPa wind-vector maps); `--colormap PiYG` matches their

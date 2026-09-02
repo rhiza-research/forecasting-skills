@@ -18,12 +18,16 @@
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
+from weather_skills_core.display_labels import (
+    combine_display_labels,
+    dataset_display_label,
+    resolve_input_labels,
+)
 from weather_skills_core.standard_utils import (
     ensure_normalized_longitude,
     lat_slice,
@@ -49,6 +53,7 @@ _VERIFY_VARS = {
 
 PRECIP_COLORS = [
     "white",
+    "linen",
     "wheat",
     "lightgreen",
     "green",
@@ -56,126 +61,11 @@ PRECIP_COLORS = [
     "blue",
     "yellow",
     "orange",
-    "red",
     "purple",
 ]
-PRECIP_BOUNDS = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
+PRECIP_BOUNDS = [0, 1, 2, 5, 7, 10, 20, 50, 100, 200, 350]
 _ROW_FALLBACKS = ("Observation", "Forecast", "Verification")
 _METRIC_ROW_LABELS = {"hits": "Hits", "bias": "Bias", "mae": "MAE"}
-_DATE_TAIL = re.compile(r"[_-]\d{4}-\d{2}-\d{2}(?:[_-]\d{2}-\d{2}-\d{2})?$")
-_VAR_TAIL = re.compile(r"[_-](?:precip|tp)$", re.I)
-_SOURCE_LABELS = {
-    "arco-era5": "ERA5",
-    "chirps": "CHIRPS",
-    "cmip6": "CMIP6",
-    "ecmwf-s2s": "ECMWF S2S",
-    "ecmwf_s2s": "ECMWF S2S",
-    "gefs": "GEFS",
-    "ghcn-daily": "GHCN-Daily",
-    "imerg": "IMERG",
-    "kenya-forecasting-data": "Kenya forecast",
-    "oisst": "OISST",
-    "openaq": "OpenAQ",
-    "smap": "SMAP",
-    "tahmo": "TAHMO",
-}
-_FETCH_SKILL_LABELS = {
-    "arco-era5-fetch": "ERA5",
-    "chirps-fetch": "CHIRPS",
-    "cmip6-fetch": "CMIP6",
-    "dynamical-fetch": "Dynamical",
-    "ecmwf-fetch": "ECMWF S2S",
-    "ghcn-daily-fetch": "GHCN-Daily",
-    "imerg-fetch": "IMERG",
-    "kenya-forecast-fetch": "Kenya forecast",
-    "oisst-fetch": "OISST",
-    "openaq-fetch": "OpenAQ",
-    "smap-fetch": "SMAP",
-    "tahmo-fetch": "TAHMO",
-}
-
-
-def _prettify_token(text: str) -> str:
-    key = text.lower().replace("_", "-")
-    for src_key, display in sorted(_SOURCE_LABELS.items(), key=lambda item: -len(item[0])):
-        sk = src_key.replace("_", "-")
-        if key == sk or key.startswith(f"{sk}-"):
-            return display
-    parts = [p for p in re.split(r"[_-]+", text.strip()) if p]
-    if not parts:
-        return text
-    out = []
-    for part in parts:
-        low = part.lower()
-        if low in {"ecmwf", "s2s", "ghcn", "cmip6", "gefs", "oisst", "imerg", "smap"}:
-            out.append(part.upper())
-        elif low == "chirps":
-            out.append("CHIRPS")
-        else:
-            out.append(part.capitalize())
-    return " ".join(out)
-
-
-def _normalize_stem(stem: str) -> str:
-    base = _DATE_TAIL.sub("", stem)
-    return _VAR_TAIL.sub("", base)
-
-
-def _label_from_history(ds) -> str | None:
-    import json
-
-    raw = ds.attrs.get("weather_skills_history")
-    if not raw:
-        return None
-    try:
-        history = json.loads(raw) if isinstance(raw, str) else list(raw)
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return None
-    if not history or not isinstance(history[0], dict):
-        return None
-    skill = history[0].get("skill")
-    if not isinstance(skill, str) or not skill.strip():
-        return None
-    skill = skill.strip()
-    if skill in _FETCH_SKILL_LABELS:
-        return _FETCH_SKILL_LABELS[skill]
-    if skill.endswith("-fetch"):
-        return _prettify_token(skill[: -len("-fetch")])
-    return _prettify_token(skill)
-
-
-def _label_from_source_token(token: str) -> str:
-    text = token.strip()
-    if not text:
-        return ""
-    if ":" in text and "/" not in text and "\\" not in text and not text.endswith(".zarr"):
-        head, _, tail = text.partition(":")
-        if head in _SOURCE_LABELS:
-            return _SOURCE_LABELS[head]
-        if head in _FETCH_SKILL_LABELS:
-            return _FETCH_SKILL_LABELS[head]
-        return _prettify_token(tail or head)
-    if "/" in text or "\\" in text or text.endswith(".zarr"):
-        text = Path(text).stem
-    return _prettify_token(_normalize_stem(text))
-
-
-def _row_product_label(ds, fallback: str) -> str:
-    """Short product name for row titles — not per-init filenames."""
-    label = _label_from_history(ds)
-    if label:
-        return label
-    src = ds.attrs.get("weather_skills_source")
-    if isinstance(src, str) and src.strip():
-        label = _label_from_source_token(src)
-        if label:
-            return label
-    enc = ds.encoding.get("source")
-    if isinstance(enc, str) and enc.strip():
-        label = _label_from_source_token(enc)
-        if label:
-            return label
-    return fallback
 
 
 def _metric_from_verify(ds, role: str) -> str:
@@ -195,12 +85,20 @@ def _verify_field(ds, metric: str, role: str):
     return ds[name]
 
 
-def _row_labels(obs, forecasts, metric="hits"):
+def _row_labels(obs, forecasts, metric="hits", labels=None):
     """Y-axis product names: one short label per row, not per --forecast file."""
-    obs_label = _row_product_label(obs, _ROW_FALLBACKS[0])
-    fc_names = [_row_product_label(ds, _ROW_FALLBACKS[1]) for ds in forecasts]
-    unique = list(dict.fromkeys(fc_names))
-    forecast_label = unique[0] if len(unique) == 1 else " / ".join(unique)
+    n_fc = len(forecasts)
+    slots = (
+        resolve_input_labels(labels, 1 + n_fc, input_flag="--obs and --forecast")
+        if labels
+        else [None] * (1 + n_fc)
+    )
+    obs_label = slots[0] or dataset_display_label(obs, _ROW_FALLBACKS[0])
+    fc_labels = [
+        slot or dataset_display_label(ds, _ROW_FALLBACKS[1])
+        for slot, ds in zip(slots[1:], forecasts, strict=True)
+    ]
+    forecast_label = combine_display_labels(fc_labels)
     verify_label = _METRIC_ROW_LABELS.get(metric, _ROW_FALLBACKS[2])
     return (obs_label, forecast_label, verify_label)
 
@@ -458,6 +356,15 @@ def _prepare(ds, variable):
         "Default: discrete Kenya/S2S precip classes for precip, else viridis."
     ),
 )
+@weather_skill.argument(
+    "--label",
+    action="append",
+    default=None,
+    help=(
+        "Display label for row titles. Pass once for --obs, then once per --forecast "
+        "(same order). Omit to infer from provenance or weather_skills_source."
+    ),
+)
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
     "--mask-geojson",
@@ -472,6 +379,7 @@ def plot_verify(
     variable,
     lead,
     colormap,
+    label,
     title,
     mask_geojson,
     output,
@@ -502,7 +410,7 @@ def plot_verify(
             f"all --verify inputs must share the same verify_metric; got {metrics}."
         )
     metric = metrics[0]
-    row_labels = _row_labels(obs, forecasts, metric)
+    row_labels = _row_labels(obs, forecasts, metric, labels=label)
 
     import matplotlib
 

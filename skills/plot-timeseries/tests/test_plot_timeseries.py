@@ -159,6 +159,54 @@ def test_trace_label_uses_filename_when_source_is_shared():
     assert mod._trace_label(ds, 0) == "ta00072"
 
 
+def test_trace_label_respects_explicit_override():
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    ds = make_gridded(n_time=2)
+    assert mod._trace_label(ds, 0, "Custom name") == "Custom name"
+
+
+def test_day_of_year_tick_label():
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    assert mod._day_of_year_tick_label(1) == "Jan 1"
+    assert mod._day_of_year_tick_label(274) == "Oct 1"
+    assert mod._day_of_year_tick_label(366) == "Dec 31"
+
+
+def test_apply_day_of_year_ticks(tmp_path, plot_timeseries):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    fig, ax = plt.subplots()
+    ax.plot([1, 180, 274, 365], [1, 2, 3, 4])
+    ax.set_xlim(1, 366)
+    mod._apply_day_of_year_ticks(ax)
+    fig.canvas.draw()
+    labels = [tick.get_text() for tick in ax.get_xticklabels()]
+    assert "Oct 1" in labels
+    assert "Jan 1" in labels
+    assert "274" not in labels
+    plt.close(fig)
+
+    src = write_zarr(make_gridded(n_time=12, start="2023-01-01"), tmp_path / "in.zarr")
+    out = tmp_path / "doy.png"
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--align-day-of-year",
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+    )
+    assert out.exists()
+
+
 def test_bar_writes_png(tmp_path, plot_timeseries):
     src = write_zarr(make_gridded(), tmp_path / "in.zarr")
     out = tmp_path / "bars.png"

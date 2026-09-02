@@ -67,6 +67,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_verify.py \
 - `--variable`, `-v` — obs/forecast data variable (verify Zarrs carry
   their own verification variable).
 - `--lead` — column title, once per `--forecast`.
+- `--label` — row title override. Pass once for `--obs`, then once per
+  `--forecast` (same order). The forecast row uses one label when all match,
+  otherwise joins unique labels with ` / `. The verify row stays the metric
+  name (Hits, Bias, MAE). When omitted, row titles are inferred from provenance.
 - `--colormap`, `--title`, `--bbox`, `--mask-geojson`, `--output` — as before.
 
 ### Output
