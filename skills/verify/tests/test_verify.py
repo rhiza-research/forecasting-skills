@@ -50,7 +50,7 @@ def test_hit_disagree_and_below(tmp_path, verify_fn):
     assert ds["event_hit"].attrs["event_threshold"] == 1.0
     assert ds["event_hit"].attrs["event_variable"] == "precip"
     assert ds.attrs["verify_metric"] == "hits"
-    assert "hit rate" in ds.attrs.get("verify_score_summary", "")
+    assert "hit rate 50%" in ds.attrs.get("verify_score_summary", "")
     assert load_history(out)[-1]["skill"] == "verify"
 
 
@@ -101,6 +101,7 @@ def test_bias_writes_field(tmp_path, verify_fn, capsys):
     ds = xr.open_zarr(out, consolidated=True)
     assert "bias" in ds
     assert ds.attrs["verify_metric"] == "bias"
+    assert ds["bias"].values == pytest.approx(2.0)
     assert "bias" in capsys.readouterr().out
 
 

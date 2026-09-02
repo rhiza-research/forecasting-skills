@@ -10,28 +10,23 @@
 """Forecast vs observation verification: hits, bias, or MAE."""
 
 import sys
-from pathlib import Path
 
-_SCRIPTS = Path(__file__).resolve().parent
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
-
+import numpy as np
+import xarray as xr
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable
-from weather_skills_core.units import units_equal, variable_units
-
-from verification import (
-    METRICS,
-    compute,
-    field_attrs,
-    format_score,
-    lat_dim_for,
-    require_obs_on_forecast_grid,
-    score_summary,
+from weather_skills_core.standard_utils import latitude_weights
+from weather_skills_core.units import (
+    format_units_for_display,
+    units_equal,
+    variable_units,
 )
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
+
+_METRICS = ("hits", "bias", "mae")
+_VAR = {"hits": "event_hit", "bias": "bias", "mae": "mae"}
 
 
 @weather_skill(
@@ -43,7 +38,7 @@ _SKILL_VERSION = "0.0.2"
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
     "--metric",
-    choices=list(METRICS),
+    choices=list(_METRICS),
     default="hits",
     help="Verification metric: hits (event classification), bias (forecast − obs), or mae.",
 )
@@ -63,15 +58,53 @@ def verify(forecast, obs, variable, metric, threshold, **kwargs):
                 f"variable {name!r} missing from --{role}. Available: {list(ds.data_vars)}"
             )
 
-    fc_da, obs_da = forecast[fc_name], obs[obs_name]
-
-    if "step" in fc_da.dims and "time" not in fc_da.dims and "time" in obs_da.dims:
+    fc, truth = forecast[fc_name], obs[obs_name]
+    if "step" in fc.dims and "time" not in fc.dims and "time" in truth.dims:
         raise UsageError(
             "forecast still has a step axis; run step-to-time before verify "
             "so valid times can align with --obs."
         )
 
-    require_obs_on_forecast_grid(forecast, obs)
+    mismatched = []
+    for axis, names in (("latitude", ("latitude", "lat")), ("longitude", ("longitude", "lon"))):
+        a = next((n for n in names if n in forecast.dims), None)
+        b = next((n for n in names if n in obs.dims), None)
+        if not a or not b:
+            continue
+        fa = np.asarray(forecast[a].values, dtype=float)
+        fb = np.asarray(obs[b].values, dtype=float)
+        if fa.size < 2 or fb.size < 2:
+            continue
+        if not np.isclose(
+            float(np.median(np.abs(np.diff(fa)))),
+            float(np.median(np.abs(np.diff(fb)))),
+            rtol=0.01,
+            atol=1e-6,
+        ):
+            mismatched.append(axis)
+    if mismatched:
+        raise UsageError(
+            "obs grid spacing does not match the forecast on "
+            f"{' and '.join(mismatched)}; coarsen --obs onto the forecast "
+            "lat/lon resolution (and offset) before verify. Do not "
+            "downscale the forecast to the obs grid."
+        )
+
+    pair = []
+    for da in (fc, truth):
+        if getattr(getattr(da, "pint", None), "units", None) is not None:
+            da = da.pint.dequantify()
+        if "number" in da.dims:
+            da = da.mean("number", keep_attrs=True)
+        pair.append(da)
+    fc, truth = xr.align(*pair, join="inner")
+    if any(size == 0 for size in fc.sizes.values()):
+        raise UsageError(
+            "no overlapping coordinates between --forecast and --obs; "
+            "coarsen --obs onto the forecast grid (match obs to the forecast "
+            "resolution, not the reverse) and align time "
+            "(step-to-time / aggregate-temporal) first."
+        )
 
     u_fc = variable_units(forecast[fc_name])
     u_obs = variable_units(obs[obs_name])
@@ -88,35 +121,79 @@ def verify(forecast, obs, variable, metric, threshold, **kwargs):
             "as stored.",
             file=sys.stderr,
         )
-
     if metric != "hits" and threshold != 1.0:
         print(
             f"Note: --threshold {threshold} is ignored for --metric {metric}.",
             file=sys.stderr,
         )
 
-    result = compute(fc_da, obs_da, metric=metric, threshold=threshold)
-    attrs = field_attrs(
-        metric,
-        threshold=threshold,
-        fc_name=fc_name,
-        obs_name=obs_name,
-        source_attrs=dict(forecast[fc_name].attrs),
-    )
-    result.field.attrs = attrs
-
-    summary = score_summary(
-        metric,
-        field=result.field,
-        obs_event=result.obs_event,
-        units=u_fc or u_obs,
-    )
-    if lat_dim_for(result.field) is not None:
-        print(format_score("verify", metric, field=result.field, obs_event=result.obs_event, units=u_fc or u_obs))
+    valid = fc.notnull() & truth.notnull()
+    obs_event = None
+    if metric == "hits":
+        fc_event = fc >= threshold
+        obs_event = truth >= threshold
+        field = xr.where(fc_event & obs_event, 1, xr.where(fc_event != obs_event, -1, 0))
+    elif metric == "bias":
+        field = fc - truth
     else:
-        print(f"verify  {metric}  (no latitude dim for regional score)")
+        field = np.abs(fc - truth)
+    field = field.astype("float32").where(valid)
+    field.name = _VAR[metric]
 
-    out = result.field.to_dataset()
+    attrs = {
+        k: v
+        for k, v in forecast[fc_name].attrs.items()
+        if k not in ("standard_name", "GRIB_name", "GRIB_paramId")
+    }
+    attrs["verify_metric"] = metric
+    if metric == "hits":
+        attrs.update(
+            long_name="Event verification",
+            units="1",
+            flag_values=np.array([-1, 0, 1], dtype=np.int8),
+            flag_meanings="disagree below hit",
+            event_threshold=threshold,
+            event_variable=fc_name if fc_name == obs_name else f"{fc_name},{obs_name}",
+        )
+    elif metric == "bias":
+        attrs["long_name"] = "Forecast bias (forecast − observation)"
+    else:
+        attrs["long_name"] = "Mean absolute error"
+    field.attrs = attrs
+
+    finite = field.notnull()
+    if metric == "hits":
+        n_obs = int(obs_event.where(finite, False).sum())
+        n_hit = int(((field == 1) & finite).sum())
+        summary = (
+            "hit rate n/a  (0 obs events)"
+            if n_obs == 0
+            else f"hit rate {100 * n_hit / n_obs:.0f}%  ({n_hit}/{n_obs} obs events)"
+        )
+    else:
+        lat = next((n for n in ("latitude", "lat") if n in field.dims), None)
+        u = format_units_for_display(u_fc or u_obs) if (u_fc or u_obs) else ""
+        u_suffix = f" {u}" if u else ""
+        value = None
+        if lat is None:
+            summary = f"{metric} n/a  (no latitude dim)"
+        else:
+            weights = latitude_weights(field[lat]).broadcast_like(field)
+            if bool(finite.any()):
+                num = (field * weights).where(finite).sum(skipna=True)
+                den = weights.where(finite).sum(skipna=True)
+                if den != 0 and np.isfinite(float(den)):
+                    value = float(num / den)
+            if value is None:
+                summary = f"{metric} n/a  (no finite cells)"
+            elif metric == "bias":
+                sign = "+" if value >= 0 else ""
+                summary = f"bias {sign}{value:.2g}{u_suffix}  (cos-lat mean)"
+            else:
+                summary = f"MAE {value:.2g}{u_suffix}  (cos-lat mean)"
+    print(f"verify  {summary}")
+
+    out = field.to_dataset()
     out.attrs["Conventions"] = "CF-1.13"
     out.attrs["verify_metric"] = metric
     out.attrs["verify_score_summary"] = summary
