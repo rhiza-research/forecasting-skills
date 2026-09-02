@@ -5,6 +5,7 @@
 #   "cftime",
 #   "fsspec",
 #   "aiohttp",
+#   "dask",
 #   "xarray",
 #   "zarr",
 #   "numpy",
