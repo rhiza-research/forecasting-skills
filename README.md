@@ -54,7 +54,7 @@ credentialed or source-specific fetcher only when it does not.
 | `difference` | Subtract one dataset from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
 | `zonal-moisture-transport` | Eastward moisture flux `q·u`, default column-integrated to IVT (`viwve`, kg m-1 s-1). Compose after `ecmwf-fetch -v q -v u` |
 | `verify` | Forecast vs obs verification: `--metric hits|bias|mae` (hits = event classification). Plot the output with `plot`. |
-| `plot` | Heatmap, filled-contour, timeseries, wind-rose, quiver, or **layered** map (repeatable `--layer heatmap:…` / `scatter:…` / `outline:…`) from one or more datasets |
+| `plot` | Heatmap, filled-contour, timeseries, **xy scatter**, wind-rose, quiver, or **layered** map (repeatable `--layer heatmap:…` / `scatter:…` / `outline:…`) from one or more datasets |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-compare-forecasts` | N-dataset comparison grid (rows = forecasts and/or gridded obs; columns = union of times); missing times are blank `n/a` cells |
 | `plot-verify` | Lead-week verification **map** grid from pre-computed `verify` Zarrs (one `--verify` per `--forecast`) |

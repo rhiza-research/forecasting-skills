@@ -15,7 +15,7 @@
 #   "pint-xarray>=0.6",
 # ]
 # ///
-"""Render a heatmap, timeseries, wind-rose, or quiver PNG from a weather-skills standard dataset Zarr."""
+"""Render a heatmap, timeseries, xy scatter, wind-rose, or quiver PNG from a weather-skills standard dataset Zarr."""
 
 import argparse
 import json
@@ -977,6 +977,167 @@ def _timeseries_axis(da, sdim):
     if init.dtype.kind != "M":
         return da[sdim].values, sdim
     return (init + steps).astype("datetime64[ns]"), "Valid time"
+
+
+def _calendar_year(value) -> int:
+    """Calendar year from a datetime-like sample (numpy, cftime, or datetime)."""
+    import numpy as np
+
+    if hasattr(value, "year"):
+        return int(value.year)
+    arr = np.asarray(value)
+    if arr.dtype.kind == "M":
+        return int(arr.astype("datetime64[Y]").astype(int) + 1970)
+    raise UsageError(f"--pair-on year needs datetime samples; got {value!r}")
+
+
+def _pair_key(value, pair_on: str):
+    """Hashable alignment key for one sample along ``--pair-on``."""
+    import numpy as np
+
+    if pair_on == "year":
+        return _calendar_year(value)
+    arr = np.asarray(value)
+    if arr.dtype.kind == "M":
+        return str(np.datetime64(arr, "D"))
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    return value
+
+
+def _xy_1d(ds, variable, overrides, bbox_nwse, region_polygon, role: str):
+    """Reduce one input to a 1D series plus pairing-axis values."""
+    import numpy as np
+
+    variable = variable or auto_variable(ds)
+    if not variable or variable not in ds:
+        raise UsageError(
+            f"{role} has no usable variable {variable!r}. Available: {list(ds.data_vars)}"
+        )
+    try:
+        ds = to_standard_units(ds, variables=[variable])
+    except UsageError:
+        # Totals (mm) or anomalies can still carry a rate/temp standard_name
+        # that classify_variable would force into an incompatible target.
+        pass
+    ds = precip_for_display(ds, variable)
+    da = _apply_index(_plain(ds[variable]), overrides, list_dims=())
+    lat_dim = cf_dim(da, "latitude")
+    lon_dim = cf_dim(da, "longitude")
+    if (bbox_nwse is not None or region_polygon is not None) and lat_dim and lon_dim:
+        if lat_dim in da.dims and lon_dim in da.dims:
+            da, _ = _subset_spatial(da, lat_dim, lon_dim, bbox_nwse, region_polygon, None)
+    sdim = "step" if "step" in da.dims else cf_dim(da, "time")
+    if sdim is None:
+        if da.ndim == 1:
+            sdim = da.dims[0]
+        else:
+            raise UsageError(
+                f"{role} needs a time/step axis to pair samples; got {list(da.dims)}."
+            )
+    reduce_dims = [d for d in da.dims if d != sdim]
+    reduced = da.mean(reduce_dims, keep_attrs=True) if reduce_dims else da
+    axis_vals, _ = _timeseries_axis(reduced, sdim)
+    values = np.asarray(_plain(reduced).values, dtype=float)
+    return reduced, np.asarray(axis_vals), values
+
+
+def _pair_xy(x_axis, x_vals, y_axis, y_vals, pair_on: str):
+    """Inner-join two 1D series on time, calendar year, or position."""
+    import numpy as np
+
+    x_vals = np.asarray(x_vals, dtype=float)
+    y_vals = np.asarray(y_vals, dtype=float)
+    if pair_on == "index":
+        if x_vals.size != y_vals.size:
+            raise UsageError(
+                f"--pair-on index needs the same number of samples "
+                f"(--x has {x_vals.size}, --y has {y_vals.size})."
+            )
+        keys = list(range(x_vals.size))
+        return x_vals, y_vals, keys
+
+    x_keys = [_pair_key(v, pair_on) for v in np.ravel(x_axis)]
+    y_keys = [_pair_key(v, pair_on) for v in np.ravel(y_axis)]
+    x_map: dict = {}
+    for i, key in enumerate(x_keys):
+        if key in x_map:
+            raise UsageError(
+                f"--pair-on {pair_on} has duplicate {key!r} on --x; "
+                "aggregate or select so each key appears once."
+            )
+        x_map[key] = i
+    y_map: dict = {}
+    for i, key in enumerate(y_keys):
+        if key in y_map:
+            raise UsageError(
+                f"--pair-on {pair_on} has duplicate {key!r} on --y; "
+                "aggregate or select so each key appears once."
+            )
+        y_map[key] = i
+    shared = [key for key in x_keys if key in y_map]
+    if not shared:
+        raise UsageError(
+            f"--pair-on {pair_on} found no matching samples between --x and --y."
+        )
+    x_out = np.array([x_vals[x_map[k]] for k in shared], dtype=float)
+    y_out = np.array([y_vals[y_map[k]] for k in shared], dtype=float)
+    return x_out, y_out, shared
+
+
+def _plot_xy(
+    x_ds,
+    y_ds,
+    x_variable,
+    y_variable,
+    pair_on,
+    overrides,
+    bbox_nwse,
+    mask_geojson,
+    title,
+    xlabel,
+    ylabel,
+    fontsize,
+):
+    """Scatter --x against --y after reducing each input to 1D and pairing samples."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    region_polygon = polygon_from_geojson(mask_geojson) if mask_geojson else None
+    x_da, x_axis, x_raw = _xy_1d(
+        x_ds, x_variable, overrides, bbox_nwse, region_polygon, "--x"
+    )
+    y_da, y_axis, y_raw = _xy_1d(
+        y_ds, y_variable, overrides, bbox_nwse, region_polygon, "--y"
+    )
+    x_vals, y_vals, keys = _pair_xy(x_axis, x_raw, y_axis, y_raw, pair_on)
+    finite = np.isfinite(x_vals) & np.isfinite(y_vals)
+    x_vals, y_vals = x_vals[finite], y_vals[finite]
+    keys = [k for k, keep in zip(keys, finite, strict=True) if keep]
+    if x_vals.size == 0:
+        raise UsageError("xy scatter has no finite paired samples to plot.")
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(x_vals, y_vals, s=36, zorder=3)
+    if pair_on == "year" or (pair_on == "time" and x_vals.size <= 25):
+        for xv, yv, key in zip(x_vals, y_vals, keys, strict=True):
+            ax.annotate(
+                str(key),
+                (xv, yv),
+                textcoords="offset points",
+                xytext=(4, 4),
+                fontsize=max(8, int(round(fontsize * 0.55))),
+            )
+    tick_fs = max(10, int(round(fontsize * 0.7)))
+    ax.set_xlabel(_resolve_axis_label(xlabel, _variable_label(x_da)), fontsize=fontsize)
+    ax.set_ylabel(_resolve_axis_label(ylabel, _variable_label(y_da)), fontsize=fontsize)
+    x_qty = variable_label_for_display(x_da, include_units=False)
+    y_qty = variable_label_for_display(y_da, include_units=False)
+    ax.set_title(title or f"{y_qty} vs {x_qty}", fontsize=fontsize)
+    ax.tick_params(labelsize=tick_fs)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    return fig
 
 
 def _panel_title(da, sdim, step_value, all_steps):
@@ -2747,6 +2908,22 @@ def _heatmap(
 )
 @weather_skill.argument("-i", "--input", type=Dataset("any"), required=False, default=None)
 @weather_skill.argument(
+    "--x",
+    dest="x_ds",
+    type=Dataset("any"),
+    required=False,
+    default=None,
+    help="X-axis Zarr for --style xy. Mutually exclusive with -i/--input.",
+)
+@weather_skill.argument(
+    "--y",
+    dest="y_ds",
+    type=Dataset("any"),
+    required=False,
+    default=None,
+    help="Y-axis Zarr for --style xy. Mutually exclusive with -i/--input.",
+)
+@weather_skill.argument(
     "--layer",
     action="append",
     default=None,
@@ -2761,8 +2938,27 @@ def _heatmap(
 @weather_skill.argument("--bbox")
 @weather_skill.argument("--variable", "-v")
 @weather_skill.argument(
+    "--x-variable",
+    default=None,
+    help="X-axis variable for --style xy. Defaults to the first data variable of --x (or -i).",
+)
+@weather_skill.argument(
+    "--y-variable",
+    default=None,
+    help="Y-axis variable for --style xy. Defaults to the first data variable of --y (or -i).",
+)
+@weather_skill.argument(
+    "--pair-on",
+    choices=["time", "year", "index"],
+    default="time",
+    help=(
+        "How --style xy matches --x to --y samples: shared time (default), "
+        "calendar year (e.g. September IOD vs October rain), or position."
+    ),
+)
+@weather_skill.argument(
     "--style",
-    choices=["heatmap", "contour", "timeseries", "windrose", "quiver"],
+    choices=["heatmap", "contour", "timeseries", "xy", "windrose", "quiver"],
     default="heatmap",
 )
 @weather_skill.argument(
@@ -2839,7 +3035,7 @@ def _heatmap(
 @weather_skill.argument(
     "--mask-geojson",
     default=None,
-    help="GeoJSON polygon; cells/points outside become NaN (heatmap, contour, quiver, windrose).",
+    help="GeoJSON polygon; cells/points outside become NaN (heatmap, contour, quiver, windrose, xy).",
 )
 @weather_skill.argument(
     "--draw-box",
@@ -2912,9 +3108,14 @@ def plot(
     label=None,
     shared_scale=False,
     independent_scale=False,
+    x_ds=None,
+    y_ds=None,
+    x_variable=None,
+    y_variable=None,
+    pair_on="time",
     **kwargs,
 ):
-    """Render a heatmap, contour, timeseries, wind-rose, quiver, or layered map PNG from weather-skills Zarrs."""
+    """Render a heatmap, contour, timeseries, xy scatter, wind-rose, quiver, or layered map PNG from weather-skills Zarrs."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -2925,9 +3126,29 @@ def plot(
     layers = layer or []
     if layers and ds is not None:
         raise UsageError("pass either -i/--input or --layer, not both")
-    if not layers and ds is None:
+    if layers and (x_ds is not None or y_ds is not None):
+        raise UsageError("pass either --layer or --x/--y, not both")
+    if ds is not None and (x_ds is not None or y_ds is not None):
+        raise UsageError("pass either -i/--input or --x/--y, not both")
+    if style == "xy":
+        if layers:
+            raise UsageError("--layer cannot be used with --style xy")
+        if x_ds is None and y_ds is None:
+            if ds is None:
+                raise UsageError(
+                    "--style xy needs --x and --y, or -i with --x-variable and --y-variable"
+                )
+            if not x_variable or not y_variable:
+                raise UsageError(
+                    "with a single -i, --style xy needs both --x-variable and --y-variable"
+                )
+            x_ds = ds
+            y_ds = ds
+        elif x_ds is None or y_ds is None:
+            raise UsageError("--style xy needs both --x and --y")
+    elif not layers and ds is None:
         raise UsageError("pass -i/--input or at least one --layer")
-    if layers and style in ("timeseries", "windrose", "contour"):
+    if layers and style in ("timeseries", "xy", "windrose", "contour"):
         raise UsageError(f"--layer cannot be used with --style {style}")
     if layers and style == "quiver":
         raise UsageError(
@@ -3018,6 +3239,26 @@ def plot(
                     f"Warning: {flag} is ignored for --style {style}.",
                     file=sys.stderr,
                 )
+    elif style == "xy":
+        for flag, set_ in map_only.items():
+            if set_:
+                print(
+                    f"Warning: {flag}{_flag_detail(flag)} is a map-only option; "
+                    f"ignored for --style {style}.",
+                    file=sys.stderr,
+                )
+        for flag, set_ in {**uv_flags, **quiver_only}.items():
+            if set_:
+                print(
+                    f"Warning: {flag} is ignored for --style {style}.",
+                    file=sys.stderr,
+                )
+        if variable:
+            print(
+                "Warning: --variable is ignored for --style xy; "
+                "use --x-variable/--y-variable.",
+                file=sys.stderr,
+            )
     elif style in ("heatmap", "contour"):
         for flag, set_ in {**uv_flags, **quiver_only}.items():
             if set_:
@@ -3034,7 +3275,22 @@ def plot(
                     file=sys.stderr,
                 )
 
-    if style == "windrose":
+    if style == "xy":
+        fig = _plot_xy(
+            x_ds,
+            y_ds,
+            x_variable,
+            y_variable,
+            pair_on,
+            overrides,
+            bbox_nwse,
+            mask_geojson,
+            title,
+            xlabel,
+            ylabel,
+            fontsize,
+        )
+    elif style == "windrose":
         fig = _plot_windrose(
             ds,
             u_variable,

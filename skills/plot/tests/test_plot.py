@@ -1045,6 +1045,131 @@ def test_layer_rejects_timeseries_style(tmp_path, plot_fn):
         )
 
 
+def test_calendar_year_and_pair_key():
+    plot_mod = load_skill("plot", "plot")
+    assert plot_mod._calendar_year(np.datetime64("2024-09-15")) == 2024
+    assert plot_mod._pair_key(np.datetime64("2024-09-15"), "year") == 2024
+    assert plot_mod._pair_key(np.datetime64("2024-09-15T06:00"), "time") == "2024-09-15"
+
+
+def test_pair_xy_year_joins_offset_months():
+    plot_mod = load_skill("plot", "plot")
+    x_axis = np.array(["2024-09-01", "2025-09-01"], dtype="datetime64[ns]")
+    y_axis = np.array(["2024-10-01", "2025-10-01"], dtype="datetime64[ns]")
+    x_out, y_out, keys = plot_mod._pair_xy(x_axis, [0.2, 0.8], y_axis, [10.0, 40.0], "year")
+    assert list(keys) == [2024, 2025]
+    assert list(x_out) == pytest.approx([0.2, 0.8])
+    assert list(y_out) == pytest.approx([10.0, 40.0])
+
+
+def test_pair_xy_time_requires_same_day():
+    plot_mod = load_skill("plot", "plot")
+    x_axis = np.array(["2024-09-01"], dtype="datetime64[ns]")
+    y_axis = np.array(["2024-10-01"], dtype="datetime64[ns]")
+    with pytest.raises(Exception, match="no matching samples"):
+        plot_mod._pair_xy(x_axis, [0.2], y_axis, [10.0], "time")
+
+
+def test_pair_xy_duplicate_year_errors():
+    plot_mod = load_skill("plot", "plot")
+    x_axis = np.array(["2024-09-01", "2024-09-08"], dtype="datetime64[ns]")
+    y_axis = np.array(["2024-10-01"], dtype="datetime64[ns]")
+    with pytest.raises(Exception, match="duplicate"):
+        plot_mod._pair_xy(x_axis, [0.2, 0.3], y_axis, [10.0], "year")
+
+
+def test_xy_writes_png_pair_on_year(tmp_path, plot_fn):
+    iod = make_gridded(n_time=2, start="2024-09-01", name="iod_mode_index", fill=0.4)
+    iod = iod.assign_coords(time=np.array(["2024-09-01", "2025-09-01"], dtype="datetime64[ns]"))
+    iod["iod_mode_index"].attrs.update(
+        units="degree_Celsius",
+        long_name="IOD",
+        standard_name="sea_surface_temperature_anomaly",
+    )
+    rain = make_gridded(n_time=2, start="2024-10-01", name="precip", fill=12.0)
+    rain = rain.assign_coords(time=np.array(["2024-10-01", "2025-10-01"], dtype="datetime64[ns]"))
+    rain["precip"].attrs.update(
+        units="mm",
+        long_name="October rainfall",
+        standard_name="lwe_thickness_of_precipitation_amount",
+    )
+    x_src = write_zarr(iod, tmp_path / "iod.zarr")
+    y_src = write_zarr(rain, tmp_path / "rain.zarr")
+    out = tmp_path / "xy.png"
+    run_skill(
+        plot_fn,
+        "--style",
+        "xy",
+        "--x",
+        str(x_src),
+        "--y",
+        str(y_src),
+        "--pair-on",
+        "year",
+        "-o",
+        str(out),
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+    history = load_figure_history(out)
+    assert history[-1]["skill"] == "plot"
+    assert history[-1]["args"]["style"] == "xy"
+
+
+def test_xy_same_input_two_variables(tmp_path, plot_fn):
+    ds = make_gridded(n_time=3, name="precip")
+    ds["iod_mode_index"] = ds["precip"] * 0.1
+    ds["iod_mode_index"].attrs.update(
+        units="degree_Celsius",
+        long_name="IOD",
+        standard_name="sea_surface_temperature_anomaly",
+    )
+    src = write_zarr(ds, tmp_path / "both.zarr")
+    out = tmp_path / "xy.png"
+    run_skill(
+        plot_fn,
+        "--style",
+        "xy",
+        "-i",
+        str(src),
+        "--x-variable",
+        "iod_mode_index",
+        "--y-variable",
+        "precip",
+        "-o",
+        str(out),
+    )
+    assert Path(out).exists()
+
+
+def test_xy_requires_both_x_and_y(tmp_path, plot_fn):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    with pytest.raises(SystemExit):
+        run_skill(
+            plot_fn,
+            "--style",
+            "xy",
+            "--x",
+            str(src),
+            "-o",
+            str(tmp_path / "out.png"),
+        )
+
+
+def test_xy_rejects_layer(tmp_path, plot_fn):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    with pytest.raises(SystemExit):
+        run_skill(
+            plot_fn,
+            "--style",
+            "xy",
+            "--layer",
+            f"heatmap:{src}",
+            "-o",
+            str(tmp_path / "out.png"),
+        )
+
+
 def test_layer_independent_scale(tmp_path, plot_fn):
     grid = write_zarr(make_gridded(), tmp_path / "grid.zarr")
     t2m = make_gridded(name="t2m")

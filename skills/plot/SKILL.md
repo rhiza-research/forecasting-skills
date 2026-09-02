@@ -1,6 +1,6 @@
 ---
 name: plot
-description: Render a 2D heatmap, filled-contour map, 1D time series, wind-rose, u/v quiver, or layered map PNG from weather-skills standard dataset Zarrs. Overlay multiple inputs with repeatable --layer KIND:PATH (heatmap, scatter, quiver, GeoJSON outline/mask). Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Use for a single dataset as a map/profile/rose/vectors, or stacked layers (e.g. precip heatmap + station scatter). For precipitation, run aggregate-temporal then convert-to-totals first. For side-by-side two-row comparison, use plot-compare. Use --fontsize to enlarge titles, axis labels, city labels, and colorbar text (default 18).
+description: Render a 2D heatmap, filled-contour map, 1D time series, xy scatter, wind-rose, u/v quiver, or layered map PNG from weather-skills standard dataset Zarrs. Overlay multiple inputs with repeatable --layer KIND:PATH (heatmap, scatter, quiver, GeoJSON outline/mask). Heatmaps overlay scale-appropriate coastlines, country borders, lakes, and admin-1 boundaries. Use for a single dataset as a map/profile/rose/vectors, or stacked layers (e.g. precip heatmap + station scatter). --style xy plots one 1D series against another (--x/--y, or -i with --x-variable/--y-variable), pairing on time, year, or index. For precipitation, run aggregate-temporal then convert-to-totals first. For side-by-side two-row comparison, use plot-compare. Use --fontsize to enlarge titles, axis labels, city labels, and colorbar text (default 18).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py *)
@@ -48,6 +48,16 @@ Source-agnostic visualization. Single-input styles (`-i`) plus layered maps
   `time`) is plotted against **valid time** (`init + step`) with calendar dates
   on the x-axis, not raw lead-time nanoseconds. An analysis / obs cube with a
   `time` dim is plotted against that axis as-is.
+- `xy` — scatter one 1D series against another. Pass `--x` and `--y` Zarrs
+  (or one `-i` with `--x-variable` and `--y-variable`). Each input is reduced
+  the same way as `timeseries` (mean over non-time dims; `--bbox` /
+  `--mask-geojson` subset first when lat/lon remain). `--pair-on time`
+  (default) inner-joins on the time/valid-time coord; `year` joins on
+  calendar year (September IOD vs October rain); `index` pairs by position
+  (same length required). Duplicate keys are an error — aggregate or select
+  first. Points are labeled with the pair key when `--pair-on year`, or when
+  `--pair-on time` and there are ≤ 25 points. Distinct from `--layer scatter`,
+  which plots stations on a map.
 - `windrose` — one polar rose of meteorological-from wind direction (0° = N,
   90° = E, clockwise) stacked by speed. Converts eastward (`u`) and northward
   (`v`) components; auto-detects `u10`/`v10`, CF `eastward_wind` /
@@ -91,6 +101,8 @@ one color scale unless `--independent-scale`.
   (`--layer heatmap:… --layer scatter:…`).
 - Producing a quick-look forecast map panel for any gridded dataset.
 - Producing a time/step profile for a gridded or station standard dataset.
+- Scattering one index or field against another (IOD vs rainfall, two
+  variables in one Zarr).
 - Producing a wind rose from u/v (or eastward/northward) components.
 - Producing S2S-style wind-vector maps (speed + quiver) from u/v.
 - Precipitation: only after `aggregate-temporal` and `convert-to-totals`.
@@ -108,7 +120,7 @@ with a hits row, use `plot-verify`.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> \
-    [--variable NAME] [--style heatmap|contour|timeseries|windrose|quiver] \
+    [--variable NAME] [--style heatmap|contour|timeseries|xy|windrose|quiver] \
     [--u-variable NAME] [--v-variable NAME] [--quiver-scale N] [--quiver-step N] \
     [--colormap NAME] [--title TEXT] [--xlabel TEXT] [--ylabel TEXT] \
     [--index DIM=POS,...] \
@@ -121,13 +133,24 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
     --layer heatmap:<a.zarr>[::variable=NAME] \
     [--layer scatter:<b.zarr>] [--layer outline:<c.geojson>] \
     [--layer quiver:<wind.zarr>] [--shared-scale | --independent-scale]
+
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --style xy --output <out.png> \
+    --x <x.zarr> --y <y.zarr> [--x-variable NAME] [--y-variable NAME] \
+    [--pair-on time|year|index] [--bbox N/W/S/E]
 ```
 
 ### Arguments
-- `--input`, `-i` — Zarr input (single-dataset mode). Mutually exclusive with `--layer`.
+- `--input`, `-i` — Zarr input (single-dataset mode). Mutually exclusive with `--layer`
+  and with `--x` / `--y`. For `--style xy`, a single `-i` requires both
+  `--x-variable` and `--y-variable`.
+- `--x` / `--y` — X- and Y-axis Zarrs for `--style xy`. Mutually exclusive
+  with `-i` and `--layer`.
+- `--x-variable` / `--y-variable` — variables for `--style xy`. Default: first
+  data variable of `--x` / `--y` (or of `-i` when both flags are set).
+- `--pair-on` — `time` (default), `year`, or `index`. `--style xy` only.
 - `--layer` — repeatable map layer `KIND:PATH` or `KIND:PATH::k=v`. Kinds:
   `heatmap`, `scatter`, `quiver`, `outline`, `mask`. Cannot mix with `-i` or
-  with `--style timeseries|contour|windrose|quiver`.
+  with `--style timeseries|xy|contour|windrose|quiver`.
 - `--label` — colorbar label for each `--layer`, in order. When omitted,
   heatmap/scatter/quiver layers infer a short product name from provenance;
   outline/mask layers ignore it.
@@ -136,12 +159,13 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
   matching units.
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable.
-  Ignored for `--style windrose` and `--style quiver` (use `--u-variable` /
-  `--v-variable`).
-- `--style` — `heatmap` (default), `contour`, `timeseries`, `windrose`, or
+  Ignored for `--style xy` (use `--x-variable` / `--y-variable`) and for
+  `--style windrose` and `--style quiver` (use `--u-variable` / `--v-variable`).
+- `--style` — `heatmap` (default), `contour`, `timeseries`, `xy`, `windrose`, or
   `quiver`. `contour` is the heatmap layout with filled isolines instead of
   grid cells. Timeseries of a forecast (`step` + scalar init) uses valid times
-  on the x-axis. Windrose converts u/v to meteorological-from direction (the
+  on the x-axis. `xy` is a 1D-vs-1D scatter (`--x`/`--y` or one `-i`); see
+  `--pair-on`. Windrose converts u/v to meteorological-from direction (the
   direction the wind blows **from**) and speed, then histograms every remaining
   sample. Quiver is the S2S wind-vector map (speed field + arrows).
 - `--u-variable` / `--v-variable` — eastward and northward wind variables for
@@ -172,8 +196,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
   colors must then match the flag count.
 - `--title` — optional plot title.
 - `--xlabel` / `--ylabel` — optional axis-label overrides. When omitted, maps
-  use `Longitude` / `Latitude` and timeseries uses `Valid time` (or the time
-  dim) / the variable label. Passed text is used as-is (not re-cased).
+  use `Longitude` / `Latitude`, timeseries uses `Valid time` (or the time
+  dim) / the variable label, and `xy` uses each series' variable label.
+  Passed text is used as-is (not re-cased).
 - `--index` — dim selections like `step=3,number=0`. A dim may take several
   comma-separated positions, e.g. `step=0,1,2`, which keeps the dim with just
   those positions. Negative positions are accepted and count from the end,
@@ -184,10 +209,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
   before panel layout: e.g. `--index step=2` reduces to a single-panel map at
   step 2, while `--index step=0,1,2` panels exactly those three steps;
   otherwise all steps are paneled. Panels follow the order given in the spec
-  (`step=2,0` renders position 2 first). Heatmap, quiver, and windrose — with
-  `--style timeseries` the spec is syntax-checked, then ignored with a stderr
-  warning. Windrose flattens remaining positions into samples (a list like
-  `step=0,1,2` keeps those steps in one rose, rather than panelling).
+  (`step=2,0` renders position 2 first). Heatmap, quiver, windrose, and `xy`
+  apply the spec; `--style timeseries` syntax-checks it, then ignores it with
+  a stderr warning. Windrose flattens remaining positions into samples (a list
+  like `step=0,1,2` keeps those steps in one rose, rather than panelling).
+  `xy` reduces leftover dims after `--index` the same way as timeseries.
 - `--extent` — heatmap/quiver map extent as `lon_min,lon_max,lat_min,lat_max`.
   Defaults to the data's cell-center min/max expanded by half the mean
   grid spacing on each side, so the view matches what `pcolormesh`
@@ -214,15 +240,17 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
   restrict to a country, get its bbox from the `resolve-region` skill.
   Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before slicing so
   global grids still intersect negative-lon bboxes. `--extent` (if passed) wins
-  over the bbox-derived extent. Heatmap, quiver, and windrose — `--style
-  timeseries` ignores `--bbox` with a stderr warning. Default unset → no slice.
+  over the bbox-derived extent. Heatmap, quiver, windrose, and `xy` use it;
+  `--style timeseries` ignores `--bbox` with a stderr warning. Default unset
+  → no slice.
 - `--mask-geojson` — optional path to a GeoJSON boundary polygon (e.g. the
   `--geojson` output of the `resolve-region` skill). Gridded cells whose centers
   fall outside the polygon are set to NaN before plotting, so the heatmap shows
   the country shape rather than its bounding rectangle. All features in the file
   are unioned. Combine with `--bbox` to crop to the rectangle first,
-  then mask to the polygon within it. Heatmap, quiver, and windrose — `--style
-  timeseries` ignores it with a stderr warning. Default unset → no mask.
+  then mask to the polygon within it. Heatmap, quiver, windrose, and `xy` use
+  it; `--style timeseries` ignores it with a stderr warning. Default unset
+  → no mask.
 - `--draw-box` — optional black outline rectangle(s) drawn on each map panel.
   Same `N/W/S/E` form as `--bbox`. Repeat the flag for multiple boxes (e.g.
   IOD west `10/50/-10/70` and east `0/90/-10/110`). Unlike `--bbox`, this does
@@ -332,6 +360,15 @@ Time series:
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ts.png \
     --variable tp --style timeseries
+```
+
+XY scatter (September IOD vs October rainfall, one point per year):
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --style xy \
+  --x /tmp/iod_sep.zarr --y /tmp/rain_oct.zarr \
+  --pair-on year \
+  --xlabel "September IOD" --ylabel "October rainfall" \
+  -o /tmp/iod_vs_rain.png
 ```
 
 Wind rose from 10 m u/v (auto-detected `u10`/`v10`):
