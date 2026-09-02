@@ -80,6 +80,9 @@ def standardize_anomaly(ds, climatology, variable, **kwargs):
                 "units. Run unit-convert first."
             ) from None
 
+        # anomaly will be NaN if std is 0.
+        anomaly = anomaly.where(std != 0)
+
         if getattr(anomaly, "pint", None) is not None and anomaly.pint.units is not None:
             anomaly = anomaly.pint.dequantify()
         anomaly.attrs = {"units": "1", "long_name": f"{v} standardized anomaly"}
