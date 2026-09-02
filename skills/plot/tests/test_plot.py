@@ -245,6 +245,13 @@ def test_boundary_layers_country_scale_includes_admin1():
     assert spec == {"scale": "10m", "admin1": True}
 
 
+def test_boundary_layers_regional_excludes_admin1():
+    plot_mod = load_skill("plot", "plot")
+    # East Africa-sized view (~30°) is multi-country, not country-scale
+    spec = plot_mod._boundary_layers((22.0, 52.0, -12.0, 18.0))
+    assert spec == {"scale": "10m", "admin1": False}
+
+
 def test_boundary_layers_continental_excludes_admin1():
     plot_mod = load_skill("plot", "plot")
     # Africa-sized view

@@ -135,10 +135,11 @@ QUIVER_ARROW_LEN_SPACING = 1.5
 QUIVER_KEY_MS = (5.0, 10.0)
 
 # Natural Earth scale vs map span (max of lon/lat extent in degrees).
-# Admin-1 (states / provinces / counties) is only readable on country-to-regional
-# views; a continental or global map would be a thicket of province lines.
-_ADMIN1_MAX_SPAN_DEG = 45.0
-_HIRES_MAX_SPAN_DEG = 90.0
+# Admin-1 (states / provinces / counties) is only readable on country-scale
+# views; a multi-country or basin map would be a thicket of province lines.
+_ADMIN1_MAX_SPAN_DEG = 20.0
+_HIRES_MAX_SPAN_DEG = 45.0
+_MIDRES_MAX_SPAN_DEG = 90.0
 
 _ADMIN1_STYLE = {"facecolor": "none", "edgecolor": "0.45", "linewidth": 0.4, "zorder": 3}
 _LAKES_STYLE = {"facecolor": "none", "edgecolor": "0.2", "linewidth": 0.5, "zorder": 3.5}
@@ -694,11 +695,11 @@ def _extent_span_deg(extent):
 def _boundary_layers(extent):
     """Natural Earth scale and whether to overlay admin-1 for this view."""
     span = _extent_span_deg(extent)
-    if span > _HIRES_MAX_SPAN_DEG:
+    if span > _MIDRES_MAX_SPAN_DEG:
         return {"scale": "110m", "admin1": False}
-    if span > _ADMIN1_MAX_SPAN_DEG:
+    if span > _HIRES_MAX_SPAN_DEG:
         return {"scale": "50m", "admin1": False}
-    return {"scale": "10m", "admin1": True}
+    return {"scale": "10m", "admin1": span <= _ADMIN1_MAX_SPAN_DEG}
 
 
 def _extent_clip_geom(extent):
@@ -867,11 +868,64 @@ def _format_step(value):
 
     arr = np.asarray(value)
     if arr.dtype.kind == "M":
-        return str(arr)[:16]
+        return np.datetime_as_string(arr.astype("datetime64[D]"), unit="D")
     if arr.dtype.kind == "m":
         days = arr.astype("timedelta64[D]").astype(int)
         return f"+{days}d"
     return str(value)
+
+
+def _calendar_bin_width(da, all_steps):
+    """Timedelta for a left-labeled multi-day calendar bin, or None for a single date."""
+    import numpy as np
+    import pandas as pd
+
+    days = _aggregation_days(da)
+    if days is not None and days >= 2:
+        return pd.Timedelta(days=float(days))
+    arr = np.asarray(all_steps)
+    if arr.size < 2 or arr.dtype.kind != "M":
+        return None
+    try:
+        diffs = np.diff(arr.astype("datetime64[ns]").astype("int64"))
+    except (TypeError, ValueError):
+        return None
+    positive = diffs[diffs > 0]
+    if positive.size == 0:
+        return None
+    median_ns = float(np.median(positive))
+    if median_ns < 2 * 86_400_000_000_000:  # < 2 days → single-date label
+        return None
+    return pd.Timedelta(median_ns, unit="ns")
+
+
+def _format_calendar_panel(value, bin_width=None):
+    """``YYYY-MM-DD``, or ``YYYY-MM-DD to YYYY-MM-DD`` for multi-day left-edge bins."""
+    import datetime as _dt
+
+    import numpy as np
+    import pandas as pd
+
+    if hasattr(value, "calendar"):
+        if bin_width is None:
+            return value.strftime("%Y-%m-%d")
+        try:
+            end = value + bin_width - _dt.timedelta(days=1)
+        except (TypeError, ValueError):
+            return value.strftime("%Y-%m-%d")
+        return f"{value.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}"
+
+    try:
+        start = pd.Timestamp(np.asarray(value).item() if hasattr(value, "dtype") else value)
+    except (TypeError, ValueError):
+        return _format_step(value)
+    if bin_width is None:
+        return start.date().isoformat()
+    try:
+        end = start + bin_width - pd.Timedelta(days=1)
+    except (TypeError, ValueError):
+        return start.date().isoformat()
+    return f"{start.date().isoformat()} to {end.date().isoformat()}"
 
 
 def _timeseries_axis(da, sdim):
@@ -893,32 +947,59 @@ def _timeseries_axis(da, sdim):
 
 
 def _panel_title(da, sdim, step_value, all_steps):
-    """'<start> until <end>' from time + left-labeled step; else '<sdim>=<step>'."""
+    """Human panel label: calendar range, forecast valid window, or ``<sdim>=…``."""
     import numpy as np
 
-    fallback = f"{sdim}={_format_step(step_value)}"
-    if "time" not in da.coords:
-        return fallback
     step_arr = np.asarray(all_steps)
-    if step_arr.dtype.kind != "m":
-        return fallback
-    try:
-        time_val = np.asarray(da["time"].values)
-        start = time_val + np.asarray(step_value)
-        dt = None
-        interval = da.attrs.get(DATA_INTERVAL_ATTR)
-        if isinstance(interval, str) and interval.strip():
-            try:
-                seconds = float(parse_aggregation_period(interval).to("second").magnitude)
-                dt = np.timedelta64(int(round(seconds)), "s")
-            except (TypeError, ValueError):
-                dt = None
-        if dt is None:
-            dt = step_arr[1] - step_arr[0] if step_arr.size > 1 else np.timedelta64(1, "D")
-        end = start + dt
-        return f"{str(start)[:16]} until {str(end)[:16]}"
-    except Exception:  # noqa: BLE001
-        return fallback
+    value_arr = np.asarray(step_value)
+
+    # Forecast ``step`` (timedelta) + scalar init ``time`` → valid-time window.
+    if (
+        step_arr.dtype.kind == "m"
+        and "time" in da.coords
+        and getattr(da["time"], "ndim", 1) == 0
+    ):
+        fallback = f"{sdim}={_format_step(step_value)}"
+        try:
+            time_val = np.asarray(da["time"].values)
+            start = time_val + np.asarray(step_value)
+            dt = None
+            interval = da.attrs.get(DATA_INTERVAL_ATTR)
+            if isinstance(interval, str) and interval.strip():
+                try:
+                    seconds = float(parse_aggregation_period(interval).to("second").magnitude)
+                    dt = np.timedelta64(int(round(seconds)), "s")
+                except (TypeError, ValueError, UsageError):
+                    dt = None
+            if dt is None:
+                dt = step_arr[1] - step_arr[0] if step_arr.size > 1 else np.timedelta64(1, "D")
+            end = start + dt
+            return f"{str(start)[:16]} until {str(end)[:16]}"
+        except Exception:  # noqa: BLE001
+            return fallback
+
+    # Calendar ``time`` (or similar) panels — prefer date / date-range labels.
+    if value_arr.dtype.kind == "M" or hasattr(step_value, "calendar"):
+        return _format_calendar_panel(step_value, _calendar_bin_width(da, all_steps))
+
+    return f"{sdim}={_format_step(step_value)}"
+
+
+def _panel_title_fontsize(fontsize):
+    """Panel date labels track ``--fontsize`` (not a reduced fraction)."""
+    return int(fontsize)
+
+
+def _map_colorbar_axes(fig, *, title, nrows, index=0, n_cbars=1):
+    """Axes for a horizontal colorbar with clear gap under the map row(s)."""
+    top = 0.92 if title else 0.98
+    # Leave room for lon tick labels, a gap, then one or more colorbars.
+    bottom = 0.10 + 0.06 * max(0, n_cbars - 1)
+    if index == 0:
+        fig.tight_layout(rect=[0, bottom, 1, top])
+    height = 0.028
+    y = 0.035 + index * 0.055
+    return fig.add_axes([0.15, y, 0.7, height])
 
 
 def _wind_component_role(da):

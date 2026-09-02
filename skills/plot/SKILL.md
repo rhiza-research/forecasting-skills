@@ -16,8 +16,8 @@ Source-agnostic visualization. Single-input styles (`-i`) plus layered maps
 - `heatmap` — CartoPy `PlateCarree` map with scale-appropriate geographic
   overlays (Natural Earth, fetched and cached via `cartopy`): coastlines,
   country borders, and lake outlines at 10m / 50m / 110m depending on the
-  view size, plus admin-1 (states / provinces / counties) on country-to-
-  regional maps (span ≤ 45°). Overlays are clipped to the map extent. If
+  view size, plus admin-1 (states / provinces / counties) on country-scale
+  maps (span ≤ 20°). Overlays are clipped to the map extent. If
   the input has a `step` (or `time`) dimension, panels are laid out one per
   step with a shared color scale and a horizontal colorbar spanning all
   panels at the bottom. Default layout is up to 4 columns (rows added as
