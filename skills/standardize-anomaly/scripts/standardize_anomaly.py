@@ -13,6 +13,7 @@
 import pint_xarray
 
 from weather_skills_core import Dataset, UsageError, weather_skill
+from weather_skills_core.standard_dataset import detect_spatial_dims
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -28,6 +29,26 @@ _SKILL_VERSION = "0.0.1"
 def standardize_anomaly(ds, climatology, variable, **kwargs):
     """Standardized anomaly: (ds[var] - clim[var_avg]) / clim[var_std] per --variable."""
     import xarray as xr
+
+    # Harmonize names and values on spatial dims.
+    # TODO: this should be standardized in some core function.
+    try:
+        ds_lat, ds_lon = detect_spatial_dims(ds)
+        clim_lat, clim_lon = detect_spatial_dims(climatology)
+    except UsageError:
+        ds_lat = clim_lat = None
+
+    if ds_lat and clim_lat:
+        for src_name, other_name, target in (
+            (ds_lat, clim_lat, "latitude"),
+            (ds_lon, clim_lon, "longitude"),
+        ):
+            ds = ds.rename({src_name: target})
+            climatology = climatology.rename({other_name: target})
+            ds = ds.assign_coords({target: ds[target].astype("float64").round(4)})
+            climatology = climatology.assign_coords(
+                {target: climatology[target].astype("float64").round(4)}
+            )
 
     vars_ = list(dict.fromkeys(variable))
     missing_input = [v for v in vars_ if v not in ds.data_vars]

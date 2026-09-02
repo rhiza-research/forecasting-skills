@@ -70,6 +70,22 @@ Same as `difference`: an xarray-aligned inner join on shared dims (e.g.
 --window 7`) still works — the climatology's fewer, coarser-grained days just
 align to whichever `--input` days share the exact same coordinate value.
 
+Before aligning, if **both** `--input` and `--climatology` have a spatial dim
+(detected via `detect_spatial_dims`, the same CF-metadata/name-based lookup
+used elsewhere in this ecosystem — neither input is required to have one, two
+plain time series work fine), each is renamed onto `latitude`/`longitude` on
+both sides regardless of what either one originally called it (e.g.
+`--input`'s `latitude` and `--climatology`'s `lat` both become `latitude` —
+otherwise xarray broadcasts them as two unrelated dims instead of aligning,
+growing the output's dimensionality instead of computing a real anomaly);
+then cast to `float64` and rounded to 4 decimal places on both sides. Without
+the rounding, two sources on "the same" grid but stored with different
+coordinate dtypes (`float32` vs `float64`) can fail xarray's exact-equality
+alignment on some cells but not others — not an error, just a
+silently smaller-than-expected, still-plausible-looking output. `time` isn't
+touched by either step (no naming synonyms to resolve, and it's `datetime64`,
+not exposed to the float32/float64 problem).
+
 ### Units
 
 Both sides are pint-quantified on open, so unit compatibility is checked by
@@ -89,7 +105,9 @@ One `NAME_anomaly` variable per `--variable`, dimensionless (`units: "1"`),
 and other attrs are **not** copied — unlike `difference`, which keeps the
 first input's attrs (appropriate there since a difference of two rates is
 still a rate; a z-score isn't a rate at all, so nothing physical carries
-over).
+over). If a spatial dim was present, its output name is always
+`latitude`/`longitude` regardless of what either input called it — see
+"Alignment" above.
 
 ### Provenance
 
