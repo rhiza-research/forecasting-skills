@@ -27,7 +27,7 @@ Layout:
 
 ```
 YYYY-MM-DD/data/ECMWF_s2s_precip_YYYY-MM-DD.zarr/     # native S2S ~1.5°
-YYYY-MM-DD/data/data_weekly_Kenya_downscaled.nc       # CHIRPS-grid weekly ~0.05°
+YYYY-MM-DD/data/data_weekly_Kenya_downscaled.nc       # CHIRPS-resolution weekly ~0.05° (may be half-cell offset)
 YYYY-MM-DD/data/medium_range_precip.zarr/
 YYYY-MM-DD/data/gefs/gefs_kenya.zarr/
 …
@@ -65,7 +65,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest [dataset-id]
 | `--dataset` | Store under `<date>/data/` | Typical vars |
 |---|---|---|
 | `precip` (default) | `ECMWF_s2s_precip_<date>.zarr` | `tp` — native S2S, ~1.5°, daily ensemble |
-| `precip_downscaled` | `data_weekly_Kenya_downscaled.nc` | `tp` — CHIRPS-grid weekly totals, ~0.05°, no `number` |
+| `precip_downscaled` | `data_weekly_Kenya_downscaled.nc` | `tp` — CHIRPS-resolution weekly totals, ~0.05°, no `number` |
 | `daily_vars` | `ECMWF_s2s_daily_vars_<date>.zarr` | `t2m`, `d2m`, `cape`, `tcw` |
 | `Tminmax` | `ECMWF_s2s_Tminmax_<date>.zarr` | `mn2t6`, `mx2t6` |
 | `10wind` | `ECMWF_s2s_10wind_<date>.zarr` | `u10`, `v10` |
@@ -87,7 +87,9 @@ Already-weekly products (`precip_downscaled`, `medium_range_precip`) stamp
 `aggregation_period` on fetch — run `convert-to-totals` directly; do **not**
 `aggregate-temporal` (that would re-bin adjacent weeks). Do not run
 `deaccumulate` after this skill. The downscaled file is already weekly on a
-~0.05° grid — do not also run `downscale`.
+~0.05° grid — do not run `downscale` to refine it. To compare against live
+CHIRPS, the cell centers may not match (half-cell lon offset is common);
+realign with `coarsen --reference-grid` or `downscale --reference-grid`.
 
 ### Arguments
 

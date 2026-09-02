@@ -12,7 +12,11 @@
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims, detect_time_dim
-from weather_skills_core.standard_utils import ensure_normalized_longitude, grid_spacing
+from weather_skills_core.standard_utils import (
+    ensure_normalized_longitude,
+    grid_spacing,
+    spacing_is_finer,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
@@ -93,7 +97,9 @@ def downscale(
     if reference_grid is not None:
         ref = xr.open_zarr(reference_grid, consolidated=False)
         new_lat, new_lon = np.asarray(ref[lat_dim].values), np.asarray(ref[lon_dim].values)
-        if _spacing(ref, lat_dim) > in_lat or _spacing(ref, lon_dim) > in_lon:
+        if spacing_is_finer(in_lat, _spacing(ref, lat_dim)) or spacing_is_finer(
+            in_lon, _spacing(ref, lon_dim)
+        ):
             raise UsageError("--reference-grid is coarser than input; use coarsen")
     else:
         if factor is not None:
@@ -101,7 +107,9 @@ def downscale(
                 raise UsageError("--factor must be >= 1")
             lat_sp, lon_sp = in_lat / factor, in_lon / factor
         else:
-            if target_resolution <= 0 or target_resolution > in_lat or target_resolution > in_lon:
+            if target_resolution <= 0 or spacing_is_finer(
+                in_lat, target_resolution
+            ) or spacing_is_finer(in_lon, target_resolution):
                 raise UsageError("--target-resolution must be finer-or-equal to input")
             lat_sp = lon_sp = target_resolution
         new_lat = _target_coord(ds[lat_dim].values, lat_sp)

@@ -14,7 +14,11 @@ import math
 
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims
-from weather_skills_core.standard_utils import ensure_normalized_longitude, grid_spacing
+from weather_skills_core.standard_utils import (
+    ensure_normalized_longitude,
+    grid_spacing,
+    spacing_is_finer,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
@@ -121,7 +125,7 @@ def coarsen(ds, variable, reference_grid, target_resolution, offset, **kwargs):
         ref = ensure_normalized_longitude(ref, ref_lon_dim)
         ref_lat_sp = grid_spacing(ref[ref_lat_dim].values)
         ref_lon_sp = grid_spacing(ref[ref_lon_dim].values)
-        if ref_lat_sp < in_lat or ref_lon_sp < in_lon:
+        if spacing_is_finer(ref_lat_sp, in_lat) or spacing_is_finer(ref_lon_sp, in_lon):
             raise UsageError(
                 "--reference-grid is finer than input; use downscale --reference-grid"
             )
@@ -131,8 +135,8 @@ def coarsen(ds, variable, reference_grid, target_resolution, offset, **kwargs):
         lon_attrs = dict(ref[ref_lon_dim].attrs) or dict(ds[lon_dim].attrs)
     else:
         # Reject finer targets (that's downscale)
-        for axis, spacing in ((lat_dim, in_lat), (lon_dim, in_lon)):
-            if target_resolution < spacing:
+        for spacing in (in_lat, in_lon):
+            if spacing_is_finer(target_resolution, spacing):
                 raise UsageError(
                     f"--target-resolution {target_resolution}° finer than input; use downscale"
                 )

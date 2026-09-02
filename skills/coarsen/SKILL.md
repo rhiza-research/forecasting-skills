@@ -1,6 +1,6 @@
 ---
 name: coarsen
-description: Coarsen or align a weather-skills standard dataset Zarr by linearly interpolating it onto a target grid. Prefer --reference-grid PATH to copy another Zarr's exact lat/lon (avoids float mismatch on difference/verify). Or pass --target-resolution and --offset for a synthetic grid (points at offset + k*resolution). Geometry-only — changes spacing/alignment, adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
+description: Coarsen or align a weather-skills standard dataset Zarr by linearly interpolating it onto a target grid. Prefer --reference-grid PATH to copy another Zarr's exact lat/lon (avoids float mismatch on difference/verify). Or pass --target-resolution and --offset for a synthetic grid (points at offset + k*resolution). Equal or near-equal resolution is a lateral realign (same spacing, different offset — including a half-cell shift). Geometry-only — changes spacing/alignment, adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py *)
@@ -15,8 +15,12 @@ Source-agnostic spatial coarsening and alignment: linearly interpolates the
 input onto a target lat/lon grid. This changes grid geometry only — it adds
 no information — and is used to coarsen a grid or to align two grids for
 comparison. The target must be coarser-or-equal to the input on each axis;
-equal resolution is accepted as a no-op/realign. A strictly-finer target is
-rejected with a pointer to the `downscale` skill.
+equal (or near-equal) resolution is accepted as a lateral realign — same
+spacing, different cell-center offset, including a half-cell shift. A
+meaningfully-finer target is rejected with a pointer to the `downscale`
+skill. Near-equal spacings (within 1%, including float rounding or a
+slightly irregular CHIRPS axis vs a regular 0.05° forecast) are not treated
+as finer, so this skill and `downscale` do not ping-pong.
 
 **Matching another dataset.** Prefer `--reference-grid other.zarr`. That
 copies the other store's lat/lon values bit-for-bit (clipped to the input
@@ -32,6 +36,8 @@ often lands *near* IMERG/CHIRPS/ECMWF points without matching them exactly.
 
 - Putting obs onto a forecast grid (or the reverse) before `difference` /
   `verify` — use `--reference-grid` on the dataset you want to match.
+  This includes a same-resolution lateral shift (CHIRPS 0.05° onto the
+  Kenya weekly downscale, or the reverse).
 - Coarsening to a larger spacing before plotting or ensemble aggregation.
 - Producing output on a named sheerwater grid via `(resolution, offset)`.
 
@@ -53,8 +59,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --output <out.za
 - `--reference-grid` — Zarr whose lat/lon define the target (exact values,
   clipped to the input extent). Preferred when matching another product.
   Mutually exclusive with `--target-resolution` / `--offset`. The reference
-  must be coarser-or-equal to the input; if it is finer, use
-  `downscale --reference-grid` instead.
+  must be coarser-or-equal to the input (near-equal counts as equal, so a
+  half-cell offset at the same nominal resolution is allowed). If it is
+  meaningfully finer, use `downscale --reference-grid` instead.
 - `--target-resolution` — target grid spacing in degrees (with `--offset`).
 - `--offset` — grid offset in degrees; target points fall at
   `offset + k*resolution` (with `--target-resolution`).

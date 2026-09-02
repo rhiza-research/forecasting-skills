@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 from conftest import load_skill, make_gridded, run_skill, write_zarr
 from weather_skills_core.provenance import load_history
+from weather_skills_core.standard_utils import normalize_latlon_coords
 from weather_skills_core.units import units_equal
 
 
@@ -66,15 +67,10 @@ def test_coarsen_reference_grid_copies_exact_coords(tmp_path, coarsen):
         lons=(10.0, 10.5, 11.0, 11.5, 12.0),
         fill=1.0,
     )
-    # Deliberately awkward floats that resolution+offset would not reproduce exactly.
-    ref_lats = np.array([0.05, 1.05, 2.05], dtype=np.float64)
-    ref_lons = np.array([10.05, 11.05, 12.05], dtype=np.float64)
+    # Values that survive the 5-decimal snap but are not k*0.5 reconstructions.
+    ref_lats = np.array([0.05123, 1.05234, 2.05345], dtype=np.float64)
+    ref_lons = np.array([10.05123, 11.05234, 12.05345], dtype=np.float64)
     ref = make_gridded(lats=tuple(ref_lats), lons=tuple(ref_lons), fill=2.0)
-    # Nudge stored coords so they are not simple k*res reconstructions.
-    ref = ref.assign_coords(
-        latitude=ref_lats + np.array([1e-12, -2e-12, 3e-12]),
-        longitude=ref_lons + np.array([-1e-12, 2e-12, -3e-12]),
-    )
     src = write_zarr(fine, tmp_path / "fine.zarr")
     ref_path = write_zarr(ref, tmp_path / "ref.zarr")
     out = tmp_path / "out.zarr"
@@ -82,9 +78,9 @@ def test_coarsen_reference_grid_copies_exact_coords(tmp_path, coarsen):
     run_skill(coarsen, "-i", str(src), "-o", str(out), "--reference-grid", str(ref_path))
 
     result = xr.open_zarr(out, consolidated=True)
-    ref_open = xr.open_zarr(ref_path, consolidated=True)
-    assert np.array_equal(result["latitude"].values, ref_open["latitude"].values)
-    assert np.array_equal(result["longitude"].values, ref_open["longitude"].values)
+    expected = normalize_latlon_coords(xr.open_zarr(ref_path, consolidated=True))
+    assert np.array_equal(result["latitude"].values, expected["latitude"].values)
+    assert np.array_equal(result["longitude"].values, expected["longitude"].values)
 
 
 def test_coarsen_reference_grid_rejects_finer(tmp_path, coarsen):
@@ -107,6 +103,86 @@ def test_coarsen_reference_grid_rejects_finer(tmp_path, coarsen):
             str(fine),
         )
     assert exc.value.code == 2
+
+
+def test_coarsen_reference_grid_allows_lateral_shift(tmp_path, coarsen):
+    """Same 0.05° spacing, half-cell lon offset (Kenya downscaled vs CHIRPS)."""
+    import numpy as np
+
+    src = write_zarr(
+        make_gridded(
+            lats=(0.00, 0.05, 0.10, 0.15),
+            lons=(10.00, 10.05, 10.10, 10.15),
+            fill=1.0,
+        ),
+        tmp_path / "src.zarr",
+    )
+    ref = write_zarr(
+        make_gridded(
+            lats=(0.00, 0.05, 0.10, 0.15),
+            lons=(10.025, 10.075, 10.125, 10.175),
+            fill=2.0,
+        ),
+        tmp_path / "ref.zarr",
+    )
+    out = tmp_path / "out.zarr"
+    run_skill(coarsen, "-i", str(src), "-o", str(out), "--reference-grid", str(ref))
+    result = xr.open_zarr(out, consolidated=True)
+    expected = normalize_latlon_coords(xr.open_zarr(ref, consolidated=True))
+    assert np.array_equal(result["latitude"].values, expected["latitude"].values)
+    assert np.array_equal(result["longitude"].values, expected["longitude"].values)
+
+
+def test_coarsen_reference_grid_allows_near_equal_mixed_axes(tmp_path, coarsen):
+    """Lat slightly finer, lon slightly coarser — must not ping-pong to downscale."""
+    import numpy as np
+
+    src = write_zarr(
+        make_gridded(
+            lats=tuple(np.arange(0.0, 0.20, 0.05)),
+            lons=tuple(np.arange(10.0, 10.20, 0.05)),
+            fill=1.0,
+        ),
+        tmp_path / "src.zarr",
+    )
+    ref = write_zarr(
+        make_gridded(
+            lats=tuple(np.arange(0.0, 0.20, 0.0499)),
+            lons=tuple(np.arange(10.0, 10.20, 0.0501)),
+            fill=2.0,
+        ),
+        tmp_path / "ref.zarr",
+    )
+    out = tmp_path / "out.zarr"
+    run_skill(coarsen, "-i", str(src), "-o", str(out), "--reference-grid", str(ref))
+    assert Path(out).exists()
+
+
+def test_coarsen_equal_resolution_offset_realigns(tmp_path, coarsen):
+    """--target-resolution equal to input with a new --offset is a lateral shift."""
+    src = write_zarr(
+        make_gridded(
+            lats=(0.0, 0.05, 0.10),
+            lons=(10.0, 10.05, 10.10),
+            fill=1.0,
+        ),
+        tmp_path / "src.zarr",
+    )
+    out = tmp_path / "out.zarr"
+    run_skill(
+        coarsen,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--target-resolution",
+        "0.05",
+        "--offset",
+        "0.025",
+    )
+    ds = xr.open_zarr(out, consolidated=True)
+    assert Path(out).exists()
+    assert ds.sizes["longitude"] >= 1
 
 
 def test_coarsen_requires_mode(tmp_path, coarsen):

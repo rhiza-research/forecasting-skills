@@ -1,6 +1,6 @@
 ---
 name: downscale
-description: Downscale a weather-skills standard dataset Zarr onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal resolution is accepted as a no-op on geometry (q-q still applies its mapping). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
+description: Downscale a weather-skills standard dataset Zarr onto a finer-or-equal grid, adding information via a chosen --algorithm (linear-interpolation or q-q empirical quantile mapping). The target is given by an integer factor, a target resolution, or a reference dataset's grid. Equal or near-equal resolution is a lateral realign (same spacing, different offset — including a half-cell shift). Use when a task needs higher spatial resolution; to make a grid coarser, use the coarsen skill.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py *)
@@ -16,9 +16,14 @@ the input's and adds information through a pluggable `--algorithm`. The target g
 specified one of three ways — an integer `--factor` (new spacing = input
 spacing / factor), a `--target-resolution` in degrees, or a `--reference-grid`
 dataset whose lat/lon grid becomes the target. The requested target must be
-finer-or-equal to the input on each axis; equal resolution is accepted as a
-no-op on geometry (for `--algorithm q-q` the value mapping still applies). A
-strictly-coarser target is rejected with a pointer to the `coarsen` skill.
+finer-or-equal to the input on each axis; equal (or near-equal) resolution
+is accepted as a lateral realign — same spacing, different cell-center
+offset, including a half-cell shift. Geometry is a no-op when the grids
+already match (for `--algorithm q-q` the value mapping still applies). A
+meaningfully-coarser target is rejected with a pointer to the `coarsen`
+skill. Near-equal spacings (within 1%, including float rounding or a
+slightly irregular CHIRPS axis vs a regular 0.05° forecast) are not treated
+as coarser, so this skill and `coarsen` do not ping-pong.
 
 Algorithms:
 
@@ -56,8 +61,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/downscale.py --input <in.zarr> --output <out.
 - `--output`, `-o` — output Zarr.
 - `--algorithm` — `linear-interpolation` or `q-q`. Required.
 - `--factor`, `-f` — integer refinement factor (>= 1). New spacing = input spacing / factor (factor 1 = identity). Mutually exclusive with `--target-resolution` and `--reference-grid`.
-- `--target-resolution` — target spacing in degrees; must be finer-or-equal (<=) to the input on each axis. Mutually exclusive with `--factor` and `--reference-grid`.
-- `--reference-grid` — path to a reference Zarr whose lat/lon grid defines the target. The reference grid must be finer-or-equal to the input. Mutually exclusive with `--factor` and `--target-resolution`.
+- `--target-resolution` — target spacing in degrees; must be finer-or-equal (<=) to the input on each axis (near-equal counts as equal). Mutually exclusive with `--factor` and `--reference-grid`.
+- `--reference-grid` — path to a reference Zarr whose lat/lon grid defines the target. The reference grid must be finer-or-equal to the input (near-equal counts as equal, so a half-cell offset at the same nominal resolution is allowed). Mutually exclusive with `--factor` and `--target-resolution`.
 - `--variable`, `-v` — restrict to a single data variable. Default: process all.
 - `--qq-reference` — reference Zarr whose distribution the `q-q` method maps the output onto. Per-grid-cell empirical quantile mapping along `--time-dim`. The reference must already be on the post-downscale lat/lon grid; mismatches are an error. Required for `--algorithm q-q`.
 - `--time-dim` — time dimension used as the sample axis for q-q mapping. Default: `time`. Both the output and the reference must have a dimension by this name.
