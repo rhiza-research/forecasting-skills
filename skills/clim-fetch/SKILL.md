@@ -61,7 +61,7 @@ convention — no CLI change needed once added.
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
   --dataset <id> --start-time YYYY-MM-DD --end-time YYYY-MM-DD -o <path.zarr> \
-  [--variable precip] [--prediction-timedelta 0] [--window 1] [--bbox N/W/S/E]
+  [--variable precip] [--prediction-timedelta 0] [--window 1] [--align left] [--bbox N/W/S/E]
 ```
 
 ### Arguments
@@ -77,6 +77,10 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
   available leads if the requested value isn't cached.
 - `--window` — climatology window in whole days (default: `1`, i.e. daily).
   See "Aggregating to a coarser window" below.
+- `--align` — `left` (default), `right`, or `center`; how a locally-rolled
+  `--window` labels each window (matches `aggregate-temporal`'s own
+  `--align` default of `left`). Ignored (no-op) on `--window 1` or when a
+  pre-aggregated cache is hit.
 - `--bbox` — optional `N/W/S/E` bounding box; use `resolve-region` to turn a
   country or named region into this value first. Applied before the
   day-of-year expansion, on the still-lazy remote Zarr, so only the chunks
@@ -91,20 +95,19 @@ separate aggregation step itself which is prone to errors:
 1. Tries a pre-aggregated cache first:
    `climatologies/<dataset>_<variable>_<window>d.zarr`.
 2. If that isn't available, falls back to the daily climatology and rolls it
-   up locally with a **centered** `--window`-day window (e.g.
-   `--window 7` on day-of-year 100 averages roughly days 97–103):
+   up locally with a `--window`-day window, labeled per `--align` (e.g.
+   `--window 7 --align left` on day-of-year 100 averages days 100–106):
    - `<variable>_avg` rolls like an ordinary rate.
    - `<variable>_std` is computed correctly, assuming independent days:
      `Std(window mean) = sqrt(mean(std_i²)) / sqrt(window)` — squaring,
      rolling through the same mean machinery used for `_avg`, dividing by
-     `window`, then taking the square root.
+     `window`, then taking the square root. This independence assumption
+     means the resulting std is an approximation, not exact — a warning to
+     that effect prints to stderr whenever this local-rolling fallback is
+     used (i.e. whenever a pre-aggregated `--window` cache isn't mirrored).
 3. The climatology is circularly padded by `window` days on each end
    before rolling (day 366 wraps to day 1), so days near Jan 1 / Dec 31 get a
    full window instead of coming out `NaN` at the edges.
-
-Alignment is always centered — not configurable. If you need a
-left/right-aligned climatology instead, no shift skill exists yet in this
-repo; that would be a small separate skill (`time = time ± N days`).
 
 ### Output
 
@@ -166,3 +169,34 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
   --dataset imerg_final --start-time 2020-01-01 --end-time 2020-12-31 \
   --bbox 5.5/33.9/-4.7/41.9 -o /tmp/imerg_clim_2020_kenya.zarr
 ```
+
+### Recipe: weekly accumulation climatology (3-skill)
+
+`--window` rolls up climatological *rates* (mean and std of the daily rate
+averaged over the window) — it does not produce a climatology of *totals*.
+For a weekly-accumulation climatology (e.g. "typical weekly CHIRPS rainfall
+total"), compose with `select` and `convert-to-totals`: `clim-fetch --window
+7` still emits one row per calendar day (overlapping 7-day windows), so
+`select` first thins to one row per week before `convert-to-totals` turns
+each row's mean/std rate into a total — this is correct for both `_avg` and
+`_std` since totaling is linear (`Std(sum) = window × Std(mean)`, the same
+relationship `convert-to-totals`'s `rate_to_total` already applies uniformly
+to every variable, mean or std alike):
+
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py \
+  --dataset chirps --start-time 2020-01-01 --end-time 2020-12-31 \
+  --window 7 -o /tmp/chirps_clim_weekly_rate.zarr
+
+# Thin to non-overlapping weeks (every 7th day) before totaling.
+uv run ${CLAUDE_SKILL_DIR}/../select/scripts/select_dim.py \
+  -i /tmp/chirps_clim_weekly_rate.zarr -o /tmp/chirps_clim_weekly_rate_thinned.zarr \
+  --dim time --value 2020-01-01 --value 2020-01-08 --value 2020-01-15 # ... etc.
+
+uv run ${CLAUDE_SKILL_DIR}/../convert-to-totals/scripts/convert_to_totals.py \
+  -i /tmp/chirps_clim_weekly_rate_thinned.zarr -o /tmp/chirps_clim_weekly_total.zarr
+```
+
+The result carries `_avg`/`_std` totals in mm, ready to feed
+`standardize-anomaly --climatology` against an observed weekly-accumulated
+field (see that skill's own docs for the recipe from the other side).

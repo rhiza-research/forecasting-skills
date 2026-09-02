@@ -48,6 +48,7 @@ _DATASETS = ("imerg_final", "era5", "chirps")
 _DEFAULT_VARIABLE = "precip"
 _DEFAULT_LEAD_DAYS = 0
 _DEFAULT_WINDOW_DAYS = 1
+_DEFAULT_ALIGN = "left"  # matches aggregate-temporal's own --window default
 
 
 def _object_key(dataset: str, variable: str, window: int) -> str:
@@ -74,7 +75,9 @@ def _open_remote(dataset: str, variable: str, window: int) -> tuple[xr.Dataset, 
             return pre_aggregated, True
         print(
             f"clim-fetch: no pre-aggregated {window}d cache for "
-            f"{dataset!r}/{variable!r}; falling back to daily + local rolling",
+            f"{dataset!r}/{variable!r}; aggregating manually — resulting "
+            "standard deviations are approximate, not exact (assumes "
+            "independent days, ignoring day-to-day covariance)",
             file=sys.stderr,
         )
     key = _object_key(dataset, variable, 1)
@@ -115,18 +118,18 @@ def _pad_circular(clim: xr.Dataset, window: int) -> xr.Dataset:
     return xr.concat([before, clim, after], dim="time")
 
 
-def _roll_climatology(clim: xr.Dataset, mean_name: str, std_name: str, window: int) -> xr.Dataset:
+def _roll_climatology(clim: xr.Dataset, mean_name: str, std_name: str, window: int, align: str) -> xr.Dataset:
     """Roll a daily climatology up to a coarser --window, correctly handling different
     aggregation approach for mean and std.
     """
     padded = _pad_circular(clim, window)
     original_times = clim["time"].values
 
-    rolled_mean = roll_and_agg(padded[[mean_name]], window, "time", "mean", align="center")
+    rolled_mean = roll_and_agg(padded[[mean_name]], window, "time", "mean", align=align)
     rolled_mean = rolled_mean.sel(time=original_times)
 
     squared = (padded[std_name] ** 2).to_dataset(name=std_name)
-    squared_mean = roll_and_agg(squared, window, "time", "mean", align="center")
+    squared_mean = roll_and_agg(squared, window, "time", "mean", align=align)
     squared_mean = squared_mean.sel(time=original_times)
     std_out = np.sqrt(squared_mean[std_name] / window)
     std_out.attrs = dict(clim[std_name].attrs)  # sqrt(mean(x^2))/sqrt(N) keeps x's units
@@ -182,17 +185,27 @@ def _expand_climatology(clim: xr.Dataset, start, end) -> xr.Dataset:
     help=(
         f"Climatology window in days (default: {_DEFAULT_WINDOW_DAYS}, i.e. "
         "daily). Tries a pre-aggregated cache first; falls back to rolling up "
-        "the daily climatology locally (centered window) if that isn't mirrored."
+        "the daily climatology locally (see --align) if that isn't mirrored."
+    ),
+)
+@weather_skill.argument(
+    "--align",
+    choices=["left", "right", "center"],
+    default=_DEFAULT_ALIGN,
+    help=(
+        f"How a local (non-pre-aggregated) --window roll-up labels each "
+        f"window (default: {_DEFAULT_ALIGN!r}, matching aggregate-temporal). "
+        "Ignored on --window 1 or a pre-aggregated cache hit."
     ),
 )
 @weather_skill.argument("--bbox")
-def fetch(dataset, start_time, end_time, variable, prediction_timedelta, window, bbox, **kwargs):
+def fetch(dataset, start_time, end_time, variable, prediction_timedelta, window, align, bbox, **kwargs):
     """Fetch a cached daily climatology and expand it to the requested date range."""
     if window < 1:
         raise UsageError(f"--window must be >= 1; got {window}")
     print(
         f"clim-fetch: fetching {dataset!r} variable={variable!r} "
-        f"prediction_timedelta={prediction_timedelta}d window={window}d",
+        f"prediction_timedelta={prediction_timedelta}d window={window}d align={align!r}",
         file=sys.stderr,
     )
     clim, is_pre_aggregated = _open_remote(dataset, variable, window)
@@ -207,7 +220,7 @@ def fetch(dataset, start_time, end_time, variable, prediction_timedelta, window,
         clim = bbox_subset(clim, bbox)
 
     if window > 1 and not is_pre_aggregated:
-        clim = _roll_climatology(clim, mean_name, std_name, window)
+        clim = _roll_climatology(clim, mean_name, std_name, window, align)
 
     expanded = _expand_climatology(clim, start_time, end_time).load()
     expanded = expanded.drop_attrs(deep=False)

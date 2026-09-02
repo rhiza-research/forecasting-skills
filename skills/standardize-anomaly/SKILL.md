@@ -129,3 +129,14 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/standardize_anomaly.py \
   --input /tmp/era5_today.zarr --climatology /tmp/era5_clim.zarr \
   --variable precip --variable t2m --output /tmp/zscores.zarr
 ```
+
+### Recipe: standardizing a weekly total against its climatology
+
+`--climatology` doesn't have to be daily — a `--climatology` built at a
+coarser resolution than `--input` still aligns fine (see "Alignment" above).
+To standardize an observed weekly rainfall *total* against its climatological
+weekly-total mean/std, build the climatology side with `clim-fetch`'s own
+"weekly accumulation climatology" recipe (`clim-fetch --window 7` → `select`
+→ `convert-to-totals`; see `clim-fetch`'s SKILL.md), then feed the result
+here as `--climatology` alongside a matching `--input` (e.g. CHIRPS weekly
+totals from `chirps-fetch` + `select` + `convert-to-totals`).
