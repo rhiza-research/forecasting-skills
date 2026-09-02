@@ -366,6 +366,12 @@ def _draw_bars(ax, series, styles):
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
+    "--fontsize",
+    type=int,
+    default=16,
+    help="Base font size for titles, axis labels, ticks, and legend (default 16).",
+)
+@weather_skill.argument(
     "--style",
     choices=["line", "bar"],
     default="line",
@@ -395,7 +401,18 @@ def _draw_bars(ax, series, styles):
     ),
 )
 def plot_timeseries(
-    ds, variable, time_dim, reduce, title, style, align_day_of_year, label, trace, output, **kwargs
+    ds,
+    variable,
+    time_dim,
+    reduce,
+    title,
+    fontsize,
+    style,
+    align_day_of_year,
+    label,
+    trace,
+    output,
+    **kwargs,
 ):
     """Render a multi-input timeseries PNG from weather-skills standard dataset Zarrs."""
     if not isinstance(ds, (list, tuple)):
@@ -512,11 +529,14 @@ def plot_timeseries(
     else:
         _draw_lines(ax, series, styles)
 
-    ax.set_xlabel(axis_label or first_tdim or "time")
-    ax.set_ylabel(_y_label(variable, datasets[0][variable]))
+    tick_fs = max(10, int(round(fontsize * 0.7)))
+    legend_fs = max(10, int(round(fontsize * 0.85)))
+    ax.set_xlabel(axis_label or first_tdim or "time", fontsize=fontsize)
+    ax.set_ylabel(_y_label(variable, datasets[0][variable]), fontsize=fontsize)
     if title:
-        ax.set_title(title)
-    ax.legend()
+        ax.set_title(title, fontsize=fontsize)
+    ax.tick_params(labelsize=tick_fs)
+    ax.legend(fontsize=legend_fs)
     ax.grid(True, linestyle="--", alpha=0.5)
 
     if align_day_of_year:

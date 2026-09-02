@@ -58,6 +58,11 @@ PRECIP_COLORS = [
 PRECIP_BOUNDS = [0, 1, 2, 5, 7, 10, 20, 50, 100, 200, 350]
 
 
+def _scaled_fontsize(base, frac, *, floor=8):
+    """Scale a base ``--fontsize`` by ``frac``, never below ``floor``."""
+    return max(floor, int(round(int(base) * frac)))
+
+
 def _parse_colormap(spec):
     """Matplotlib name, or a LinearSegmentedColormap from comma-separated colors."""
     if spec is None or "," not in spec:
@@ -307,6 +312,12 @@ def _axis_kind(values):
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
+    "--fontsize",
+    type=int,
+    default=14,
+    help="Base font size for panel titles, row labels, ticks, and colorbars (default 14).",
+)
+@weather_skill.argument(
     "--label",
     action="append",
     default=None,
@@ -329,6 +340,7 @@ def plot_compare(
     shared_scale,
     independent_scale,
     title,
+    fontsize,
     panels,
     time_dim,
     label,
@@ -664,7 +676,7 @@ def plot_compare(
     top_axes = [fig.add_subplot(gs[0, i]) for i in range(n)]
     bottom_axes = [fig.add_subplot(gs[1, i]) for i in range(n)]
     if title:
-        fig.suptitle(title)
+        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1))
 
     if a_station and not b_station:
         gridded_ds, gridded_var = ds_b, var_b
@@ -709,10 +721,11 @@ def plot_compare(
                 last_im = _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax)
             else:
                 last_im = _grid_panel(ax, sel, cmap, norm, vmin, vmax)
-            ax.set_title(title_t, fontsize=9)
+            ax.set_title(title_t, fontsize=_scaled_fontsize(fontsize, 0.85))
             if boundaries is not None:
                 boundaries.boundary.plot(edgecolor="grey", linewidth=1.0, ax=ax)
-            ax.set_ylabel(label)
+            ax.set_ylabel(label, fontsize=fontsize)
+            ax.tick_params(labelsize=_scaled_fontsize(fontsize, 0.7))
             if col != 0:
                 ax.tick_params(left=False, labelleft=False)
         return last_im
@@ -727,30 +740,32 @@ def plot_compare(
     for col, ax in enumerate(bottom_axes):
         ax.set_xlim(g_xmin, g_xmax)
         ax.set_ylim(g_ymin, g_ymax)
-        ax.set_xlabel("lon" if col == n // 2 else "")
+        ax.set_xlabel("lon" if col == n // 2 else "", fontsize=fontsize)
 
     def _cbar_label(row):
         _ds, da, _td, label, var, _units, _scale = row
         return f"{label} {variable_label_for_display(da, fallback=var)}"
 
-    fig.colorbar(
+    cbar_top = fig.colorbar(
         sc_top,
         ax=top_axes,
-        label=_cbar_label(top),
         shrink=0.6,
         fraction=0.02,
         pad=0.02,
         **_cbar_kwargs(top[-1][1]),
     )
-    fig.colorbar(
+    cbar_top.set_label(_cbar_label(top), fontsize=fontsize)
+    cbar_top.ax.tick_params(labelsize=_scaled_fontsize(fontsize, 0.7))
+    cbar_bottom = fig.colorbar(
         im_bottom,
         ax=bottom_axes,
-        label=_cbar_label(bottom),
         shrink=0.6,
         fraction=0.02,
         pad=0.02,
         **_cbar_kwargs(bottom[-1][1]),
     )
+    cbar_bottom.set_label(_cbar_label(bottom), fontsize=fontsize)
+    cbar_bottom.ax.tick_params(labelsize=_scaled_fontsize(fontsize, 0.7))
 
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

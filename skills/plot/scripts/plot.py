@@ -1389,7 +1389,13 @@ def _quiver_map(
         ax.set_ylabel("Latitude")
         for city, (lat, lon) in cities.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=ccrs.PlateCarree())
-            ax.text(lon - 2.0, lat + 0.5, city, fontsize=10, transform=ccrs.PlateCarree())
+            ax.text(
+                lon - 2.0,
+                lat + 0.5,
+                city,
+                fontsize=max(10, int(round(fontsize * 0.65))),
+                transform=ccrs.PlateCarree(),
+            )
         if boxes:
             _draw_boxes_on_ax(ax, boxes, ccrs.PlateCarree())
         if s is not None:
@@ -1419,6 +1425,7 @@ def _quiver_map(
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
     cbar = fig.colorbar(mesh, cax=cbar_ax, orientation="horizontal", fraction=5)
     cbar.set_label(cbar_label or _wind_speed_cbar_label(u_da), fontsize=fontsize)
+    cbar.ax.tick_params(labelsize=max(10, int(round(fontsize * 0.7))))
     return fig
 
 
@@ -2275,7 +2282,14 @@ def _plot_layers(
         ax.set_ylabel("Latitude")
         for city, (lat, lon) in cities_map.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=transform, zorder=8)
-            ax.text(lon - 2.0, lat + 0.5, city, fontsize=10, transform=transform, zorder=8)
+            ax.text(
+                lon - 2.0,
+                lat + 0.5,
+                city,
+                fontsize=max(10, int(round(fontsize * 0.65))),
+                transform=transform,
+                zorder=8,
+            )
         if boxes:
             _draw_boxes_on_ax(ax, boxes, transform)
         if s is not None and title_da is not None:
@@ -2320,6 +2334,7 @@ def _plot_layers(
             if p.get("flag_labels") is not None:
                 cbar.set_ticklabels(p["flag_labels"])
         cbar.set_label(p.get("cbar_label") or _variable_label(p.get("da")), fontsize=fontsize)
+        cbar.ax.tick_params(labelsize=max(10, int(round(fontsize * 0.7))))
     return fig
 
 
@@ -2462,7 +2477,13 @@ def _heatmap(
         ax.set_ylabel("Latitude")
         for city, (lat, lon) in cities.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=ccrs.PlateCarree())
-            ax.text(lon - 2.0, lat + 0.5, city, fontsize=10, transform=ccrs.PlateCarree())
+            ax.text(
+                lon - 2.0,
+                lat + 0.5,
+                city,
+                fontsize=max(10, int(round(fontsize * 0.65))),
+                transform=ccrs.PlateCarree(),
+            )
         if boxes:
             _draw_boxes_on_ax(ax, boxes, ccrs.PlateCarree())
         if s is not None:
@@ -2485,6 +2506,7 @@ def _heatmap(
         if flag_labels is not None:
             cbar.set_ticklabels(flag_labels)
     cbar.set_label(_variable_label(da), fontsize=fontsize)
+    cbar.ax.tick_params(labelsize=max(10, int(round(fontsize * 0.7))))
     return fig
 
 
@@ -2550,7 +2572,12 @@ def _heatmap(
     default=None,
     help='City overlay JSON (heatmap, contour, and quiver). Inline {"name": [lat, lon]} or file path.',
 )
-@weather_skill.argument("--fontsize", type=int, default=16)
+@weather_skill.argument(
+    "--fontsize",
+    type=int,
+    default=18,
+    help="Base font size for titles, axis labels, and colorbar text (default 18).",
+)
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
 @weather_skill.argument(
     "--rows",
@@ -2849,10 +2876,12 @@ def plot(
         reduced = da.mean(reduce_dims, keep_attrs=True)
         xvals, xlabel = _timeseries_axis(reduced, sdim)
         ax.plot(xvals, reduced.values, marker="o", markersize=5)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(_variable_label(reduced))
+        tick_fs = max(10, int(round(fontsize * 0.7)))
+        ax.set_xlabel(xlabel, fontsize=fontsize)
+        ax.set_ylabel(_variable_label(reduced), fontsize=fontsize)
         qty = variable_label_for_display(reduced, include_units=False)
-        ax.set_title(title or f"{qty} ({style})")
+        ax.set_title(title or f"{qty} ({style})", fontsize=fontsize)
+        ax.tick_params(labelsize=tick_fs)
         if xlabel == "valid time":
             fig.autofmt_xdate()
         fig.tight_layout()

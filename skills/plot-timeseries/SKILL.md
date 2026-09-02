@@ -1,6 +1,6 @@
 ---
 name: plot-timeseries
-description: Render a single PNG with one 1D series per input Zarr overlaid on a shared time axis, as lines (default) or grouped bars. Repeatable --trace SELECTOR:k=v styles one series (color, linewidth, marker, zorder) by 1-based input index, legend label, or a unique token in the label (e.g. 2026). Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates.
+description: Render a single PNG with one 1D series per input Zarr overlaid on a shared time axis, as lines (default) or grouped bars. Repeatable --trace SELECTOR:k=v styles one series (color, linewidth, marker, zorder) by 1-based input index, legend label, or a unique token in the label (e.g. 2026). Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates. Use --fontsize to enlarge titles, axis labels, ticks, and legend (default 16).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py *)
@@ -50,7 +50,7 @@ For maps of N forecasts (or forecasts vs gridded obs) over time, use
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
-    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] \
+    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] [--fontsize N] \
     [--style line|bar] [--align-day-of-year] [--trace SELECTOR:k=v ...]
 ```
 
@@ -69,6 +69,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   has any non-time dims after variable selection; the skill exits with an
   error rather than silently averaging.
 - `--title` — optional figure title.
+- `--fontsize` — base font size for titles, axis labels, ticks, and legend
+  (default 16). Raise on user request (e.g. `--fontsize 22`).
 - `--style` — `line` (default) or `bar`. `bar` draws grouped bars (one group
   per time step; one bar per `--input`, offset within the group). Bar width is
   80% of the median time spacing, split across inputs. Single-input `bar` is

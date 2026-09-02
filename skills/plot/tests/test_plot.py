@@ -24,6 +24,16 @@ def test_heatmap_writes_png(tmp_path, plot_fn):
     assert out.stat().st_size > 0
 
 
+def test_fontsize_writes_png(tmp_path, plot_fn):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "map.png"
+
+    run_skill(plot_fn, "-i", str(src), "-o", str(out), "--fontsize", "22", "--title", "Large")
+
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
 def test_contour_levels_span_and_pad_constant():
     plot_mod = load_skill("plot", "plot")
     levels = plot_mod._contour_levels(0.0, 10.0, n=10)

@@ -1,6 +1,6 @@
 ---
 name: plot-compare
-description: Render a side-by-side two-row comparison PNG of two weather-skills standard dataset Zarr stores (gridded-vs-gridded or station-vs-gridded as separate rows, not overlaid). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC. To overlay stations on a heatmap, use plot --layer instead. For precipitation, convert-to-totals after aggregate-temporal before plotting.
+description: Render a side-by-side two-row comparison PNG of two weather-skills standard dataset Zarr stores (gridded-vs-gridded or station-vs-gridded as separate rows, not overlaid). Use for sat-vs-station validation, model-vs-obs comparison, or cross-source QC. To overlay stations on a heatmap, use plot --layer instead. For precipitation, convert-to-totals after aggregate-temporal before plotting. Use --fontsize to enlarge panel titles, row labels, ticks, and colorbars (default 14).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py *)
@@ -83,7 +83,7 @@ dataset has no matching time, use `plot-compare-forecasts`.
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--variable-a NAME] [--variable-b NAME] \
     [--colormap NAME] [--colormap-a NAME] [--colormap-b NAME] \
-    [--shared-scale | --independent-scale] [--title TEXT] \
+    [--shared-scale | --independent-scale] [--title TEXT] [--fontsize N] \
     [--panels N] [--time-dim DIM] \
     [--bbox N/W/S/E] [--mask-geojson PATH]
 ```
@@ -117,6 +117,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
   neither is given, the mode is chosen automatically: shared when both
   rows resolve to the same variable AND matching units, else independent.
 - `--title` — figure title.
+- `--fontsize` — base font size for panel titles, row labels, ticks, and
+  colorbars (default 14). Raise on user request (e.g. `--fontsize 18`).
 - `--panels` — number of panels per row (default 3).
 - `--time-dim` — override the time axis. Defaults to `time` if present, else `step`.
 - `--bbox` — optional `N/W/S/E` decimal degrees. Rectangular clipping:

@@ -76,7 +76,13 @@ def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
 @weather_skill.argument("--lat", type=float, required=True, help="Point latitude.")
 @weather_skill.argument("--lon", type=float, required=True, help="Point longitude.")
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
-def plot_mediogram(ds, variable, lat, lon, title, output, **kwargs):
+@weather_skill.argument(
+    "--fontsize",
+    type=int,
+    default=16,
+    help="Base font size for titles, axis labels, ticks, and legend (default 16).",
+)
+def plot_mediogram(ds, variable, lat, lon, title, fontsize, output, **kwargs):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
     if len(ds) != 2:
         raise UsageError(f"expected exactly two --input paths, got {len(ds)}")
@@ -149,17 +155,24 @@ def plot_mediogram(ds, variable, lat, lon, title, output, **kwargs):
             tick_labels.append(f"+{int(arr.astype('timedelta64[D]').astype(int))}d")
         else:
             tick_labels.append(str(value))
-    ax.set_xticklabels(tick_labels)
-    ax.set_xlabel("Forecast step")
-    ax.set_ylabel(variable_label_for_display(pt_fc, fallback=variable))
+    tick_fs = max(10, int(round(fontsize * 0.7)))
+    legend_fs = max(10, int(round(fontsize * 0.85)))
+    ax.set_xticklabels(tick_labels, fontsize=tick_fs)
+    ax.set_xlabel("Forecast step", fontsize=fontsize)
+    ax.set_ylabel(variable_label_for_display(pt_fc, fallback=variable), fontsize=fontsize)
     qty = variable_label_for_display(pt_fc, fallback=variable, include_units=False)
-    ax.set_title(title or f"Mediogram: {qty} at lat={snapped_lat:g}, lon={snapped_lon:g}")
+    ax.set_title(
+        title or f"Mediogram: {qty} at lat={snapped_lat:g}, lon={snapped_lon:g}",
+        fontsize=fontsize,
+    )
+    ax.tick_params(labelsize=tick_fs)
     ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend(
         handles=[
             Patch(facecolor="cyan", edgecolor="black", label="forecast"),
             Patch(facecolor="red", edgecolor="black", label="m-climate"),
-        ]
+        ],
+        fontsize=legend_fs,
     )
 
     fig.tight_layout()

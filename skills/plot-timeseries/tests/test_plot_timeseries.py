@@ -32,6 +32,30 @@ def test_single_input_writes_png(tmp_path, plot_timeseries):
     assert out.stat().st_size > 0
 
 
+def test_fontsize_writes_png(tmp_path, plot_timeseries):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    out = tmp_path / "ts.png"
+
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+        "--fontsize",
+        "22",
+        "--title",
+        "Large labels",
+    )
+
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
 def test_reduce_spatial_dims(tmp_path, plot_timeseries):
     src = write_zarr(make_gridded(), tmp_path / "in.zarr")
     out = tmp_path / "ts.png"

@@ -62,6 +62,11 @@ _NS_PER_DAY = 86_400_000_000_000
 _TOL_NS = 1_000_000_000  # 1 s, matching plot-compare
 
 
+def _scaled_fontsize(base, frac, *, floor=8):
+    """Scale a base ``--fontsize`` by ``frac``, never below ``floor``."""
+    return max(floor, int(round(int(base) * frac)))
+
+
 def _parse_colormap(spec):
     if spec is None or "," not in spec:
         return spec
@@ -484,6 +489,12 @@ def _extent_from_da(da, lat_dim, lon_dim, bbox):
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
+    "--fontsize",
+    type=int,
+    default=14,
+    help="Base font size for column titles, row labels, ticks, and colorbars (default 14).",
+)
+@weather_skill.argument(
     "--panels",
     type=int,
     default=None,
@@ -506,6 +517,7 @@ def plot_compare_forecasts(
     variable,
     colormap,
     title,
+    fontsize,
     panels,
     label,
     mask_geojson,
@@ -620,7 +632,12 @@ def plot_compare_forecasts(
         squeeze=False,
     )
     if title:
-        fig.suptitle(title)
+        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1))
+
+    tick_fs = _scaled_fontsize(fontsize, 0.7)
+    panel_title_fs = _scaled_fontsize(fontsize, 0.85)
+    lead_fs = _scaled_fontsize(fontsize, 0.65)
+    na_fs = _scaled_fontsize(fontsize, 0.9)
 
     contour = None
     for row, da in enumerate(das):
@@ -635,7 +652,7 @@ def plot_compare_forecasts(
             if idx is not None and steps_per_row[row] is not None:
                 lead = _format_lead(steps_per_row[row][idx])
             if row == 0:
-                ax.set_title(col_title, fontsize=9)
+                ax.set_title(col_title, fontsize=panel_title_fs)
             if wrap_lon:
                 ax.set_extent(extent, crs=ccrs.PlateCarree())
             else:
@@ -646,6 +663,8 @@ def plot_compare_forecasts(
             gl = ax.gridlines(draw_labels=True, alpha=0)
             gl.top_labels = False
             gl.right_labels = False
+            gl.xlabel_style = {"size": tick_fs}
+            gl.ylabel_style = {"size": tick_fs}
             if col != 0:
                 gl.left_labels = False
             if idx is None:
@@ -656,7 +675,7 @@ def plot_compare_forecasts(
                     transform=ax.transAxes,
                     ha="center",
                     va="center",
-                    fontsize=12,
+                    fontsize=na_fs,
                     color="0.4",
                 )
             else:
@@ -681,10 +700,10 @@ def plot_compare_forecasts(
                         transform=ax.transAxes,
                         ha="left",
                         va="top",
-                        fontsize=8,
+                        fontsize=lead_fs,
                         color="0.2",
                     )
-            ax.set_ylabel(labels[row])
+            ax.set_ylabel(labels[row], fontsize=fontsize)
 
     if contour is not None:
         fig.tight_layout(rect=[0, 0.06, 1, 0.94 if title else 0.98])
@@ -694,7 +713,8 @@ def plot_compare_forecasts(
             cbar_kw["spacing"] = "uniform"
             cbar_kw["ticks"] = list(norm.boundaries)
         cbar = fig.colorbar(contour, cax=cbar_ax, orientation="horizontal", **cbar_kw)
-        cbar.set_label(_variable_label(das[0]))
+        cbar.set_label(_variable_label(das[0]), fontsize=fontsize)
+        cbar.ax.tick_params(labelsize=tick_fs)
     else:
         fig.tight_layout()
 

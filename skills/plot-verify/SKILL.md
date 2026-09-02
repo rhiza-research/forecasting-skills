@@ -1,6 +1,6 @@
 ---
 name: plot-verify
-description: Plot a lead-week verification grid from pre-computed verify Zarrs. Columns are week-4 through week-1 forecasts; rows are obs, forecast, and the verify metric map. Run the verify skill on each forecast/obs pair first. For precipitation, aggregate-temporal then convert-to-totals before verify.
+description: Plot a lead-week verification grid from pre-computed verify Zarrs. Columns are week-4 through week-1 forecasts; rows are obs, forecast, and the verify metric map. Run the verify skill on each forecast/obs pair first. For precipitation, aggregate-temporal then convert-to-totals before verify. Use --fontsize to enlarge column/row labels, ticks, and colorbars (default 14).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_verify.py *)
@@ -53,7 +53,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_verify.py \
     --forecast <week3.zarr> --verify <verify_w3.zarr> \
     ... \
     -o <out.png> [--variable NAME] \
-    [--lead "Week 4" ...] [--title TEXT] [--colormap NAME] \
+    [--lead "Week 4" ...] [--title TEXT] [--fontsize N] [--colormap NAME] \
     [--bbox N/W/S/E] [--mask-geojson PATH]
 ```
 
@@ -71,6 +71,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_verify.py \
   `--forecast` (same order). The forecast row uses one label when all match,
   otherwise joins unique labels with ` / `. The verify row stays the metric
   name (Hits, Bias, MAE). When omitted, row titles are inferred from provenance.
+- `--fontsize` — base font size for column/row labels, ticks, and colorbars
+  (default 14). Raise on user request (e.g. `--fontsize 18`).
 - `--colormap`, `--title`, `--bbox`, `--mask-geojson`, `--output` — as before.
 
 ### Output

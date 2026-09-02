@@ -68,6 +68,11 @@ _ROW_FALLBACKS = ("Observation", "Forecast", "Verification")
 _METRIC_ROW_LABELS = {"hits": "Hits", "bias": "Bias", "mae": "MAE"}
 
 
+def _scaled_fontsize(base, frac, *, floor=8):
+    """Scale a base ``--fontsize`` by ``frac``, never below ``floor``."""
+    return max(floor, int(round(int(base) * frac)))
+
+
 def _metric_from_verify(ds, role: str) -> str:
     metric = ds.attrs.get("verify_metric")
     if metric not in _VERIFY_VARS:
@@ -367,6 +372,12 @@ def _prepare(ds, variable):
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
+    "--fontsize",
+    type=int,
+    default=14,
+    help="Base font size for column/row labels, ticks, and colorbars (default 14).",
+)
+@weather_skill.argument(
     "--mask-geojson",
     default=None,
     help="GeoJSON polygon; gridded cells outside become NaN.",
@@ -381,6 +392,7 @@ def plot_verify(
     colormap,
     label,
     title,
+    fontsize,
     mask_geojson,
     output,
     **kwargs,
@@ -509,7 +521,10 @@ def plot_verify(
         squeeze=False,
     )
     if title:
-        fig.suptitle(title)
+        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1))
+
+    tick_fs = _scaled_fontsize(fontsize, 0.7)
+    panel_title_fs = _scaled_fontsize(fontsize, 0.85)
 
     def _draw(ax, da, lat_dim, lon_dim, this_cmap, this_norm, this_vmin, this_vmax, *, left_labels):
         if wrap_lon:
@@ -522,6 +537,8 @@ def plot_verify(
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
+        gl.xlabel_style = {"size": tick_fs}
+        gl.ylabel_style = {"size": tick_fs}
         if not left_labels:
             gl.left_labels = False
         slab = da.transpose(lat_dim, lon_dim)
@@ -539,7 +556,7 @@ def plot_verify(
     field_mesh = verify_mesh = None
     for col, (label, fc_da, verify_da, lat_dim, lon_dim) in enumerate(columns):
         left = col == 0
-        axes[0][col].set_title(label, fontsize=9)
+        axes[0][col].set_title(label, fontsize=panel_title_fs)
         mesh = _draw(
             axes[0][col], obs_da, obs_lat, obs_lon, cmap, norm, vmin, vmax, left_labels=left
         )
@@ -587,7 +604,7 @@ def plot_verify(
             rotation=90,
             va="center",
             ha="right",
-            fontsize=9,
+            fontsize=fontsize,
         )
     if field_mesh is not None:
         cbar_ax = fig.add_axes([0.08, 0.055, 0.50, 0.02])
@@ -596,7 +613,8 @@ def plot_verify(
             cbar_kw["spacing"] = "uniform"
             cbar_kw["ticks"] = list(norm.boundaries)
         cbar = fig.colorbar(field_mesh, cax=cbar_ax, orientation="horizontal", **cbar_kw)
-        cbar.set_label(_variable_label(obs_da))
+        cbar.set_label(_variable_label(obs_da), fontsize=fontsize)
+        cbar.ax.tick_params(labelsize=tick_fs)
     if verify_mesh is not None:
         verify_ax = fig.add_axes([0.66, 0.055, 0.26, 0.02])
         if metric == "hits":
@@ -604,12 +622,13 @@ def plot_verify(
                 verify_mesh, cax=verify_ax, orientation="horizontal", ticks=[-1, 0, 1]
             )
             verify_cbar.set_ticklabels(verify_labels)
-            verify_cbar.set_label("event")
+            verify_cbar.set_label("event", fontsize=fontsize)
         else:
             verify_cbar = fig.colorbar(verify_mesh, cax=verify_ax, orientation="horizontal")
             units = format_units_for_display(u_obs)
             label = _METRIC_ROW_LABELS[metric]
-            verify_cbar.set_label(f"{label} [{units}]" if units else label)
+            verify_cbar.set_label(f"{label} [{units}]" if units else label, fontsize=fontsize)
+        verify_cbar.ax.tick_params(labelsize=tick_fs)
 
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
