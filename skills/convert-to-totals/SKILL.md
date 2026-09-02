@@ -1,6 +1,6 @@
 ---
 name: convert-to-totals
-description: Convert rate variables to period totals by multiplying by stamped aggregation_period (pint). Use as a terminal step before plotting. Requires aggregate-temporal first. Refuses precip totals (would double-count). Default --min-coverage 1.0. Refuses overlapping intervals — run select on time/step first.
+description: Convert rate variables to period totals by multiplying by stamped aggregation_period (pint). Use as a terminal step before plotting. Requires aggregate-temporal first. Works after select has collapsed the only time/step sample (spatial-only map). Refuses precip totals (would double-count). Default --min-coverage 1.0. Refuses overlapping intervals — run select on time/step first.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/convert_to_totals.py *)
@@ -56,7 +56,10 @@ time/step axis **≥** `aggregation_period`. End-over-end weekly means
 `--window`, or two 21-day intervals 10 days apart) are refused — **run
 `select`** (`--dim time` or `--dim step`, by `--index` or `--value`) to keep
 a non-overlapping subset, then convert-to-totals. A **single** time/step
-point (one aggregated bin) is allowed.
+point (one aggregated bin) is allowed — including after `select` has already
+collapsed that dim away (spatial-only map). In that case conversion uses the
+stamped `aggregation_period` alone; `--min-coverage` and the overlap gate
+do not apply.
 
 ### Output metadata
 

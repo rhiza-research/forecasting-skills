@@ -118,6 +118,26 @@ def test_convert_to_totals_singleton_time(tmp_path, convert_to_totals):
     assert result["precip"].values == pytest.approx(14.0)
 
 
+def test_convert_to_totals_after_select_collapsed_time(tmp_path, convert_to_totals):
+    """Spatial-only map (time already selected away) still converts from aggregation_period."""
+    ds = make_gridded(n_time=1, fill=2.0)
+    ds["precip"].attrs[AGGREGATION_PERIOD_ATTR] = "7 day"
+    ds["precip"].attrs["cell_methods"] = "time: mean"
+    ds = ds.isel(time=0, drop=True)
+    assert "time" not in ds.dims
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+
+    run_skill(convert_to_totals, "-i", str(src), "-o", str(out))
+
+    result = xr.open_zarr(out, consolidated=True)
+    assert list(result["precip"].dims) == ["latitude", "longitude"]
+    assert result["precip"].attrs["units"] == "mm"
+    assert result["precip"].attrs["cell_methods"] == "time: sum"
+    assert result["precip"].values == pytest.approx(14.0)
+    assert AGGREGATION_PERIOD_ATTR not in result["precip"].attrs
+
+
 def test_convert_min_coverage_default_rejects_partial(tmp_path, convert_to_totals):
     ds = make_gridded(n_time=1, fill=1.0)
     ds["precip"].attrs[AGGREGATION_PERIOD_ATTR] = "21 day"
