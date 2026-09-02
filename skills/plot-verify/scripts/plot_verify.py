@@ -277,6 +277,45 @@ def _cbar_boundary_kwargs(norm, cmap=None):
     return kw
 
 
+# Field colorbar as a fraction of figure width. Discrete precip classes have
+# ~15 labels; they need this span plus a wide enough figure (see
+# ``_colorbar_figure_width``) so the ticks do not collide.
+_FIELD_CBAR_WIDTH = 0.72
+_FIELD_CBAR_LEFT = 0.14
+# ~inches of colorbar per discrete tick so 3–4 digit labels stay readable.
+_CBAR_INCHES_PER_TICK = 0.60
+
+
+def _colorbar_tick_count(norm):
+    from matplotlib.colors import BoundaryNorm
+
+    if not isinstance(norm, BoundaryNorm):
+        return 0
+    return len(list(norm.boundaries))
+
+
+def _colorbar_figure_width(ncols, n_ticks):
+    """Physical figure width so discrete colorbar labels do not collide."""
+    col_width = max(3.6 * ncols, 7.0)
+    if n_ticks < 8:
+        return col_width
+    needed = (_CBAR_INCHES_PER_TICK * n_ticks) / _FIELD_CBAR_WIDTH
+    return max(col_width, needed)
+
+
+def _colorbar_axes_boxes(*, title):
+    """Stacked field + verify colorbar boxes (figure fraction).
+
+    Side-by-side bars squash the precip class labels on a 1-column figure;
+    stacking lets the field bar use ``_FIELD_CBAR_WIDTH`` of the figure.
+    """
+    top = 0.92 if title else 0.98
+    maps_bottom = 0.22
+    field = [_FIELD_CBAR_LEFT, 0.125, _FIELD_CBAR_WIDTH, 0.030]
+    verify = [0.26, 0.032, 0.48, 0.030]
+    return maps_bottom, top, field, verify
+
+
 def _variable_label(da):
     name = da.attrs.get("long_name") or da.attrs.get("GRIB_name") or da.name or "value"
     units = format_units_for_display(variable_units(da) or da.attrs.get("units"))
@@ -297,26 +336,77 @@ def _hits_scale():
     return cmap, BoundaryNorm(bounds, cmap.N), ["disagree", "below", "hit"]
 
 
-def _error_scale(da, metric):
-    """Colormap and optional norm for bias/mae verification row."""
-    import numpy as np
+# ColorBrewer RdBu-style stops with a true white center (bias) / white→warm (MAE).
+_ERROR_DIVERGING_COLORS = [
+    "#053061",
+    "#2166ac",
+    "#4393c3",
+    "#92c5de",
+    "#d1e5f0",
+    "#ffffff",
+    "#fddbc7",
+    "#f4a582",
+    "#d6604d",
+    "#b2182b",
+    "#67001f",
+]
+_MAE_FROM_WHITE_COLORS = [
+    "#ffffff",
+    "#fddbc7",
+    "#f4a582",
+    "#d6604d",
+    "#b2182b",
+    "#67001f",
+]
 
-    vmin = float(da.min(skipna=True).values)
-    vmax = float(da.max(skipna=True).values)
-    if not np.isfinite(vmin) or not np.isfinite(vmax):
-        return "viridis", None, 0.0, 1.0
+
+def _bias_diverging_cmap():
+    from matplotlib.colors import LinearSegmentedColormap
+
+    return LinearSegmentedColormap.from_list("verify_bias", _ERROR_DIVERGING_COLORS)
+
+
+def _mae_from_white_cmap():
+    """Non-negative MAE: white at zero, warm colors for larger error."""
+    from matplotlib.colors import LinearSegmentedColormap
+
+    return LinearSegmentedColormap.from_list("verify_mae", _MAE_FROM_WHITE_COLORS)
+
+
+def _error_scale(da, metric):
+    """Colormap / norm for bias (diverging, white at 0) or MAE (white→warm)."""
+    import numpy as np
+    from matplotlib.colors import TwoSlopeNorm
+
+    vals = np.asarray(da.values, dtype=float)
+    finite = vals[np.isfinite(vals)]
+    if finite.size == 0:
+        if metric == "bias":
+            return _bias_diverging_cmap(), TwoSlopeNorm(vcenter=0.0, vmin=-1.0, vmax=1.0), None, None
+        return _mae_from_white_cmap(), None, 0.0, 1.0
+
     if metric == "bias":
-        if vmax > 0 and vmin < 0:
-            m = max(abs(vmax), abs(vmin))
+        cmap = _bias_diverging_cmap()
+        vmin = float(np.min(finite))
+        vmax = float(np.max(finite))
+        if vmin == vmax:
+            pad = abs(vmin) * 0.05 if vmin != 0 else 1.0
+            vmin, vmax = vmin - pad, vmax + pad
+        # Keep 0 in range so white lands on zero even for one-sided fields.
+        if vmin > 0:
+            vmin = 0.0
+        if vmax < 0:
+            vmax = 0.0
+        if vmin >= 0 or vmax <= 0:
+            m = max(abs(vmin), abs(vmax), 1e-6)
             vmin, vmax = -m, m
-        elif vmin == vmax:
-            vmin, vmax = vmin - 1.0, vmax + 1.0
-        return "RdBu_r", None, vmin, vmax
-    if vmin == vmax:
-        vmin, vmax = 0.0, max(vmax, 1.0)
-    elif vmin < 0:
-        vmin = 0.0
-    return "viridis", None, vmin, vmax
+        return cmap, TwoSlopeNorm(vcenter=0.0, vmin=vmin, vmax=vmax), None, None
+
+    cmap = _mae_from_white_cmap()
+    vmax = float(np.max(finite))
+    if not np.isfinite(vmax) or vmax <= 0:
+        vmax = 1.0
+    return cmap, None, 0.0, vmax
 
 
 def _lat_lon(da, role):
@@ -604,10 +694,13 @@ def plot_verify(
             vmin, vmax = 0.0, 1.0
 
     nrows, ncols = 3, len(columns)
+    n_ticks = _colorbar_tick_count(norm)
+    fig_w = _colorbar_figure_width(ncols, n_ticks)
+    maps_bottom, layout_top, field_box, verify_box = _colorbar_axes_boxes(title=bool(title))
     fig, axes = plt.subplots(
         nrows,
         ncols,
-        figsize=(max(3.6 * ncols, 7.0), max(3.2 * nrows, 6.0) + (0.7 if title else 0.0)),
+        figsize=(fig_w, max(3.2 * nrows, 6.0) + (0.7 if title else 0.0) + 1.2),
         sharex=True,
         sharey=True,
         subplot_kw={"projection": ccrs.PlateCarree()},
@@ -721,7 +814,7 @@ def plot_verify(
         if verify_mesh is None:
             verify_mesh = mesh
 
-    fig.tight_layout(rect=[0.20, 0.12, 1, 0.92 if title else 0.98], h_pad=1.4)
+    fig.tight_layout(rect=[0.20, maps_bottom, 1, layout_top], h_pad=1.4)
     for row, row_label in enumerate(row_labels):
         pos = axes[row][0].get_position()
         fig.text(
@@ -734,7 +827,7 @@ def plot_verify(
             fontsize=fontsize,
         )
     if field_mesh is not None:
-        cbar_ax = fig.add_axes([0.08, 0.055, 0.50, 0.02])
+        cbar_ax = fig.add_axes(field_box)
         cbar = fig.colorbar(
             field_mesh,
             cax=cbar_ax,
@@ -744,7 +837,7 @@ def plot_verify(
         cbar.set_label(_variable_label(obs_da), fontsize=fontsize)
         cbar.ax.tick_params(labelsize=tick_fs)
     if verify_mesh is not None:
-        verify_ax = fig.add_axes([0.66, 0.055, 0.26, 0.02])
+        verify_ax = fig.add_axes(verify_box)
         if metric == "hits":
             verify_cbar = fig.colorbar(
                 verify_mesh, cax=verify_ax, orientation="horizontal", ticks=[-1, 0, 1]

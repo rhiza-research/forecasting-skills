@@ -78,7 +78,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_verify.py \
 ### Output
 
 A 3 × N PNG. Stdout echoes each column's `verify_score_summary` from
-the corresponding `--verify` Zarr.
+the corresponding `--verify` Zarr. The verify-row colorbar is metric-
+specific: hits use disagree / below / hit classes; bias uses a blue↔white↔red
+diverging scale centered on zero; MAE uses white at zero through warm colors.
 
 ## Example
 

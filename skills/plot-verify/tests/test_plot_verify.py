@@ -89,6 +89,35 @@ def test_metric_bias_writes_png(tmp_path, plot_fn, verify_fn, capsys):
     assert "bias" in capsys.readouterr().out
 
 
+def test_error_scale_bias_white_at_zero(plot_mod):
+    import numpy as np
+    import xarray as xr
+    from matplotlib.colors import TwoSlopeNorm
+
+    da = xr.DataArray(np.array([[-2.0, 0.0], [0.5, 3.0]]), name="bias")
+    cmap, norm, vmin, vmax = plot_mod._error_scale(da, "bias")
+    assert cmap.name == "verify_bias"
+    assert isinstance(norm, TwoSlopeNorm)
+    assert norm.vcenter == 0.0
+    assert vmin is None and vmax is None
+    # Midpoint of the colormap is white
+    mid = cmap(0.5)[:3]
+    assert all(c > 0.95 for c in mid)
+
+
+def test_error_scale_mae_white_at_zero(plot_mod):
+    import numpy as np
+    import xarray as xr
+
+    da = xr.DataArray(np.array([[0.0, 1.0], [2.0, 4.0]]), name="mae")
+    cmap, norm, vmin, vmax = plot_mod._error_scale(da, "mae")
+    assert cmap.name == "verify_mae"
+    assert norm is None
+    assert vmin == 0.0
+    assert vmax == 4.0
+    assert all(c > 0.95 for c in cmap(0.0)[:3])
+
+
 def test_verify_count_mismatch_is_refused(tmp_path, plot_fn):
     obs = write_zarr(_week(event_at=[]), tmp_path / "obs.zarr")
     fc = write_zarr(_week(event_at=[]), tmp_path / "fc.zarr")
@@ -103,6 +132,27 @@ def test_verify_count_mismatch_is_refused(tmp_path, plot_fn):
             str(tmp_path / "out.png"),
         )
     assert exc.value.code == 2
+
+
+def test_colorbar_figure_expands_for_precip_class_ticks(plot_mod):
+    n_ticks = len(plot_mod.PRECIP_BOUNDS)
+    one_col = plot_mod._colorbar_figure_width(1, n_ticks)
+    four_col = plot_mod._colorbar_figure_width(4, n_ticks)
+    assert one_col > 7.0
+    assert one_col * plot_mod._FIELD_CBAR_WIDTH >= plot_mod._CBAR_INCHES_PER_TICK * n_ticks
+    assert four_col == max(3.6 * 4, one_col)
+    assert plot_mod._colorbar_figure_width(1, 0) == 7.0
+
+
+def test_colorbar_axes_stack_field_above_verify(plot_mod):
+    maps_bottom, top, field, verify = plot_mod._colorbar_axes_boxes(title=True)
+    assert field[2] == plot_mod._FIELD_CBAR_WIDTH
+    assert field[2] > verify[2]
+    assert field[1] > verify[1] + verify[3]
+    # Room between bars for the field colorbar label.
+    assert field[1] - (verify[1] + verify[3]) >= 0.05
+    assert maps_bottom > field[1] + field[3]
+    assert top == 0.92
 
 
 def test_row_labels_use_weather_skills_source(plot_mod):
