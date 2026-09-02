@@ -31,6 +31,7 @@ import pandas as pd
 import xarray as xr
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.standard_dataset import detect_spatial_dims
 from weather_skills_core.standard_utils import bbox_subset, roll_and_agg
 from weather_skills_core.units import AGGREGATION_PERIOD_ATTR, stamp_data_interval, to_standard_units
 
@@ -213,7 +214,10 @@ def fetch(dataset, start_time, end_time, variable, prediction_timedelta, window,
 
     semantic_name = clim.attrs.get("variable", variable)
     mean_name, std_name = f"{semantic_name}_avg", f"{semantic_name}_std"
-    clim = clim.rename({"avg": mean_name, "std": std_name})
+    lat_name, lon_name = detect_spatial_dims(clim)
+    clim = clim.rename(
+        {"avg": mean_name, "std": std_name, lat_name: "latitude", lon_name: "longitude"}
+    )
     clim = to_standard_units(clim, variables=[mean_name, std_name])
 
     if bbox is not None:

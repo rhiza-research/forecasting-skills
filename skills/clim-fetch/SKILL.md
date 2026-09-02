@@ -111,7 +111,7 @@ separate aggregation step itself which is prone to errors:
 
 ### Output
 
-Zarr with dims `(time, lat, lon)` where `time` is exactly the requested
+Zarr with dims `(time, latitude, longitude)` where `time` is exactly the requested
 calendar window (real dates, not the source's 1904 placeholder). Data
 variables are named `<variable>_avg` (climatological mean) and
 `<variable>_std` (climatological standard deviation), where `<variable>`
