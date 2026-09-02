@@ -36,6 +36,39 @@ from weather_skills_core.units import (
 _SKILL_VERSION = "0.0.2"
 
 
+def _axis_label(text):
+    """Sentence-case an axis label; map lon/lat shorthand to Longitude/Latitude."""
+    if text is None:
+        return text
+    s = str(text).strip()
+    if not s:
+        return s
+    known = {
+        "lon": "Longitude",
+        "lat": "Latitude",
+        "longitude": "Longitude",
+        "latitude": "Latitude",
+        "valid time": "Valid time",
+        "calendar day": "Calendar day",
+        "time": "Time",
+        "step": "Step",
+        "forecast step": "Forecast step",
+    }
+    key = s.lower()
+    if key in known:
+        return known[key]
+    if s[:1].islower():
+        return s[:1].upper() + s[1:]
+    return s
+
+
+def _resolve_axis_label(override, default):
+    """Use ``override`` verbatim when set; otherwise sentence-case ``default``."""
+    if override is not None and str(override).strip() != "":
+        return str(override)
+    return _axis_label(default)
+
+
 def _size1_str(ds, *names) -> str | None:
     for name in names:
         if name not in ds.coords and name not in getattr(ds, "variables", ()):
@@ -366,6 +399,16 @@ def _draw_bars(ax, series, styles):
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
+    "--xlabel",
+    default=None,
+    help="Override the x-axis label (default: Time / Valid time / Calendar day).",
+)
+@weather_skill.argument(
+    "--ylabel",
+    default=None,
+    help="Override the y-axis label (default: from variable metadata).",
+)
+@weather_skill.argument(
     "--fontsize",
     type=int,
     default=16,
@@ -406,6 +449,8 @@ def plot_timeseries(
     time_dim,
     reduce,
     title,
+    xlabel,
+    ylabel,
     fontsize,
     style,
     align_day_of_year,
@@ -531,8 +576,11 @@ def plot_timeseries(
 
     tick_fs = max(10, int(round(fontsize * 0.7)))
     legend_fs = max(10, int(round(fontsize * 0.85)))
-    ax.set_xlabel(axis_label or first_tdim or "time", fontsize=fontsize)
-    ax.set_ylabel(_y_label(variable, datasets[0][variable]), fontsize=fontsize)
+    ax.set_xlabel(_resolve_axis_label(xlabel, axis_label or first_tdim or "time"), fontsize=fontsize)
+    ax.set_ylabel(
+        _resolve_axis_label(ylabel, _y_label(variable, datasets[0][variable])),
+        fontsize=fontsize,
+    )
     if title:
         ax.set_title(title, fontsize=fontsize)
     ax.tick_params(labelsize=tick_fs)

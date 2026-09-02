@@ -89,6 +89,33 @@ PRECIP_ANOMALY_COLORS = [
 ]
 PRECIP_ANOMALY_BOUNDS = [-500, -300, -200, -100, -50, -25, -10, 10, 25, 50, 100, 200, 300, 500]
 
+
+def _axis_label(text):
+    """Sentence-case an axis label; map lon/lat shorthand to Longitude/Latitude."""
+    if text is None:
+        return text
+    s = str(text).strip()
+    if not s:
+        return s
+    known = {
+        "lon": "Longitude",
+        "lat": "Latitude",
+        "longitude": "Longitude",
+        "latitude": "Latitude",
+        "valid time": "Valid time",
+        "calendar day": "Calendar day",
+        "time": "Time",
+        "step": "Step",
+        "forecast step": "Forecast step",
+    }
+    key = s.lower()
+    if key in known:
+        return known[key]
+    if s[:1].islower():
+        return s[:1].upper() + s[1:]
+    return s
+
+
 _NS_PER_DAY = 86_400_000_000_000
 _TOL_NS = 1_000_000_000  # 1 s, matching plot-compare
 
@@ -801,7 +828,7 @@ def plot_compare_forecasts(
                         fontsize=lead_fs,
                         color="0.2",
                     )
-            ax.set_ylabel(labels[row], fontsize=fontsize)
+            ax.set_ylabel(_axis_label(labels[row]), fontsize=fontsize)
 
     if contour is not None:
         fig.tight_layout(rect=[0, 0.06, 1, 0.94 if title else 0.98])

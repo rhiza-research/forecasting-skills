@@ -863,6 +863,39 @@ def _step_dim(da):
     return cf if cf and cf in da.dims else None
 
 
+def _axis_label(text):
+    """Sentence-case an axis label; map lon/lat shorthand to Longitude/Latitude."""
+    if text is None:
+        return text
+    s = str(text).strip()
+    if not s:
+        return s
+    known = {
+        "lon": "Longitude",
+        "lat": "Latitude",
+        "longitude": "Longitude",
+        "latitude": "Latitude",
+        "valid time": "Valid time",
+        "calendar day": "Calendar day",
+        "time": "Time",
+        "step": "Step",
+        "forecast step": "Forecast step",
+    }
+    key = s.lower()
+    if key in known:
+        return known[key]
+    if s[:1].islower():
+        return s[:1].upper() + s[1:]
+    return s
+
+
+def _resolve_axis_label(override, default):
+    """Use ``override`` verbatim when set; otherwise sentence-case ``default``."""
+    if override is not None and str(override).strip() != "":
+        return str(override)
+    return _axis_label(default)
+
+
 def _format_step(value):
     import numpy as np
 
@@ -943,7 +976,7 @@ def _timeseries_axis(da, sdim):
     init = np.asarray(time_coord.values)
     if init.dtype.kind != "M":
         return da[sdim].values, sdim
-    return (init + steps).astype("datetime64[ns]"), "valid time"
+    return (init + steps).astype("datetime64[ns]"), "Valid time"
 
 
 def _panel_title(da, sdim, step_value, all_steps):
@@ -1451,6 +1484,8 @@ def _quiver_map(
     quiver_scale=None,
     quiver_step=None,
     cbar_label=None,
+    xlabel=None,
+    ylabel=None,
 ):
     """Speed pcolormesh with native-grid u/v arrows (plot_wind_and_sst_anomaly)."""
     import cartopy.crs as ccrs
@@ -1558,8 +1593,8 @@ def _quiver_map(
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
+        ax.set_xlabel(_resolve_axis_label(xlabel, "Longitude"))
+        ax.set_ylabel(_resolve_axis_label(ylabel, "Latitude"))
         for city, (lat, lon) in cities.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=ccrs.PlateCarree())
             ax.text(
@@ -1622,6 +1657,8 @@ def _plot_quiver(
     columns,
     quiver_scale,
     quiver_step,
+    xlabel=None,
+    ylabel=None,
 ):
     """Map panels of wind speed with S2S-style u/v quiver overlay."""
     if variable:
@@ -1666,6 +1703,8 @@ def _plot_quiver(
         quiver_scale=quiver_scale,
         quiver_step=quiver_step,
         cbar_label=_wind_speed_cbar_label(u_da),
+        xlabel=xlabel,
+        ylabel=ylabel,
     )
 
 
@@ -2241,6 +2280,8 @@ def _plot_layers(
     shared_scale,
     independent_scale,
     layer_labels=None,
+    xlabel=None,
+    ylabel=None,
 ):
     """Stack ``--layer`` entries on shared Cartopy panels."""
     import cartopy.crs as ccrs
@@ -2453,8 +2494,8 @@ def _plot_layers(
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
+        ax.set_xlabel(_resolve_axis_label(xlabel, "Longitude"))
+        ax.set_ylabel(_resolve_axis_label(ylabel, "Latitude"))
         for city, (lat, lon) in cities_map.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=transform, zorder=8)
             ax.text(
@@ -2550,6 +2591,8 @@ def _heatmap(
     rows=None,
     columns=None,
     kind="heatmap",
+    xlabel=None,
+    ylabel=None,
 ):
     import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
@@ -2657,8 +2700,8 @@ def _heatmap(
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
+        ax.set_xlabel(_resolve_axis_label(xlabel, "Longitude"))
+        ax.set_ylabel(_resolve_axis_label(ylabel, "Latitude"))
         for city, (lat, lon) in cities.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=ccrs.PlateCarree())
             ax.text(
@@ -2768,6 +2811,16 @@ def _heatmap(
 )
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
 @weather_skill.argument(
+    "--xlabel",
+    default=None,
+    help="Override the x-axis label (default: Longitude / Valid time / …).",
+)
+@weather_skill.argument(
+    "--ylabel",
+    default=None,
+    help="Override the y-axis label (default: Latitude / variable label / …).",
+)
+@weather_skill.argument(
     "--rows",
     type=int,
     default=None,
@@ -2840,6 +2893,8 @@ def plot(
     style,
     colormap,
     title,
+    xlabel,
+    ylabel,
     index,
     extent,
     cities,
@@ -2909,6 +2964,8 @@ def plot(
             shared_scale,
             independent_scale,
             layer_labels=label,
+            xlabel=xlabel,
+            ylabel=ylabel,
         )
         output = Path(output)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -3009,6 +3066,8 @@ def plot(
             columns,
             quiver_scale,
             quiver_step,
+            xlabel=xlabel,
+            ylabel=ylabel,
         )
     else:
         variable = variable or auto_variable(ds)
@@ -3054,6 +3113,8 @@ def plot(
             rows=rows,
             columns=columns,
             kind=style,
+            xlabel=xlabel,
+            ylabel=ylabel,
         )
     elif style == "timeseries":
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -3062,15 +3123,19 @@ def plot(
             raise UsageError(f"timeseries needs 'step' or 'time'; got {list(da.dims)}.")
         reduce_dims = [d for d in da.dims if d != sdim]
         reduced = da.mean(reduce_dims, keep_attrs=True)
-        xvals, xlabel = _timeseries_axis(reduced, sdim)
+        xvals, default_xlabel = _timeseries_axis(reduced, sdim)
         ax.plot(xvals, reduced.values, marker="o", markersize=5)
         tick_fs = max(10, int(round(fontsize * 0.7)))
-        ax.set_xlabel(xlabel, fontsize=fontsize)
-        ax.set_ylabel(_variable_label(reduced), fontsize=fontsize)
+        resolved_xlabel = _resolve_axis_label(xlabel, default_xlabel)
+        ax.set_xlabel(resolved_xlabel, fontsize=fontsize)
+        ax.set_ylabel(
+            _resolve_axis_label(ylabel, _variable_label(reduced)),
+            fontsize=fontsize,
+        )
         qty = variable_label_for_display(reduced, include_units=False)
         ax.set_title(title or f"{qty} ({style})", fontsize=fontsize)
         ax.tick_params(labelsize=tick_fs)
-        if xlabel == "valid time":
+        if resolved_xlabel == "Valid time" or default_xlabel == "Valid time":
             fig.autofmt_xdate()
         fig.tight_layout()
 

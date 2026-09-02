@@ -33,7 +33,7 @@ Lat/lon selection is nearest-neighbor.
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py -i <forecast.zarr> -i <mclimate.zarr> \
     --lat <lat> --lon <lon> --output <out.png> \
-    [--variable NAME] [--title TEXT] [--fontsize N]
+    [--variable NAME] [--title TEXT] [--xlabel TEXT] [--ylabel TEXT] [--fontsize N]
 ```
 
 ### Arguments
@@ -42,6 +42,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py -i <forecast.zarr> -i <mcli
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable in the forecast input.
 - `--title` — optional plot title.
+- `--xlabel` / `--ylabel` — optional axis-label overrides (defaults: `Forecast step`
+  and the variable label). Passed text is used as-is.
 - `--fontsize` — base font size for titles, axis labels, ticks, and legend
   (default 16). Raise on user request (e.g. `--fontsize 22`).
 

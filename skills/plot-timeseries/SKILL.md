@@ -50,7 +50,8 @@ For maps of N forecasts (or forecasts vs gridded obs) over time, use
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
-    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] [--fontsize N] \
+    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] \
+    [--xlabel TEXT] [--ylabel TEXT] [--fontsize N] \
     [--style line|bar] [--align-day-of-year] [--trace SELECTOR:k=v ...]
 ```
 
@@ -69,6 +70,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   has any non-time dims after variable selection; the skill exits with an
   error rather than silently averaging.
 - `--title` — optional figure title.
+- `--xlabel` / `--ylabel` — optional axis-label overrides. When omitted, x is
+  `Time` / `Valid time` / `Calendar day` and y comes from the variable
+  metadata. Passed text is used as-is.
 - `--fontsize` — base font size for titles, axis labels, ticks, and legend
   (default 16). Raise on user request (e.g. `--fontsize 22`).
 - `--style` — `line` (default) or `bar`. `bar` draws grouped bars (one group

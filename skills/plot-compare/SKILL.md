@@ -83,7 +83,7 @@ dataset has no matching time, use `plot-compare-forecasts`.
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --output <out.png> \
     [--variable NAME] [--variable-a NAME] [--variable-b NAME] \
     [--colormap NAME] [--colormap-a NAME] [--colormap-b NAME] \
-    [--shared-scale | --independent-scale] [--title TEXT] [--fontsize N] \
+    [--shared-scale | --independent-scale] [--title TEXT] [--xlabel TEXT] [--fontsize N] \
     [--panels N] [--time-dim DIM] \
     [--bbox N/W/S/E] [--mask-geojson PATH]
 ```
@@ -122,6 +122,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
   neither is given, the mode is chosen automatically: shared when both
   rows resolve to the same variable AND matching units, else independent.
 - `--title` — figure title.
+- `--xlabel` — override the bottom longitude axis label (default `Longitude`).
+  Row titles stay `--label`.
 - `--fontsize` — base font size for panel titles, row labels, ticks, and
   colorbars (default 14). Raise on user request (e.g. `--fontsize 18`).
 - `--panels` — number of panels per row (default 3).

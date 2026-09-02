@@ -94,6 +94,39 @@ def _scaled_fontsize(base, frac, *, floor=8):
     return max(floor, int(round(int(base) * frac)))
 
 
+def _axis_label(text):
+    """Sentence-case an axis label; map lon/lat shorthand to Longitude/Latitude."""
+    if text is None:
+        return text
+    s = str(text).strip()
+    if not s:
+        return s
+    known = {
+        "lon": "Longitude",
+        "lat": "Latitude",
+        "longitude": "Longitude",
+        "latitude": "Latitude",
+        "valid time": "Valid time",
+        "calendar day": "Calendar day",
+        "time": "Time",
+        "step": "Step",
+        "forecast step": "Forecast step",
+    }
+    key = s.lower()
+    if key in known:
+        return known[key]
+    if s[:1].islower():
+        return s[:1].upper() + s[1:]
+    return s
+
+
+def _resolve_axis_label(override, default):
+    """Use ``override`` verbatim when set; otherwise sentence-case ``default``."""
+    if override is not None and str(override).strip() != "":
+        return str(override)
+    return _axis_label(default)
+
+
 def _parse_colormap(spec):
     """Matplotlib name, or a LinearSegmentedColormap from comma-separated colors."""
     if spec is None or "," not in spec:
@@ -400,6 +433,11 @@ def _axis_kind(values):
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
+    "--xlabel",
+    default=None,
+    help="Override the bottom x-axis label (default: Longitude).",
+)
+@weather_skill.argument(
     "--fontsize",
     type=int,
     default=14,
@@ -428,6 +466,7 @@ def plot_compare(
     shared_scale,
     independent_scale,
     title,
+    xlabel,
     fontsize,
     panels,
     time_dim,
@@ -837,7 +876,7 @@ def plot_compare(
             ax.set_title(title_t, fontsize=fontsize)
             if boundaries is not None:
                 boundaries.boundary.plot(edgecolor="grey", linewidth=1.0, ax=ax)
-            ax.set_ylabel(label, fontsize=fontsize)
+            ax.set_ylabel(_axis_label(label), fontsize=fontsize)
             ax.tick_params(labelsize=_scaled_fontsize(fontsize, 0.7))
             if col != 0:
                 ax.tick_params(left=False, labelleft=False)
@@ -853,7 +892,10 @@ def plot_compare(
     for col, ax in enumerate(bottom_axes):
         ax.set_xlim(g_xmin, g_xmax)
         ax.set_ylim(g_ymin, g_ymax)
-        ax.set_xlabel("lon" if col == n // 2 else "", fontsize=fontsize)
+        ax.set_xlabel(
+            _resolve_axis_label(xlabel, "Longitude") if col == n // 2 else "",
+            fontsize=fontsize,
+        )
 
     def _cbar_label(row):
         _ds, da, _td, label, var, _units, _scale = row

@@ -110,7 +110,8 @@ with a hits row, use `plot-verify`.
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --input <in.zarr> --output <out.png> \
     [--variable NAME] [--style heatmap|contour|timeseries|windrose|quiver] \
     [--u-variable NAME] [--v-variable NAME] [--quiver-scale N] [--quiver-step N] \
-    [--colormap NAME] [--title TEXT] [--index DIM=POS,...] \
+    [--colormap NAME] [--title TEXT] [--xlabel TEXT] [--ylabel TEXT] \
+    [--index DIM=POS,...] \
     [--extent LON_MIN,LON_MAX,LAT_MIN,LAT_MAX] \
     [--cities JSON_OR_PATH] [--fontsize N] [--bbox N/W/S/E] \
     [--mask-geojson PATH] [--draw-box N/W/S/E ...] \
@@ -170,6 +171,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
   discrete colormap and labeled colorbar ticks; `--colormap` as comma-separated
   colors must then match the flag count.
 - `--title` — optional plot title.
+- `--xlabel` / `--ylabel` — optional axis-label overrides. When omitted, maps
+  use `Longitude` / `Latitude` and timeseries uses `Valid time` (or the time
+  dim) / the variable label. Passed text is used as-is (not re-cased).
 - `--index` — dim selections like `step=3,number=0`. A dim may take several
   comma-separated positions, e.g. `step=0,1,2`, which keeps the dim with just
   those positions. Negative positions are accepted and count from the end,

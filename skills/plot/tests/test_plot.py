@@ -87,9 +87,51 @@ def test_timeseries_forecast_axis_is_valid_time(plot_fn):
     plot_mod = load_skill("plot", "plot")
     da = make_forecast(init="2026-01-01")["tp"]
     xvals, xlabel = plot_mod._timeseries_axis(da, "step")
-    assert xlabel == "valid time"
+    assert xlabel == "Valid time"
     assert np.datetime_as_string(xvals[0], unit="D") == "2026-01-01"
     assert np.datetime_as_string(xvals[-1], unit="D") == "2026-01-03"
+
+
+def test_axis_label_capitalizes():
+    plot_mod = load_skill("plot", "plot")
+    assert plot_mod._axis_label("lon") == "Longitude"
+    assert plot_mod._axis_label("valid time") == "Valid time"
+    assert plot_mod._axis_label("total precipitation [mm]") == "Total precipitation [mm]"
+    assert plot_mod._axis_label("Latitude") == "Latitude"
+
+
+def test_resolve_axis_label_override_is_verbatim():
+    plot_mod = load_skill("plot", "plot")
+    assert plot_mod._resolve_axis_label("lon (E)", "Longitude") == "lon (E)"
+    assert plot_mod._resolve_axis_label(None, "lon") == "Longitude"
+    assert plot_mod._resolve_axis_label("", "Latitude") == "Latitude"
+
+
+def test_heatmap_axis_label_overrides(tmp_path, plot_fn):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    plot_mod = load_skill("plot", "plot")
+    da = make_gridded(n_time=1)["precip"]
+    fig = plot_mod._heatmap(
+        da,
+        "latitude",
+        "longitude",
+        "viridis",
+        extent=(10.0, 11.0, 1.0, 2.0),
+        cities={},
+        title=None,
+        fontsize=14,
+        wrap_lon=True,
+        xlabel="Eastings",
+        ylabel="Northings",
+    )
+    axes = [ax for ax in fig.axes if hasattr(ax, "get_xlabel") and ax.get_visible()]
+    assert any(ax.get_xlabel() == "Eastings" for ax in axes)
+    assert any(ax.get_ylabel() == "Northings" for ax in axes)
+    import matplotlib.pyplot as plt
+
+    plt.close(fig)
 
 
 def test_panel_title_lead_zero_is_first_24h(plot_fn):
