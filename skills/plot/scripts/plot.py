@@ -1572,7 +1572,10 @@ def _quiver_map(
         if boxes:
             _draw_boxes_on_ax(ax, boxes, ccrs.PlateCarree())
         if s is not None:
-            ax.set_title(_panel_title(speed, sdim, s, title_steps), fontsize=int(fontsize * 0.8))
+            ax.set_title(
+                _panel_title(speed, sdim, s, title_steps),
+                fontsize=_panel_title_fontsize(fontsize),
+            )
 
     for j in range(num_steps, len(axes)):
         axes[j].set_visible(False)
@@ -1594,8 +1597,7 @@ def _quiver_map(
 
     if title:
         fig.suptitle(title, fontsize=fontsize)
-    fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
-    cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
+    cbar_ax = _map_colorbar_axes(fig, title=title, nrows=nrows)
     cbar = fig.colorbar(mesh, cax=cbar_ax, orientation="horizontal", fraction=5)
     cbar.set_label(cbar_label or _wind_speed_cbar_label(u_da), fontsize=fontsize)
     cbar.ax.tick_params(labelsize=max(10, int(round(fontsize * 0.7))))
@@ -2466,7 +2468,10 @@ def _plot_layers(
         if boxes:
             _draw_boxes_on_ax(ax, boxes, transform)
         if s is not None and title_da is not None:
-            ax.set_title(_panel_title(title_da, sdim, s, title_steps), fontsize=int(fontsize * 0.8))
+            ax.set_title(
+                _panel_title(title_da, sdim, s, title_steps),
+                fontsize=_panel_title_fontsize(fontsize),
+            )
 
     for j in range(num_steps, len(axes)):
         axes[j].set_visible(False)
@@ -2490,13 +2495,11 @@ def _plot_layers(
 
     if title:
         fig.suptitle(title, fontsize=fontsize)
-    fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
 
     cbars = list(last_by_group.values())
     n_cbars = len(cbars)
     for ci, (mappable, p) in enumerate(cbars):
-        y = -0.04 - ci * (0.06 if n_cbars > 1 else 0)
-        cbar_ax = fig.add_axes([0.15, y, 0.7, 0.01 + 0.02 / nrows])
+        cbar_ax = _map_colorbar_axes(fig, title=title, nrows=nrows, index=ci, n_cbars=n_cbars)
         cbar = fig.colorbar(
             mappable,
             cax=cbar_ax,
@@ -2668,15 +2671,17 @@ def _heatmap(
         if boxes:
             _draw_boxes_on_ax(ax, boxes, ccrs.PlateCarree())
         if s is not None:
-            ax.set_title(_panel_title(da, sdim, s, title_steps), fontsize=int(fontsize * 0.8))
+            ax.set_title(
+                _panel_title(da, sdim, s, title_steps),
+                fontsize=_panel_title_fontsize(fontsize),
+            )
 
     for j in range(num_steps, len(axes)):
         axes[j].set_visible(False)
 
     if title:
         fig.suptitle(title, fontsize=fontsize)
-    fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
-    cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
+    cbar_ax = _map_colorbar_axes(fig, title=title, nrows=nrows)
     cbar = fig.colorbar(
         mappable,
         cax=cbar_ax,

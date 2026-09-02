@@ -810,7 +810,21 @@ def plot_compare(
         cmap, norm, vmin, vmax = scale
         is_station = _is_station(ds)
         row_sel = da.sel({td: common_labels}, method="nearest", tolerance=common_tol)
-        bin_width = _median_bin_width(da[td].values)
+        import pandas as pd
+
+        bin_width = None
+        agg_days = _aggregation_days(da)
+        if agg_days is not None and agg_days >= 2:
+            bin_width = pd.Timedelta(days=float(agg_days))
+        else:
+            median = _median_bin_width(da[td].values)
+            if median is not None:
+                try:
+                    seconds = float(median.total_seconds())
+                except AttributeError:
+                    seconds = float(pd.Timedelta(median).total_seconds())
+                if seconds >= 2 * 86_400:
+                    bin_width = median
         last_im = None
         for col in range(n_panels):
             ax = axes[col]
@@ -820,7 +834,7 @@ def plot_compare(
                 last_im = _scatter_panel(ax, ds, sel, cmap, norm, vmin, vmax)
             else:
                 last_im = _grid_panel(ax, sel, cmap, norm, vmin, vmax)
-            ax.set_title(title_t, fontsize=_scaled_fontsize(fontsize, 0.85))
+            ax.set_title(title_t, fontsize=fontsize)
             if boundaries is not None:
                 boundaries.boundary.plot(edgecolor="grey", linewidth=1.0, ax=ax)
             ax.set_ylabel(label, fontsize=fontsize)

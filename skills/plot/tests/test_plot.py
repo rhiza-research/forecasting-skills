@@ -101,6 +101,49 @@ def test_panel_title_lead_zero_is_first_24h(plot_fn):
     assert "until 2025-01-02" in title
 
 
+def test_panel_title_calendar_weekly_range(plot_fn):
+    import numpy as np
+    import xarray as xr
+
+    plot_mod = load_skill("plot", "plot")
+    times = np.arange("2026-08-04", "2026-09-01", dtype="datetime64[D]")[::7]
+    da = xr.DataArray(
+        np.zeros((len(times), 2, 2)),
+        dims=("time", "latitude", "longitude"),
+        coords={
+            "time": times,
+            "latitude": [0.0, 1.0],
+            "longitude": [36.0, 37.0],
+        },
+        name="precip",
+    )
+    da.attrs["aggregation_period"] = "7 day"
+    title = plot_mod._panel_title(da, "time", times[0], times)
+    assert title == "2026-08-04 to 2026-08-10"
+
+
+def test_panel_title_calendar_daily_is_single_date(plot_fn):
+    import numpy as np
+    import xarray as xr
+
+    plot_mod = load_skill("plot", "plot")
+    times = np.arange("2026-08-04", "2026-08-08", dtype="datetime64[D]")
+    da = xr.DataArray(
+        np.zeros((len(times), 2, 2)),
+        dims=("time", "latitude", "longitude"),
+        coords={
+            "time": times,
+            "latitude": [0.0, 1.0],
+            "longitude": [36.0, 37.0],
+        },
+        name="precip",
+    )
+    da.attrs["aggregation_period"] = "1 day"
+    title = plot_mod._panel_title(da, "time", times[0], times)
+    assert title == "2026-08-04"
+    assert "time=" not in title
+
+
 def test_timeseries_forecast_writes_png(tmp_path, plot_fn):
     ds = make_forecast()
     ds["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")

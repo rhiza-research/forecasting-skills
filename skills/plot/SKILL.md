@@ -20,7 +20,10 @@ Source-agnostic visualization. Single-input styles (`-i`) plus layered maps
   maps (span ≤ 20°). Overlays are clipped to the map extent. If
   the input has a `step` (or `time`) dimension, panels are laid out one per
   step with a shared color scale and a horizontal colorbar spanning all
-  panels at the bottom. Default layout is up to 4 columns (rows added as
+  panels at the bottom. Panel titles show calendar dates (`YYYY-MM-DD`) or,
+  for multi-day bins (from `aggregation_period` or time spacing), inclusive
+  ranges (`YYYY-MM-DD to YYYY-MM-DD`); forecast lead panels keep
+  `<start> until <end>`. Default layout is up to 4 columns (rows added as
   needed). `--rows` and/or `--columns` override that and must pack the
   panel count exactly (`rows × columns` equals the number of steps/times;
   leftover blank cells are not allowed). Ensemble members
@@ -189,8 +192,9 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
 - `--cities` — heatmap/quiver city overlay. Inline JSON like
   `'{"Windhoek": [-22.55, 17.08]}'` or a path to such a JSON file. Off by
   default.
-- `--fontsize` — base font size for titles, axis labels, city labels, and
-  colorbar text (default 18). Raise on user request (e.g. `--fontsize 22`).
+- `--fontsize` — base font size for titles (including panel date labels), axis
+  labels, city labels, and colorbar text (default 18). Raise on user request
+  (e.g. `--fontsize 22`).
 - `--rows` / `--columns` — heatmap/quiver panel grid. Pass either or both. When
   either is set, the layout must pack the data exactly: both given →
   `rows × columns` must equal the number of panels (steps/times after
