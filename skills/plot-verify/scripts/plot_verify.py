@@ -145,8 +145,8 @@ def _require_same_grid(left, right, left_role, right_role) -> None:
         raise UsageError(
             f"{right_role} grid spacing does not match {left_role} on "
             f"{' and '.join(mismatched)}; coarsen --obs onto the forecast "
-            "lat/lon resolution (and offset) before plot-verify. Do not "
-            "downscale the forecast to the obs grid."
+            "with --reference-grid <forecast.zarr> (match obs to the forecast "
+            "resolution, not the reverse)."
         )
 
 

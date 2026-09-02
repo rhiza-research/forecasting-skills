@@ -52,11 +52,14 @@ where `--output` resolves to either `--input` path.
 ### Alignment
 
 Shared dims are aligned with an inner join, so only overlapping coordinate
-values participate; dims present on only one input broadcast. When a variable
-ends up empty along a dim the skill exits non-zero (no output is written) and
-distinguishes the two causes: a dim that was already empty in an input before
-alignment, versus a dim left empty because alignment found no overlapping
-coordinate values.
+labels are kept; dims present on only one input broadcast. Floating-point
+near-misses (e.g. coarsened `5.9500000001` vs IMERG `5.95`) drop cells — put
+both fields on one product's exact grid with `coarsen --reference-grid` (or
+`downscale --reference-grid` if the target is finer) before differencing.
+When a variable ends up empty along a dim the skill exits non-zero (no output
+is written) and distinguishes the two causes: a dim that was already empty in
+an input before alignment, versus a dim left empty because alignment found no
+overlapping coordinate values.
 
 A shared dim that has no index coordinate cannot be label-aligned, so it is
 paired positionally (element *i* of A minus element *i* of B). If the two

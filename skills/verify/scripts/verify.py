@@ -86,7 +86,7 @@ def verify(forecast, obs, variable, metric, threshold, **kwargs):
         raise UsageError(
             "obs grid spacing does not match the forecast on "
             f"{' and '.join(mismatched)}; coarsen --obs onto the forecast "
-            "lat/lon resolution (and offset) before verify. Do not "
+            "with --reference-grid <forecast.zarr>. Do not "
             "downscale the forecast to the obs grid."
         )
 
@@ -101,8 +101,7 @@ def verify(forecast, obs, variable, metric, threshold, **kwargs):
     if any(size == 0 for size in fc.sizes.values()):
         raise UsageError(
             "no overlapping coordinates between --forecast and --obs; "
-            "coarsen --obs onto the forecast grid (match obs to the forecast "
-            "resolution, not the reverse) and align time "
+            "coarsen --obs --reference-grid <forecast.zarr> and align time "
             "(step-to-time / aggregate-temporal) first."
         )
 
