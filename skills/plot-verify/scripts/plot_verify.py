@@ -514,7 +514,7 @@ def plot_verify(
     fig, axes = plt.subplots(
         nrows,
         ncols,
-        figsize=(max(3.2 * ncols, 6.0), max(2.8 * nrows, 5.0) + (0.6 if title else 0.0)),
+        figsize=(max(3.6 * ncols, 7.0), max(3.2 * nrows, 6.0) + (0.7 if title else 0.0)),
         sharex=True,
         sharey=True,
         subplot_kw={"projection": ccrs.PlateCarree()},
@@ -526,7 +526,19 @@ def plot_verify(
     tick_fs = _scaled_fontsize(fontsize, 0.7)
     panel_title_fs = _scaled_fontsize(fontsize, 0.85)
 
-    def _draw(ax, da, lat_dim, lon_dim, this_cmap, this_norm, this_vmin, this_vmax, *, left_labels):
+    def _draw(
+        ax,
+        da,
+        lat_dim,
+        lon_dim,
+        this_cmap,
+        this_norm,
+        this_vmin,
+        this_vmax,
+        *,
+        left_labels,
+        bottom_labels,
+    ):
         if wrap_lon:
             ax.set_extent(extent, crs=ccrs.PlateCarree())
         else:
@@ -541,6 +553,8 @@ def plot_verify(
         gl.ylabel_style = {"size": tick_fs}
         if not left_labels:
             gl.left_labels = False
+        if not bottom_labels:
+            gl.bottom_labels = False
         slab = da.transpose(lat_dim, lon_dim)
         return ax.pcolormesh(
             slab[lon_dim],
@@ -556,14 +570,32 @@ def plot_verify(
     field_mesh = verify_mesh = None
     for col, (label, fc_da, verify_da, lat_dim, lon_dim) in enumerate(columns):
         left = col == 0
-        axes[0][col].set_title(label, fontsize=panel_title_fs)
+        axes[0][col].set_title(label, fontsize=panel_title_fs, pad=10)
         mesh = _draw(
-            axes[0][col], obs_da, obs_lat, obs_lon, cmap, norm, vmin, vmax, left_labels=left
+            axes[0][col],
+            obs_da,
+            obs_lat,
+            obs_lon,
+            cmap,
+            norm,
+            vmin,
+            vmax,
+            left_labels=left,
+            bottom_labels=False,
         )
         if field_mesh is None:
             field_mesh = mesh
         mesh = _draw(
-            axes[1][col], fc_da, lat_dim, lon_dim, cmap, norm, vmin, vmax, left_labels=left
+            axes[1][col],
+            fc_da,
+            lat_dim,
+            lon_dim,
+            cmap,
+            norm,
+            vmin,
+            vmax,
+            left_labels=left,
+            bottom_labels=False,
         )
         if field_mesh is None:
             field_mesh = mesh
@@ -578,6 +610,7 @@ def plot_verify(
                 None,
                 None,
                 left_labels=left,
+                bottom_labels=True,
             )
         else:
             mesh = _draw(
@@ -590,15 +623,16 @@ def plot_verify(
                 verify_vmin,
                 verify_vmax,
                 left_labels=left,
+                bottom_labels=True,
             )
         if verify_mesh is None:
             verify_mesh = mesh
 
-    fig.tight_layout(rect=[0.12, 0.10, 1, 0.94 if title else 0.98])
+    fig.tight_layout(rect=[0.20, 0.12, 1, 0.92 if title else 0.98], h_pad=1.4)
     for row, row_label in enumerate(row_labels):
         pos = axes[row][0].get_position()
         fig.text(
-            pos.x0 - 0.04,
+            pos.x0 - 0.10,
             (pos.y0 + pos.y1) / 2,
             row_label,
             rotation=90,
