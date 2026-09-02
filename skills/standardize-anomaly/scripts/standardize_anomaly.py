@@ -26,7 +26,8 @@ _SKILL_VERSION = "0.0.1"
 @weather_skill.argument("-i", "--input", type=Dataset("any"), required=True)
 @weather_skill.argument("--climatology", type=Dataset("any"), required=True)
 @weather_skill.argument("--variable", "-v", action="append", required=True)
-def standardize_anomaly(ds, climatology, variable, **kwargs):
+@weather_skill.argument("--epsilon", type=float, default=0.1, help="Normalization to avoid divide-by-zero.")
+def standardize_anomaly(ds, climatology, variable, epsilon, **kwargs):
     """Standardized anomaly: (ds[var] - clim[var_avg]) / clim[var_std] per --variable."""
     import xarray as xr
 
@@ -69,19 +70,29 @@ def standardize_anomaly(ds, climatology, variable, **kwargs):
         field = ds[v]
         avg, std = climatology[avg_name], climatology[std_name]
 
+        # epsilon regularizes the denominator (in std's own units) so a
+        # near-zero-variance cell doesn't blow up to inf. An offset unit
+        # (e.g. degree_Celsius) can't add a plain quantity in that unit —
+        # add it as a delta instead, which is what a magnitude bump means.
+        std_units = std.pint.units if getattr(std, "pint", None) is not None else None
+        if std_units is None:
+            denom = std + epsilon
+        else:
+            try:
+                denom = std + epsilon * std_units
+            except pint_xarray.pint.OffsetUnitCalculusError:
+                denom = std + std.pint.registry.Quantity(epsilon, f"delta_{std_units}")
+
         # Pint checks unit compatibility itself and auto-converts compatible
         # units; unlike `difference`, we refuse outright on a real mismatch.
         try:
-            anomaly = (field - avg) / std
+            anomaly = (field - avg) / denom
         except (pint_xarray.pint.DimensionalityError, pint_xarray.errors.PintExceptionGroup) as exc:
             raise UsageError(
                 f"cannot standardize {v!r} against {avg_name!r}/{std_name!r}: {exc}. "
                 "standardize-anomaly refuses to combine dimensionally incompatible "
                 "units. Run unit-convert first."
             ) from None
-
-        # anomaly will be NaN if std is 0.
-        anomaly = anomaly.where(std != 0)
 
         if getattr(anomaly, "pint", None) is not None and anomaly.pint.units is not None:
             anomaly = anomaly.pint.dequantify()

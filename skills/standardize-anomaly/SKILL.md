@@ -107,7 +107,9 @@ first input's attrs (appropriate there since a difference of two rates is
 still a rate; a z-score isn't a rate at all, so nothing physical carries
 over). If a spatial dim was present, its output name is always
 `latitude`/`longitude` regardless of what either input called it — see
-"Alignment" above.
+"Alignment" above. A cell where `NAME_std` is exactly `0` (e.g. a bone-dry
+precip window with no historical variability) has an undefined z-score and
+is masked to `NaN` rather than a division artifact.
 
 ### Provenance
 
