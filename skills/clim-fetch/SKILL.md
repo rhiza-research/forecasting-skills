@@ -119,7 +119,11 @@ linearly, so both variables go through the same unit-conversion path safely.
 Global attrs include `weather_skills_source=sheerwater-mirror:<dataset>`,
 `climatology_dataset`, `climatology_variable`,
 `climatology_prediction_timedelta_days`, `climatology_window_days`.
-Stamped with `data_interval` `1 day`.
+Stamped with `data_interval` `1 day` (output is always one row per calendar
+day, regardless of `--window`) and, per variable, `aggregation_period`
+`"<window> day"` (the width of window each value represents — the two attrs
+mean different things: see `aggregate-temporal`'s docs on the same
+distinction for its own `--window`).
 
 Two dates far apart within the window but sharing a day-of-year (e.g. two
 different years' June 15) get **identical** climatology values by design —
