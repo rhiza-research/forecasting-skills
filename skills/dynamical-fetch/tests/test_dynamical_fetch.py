@@ -193,6 +193,17 @@ def test_resolve_t_alias_expands_hpa_only(mod):
     assert mod._resolve_variables(["temperature_850hpa"], names, "ifs") == ["temperature_850hpa"]
 
 
+def test_resolve_precip_aliases_to_surface(mod):
+    names = ["precipitation_surface", "precipitation_quality_index_surface"]
+    for token in ("precip", "precipitation", "tp", "total_precipitation", "pr"):
+        assert mod._resolve_variables([token], names, "nasa-imerg-analysis-late") == [
+            "precipitation_surface"
+        ]
+    assert mod._resolve_variables(["precipitation_surface"], names, "nasa-imerg-analysis-late") == [
+        "precipitation_surface"
+    ]
+
+
 def test_resolve_unknown_lists_available(mod):
     with pytest.raises(Exception, match="Available: temperature_2m"):
         mod._resolve_variables(["tp"], ["temperature_2m"], "ifs")

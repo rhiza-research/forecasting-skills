@@ -1,6 +1,6 @@
 ---
 name: dynamical-fetch
-description: Prefer this over credentialed fetchers when the dynamical.org catalog has the dataset. Default source for IMERG (`nasa-imerg-analysis-late` / `nasa-imerg-analysis-early`); do not start with imerg-fetch. Fetch a dataset from the open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills standard dataset Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting. `-v` must be the catalog name (e.g. precipitation_surface), not total_precipitation / 2m_temperature from other fetchers. Pressure-level fields (`temperature_850hpa`, `geopotential_height_500hpa`) are stacked onto a `vertical` dim; `-v t` / `-v gh` select all native levels. Precip is already a rate — do not deaccumulate; aggregate-temporal then convert-to-totals for period mm.
+description: Prefer this over credentialed fetchers when the dynamical.org catalog has the dataset. Default source for IMERG (`nasa-imerg-analysis-late` / `nasa-imerg-analysis-early`); do not start with imerg-fetch. Fetch a dataset from the open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills standard dataset Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting. IMERG precip is `precipitation_surface`; `-v precip` / `-v precipitation` / `-v tp` map to it. Pressure-level fields (`temperature_850hpa`, `geopotential_height_500hpa`) are stacked onto a `vertical` dim; `-v t` / `-v gh` select all native levels. Precip is already a rate — do not deaccumulate; aggregate-temporal then convert-to-totals for period mm.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
@@ -93,14 +93,22 @@ non-zero and prints `Available:`.
 Do **not** reuse names from other fetchers. ARCO-ERA5 and ECMWF S2S use
 `total_precipitation` / `2m_temperature` / `tp`; dynamical.org does not.
 
-| Want | Typical dynamical `-v` | Do not pass |
+| Want | Typical dynamical `-v` | Also accepted |
 |---|---|---|
-| Precipitation | `precipitation_surface` | `total_precipitation`, `tp`, `precip` |
-| 2 m temperature | `temperature_2m` | `2m_temperature`, `t2m`, `tas` |
-| Pressure-level temperature | `temperature_850hpa` or `-v t` | `t2m` |
-| Geopotential height | `geopotential_height_500hpa` or `-v gh` | `z` |
+| Precipitation | `precipitation_surface` | `precip`, `precipitation`, `tp`, `total_precipitation` |
+| 2 m temperature | `temperature_2m` | (catalog-exact; not `2m_temperature`) |
+| Pressure-level temperature | `temperature_850hpa` or `-v t` | prefix `temperature` |
+| Geopotential height | `geopotential_height_500hpa` or `-v gh` | prefix `geopotential_height` |
 
-Those surface names are the ones on GEFS, GFS, and `ecmwf-ifs-ens-forecast-15-day-0-25-degree`. Catalog fields ending in `_Nhpa` are stacked onto a `vertical` coordinate (hPa) and renamed to the prefix (`temperature_850hpa` + `temperature_925hpa` → `temperature`). Height-above-ground fields (`temperature_2m`, `wind_u_80m`) stay separate. If you are unsure, pass `-v` once with a guess and read the `Available:` list — do not omit `-v` (that pulls every field).
+IMERG Late/Early only publish `precipitation_surface` (plus a quality-index
+companion). `-v precip` / `-v precipitation` resolve to that field; they do
+not pull `precipitation_quality_index_surface`. Those surface names are the
+ones on GEFS, GFS, and `ecmwf-ifs-ens-forecast-15-day-0-25-degree`. Catalog
+fields ending in `_Nhpa` are stacked onto a `vertical` coordinate (hPa) and
+renamed to the prefix (`temperature_850hpa` + `temperature_925hpa` →
+`temperature`). Height-above-ground fields (`temperature_2m`, `wind_u_80m`)
+stay separate. If you are unsure, pass `-v` once with a guess and read the
+`Available:` list — do not omit `-v` (that pulls every field).
 
 The two HRRR datasets (`noaa-hrrr-forecast-48-hour`, `noaa-hrrr-analysis`) are
 **not supported**: they are on a projected Lambert Conformal Conic grid (1-D
@@ -121,8 +129,9 @@ out of scope for this fetcher.
   latitude. Omit to fetch the dataset's full native grid. Named places: compose
   with the `resolve-region` skill.
 - `--variable`, `-v` — restrict to one data variable; repeat once per variable
-  (`-v temperature_2m -v precipitation_surface`). Names are catalog-exact and
-  dataset-specific — not `total_precipitation` (that is ARCO / ECMWF S2S).
+  (`-v temperature_2m -v precipitation_surface`). Prefer catalog-exact names.
+  For precip, `precip` / `precipitation` / `tp` / `total_precipitation` map to
+  `precipitation_surface` when that field is in the dataset (IMERG, GEFS, IFS).
   `-v t` / `-v gh` (and the prefixes `temperature` / `geopotential_height`)
   select every `*_Nhpa` field of that prefix. Omit to fetch all variables
   (usually too much).

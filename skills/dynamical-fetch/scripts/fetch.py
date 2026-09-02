@@ -39,6 +39,15 @@ _DROP_COORDS = (
 # (`temperature_850hpa`). Stack those onto the ontology `vertical` dim.
 _HPA_RE = re.compile(r"^(.+)_(\d+)hpa$")
 _HPA_ALIASES = {"t": "temperature", "gh": "geopotential_height"}
+# Other fetchers (TAHMO, ARCO, S2S) use these; dynamical.org stores surface precip as
+# precipitation_surface (IMERG, GEFS, IFS-ENS, …).
+_PRECIP_ALIASES = {
+    "precip": "precipitation_surface",
+    "precipitation": "precipitation_surface",
+    "tp": "precipitation_surface",
+    "total_precipitation": "precipitation_surface",
+    "pr": "precipitation_surface",
+}
 
 
 def _hpa_by_prefix(data_vars) -> dict[str, list[str]]:
@@ -55,7 +64,9 @@ def _resolve_variables(requested, data_vars, dataset: str):
 
     Catalog-exact names pass through. A prefix (`temperature`) or short alias
     (`t`, `gh`) expands to every `*_Nhpa` field of that prefix — not to
-    height-above-ground companions like `temperature_2m`.
+    height-above-ground companions like `temperature_2m`. Common precip
+    nicknames (`precip`, `precipitation`, `tp`, `total_precipitation`) map to
+    `precipitation_surface` when that field exists.
     """
     if not requested:
         return None
@@ -64,19 +75,29 @@ def _resolve_variables(requested, data_vars, dataset: str):
     resolved: list[str] = []
     seen: set[str] = set()
     missing: list[str] = []
+
+    def _take(name: str) -> None:
+        if name not in seen:
+            resolved.append(name)
+            seen.add(name)
+
     for token in requested:
         prefix = _HPA_ALIASES.get(token, token)
         if token in name_set:
-            if token not in seen:
-                resolved.append(token)
-                seen.add(token)
+            _take(token)
             continue
         kids = hpa.get(prefix)
         if kids:
             for kid in sorted(kids, key=lambda n: -int(_HPA_RE.match(n).group(2))):
-                if kid not in seen:
-                    resolved.append(kid)
-                    seen.add(kid)
+                _take(kid)
+            continue
+        aliased = _PRECIP_ALIASES.get(token)
+        if aliased in name_set:
+            _take(aliased)
+            continue
+        surface = f"{token}_surface"
+        if surface in name_set:
+            _take(surface)
             continue
         missing.append(token)
     if missing:
