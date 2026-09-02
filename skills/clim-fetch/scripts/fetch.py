@@ -31,7 +31,7 @@ import xarray as xr
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.standard_utils import bbox_subset, roll_and_agg
-from weather_skills_core.units import stamp_data_interval, to_standard_units
+from weather_skills_core.units import AGGREGATION_PERIOD_ATTR, stamp_data_interval, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.1"
@@ -219,6 +219,8 @@ def fetch(dataset, start_time, end_time, variable, prediction_timedelta, window,
         climatology_prediction_timedelta_days=prediction_timedelta,
         climatology_window_days=window,
     )
+    for name in (mean_name, std_name):
+        expanded[name].attrs[AGGREGATION_PERIOD_ATTR] = f"{window} day"
     stamp_cf_attrs(expanded)
     return stamp_data_interval(expanded, period="1 day")
 
