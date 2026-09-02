@@ -65,7 +65,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest [dataset-id]
 | `--dataset` | Store under `<date>/data/` | Typical vars |
 |---|---|---|
 | `precip` (default) | `ECMWF_s2s_precip_<date>.zarr` | `tp` — native S2S, ~1.5°, daily ensemble |
-| `precip_downscaled` | `data_weekly_Kenya_downscaled.nc` | `tp` — CHIRPS-grid weekly mean, ~0.05°, no `number` |
+| `precip_downscaled` | `data_weekly_Kenya_downscaled.nc` | `tp` — CHIRPS-grid weekly totals, ~0.05°, no `number` |
 | `daily_vars` | `ECMWF_s2s_daily_vars_<date>.zarr` | `t2m`, `d2m`, `cape`, `tcw` |
 | `Tminmax` | `ECMWF_s2s_Tminmax_<date>.zarr` | `mn2t6`, `mx2t6` |
 | `10wind` | `ECMWF_s2s_10wind_<date>.zarr` | `u10`, `v10` |
@@ -81,9 +81,13 @@ as a per-step **rate** (`mm day-1`) and known air temperature as
 `daily_vars`, `medium_range_precip`) are **left-labeled**: `step = 0` is the
 first native period (`[init, init+1d)` for daily precip; `[init, init+7d)`
 for weekly downscaled / medium-range). Instantaneous winds / Tminmax keep
-archive `step` (lead 0 = 00Z analysis). Aggregate then `convert-to-totals`
-for period `mm`; do not run `deaccumulate` after this skill. The downscaled
-file is already weekly totals on a ~0.05° grid — do not also run `downscale`.
+archive `step` (lead 0 = 00Z analysis). Daily products (`precip`, `gefs`,
+`daily_vars`): `aggregate-temporal --period weekly` then `convert-to-totals`.
+Already-weekly products (`precip_downscaled`, `medium_range_precip`) stamp
+`aggregation_period` on fetch — run `convert-to-totals` directly; do **not**
+`aggregate-temporal` (that would re-bin adjacent weeks). Do not run
+`deaccumulate` after this skill. The downscaled file is already weekly on a
+~0.05° grid — do not also run `downscale`.
 
 ### Arguments
 
@@ -118,7 +122,9 @@ uv run skills/plot/scripts/plot.py -i /tmp/kenya_weekly_mm.zarr -v tp \
     --bbox 7/32/-6/43 -o /tmp/kenya_weekly.png
 ```
 
-High-resolution weekly downscale (already weekly totals on ~0.05°; convert to mm then plot — no `aggregate-temporal` / `downscale`):
+High-resolution weekly downscale (already weekly; fetch stamps
+`aggregation_period`. Convert to mm then plot — no `aggregate-temporal` /
+`downscale`):
 
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset precip_downscaled \

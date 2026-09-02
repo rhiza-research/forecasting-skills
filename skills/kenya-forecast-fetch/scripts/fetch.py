@@ -25,6 +25,9 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.standard_utils import bbox_subset, ensure_normalized_longitude
 from weather_skills_core.units import (
+    AGGREGATION_PERIOD_ATTR,
+    data_interval_of,
+    format_cell_methods,
     precip_amounts_to_rates,
     stamp_data_interval,
     stamp_precip_amounts,
@@ -44,6 +47,9 @@ _DEFAULT_DATASET = "precip"
 # Per-step amounts already (not cumulative-since-init). Convert by dividing
 # by the step interval; do not deaccumulate.
 _ALREADY_PERIOD_PRECIP = frozenset({"gefs", "medium_range_precip", "precip_downscaled"})
+# Archive is already a multi-day window — stamp aggregation_period so
+# convert-to-totals can run without aggregate-temporal re-binning weeks.
+_ALREADY_WEEKLY = frozenset({"medium_range_precip", "precip_downscaled"})
 # Interval fields whose archive ticks start at +1 native period (or +1 week).
 _SHIFT_STEP_TO_ZERO = frozenset({"gefs", "daily_vars", "medium_range_precip", "precip_downscaled"})
 
@@ -304,7 +310,15 @@ def fetch(dataset, date, bbox, variable, output, **kwargs):
         ds = precip_amounts_to_rates(ds)
     if dataset in _SHIFT_STEP_TO_ZERO:
         ds = _shift_step_origin_to_zero(ds)
-    return stamp_data_interval(ds)
+    ds = stamp_data_interval(ds)
+    if dataset in _ALREADY_WEEKLY:
+        period = data_interval_of(ds) or _step_interval_stamp(ds)
+        for name in ds.data_vars:
+            ds[name].attrs[AGGREGATION_PERIOD_ATTR] = period
+            ds[name].attrs["cell_methods"] = format_cell_methods(
+                "step", "mean", interval=period
+            )
+    return ds
 
 
 if __name__ == "__main__":

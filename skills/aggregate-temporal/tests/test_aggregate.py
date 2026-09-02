@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-from conftest import load_skill, make_gridded, run_skill, write_zarr
+from conftest import load_skill, make_forecast, make_gridded, run_skill, write_zarr
 from weather_skills_core.provenance import load_history
 
 
@@ -423,3 +423,21 @@ def test_spatial_nan_hole_does_not_reduce_coverage(tmp_path, aggregate):
     run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
     weekly = xr.open_zarr(out, consolidated=True)
     assert float(weekly["aggregation_coverage"].values[0]) == pytest.approx(1.0)
+
+
+def test_weekly_period_on_weekly_step_keeps_values(tmp_path, aggregate):
+    """Already-weekly step cubes must not be re-binned (6 weeks must stay 6)."""
+    ds = make_forecast(name="tp", n_step=6, fill=1.0)
+    steps = np.array([np.timedelta64(7 * i, "D") for i in range(6)])
+    ds = ds.assign_coords(step=("step", steps))
+    for i, value in enumerate((1.0, 4.0, 9.0, 16.0, 25.0, 36.0)):
+        ds["tp"].values[i] = value
+    ds["tp"].attrs.update(units="mm day-1", data_interval="7 day")
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
+    weekly = xr.open_zarr(out, consolidated=True)
+    assert weekly.sizes["step"] == 6
+    np.testing.assert_allclose(weekly["tp"].values[:, 0, 0], [1, 4, 9, 16, 25, 36])
+    assert weekly["tp"].attrs.get("aggregation_period") == "7 day"
+    assert weekly["tp"].attrs.get("data_interval") == "7 day"

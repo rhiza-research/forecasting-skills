@@ -188,6 +188,7 @@ def test_fetch_medium_range_weekly_totals_left_labeled(tmp_path, fetch_mod, monk
         assert list(days) == [0, 7]
         np.testing.assert_allclose(ds["tp"].values[:, 0, 0], [1.0, 2.0])
         assert ds["tp"].attrs["units"] == "mm day-1"
+        assert ds["tp"].attrs.get("aggregation_period") == "7 day"
 
 
 def test_fetch_winds_do_not_shift_step(tmp_path, fetch_mod, monkeypatch):
@@ -270,6 +271,29 @@ def test_fetch_precip_downscaled_opens_nc_and_writes_weekly_rates(tmp_path, fetc
         np.testing.assert_allclose(ds["tp"].values[:, 0, 0], [1.0, 1.0])
         assert ds["tp"].attrs["units"] == "mm day-1"
         assert ds["tp"].attrs.get("data_interval") == "7 day"
+        assert ds["tp"].attrs.get("aggregation_period") == "7 day"
+
+
+def test_fetch_precip_downscaled_converts_to_weekly_totals(tmp_path, fetch_mod, monkeypatch):
+    fetched = tmp_path / "downscaled.zarr"
+    totals = tmp_path / "downscaled_mm.zarr"
+    monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: True)
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: _downscaled_weekly())
+    run_skill(
+        fetch_mod.fetch,
+        "--dataset",
+        "precip_downscaled",
+        "--date",
+        "2026-08-30",
+        "-o",
+        str(fetched),
+    )
+    convert = load_skill("convert-to-totals", "convert_to_totals").convert_to_totals
+    run_skill(convert, "-i", str(fetched), "-o", str(totals))
+    with xr.open_zarr(totals, consolidated=True) as ds:
+        assert ds["tp"].attrs["units"] == "mm"
+        np.testing.assert_allclose(ds["tp"].values[:, 0, 0], [7.0, 7.0])
+        assert ds.sizes["step"] == 2
 
 
 def test_store_key_precip_downscaled_is_weekly_netcdf(fetch_mod):

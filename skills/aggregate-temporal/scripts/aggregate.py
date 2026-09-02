@@ -73,6 +73,16 @@ def _resolve_period(period: str) -> dict:
     }
 
 
+def _durations_equal(left: str | None, right: str | None) -> bool:
+    """True when two pint duration strings are the same length."""
+    if not left or not right:
+        return False
+    try:
+        return parse_aggregation_period(left) == parse_aggregation_period(right)
+    except UsageError:
+        return False
+
+
 def _native_interval(ds, dim) -> str | None:
     stamped = data_interval_of(ds)
     if stamped:
@@ -628,6 +638,16 @@ def aggregate(
         return _stamp_attrs(out, dim, agg_period, method, interval, data_interval=native_interval)
 
     spec = _resolve_period(period)
+    if native_interval and _durations_equal(spec["agg"], native_interval):
+        import numpy as np
+
+        out = ds
+        n = out.sizes.get(dim, 0)
+        if n:
+            out = _assign_coverage(out, dim, np.ones(n, dtype=float))
+        return _stamp_attrs(
+            out, dim, spec["agg"], method, interval, data_interval=native_interval
+        )
     if dim == "step":
         out = _aggregate_step(ds, spec, method)
         if end_time is not None or start_time is not None:

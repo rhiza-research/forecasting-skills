@@ -21,6 +21,11 @@ Autodetects which dim is present. For forecasts, aggregates ensemble members (`n
 
 - Turning daily or half-hourly rates into weekly/dekadal/monthly/custom-duration
   **mean** (or min/max) rates (`--period weekly` or `--period '21 day'`).
+- Stamping `aggregation_period` on a cube that is **already** that period
+  (weekly downscaled forecast, `data_interval` already `7 day`). Values and
+  the time/step axis stay unchanged so `convert-to-totals` can run. Do not
+  use this to "re-aggregate" already-weekly Kenya `precip_downscaled` —
+  that product is stamped on fetch.
 - Rolling N-step means (`--window`) with optional `--align` / `--stride`.
 - Selecting weekly or dekadal subsets of a forecast initialized at multiple steps.
 - For period **totals** (`mm`), run `convert-to-totals` afterward (non-overlapping bins only; rolling series with Δt &lt; `aggregation_period` are refused — `select` the times you want first). A single remaining bin is allowed. Incomplete bins are kept and stamped with `aggregation_coverage` &lt; 1; convert-to-totals `--min-coverage` (default 1.0) drops them.
