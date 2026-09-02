@@ -1,6 +1,6 @@
 ---
 name: resolve-region
-description: Resolve an ISO 3166-1 alpha-3 country code, a Natural Earth multi-country region (East Africa, Western Africa), a custom forecast box (Kenya OND region), a sub-national region (state, province, county), or a leftover landmark name to a lat/lon bbox and optionally a boundary polygon GeoJSON. Use when you need to turn a country, county, or named place into a `--bbox N/W/S/E` value (or a polygon mask) for clip-region, ecmwf-fetch, plot, or plot-compare. Prefer ISO3 / country-admin1 / Natural Earth region names / custom forecast boxes; Nominatim is the fallback for landmarks.
+description: Resolve an ISO 3166-1 alpha-3 country code, a Natural Earth multi-country region (East Africa, Western Africa), a custom forecast box (Kenya OND region, Indian Ocean basin), a sub-national region (state, province, county), or a leftover landmark name to a lat/lon bbox and optionally a boundary polygon GeoJSON. Use when you need to turn a country, county, or named place into a `--bbox N/W/S/E` value (or a polygon mask) for clip-region, ecmwf-fetch, plot, or plot-compare. Prefer ISO3 / country-admin1 / Natural Earth region names / custom forecast boxes; Nominatim is the fallback for landmarks. Do not send Indian Ocean to Nominatim — it is the basin box 30/20/-40/120.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py *)
@@ -56,8 +56,8 @@ is **not** an ISO3-shaped token, **not** a named region or custom box, and
 **not** a `country-admin…` key is sent to Nominatim (one search, first hit).
 Misspelled admin keys (`kenya-nairbi`) error instead of guessing via OSM.
 Disambiguate landmarks by passing a more specific string
-(`Mount Kenya, Kenya`), not extra flags. Do **not** send "East Africa" or
-"Kenya OND region" to Nominatim — OSM's first hit is a POI, not the
+(`Mount Kenya, Kenya`), not extra flags. Do **not** send "East Africa", "Kenya OND region", or "Indian Ocean" to
+Nominatim — OSM's first hit is a POI or a point centroid, not the
 briefing domain.
 
 ### Countries
@@ -121,10 +121,15 @@ are bundled as rectangles (`level` is `custom`). They never hit Nominatim.
 - `Kenya OND region` (also `Kenya OND`, `OND Kenya`,
   `Central-Eastern Kenya`, `CE Kenya`) — short-rains analog box
   `1.0/36.5/-3.0/39.0` (N/W/S/E), inside Kenya, east of the Rift.
+- `Indian Ocean basin` (also `Indian Ocean`, `IOB`) — conventional
+  basin box `30.0/20.0/-40.0/120.0` (30°N–40°S, 20°E–120°E). Not the
+  Nominatim ocean centroid.
 
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Kenya OND region"
 # -> 1.0/36.5/-3.0/39.0
+uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Indian Ocean"
+# -> 30.0/20.0/-40.0/120.0
 ```
 
 `--geojson` writes that rectangle (not a county union).
@@ -159,6 +164,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py kenya-nairobi
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py KEN-nairobi
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "East Africa"
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Kenya OND region"
+uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Indian Ocean"
 uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Mount Kenya, Kenya"
 ```
 
@@ -224,6 +230,9 @@ BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "East Africa")
 # Custom forecast box (Kenya OND region; not Nominatim):
 BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Kenya OND region")
 
+# Indian Ocean basin (not Nominatim):
+BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Indian Ocean")
+
 # Landmark bbox (Nominatim). stderr shows the OSM display_name:
 BBOX=$(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py "Mount Kenya, Kenya")
 
@@ -250,7 +259,8 @@ labels, joined to the bundled countries (offline). `East Africa` is the
 
 **Custom forecast boxes.** Rectangles listed in weather-skills-core
 `region.py` (offline). `Kenya OND region` is `1.0/36.5/-3.0/39.0`, not
-a geoBoundaries county union and not Nominatim.
+a geoBoundaries county union and not Nominatim. `Indian Ocean` /
+`Indian Ocean basin` is `30.0/20.0/-40.0/120.0`, not a Nominatim centroid.
 
 **Sub-national.** [geoBoundaries](https://www.geoboundaries.org) `gbOpen` ADM1
 and ADM2, CC BY 4.0 (attribution). Looked up through
