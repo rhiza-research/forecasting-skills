@@ -76,6 +76,36 @@ def test_resolve_variables_default_and_aliases(mod):
         mod._resolve_variables(["2m_temperature"])
 
 
+def test_resolve_variables_space_comma_and_repeated_flags(mod):
+    """One call can take `-v tp t2m`, `-v tp -v t2m`, or `-v tp,t2m`."""
+    assert mod._resolve_variables([["tp", "t2m"]]) == ["tp", "t2m"]
+    assert mod._resolve_variables([["tp"], ["t2m"]]) == ["tp", "t2m"]
+    assert mod._resolve_variables(["tp,t2m"]) == ["tp", "t2m"]
+    assert mod._resolve_variables([["tp,t2m", "sst"]]) == ["tp", "t2m", "sst"]
+
+
+def test_parser_accepts_space_separated_variables(fetch):
+    args = fetch.parser.parse_args(
+        ["--date", "2026-01-01", "--bbox", "3/10/0/13", "-v", "tp", "t2m", "-o", "out.zarr"]
+    )
+    assert args.variable == [["tp", "t2m"]]
+    args = fetch.parser.parse_args(
+        [
+            "--date",
+            "2026-01-01",
+            "--bbox",
+            "3/10/0/13",
+            "-v",
+            "tp",
+            "-v",
+            "t2m",
+            "-o",
+            "out.zarr",
+        ]
+    )
+    assert args.variable == [["tp"], ["t2m"]]
+
+
 def test_variables_most_used_first(mod):
     names = list(mod.VARIABLES)
     assert names[:3] == ["tp", "t2m", "sst"]
@@ -148,6 +178,23 @@ def test_build_request_potential_vorticity(mod):
 def test_group_pressure_separate_from_surface(mod):
     groups = dict(mod._group_for_request(["tp", "t", "q"]))
     assert len(groups) == 3
+
+
+def test_group_same_family_stays_one_request(mod):
+    groups = dict(mod._group_for_request(["t2m", "sst", "tp"]))
+    assert len(groups) == 2
+    daily = next(names for key, names in groups.items() if key[0] == "daily")
+    instant = next(names for key, names in groups.items() if key[0] == "instant")
+    assert daily == ["t2m", "sst"]
+    assert instant == ["tp"]
+
+
+def test_build_request_multiple_daily_variables(mod):
+    req = mod._build_request(
+        "2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["t2m", "sst"]
+    )
+    assert req["variable"] == ["2_m_temperature", "sea_surface_temperature"]
+    assert req["leadtime_hour"][0] == "0_24"
 
 
 def test_promote_vertical_isobaric(mod):

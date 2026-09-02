@@ -215,8 +215,23 @@ def _canonical_name(token: str) -> str | None:
     return None
 
 
-def _resolve_variables(raw: list[str] | None) -> list[str]:
-    tokens = raw or list(DEFAULT_VARIABLES)
+def _flatten_variable_tokens(raw) -> list[str]:
+    """Accept ``-v tp t2m``, ``-v tp -v t2m``, and ``-v tp,t2m`` alike."""
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, (list, tuple)) else [raw]
+    tokens: list[str] = []
+    for item in items:
+        parts = item if isinstance(item, (list, tuple)) else [item]
+        for part in parts:
+            for token in str(part).replace(",", " ").split():
+                if token:
+                    tokens.append(token)
+    return tokens
+
+
+def _resolve_variables(raw: list | None) -> list[str]:
+    tokens = _flatten_variable_tokens(raw) or list(DEFAULT_VARIABLES)
     unknown = [token for token in tokens if _canonical_name(token) is None]
     if unknown:
         raise UsageError(
@@ -466,10 +481,12 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
     "--variable",
     "-v",
     action="append",
+    nargs="+",
     help=(
-        "S2S field to retrieve (repeatable). Most used first: tp, t2m, sst. "
-        "Pressure-level: gh, t, u, v, w, q. Default tp. Names are cfgrib short "
-        "names (sst, t, not ARCO 2m_temperature)."
+        "S2S fields to retrieve. Pass several names in one flag (`-v tp t2m`), "
+        "repeat `-v`, or comma-separate (`-v tp,t2m`). Most used first: tp, "
+        "t2m, sst. Pressure-level: gh, t, u, v, w, q. Default tp. Names are "
+        "cfgrib short names (sst, t, not ARCO 2m_temperature)."
     ),
 )
 @weather_skill.argument(
