@@ -170,6 +170,13 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 
 ```
 
 ```bash
+# Specific humidity + zonal wind (two ECDS legs: q is 7 levels, u is 10).
+# Compose with zonal-moisture-transport for eastward IVT (`viwve`).
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 \
+    -v q -v u --output /tmp/ecmwf_q_u.zarr
+```
+
+```bash
 # Named country: run resolve-region first, then pass the printed N/W/S/E:
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 --output /tmp/ecmwf_kenya.zarr
 ```

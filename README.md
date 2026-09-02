@@ -52,6 +52,7 @@ credentialed or source-specific fetcher only when it does not.
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
 | `summarize-dim` | Summarize named dims with a statistic (mean/std/min/max/sum/median) — e.g. ensemble spread as the std across `number`, or a time-mean baseline |
 | `difference` | Subtract one dataset from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
+| `zonal-moisture-transport` | Eastward moisture flux `q·u`, default column-integrated to IVT (`viwve`, kg m-1 s-1). Compose after `ecmwf-fetch -v q -v u` |
 | `verify` | Forecast vs obs verification: `--metric hits|bias|mae` (hits = event classification). Plot the output with `plot`. |
 | `plot` | Heatmap, filled-contour, timeseries, wind-rose, quiver, or **layered** map (repeatable `--layer heatmap:…` / `scatter:…` / `outline:…`) from one or more datasets |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
