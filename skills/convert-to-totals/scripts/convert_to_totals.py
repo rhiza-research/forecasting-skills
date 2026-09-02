@@ -112,7 +112,7 @@ def convert_to_totals(ds, variable, min_coverage, time_dim, **kwargs):
             if looks_like_rate_display_name(attrs.get("GRIB_name")):
                 attrs["GRIB_name"] = PRECIP_AMOUNT_LONG_NAME
         attrs["cell_methods"] = format_cell_methods(_sum_cell_methods_dim(da, dim), "sum")
-        attrs.pop(AGGREGATION_PERIOD_ATTR, None)
+        # Keep aggregation_period so plotters can pick a period-aware precip palette.
         out[name] = plain
         out[name].attrs = attrs
     if AGGREGATION_COVERAGE_COORD in out.coords:

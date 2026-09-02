@@ -111,25 +111,70 @@ def test_timeseries_forecast_writes_png(tmp_path, plot_fn):
     assert out.stat().st_size > 0
 
 
-def test_precip_default_colormap_is_kenya_palette():
+def test_precip_default_colormap_is_chirps_total_palette():
     from matplotlib.colors import BoundaryNorm, ListedColormap
 
     plot_mod = load_skill("plot", "plot")
     da = make_forecast()["tp"]
-    da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
+    da.attrs.update(
+        units="mm",
+        standard_name="lwe_thickness_of_precipitation_amount",
+        aggregation_period="10 day",
+    )
     cmap, norm = plot_mod._heatmap_scale(da, None)
     assert isinstance(cmap, ListedColormap)
-    assert cmap.name == "wgbrp"
-    assert cmap.N == 10
-    assert cmap(0.0)[:3] == pytest.approx((1.0, 1.0, 1.0), abs=0.02)
+    assert cmap.name == "chirps_total"
+    assert cmap.N == 14
     assert isinstance(norm, BoundaryNorm)
     assert list(norm.boundaries) == pytest.approx(plot_mod.PRECIP_BOUNDS)
 
     rate = make_gridded()["precip"]
+    rate.attrs["aggregation_period"] = "7 day"
     cmap_rate, norm_rate = plot_mod._heatmap_scale(rate, None)
     assert isinstance(cmap_rate, ListedColormap)
-    assert cmap_rate.name == "wgbrp"
+    assert cmap_rate.name == "chirps_total"
     assert isinstance(norm_rate, BoundaryNorm)
+
+
+def test_precip_short_period_colormap_uses_subpentad_bounds():
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    plot_mod = load_skill("plot", "plot")
+    da = make_gridded(fill=3.0)["precip"]
+    da.attrs.update(
+        units="mm",
+        standard_name="lwe_thickness_of_precipitation_amount",
+        aggregation_period="1 day",
+    )
+    cmap, norm = plot_mod._heatmap_scale(da, None)
+    assert isinstance(cmap, ListedColormap)
+    assert cmap.name == "chirps_short"
+    assert isinstance(norm, BoundaryNorm)
+    assert list(norm.boundaries) == pytest.approx(plot_mod.PRECIP_SHORT_BOUNDS)
+
+
+def test_precip_anomaly_colormap_is_chirps_palette():
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    plot_mod = load_skill("plot", "plot")
+    da = make_gridded(fill=-25.0)["precip"]
+    da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
+    cmap, norm = plot_mod._heatmap_scale(da, None)
+    assert isinstance(cmap, ListedColormap)
+    assert cmap.name == "chirps_anom"
+    assert cmap.N == 13
+    assert isinstance(norm, BoundaryNorm)
+    assert list(norm.boundaries) == pytest.approx(plot_mod.PRECIP_ANOMALY_BOUNDS)
+
+    named = make_gridded(fill=12.0)["precip"]
+    named.attrs.update(
+        units="mm",
+        standard_name="lwe_thickness_of_precipitation_amount",
+        long_name="rainfall anomaly",
+    )
+    cmap_named, norm_named = plot_mod._heatmap_scale(named, None)
+    assert cmap_named.name == "chirps_anom"
+    assert isinstance(norm_named, BoundaryNorm)
 
 
 def test_non_precip_default_colormap_is_viridis():

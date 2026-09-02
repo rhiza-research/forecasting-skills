@@ -154,16 +154,15 @@ def test_forecast_and_obs_share_valid_times(tmp_path, plot_fn, plot_mod):
     assert out.stat().st_size > 0
 
 
-def test_precip_default_colormap_is_discrete_kenya_palette(plot_mod):
+def test_precip_default_colormap_is_discrete_chirps_total_palette(plot_mod):
     from matplotlib.colors import BoundaryNorm, ListedColormap
 
     da = make_forecast()["tp"]
     da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
     cmap, norm = plot_mod._heatmap_scale(da, None)
     assert isinstance(cmap, ListedColormap)
-    assert cmap.name == "wgbrp"
-    assert cmap.N == 10
-    assert cmap(0.0)[:3] == pytest.approx((1.0, 1.0, 1.0), abs=0.02)
+    assert cmap.name == "chirps_total"
+    assert cmap.N == 14
     assert isinstance(norm, BoundaryNorm)
     assert list(norm.boundaries) == pytest.approx(plot_mod.PRECIP_BOUNDS)
 
@@ -172,3 +171,15 @@ def test_precip_default_colormap_is_discrete_kenya_palette(plot_mod):
     cmap_t, norm_t = plot_mod._heatmap_scale(t2m, None)
     assert cmap_t == "viridis"
     assert norm_t is None
+
+
+def test_precip_anomaly_colormap_is_chirps_palette(plot_mod):
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    da = make_gridded(fill=-25.0)["precip"]
+    da.attrs.update(units="mm", standard_name="lwe_thickness_of_precipitation_amount")
+    cmap, norm = plot_mod._heatmap_scale(da, None)
+    assert isinstance(cmap, ListedColormap)
+    assert cmap.name == "chirps_anom"
+    assert isinstance(norm, BoundaryNorm)
+    assert list(norm.boundaries) == pytest.approx(plot_mod.PRECIP_ANOMALY_BOUNDS)

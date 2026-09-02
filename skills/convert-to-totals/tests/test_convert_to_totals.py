@@ -39,7 +39,7 @@ def test_convert_to_totals_from_attr(tmp_path, convert_to_totals):
     assert result["precip"].attrs["units"] == "mm"
     assert result["precip"].attrs["long_name"] == PRECIP_AMOUNT_LONG_NAME
     assert result["precip"].values == pytest.approx(10.0)
-    assert AGGREGATION_PERIOD_ATTR not in result["precip"].attrs
+    assert result["precip"].attrs[AGGREGATION_PERIOD_ATTR] == "1 day"
     assert load_history(out)[-1]["skill"] == "convert-to-totals"
 
 
@@ -135,7 +135,7 @@ def test_convert_to_totals_after_select_collapsed_time(tmp_path, convert_to_tota
     assert result["precip"].attrs["units"] == "mm"
     assert result["precip"].attrs["cell_methods"] == "time: sum"
     assert result["precip"].values == pytest.approx(14.0)
-    assert AGGREGATION_PERIOD_ATTR not in result["precip"].attrs
+    assert result["precip"].attrs[AGGREGATION_PERIOD_ATTR] == "7 day"
 
 
 def test_convert_min_coverage_default_rejects_partial(tmp_path, convert_to_totals):

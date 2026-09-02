@@ -63,9 +63,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare_forecasts.py -i <a.zarr> -i <b.z
 - `--variable`, `-v` — variable name. Defaults to the first data variable of
   the first input. Must exist in every input.
 - `--colormap` — matplotlib colormap name, or comma-separated colors to
-  interpolate. When omitted, precipitation uses the discrete Kenya /
-  ECMWF-S2S classes (same bins as `plot`); every other variable uses
-  `viridis`. One shared scale across all present cells.
+  interpolate. When omitted, precipitation totals use the CHIRPS-GEFS
+  total-rainfall classes (same bins as `plot`; sub-pentad
+  `aggregation_period` < 5 days uses the short breaks); precipitation
+  anomalies (negatives, or `anomal` in the name) use the CHIRPS-GEFS
+  diverging classes. Every other variable uses `viridis`. One shared
+  scale across all present cells.
 - `--title` — optional figure title.
 - `--fontsize` — base font size for column titles, row labels, ticks, and
   colorbars (default 14). Raise on user request (e.g. `--fontsize 18`).

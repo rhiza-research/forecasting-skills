@@ -46,10 +46,10 @@ on one figure.
 
 The color scale adapts to what is being compared. When both rows resolve
 to the same variable and matching units, one shared scale is used (for
-precipitation, the discrete Kenya / ECMWF-S2S classes with `BoundaryNorm`,
+precipitation, the CHIRPS-GEFS total or anomaly classes with `BoundaryNorm`,
 so values are visually comparable across rows). When the rows are different
 variables or have differing units, each row gets its own independent
-scale, colormap, and labeled colorbar — rainfall still uses those Kenya
+scale, colormap, and labeled colorbar — rainfall still uses those CHIRPS
 classes. `--shared-scale` and
 `--independent-scale` force either mode. An admin-1 country boundary
 overlay (Natural Earth, fetched and cached via `cartopy`) is drawn on
@@ -103,15 +103,20 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_compare.py -i <a.zarr> -i <b.zarr> --out
 - `--colormap` — matplotlib colormap name, or a comma-separated list of
   colors to interpolate (e.g. `white,wheat,green`). Named matplotlib
   colormaps cannot contain commas, so a comma selects the custom-list
-  form. When omitted, precipitation uses the discrete Kenya / ECMWF-S2S
-  classes (`white,linen,wheat,lightgreen,green,lightblue,blue,yellow,orange,
-  purple` with `BoundaryNorm` over `[0, 1, 2, 5, 7, 10, 20, 50, 100, 200,
-  350]` mm). In independent-scale mode a non-precip row falls back
+  form. When omitted, precipitation totals use the CHIRPS-GEFS total-rainfall
+  classes (`BoundaryNorm` over
+  `[2, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2500]`
+  mm with white under / pale-pink over) when `aggregation_period` is missing
+  or ≥ 5 days; sub-pentad totals (< 5 days) use lower breaks
+  (`0.5 … 200` mm, same colors). Precipitation anomalies (negatives,
+  or `anomal` in the name) use the CHIRPS-GEFS diverging classes
+  (`[-500, -300, -200, -100, -50, -25, -10, 10, 25, 50, 100, 200, 300, 500]`
+  mm). In independent-scale mode a non-precip row falls back
   to `viridis`.
 - `--colormap-a` / `--colormap-b` — per-row matplotlib colormap name or
   comma-separated colors in independent-scale mode. Precedence per row:
-  `--colormap-a`/`-b`, then `--colormap`, then the Kenya precip classes or
-  `viridis`.
+  `--colormap-a`/`-b`, then `--colormap`, then the CHIRPS total / anomaly
+  precip classes or `viridis`.
 - `--shared-scale` / `--independent-scale` — mutually exclusive; force one
   shared color scale across both rows or a per-row scale + colorbar. When
   neither is given, the mode is chosen automatically: shared when both

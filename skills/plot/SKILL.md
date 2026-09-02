@@ -25,11 +25,15 @@ Source-agnostic visualization. Single-input styles (`-i`) plus layered maps
   panel count exactly (`rows × columns` equals the number of steps/times;
   leftover blank cells are not allowed). Ensemble members
   (`number` dim) are averaged before plotting. Use `--index` to override the
-  default reduction for any other extra dim. Precipitation variables default
-  to the discrete Kenya / ECMWF-S2S product classes (white–wheat–green–blue–
-  yellow–orange–purple at 0, 1, 2, 5, 7, 10, 20, 50, 100, 200,
-  350 mm), matching `kenya-forecast-png` weekly/dekadal precip maps; other
-  variables default to `viridis`.
+  default reduction for any other extra dim. Precipitation totals default to
+  the CHIRPS-GEFS total-rainfall classes (white `<2` through green→blue→
+  purple→yellow→red→pink at 2, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500,
+  750, 1000, 1500, 2500 mm) when `aggregation_period` is missing or ≥ 5 days.
+  Sub-pentad totals (`aggregation_period` < 5 days) use the same colors with
+  lower breaks (0.5 … 200 mm). Precipitation anomalies (negative values, or
+  `anomal` in the variable / long name — e.g. after `difference`) use the
+  CHIRPS-GEFS diverging classes (brown/red dry ↔ white ↔ green/blue wet at
+  ±10, 25, 50, 100, 200, 300, 500 mm). Other variables default to `viridis`.
 - `contour` — the same map layout as `heatmap` (panels, shared color scale,
   colorbar, geo overlays, `--bbox` / `--mask-geojson` / `--extent` /
   `--cities` / `--index` / `--draw-box` / `--rows` / `--columns`), but filled
@@ -146,10 +150,17 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --output <out.png> \
   list of colors to interpolate between (e.g. `white,wheat,green`). Named
   matplotlib colormaps cannot contain commas, so the presence of a comma
   unambiguously selects the custom-list form. When omitted, precipitation
-  (rate or amount) uses the discrete Kenya / ECMWF-S2S product classes
-  (`white,linen,wheat,lightgreen,green,lightblue,blue,yellow,orange,purple`
-  with `BoundaryNorm` over `[0, 1, 2, 5, 7, 10, 20, 50, 100, 200,
-  350]` mm); every other variable uses `viridis`. Windrose uses a blue→orange
+  totals (rate or amount) use the CHIRPS-GEFS total-rainfall classes
+  (`BoundaryNorm` over
+  `[2, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2500]`
+  mm with white under `<2` and pale-pink over `>2500`) when
+  `aggregation_period` is missing or ≥ 5 days. Sub-pentad totals
+  (`aggregation_period` < 5 days) keep the same colors with lower breaks
+  (`[0.5, 1, 2, 3, 5, 8, 10, 15, 20, 30, 50, 75, 100, 150, 200]` mm).
+  Precipitation anomalies (negatives, or `anomal` in the name — e.g. after
+  `difference`) use the CHIRPS-GEFS diverging classes
+  (`[-500, -300, -200, -100, -50, -25, -10, 10, 25, 50, 100, 200, 300, 500]`
+  mm with under/over colors). Every other variable uses `viridis`. Windrose uses a blue→orange
   speed palette; `--colormap` recolors the speed stacks. Quiver defaults to
   `YlGn` (S2S 10 m / 700 hPa wind-vector maps); `--colormap PiYG` matches their
   anomaly quivers. A variable with CF `flag_values` (e.g. `verify --metric hits`) uses a
@@ -254,7 +265,7 @@ exiftool out.png
 
 ## Examples
 
-Multi-step forecast panel (precip uses the Kenya/S2S palette by default):
+Multi-step forecast panel (precip uses the CHIRPS-GEFS totals palette by default):
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ecmwf.png \
     --variable tp --style heatmap --title "S2S precip"

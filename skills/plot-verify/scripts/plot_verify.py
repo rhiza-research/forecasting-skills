@@ -35,6 +35,7 @@ from weather_skills_core.standard_utils import (
 )
 from weather_skills_core.units import (
     classify_variable,
+    parse_aggregation_period,
     format_units_for_display,
     precip_for_display,
     to_standard_units,
@@ -51,21 +52,52 @@ _VERIFY_VARS = {
     "mae": "mae",
 }
 
+# CHIRPS-GEFS / Early Warning eXplorer rainfall-total classes (mm).
+# Under (<2) is white; over (>2500) is pale pink.
 PRECIP_COLORS = [
-    "white",
-    "linen",
-    "wheat",
-    "lightgreen",
-    "green",
-    "lightblue",
-    "blue",
-    "yellow",
-    "orange",
-    "purple",
+    "#ffffff",
+    "#c7ffbb",
+    "#75f676",
+    "#1bb61d",
+    "#b8edfb",
+    "#50a5f8",
+    "#1e6eec",
+    "#dcdcff",
+    "#a08bff",
+    "#7060de",
+    "#fff8ad",
+    "#ff9d00",
+    "#ff1400",
+    "#a30005",
+    "#e58d8b",
+    "#ffe5e4",
 ]
-PRECIP_BOUNDS = [0, 1, 2, 5, 7, 10, 20, 50, 100, 200, 350]
+PRECIP_BOUNDS = [2, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2500]
+# Sub-pentad / daily totals (< 5 day aggregation): same colors, lower breaks.
+PRECIP_SHORT_BOUNDS = [0.5, 1, 2, 3, 5, 8, 10, 15, 20, 30, 50, 75, 100, 150, 200]
+PRECIP_LONG_MIN_DAYS = 5
 _ROW_FALLBACKS = ("Observation", "Forecast", "Verification")
 _METRIC_ROW_LABELS = {"hits": "Hits", "bias": "Bias", "mae": "MAE"}
+
+# CHIRPS-GEFS / Early Warning eXplorer rainfall-anomaly classes (mm).
+PRECIP_ANOMALY_COLORS = [
+    "#c00006",
+    "#ff3300",
+    "#ff9d00",
+    "#ffe772",
+    "#7a5044",
+    "#b68c80",
+    "#f2dcd1",
+    "#ffffff",
+    "#c7ffbb",
+    "#75f676",
+    "#1bb61c",
+    "#9bd1f5",
+    "#2583f5",
+    "#dcdcff",
+    "#8070ee",
+]
+PRECIP_ANOMALY_BOUNDS = [-500, -300, -200, -100, -50, -25, -10, 10, 25, 50, 100, 200, 300, 500]
 
 
 def _scaled_fontsize(base, frac, *, floor=8):
@@ -164,11 +196,59 @@ def _parse_colormap(spec):
     return LinearSegmentedColormap.from_list("custom", parts)
 
 
-def _precip_scale():
+def _aggregation_days(da):
+    """Return stamped ``aggregation_period`` in days, or None."""
+    period = da.attrs.get("aggregation_period")
+    if not (isinstance(period, str) and period.strip()):
+        return None
+    try:
+        return float(parse_aggregation_period(period).to("day").magnitude)
+    except UsageError:
+        return None
+
+
+def _precip_scale(da=None):
+    """Discrete CHIRPS-GEFS rainfall-total classes with under/over colors.
+
+    Periods shorter than ``PRECIP_LONG_MIN_DAYS`` use ``PRECIP_SHORT_BOUNDS``;
+    longer (or unknown) periods use the dekadal-style ``PRECIP_BOUNDS``.
+    """
     from matplotlib.colors import BoundaryNorm, ListedColormap
 
-    cmap = ListedColormap(PRECIP_COLORS, name="wgbrp")
-    return cmap, BoundaryNorm(PRECIP_BOUNDS, ncolors=cmap.N, clip=True)
+    days = _aggregation_days(da) if da is not None else None
+    short = days is not None and days < PRECIP_LONG_MIN_DAYS
+    colors = PRECIP_COLORS
+    bounds = PRECIP_SHORT_BOUNDS if short else PRECIP_BOUNDS
+    name = "chirps_short" if short else "chirps_total"
+    cmap = ListedColormap(colors[1:-1], name=name)
+    cmap.set_under(colors[0])
+    cmap.set_over(colors[-1])
+    return cmap, BoundaryNorm(bounds, ncolors=cmap.N, clip=False)
+
+
+
+def _is_precip_anomaly(da):
+    """True when precip looks like an anomaly (negatives or 'anomal' in name)."""
+    import numpy as np
+
+    name = f"{da.name or ''} {da.attrs.get('long_name', '')}".lower()
+    if "anomal" in name:
+        return True
+    try:
+        vmin = float(np.nanmin(np.asarray(da.values, dtype=float)))
+    except (TypeError, ValueError):
+        return False
+    return np.isfinite(vmin) and vmin < 0
+
+
+def _precip_anomaly_scale():
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    colors = PRECIP_ANOMALY_COLORS
+    cmap = ListedColormap(colors[1:-1], name="chirps_anom")
+    cmap.set_under(colors[0])
+    cmap.set_over(colors[-1])
+    return cmap, BoundaryNorm(PRECIP_ANOMALY_BOUNDS, ncolors=cmap.N, clip=False)
 
 
 def _heatmap_scale(da, colormap):
@@ -180,8 +260,21 @@ def _heatmap_scale(da, colormap):
         standard_name=da.attrs.get("standard_name"),
     )
     if kind in ("precip", "precip_amount"):
-        return _precip_scale()
+        if _is_precip_anomaly(da):
+            return _precip_anomaly_scale()
+        return _precip_scale(da)
     return "viridis", None
+
+
+def _cbar_boundary_kwargs(norm, cmap=None):
+    from matplotlib.colors import BoundaryNorm
+
+    if not isinstance(norm, BoundaryNorm):
+        return {}
+    kw = {"spacing": "uniform", "ticks": list(norm.boundaries)}
+    if getattr(cmap, "name", None) in ("chirps_anom", "chirps_total", "chirps_short"):
+        kw["extend"] = "both"
+    return kw
 
 
 def _variable_label(da):
@@ -358,7 +451,7 @@ def _prepare(ds, variable):
     default=None,
     help=(
         "matplotlib colormap name, or comma-separated colors, for obs/forecast rows. "
-        "Default: discrete Kenya/S2S precip classes for precip, else viridis."
+        "Default: discrete CHIRPS-GEFS precip classes for precip, else viridis."
     ),
 )
 @weather_skill.argument(
@@ -642,11 +735,12 @@ def plot_verify(
         )
     if field_mesh is not None:
         cbar_ax = fig.add_axes([0.08, 0.055, 0.50, 0.02])
-        cbar_kw = {}
-        if isinstance(norm, BoundaryNorm):
-            cbar_kw["spacing"] = "uniform"
-            cbar_kw["ticks"] = list(norm.boundaries)
-        cbar = fig.colorbar(field_mesh, cax=cbar_ax, orientation="horizontal", **cbar_kw)
+        cbar = fig.colorbar(
+            field_mesh,
+            cax=cbar_ax,
+            orientation="horizontal",
+            **_cbar_boundary_kwargs(norm, cmap),
+        )
         cbar.set_label(_variable_label(obs_da), fontsize=fontsize)
         cbar.ax.tick_params(labelsize=tick_fs)
     if verify_mesh is not None:

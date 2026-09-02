@@ -48,21 +48,52 @@ _SKILL_VERSION = "0.0.2"
 
 _INDEX_INT_RE = re.compile(r"[+-]?[0-9]+")
 
-# ECMWF-S2S4AFRICA / Kenya product palette (get_ECMWF_functions.cmap).
-# Weekly/dekadal totals (mm): fine classes through 10, coarser above 20.
+# CHIRPS-GEFS / Early Warning eXplorer rainfall-total classes (mm).
+# Under (<2) is white; over (>2500) is pale pink.
 PRECIP_COLORS = [
-    "white",
-    "linen",
-    "wheat",
-    "lightgreen",
-    "green",
-    "lightblue",
-    "blue",
-    "yellow",
-    "orange",
-    "purple",
+    "#ffffff",
+    "#c7ffbb",
+    "#75f676",
+    "#1bb61d",
+    "#b8edfb",
+    "#50a5f8",
+    "#1e6eec",
+    "#dcdcff",
+    "#a08bff",
+    "#7060de",
+    "#fff8ad",
+    "#ff9d00",
+    "#ff1400",
+    "#a30005",
+    "#e58d8b",
+    "#ffe5e4",
 ]
-PRECIP_BOUNDS = [0, 1, 2, 5, 7, 10, 20, 50, 100, 200, 350]
+PRECIP_BOUNDS = [2, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2500]
+# Sub-pentad / daily totals (< 5 day aggregation): same colors, lower breaks.
+PRECIP_SHORT_BOUNDS = [0.5, 1, 2, 3, 5, 8, 10, 15, 20, 30, 50, 75, 100, 150, 200]
+# Use PRECIP_BOUNDS when aggregation_period is missing or ≥ this many days.
+PRECIP_LONG_MIN_DAYS = 5
+
+# CHIRPS-GEFS / Early Warning eXplorer rainfall-anomaly classes (mm).
+# Under/over colors sit outside the labeled tick bounds.
+PRECIP_ANOMALY_COLORS = [
+    "#c00006",
+    "#ff3300",
+    "#ff9d00",
+    "#ffe772",
+    "#7a5044",
+    "#b68c80",
+    "#f2dcd1",
+    "#ffffff",
+    "#c7ffbb",
+    "#75f676",
+    "#1bb61c",
+    "#9bd1f5",
+    "#2583f5",
+    "#dcdcff",
+    "#8070ee",
+]
+PRECIP_ANOMALY_BOUNDS = [-500, -300, -200, -100, -50, -25, -10, 10, 25, 50, 100, 200, 300, 500]
 
 # Meteorological wind rose: 16 compass sectors, speed stacked in m/s classes.
 WIND_ROSE_SECTORS = 16
@@ -495,12 +526,59 @@ def _is_precip(da):
     return kind in ("precip", "precip_amount")
 
 
-def _precip_scale():
-    """Discrete Kenya / S2S rainfall classes (ListedColormap + BoundaryNorm)."""
+def _is_precip_anomaly(da):
+    """True when precip looks like an anomaly (negatives or 'anomal' in name)."""
+    import numpy as np
+
+    name = f"{da.name or ''} {da.attrs.get('long_name', '')}".lower()
+    if "anomal" in name:
+        return True
+    try:
+        vmin = float(np.nanmin(np.asarray(da.values, dtype=float)))
+    except (TypeError, ValueError):
+        return False
+    return np.isfinite(vmin) and vmin < 0
+
+
+def _aggregation_days(da):
+    """Return stamped ``aggregation_period`` in days, or None."""
+    period = da.attrs.get("aggregation_period")
+    if not (isinstance(period, str) and period.strip()):
+        return None
+    try:
+        return float(parse_aggregation_period(period).to("day").magnitude)
+    except UsageError:
+        return None
+
+
+def _precip_scale(da=None):
+    """Discrete CHIRPS-GEFS rainfall-total classes with under/over colors.
+
+    Periods shorter than ``PRECIP_LONG_MIN_DAYS`` use ``PRECIP_SHORT_BOUNDS``;
+    longer (or unknown) periods use the dekadal-style ``PRECIP_BOUNDS``.
+    """
     from matplotlib.colors import BoundaryNorm, ListedColormap
 
-    cmap = ListedColormap(PRECIP_COLORS, name="wgbrp")
-    return cmap, BoundaryNorm(PRECIP_BOUNDS, ncolors=cmap.N, clip=True)
+    days = _aggregation_days(da) if da is not None else None
+    short = days is not None and days < PRECIP_LONG_MIN_DAYS
+    colors = PRECIP_COLORS
+    bounds = PRECIP_SHORT_BOUNDS if short else PRECIP_BOUNDS
+    name = "chirps_short" if short else "chirps_total"
+    cmap = ListedColormap(colors[1:-1], name=name)
+    cmap.set_under(colors[0])
+    cmap.set_over(colors[-1])
+    return cmap, BoundaryNorm(bounds, ncolors=cmap.N, clip=False)
+
+
+def _precip_anomaly_scale():
+    """Discrete CHIRPS-GEFS rainfall-anomaly classes with under/over colors."""
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    colors = PRECIP_ANOMALY_COLORS
+    cmap = ListedColormap(colors[1:-1], name="chirps_anom")
+    cmap.set_under(colors[0])
+    cmap.set_over(colors[-1])
+    return cmap, BoundaryNorm(PRECIP_ANOMALY_BOUNDS, ncolors=cmap.N, clip=False)
 
 
 def _heatmap_scale(da, colormap):
@@ -508,8 +586,22 @@ def _heatmap_scale(da, colormap):
     if colormap:
         return _parse_colormap(colormap), None
     if _is_precip(da):
-        return _precip_scale()
+        if _is_precip_anomaly(da):
+            return _precip_anomaly_scale()
+        return _precip_scale(da)
     return "viridis", None
+
+
+def _cbar_boundary_kwargs(norm, cmap=None):
+    """Colorbar kwargs for a BoundaryNorm scale (ticks, spacing, optional extend)."""
+    from matplotlib.colors import BoundaryNorm
+
+    if not isinstance(norm, BoundaryNorm):
+        return {}
+    kw = {"spacing": "uniform", "ticks": list(norm.boundaries)}
+    if getattr(cmap, "name", None) in ("chirps_anom", "chirps_total", "chirps_short"):
+        kw["extend"] = "both"
+    return kw
 
 
 def _variable_label(da):
@@ -2324,11 +2416,13 @@ def _plot_layers(
     for ci, (mappable, p) in enumerate(cbars):
         y = -0.04 - ci * (0.06 if n_cbars > 1 else 0)
         cbar_ax = fig.add_axes([0.15, y, 0.7, 0.01 + 0.02 / nrows])
-        cbar_kw = {}
-        if isinstance(p.get("norm"), BoundaryNorm):
-            cbar_kw["spacing"] = "uniform"
-            cbar_kw["ticks"] = list(p["norm"].boundaries)
-        cbar = fig.colorbar(mappable, cax=cbar_ax, orientation="horizontal", fraction=5, **cbar_kw)
+        cbar = fig.colorbar(
+            mappable,
+            cax=cbar_ax,
+            orientation="horizontal",
+            fraction=5,
+            **_cbar_boundary_kwargs(p.get("norm"), p.get("cmap")),
+        )
         if p.get("flag_ticks") is not None:
             cbar.set_ticks(p["flag_ticks"])
             if p.get("flag_labels") is not None:
@@ -2428,6 +2522,11 @@ def _heatmap(
     boxes = draw_boxes or []
     overlays = _load_geo_overlays(extent)
     levels = _contour_levels(vmin, vmax, norm=norm) if kind == "contour" else None
+    contour_extend = (
+        "both"
+        if getattr(cmap, "name", None) in ("chirps_anom", "chirps_total", "chirps_short")
+        else "neither"
+    )
     for i, s in enumerate(steps):
         ax = axes[i]
         slab = da if sdim is None else da.isel({sdim: i})
@@ -2441,8 +2540,9 @@ def _heatmap(
                 slab.values,
                 levels=levels,
                 cmap=cmap,
+                norm=norm,
                 transform=ccrs.PlateCarree(),
-                extend="neither",
+                extend=contour_extend,
             )
             ax.contour(
                 lon_1d,
@@ -2496,11 +2596,13 @@ def _heatmap(
         fig.suptitle(title, fontsize=fontsize)
     fig.tight_layout(rect=[0, 0, 1, 0.94] if title else None)
     cbar_ax = fig.add_axes([0.15, -0.04, 0.7, 0.01 + 0.02 / nrows])
-    cbar_kw = {}
-    if isinstance(norm, BoundaryNorm):
-        cbar_kw["spacing"] = "uniform"
-        cbar_kw["ticks"] = list(norm.boundaries)
-    cbar = fig.colorbar(mappable, cax=cbar_ax, orientation="horizontal", fraction=5, **cbar_kw)
+    cbar = fig.colorbar(
+        mappable,
+        cax=cbar_ax,
+        orientation="horizontal",
+        fraction=5,
+        **_cbar_boundary_kwargs(norm, cmap),
+    )
     if flag_ticks is not None:
         cbar.set_ticks(flag_ticks)
         if flag_labels is not None:
@@ -2549,7 +2651,7 @@ def _heatmap(
     default=None,
     help=(
         "matplotlib colormap name, or comma-separated colors. "
-        "Heatmap default: discrete Kenya/S2S precip classes for precip "
+        "Heatmap default: discrete CHIRPS-GEFS precip classes for precip "
         "variables, else viridis. Windrose default: blue-to-orange speed classes. "
         "Quiver default: YlGn (ECMWF S2S 10 m / 700 hPa wind vectors)."
     ),

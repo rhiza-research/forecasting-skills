@@ -67,4 +67,6 @@ do not apply.
 - Precip `long_name` → `Total precipitation` (replaces product/rate names; the
   quantity is now a period total). Rate-like `GRIB_name` is rewritten the same way.
 - `cell_methods` → `{dim}: sum`.
-- `aggregation_period` and `aggregation_coverage` removed.
+- `aggregation_coverage` removed (coverage gate already applied).
+- `aggregation_period` **kept** so plotters can choose a period-aware precip
+  color scale (sub-pentad vs 5+ day CHIRPS classes).
