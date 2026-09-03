@@ -52,6 +52,7 @@ datasets not yet mirrored — see "Supported datasets" below.
 | `imerg_final` | IMERG final daily precipitation climatology |
 | `era5` | ERA5 daily climatology |
 | `chirps` | CHIRPS daily precipitation climatology |
+| `ecmwf_ifs` | ECMWF IFS reforecast daily precipitation climatology |
 
 More datasets are added by mirroring a new Zarr under the same bucket
 convention — no CLI change needed once added.

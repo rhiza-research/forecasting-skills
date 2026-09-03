@@ -44,7 +44,7 @@ _BUCKET = "sheerwater-public-datalake"
 _GCS_MEDIA = f"https://storage.googleapis.com/{_BUCKET}"
 
 # Valid --dataset ids — exactly the bucket's product prefix, no aliasing.
-_DATASETS = ("imerg_final", "era5", "chirps")
+_DATASETS = ("imerg_final", "era5", "chirps", "ecmwf_ifs")
 
 _DEFAULT_VARIABLE = "precip"
 _DEFAULT_LEAD_DAYS = 0
@@ -59,7 +59,8 @@ def _object_key(dataset: str, variable: str, window: int) -> str:
 def _open_zarr_or_none(key: str) -> xr.Dataset | None:
     url = f"{_GCS_MEDIA}/{key}"
     try:
-        return xr.open_zarr(url, consolidated=True)
+        # decode needed across zarr versions to get timedelta back.
+        return xr.open_zarr(url, consolidated=True, decode_timedelta=True)
     except Exception:  # noqa: BLE001 — probing for existence, caller decides what's fatal
         return None
 
@@ -90,15 +91,14 @@ def _open_remote(dataset: str, variable: str, window: int) -> tuple[xr.Dataset, 
 
 def _select_lead(clim: xr.Dataset, lead_days: int) -> xr.Dataset:
     """Select one --prediction-timedelta lead and realize valid time = init_time + lead.
-    prediction_timedelta is an integer in days.
     """
-    available = [int(v) for v in clim["prediction_timedelta"].values]
+    available = clim["prediction_timedelta"].values.astype("timedelta64[D]").astype(int).tolist()
     if lead_days not in available:
         raise UsageError(
             f"--prediction-timedelta {lead_days} not in this climatology; "
             f"available (days): {sorted(available)}"
         )
-    clim = clim.sel(prediction_timedelta=lead_days, drop=True)
+    clim = clim.isel(prediction_timedelta=available.index(lead_days), drop=True)
     clim = clim.assign_coords(
         init_time=clim["init_time"] + np.timedelta64(lead_days, "D")
     ).rename({"init_time": "time"})
