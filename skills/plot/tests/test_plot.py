@@ -103,8 +103,105 @@ def test_axis_label_capitalizes():
 def test_colorbar_text_sizes_are_smaller_than_base_fontsize():
     plot_mod = load_skill("plot", "plot")
     label_fs, tick_fs = plot_mod._colorbar_text_sizes(18)
-    assert label_fs < 18
-    assert tick_fs < label_fs
+    assert label_fs <= 10
+    assert tick_fs <= 7
+    assert tick_fs < label_fs < 18
+
+
+def test_colorbar_figure_expands_for_precip_class_ticks():
+    plot_mod = load_skill("plot", "plot")
+    n_ticks = len(plot_mod.PRECIP_BOUNDS)
+    narrow = plot_mod._colorbar_figure_width(4.0, n_ticks)
+    assert narrow > 4.0
+    assert narrow * plot_mod._MAP_CBAR_WIDTH >= plot_mod._CBAR_INCHES_PER_TICK * n_ticks
+    assert plot_mod._colorbar_figure_width(12.0, n_ticks) == 12.0
+    assert plot_mod._colorbar_figure_width(4.0, 0) == 4.0
+
+
+def test_map_colorbar_axes_are_wide_and_thick():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plot_mod = load_skill("plot", "plot")
+    fig = plt.figure(figsize=(8, 6))
+    ax = plot_mod._map_colorbar_axes(fig, title=False, nrows=1)
+    pos = ax.get_position()
+    assert pos.width == pytest.approx(plot_mod._MAP_CBAR_WIDTH)
+    assert pos.height == pytest.approx(plot_mod._MAP_CBAR_HEIGHT)
+    plt.close(fig)
+
+
+def test_heatmap_colorbar_sits_below_xaxis_label():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plot_mod = load_skill("plot", "plot")
+    da = make_gridded(n_time=1, lats=(-4.0, 0.0, 4.0), lons=(35.0, 37.0, 39.0))["precip"]
+    fig = plot_mod._heatmap(
+        da,
+        "latitude",
+        "longitude",
+        "viridis",
+        extent=(34.0, 42.0, -5.0, 5.0),
+        cities={},
+        title=None,
+        fontsize=18,
+        wrap_lon=True,
+    )
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    maps = [ax for ax in fig.axes[:-1] if ax.get_visible()]
+    cbar = fig.axes[-1]
+    cbar_top = cbar.get_tightbbox(renderer).ymax
+    for ax in maps:
+        xlabel = ax.xaxis.label
+        if not xlabel.get_text():
+            continue
+        label_bottom = xlabel.get_window_extent(renderer).ymin
+        assert label_bottom > cbar_top
+        ticks = [t for t in ax.get_xticklabels() if t.get_text() and t.get_visible()]
+        if ticks:
+            tick_bottom = min(t.get_window_extent(renderer).ymin for t in ticks)
+            assert tick_bottom > cbar_top
+    plt.close(fig)
+
+
+def test_precip_heatmap_widens_for_class_ticks_and_shrinks_cbar_text():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plot_mod = load_skill("plot", "plot")
+    da = make_gridded(n_time=1, lats=(-4.0, 0.0, 4.0), lons=(35.0, 37.0, 39.0))["precip"]
+    da.attrs.update(
+        units="mm",
+        standard_name="lwe_thickness_of_precipitation_amount",
+        aggregation_period="10 day",
+    )
+    cmap, norm = plot_mod._heatmap_scale(da, None)
+    fig = plot_mod._heatmap(
+        da,
+        "latitude",
+        "longitude",
+        cmap,
+        extent=(34.0, 42.0, -5.0, 5.0),
+        cities={},
+        title=None,
+        fontsize=18,
+        wrap_lon=True,
+        norm=norm,
+    )
+    n_ticks = len(plot_mod.PRECIP_BOUNDS)
+    assert fig.get_figwidth() * plot_mod._MAP_CBAR_WIDTH >= plot_mod._CBAR_INCHES_PER_TICK * n_ticks
+    labels = fig.axes[-1].xaxis.get_ticklabels()
+    assert labels
+    assert labels[0].get_fontsize() <= 7
+    plt.close(fig)
 
 
 def test_resolve_axis_label_override_is_verbatim():
@@ -451,19 +548,19 @@ def test_panel_shape_default_caps_columns_at_four():
     assert plot_mod._panel_shape(8) == (2, 4)
 
 
-def test_panel_shape_rows_and_columns_must_match_data():
+def test_panel_shape_rows_and_columns_allow_blank_cells():
     from weather_skills_core import UsageError
 
     plot_mod = load_skill("plot", "plot")
     assert plot_mod._panel_shape(6, rows=2, columns=3) == (2, 3)
     assert plot_mod._panel_shape(6, columns=3) == (2, 3)
     assert plot_mod._panel_shape(6, rows=2) == (2, 3)
-    with pytest.raises(UsageError, match="must match"):
-        plot_mod._panel_shape(6, rows=2, columns=4)
-    with pytest.raises(UsageError, match="does not divide"):
-        plot_mod._panel_shape(5, columns=3)
-    with pytest.raises(UsageError, match="does not divide"):
-        plot_mod._panel_shape(5, rows=2)
+    assert plot_mod._panel_shape(5, rows=2, columns=3) == (2, 3)
+    assert plot_mod._panel_shape(5, columns=3) == (2, 3)
+    assert plot_mod._panel_shape(5, rows=2) == (2, 3)
+    assert plot_mod._panel_shape(6, rows=2, columns=4) == (2, 4)
+    with pytest.raises(UsageError, match="must hold at least"):
+        plot_mod._panel_shape(7, rows=2, columns=3)
     with pytest.raises(UsageError, match="positive integer"):
         plot_mod._panel_shape(3, rows=0)
 
@@ -476,8 +573,16 @@ def test_heatmap_rows_columns_writes_png(tmp_path, plot_fn):
     assert out.stat().st_size > 0
 
 
-def test_heatmap_rows_columns_mismatch_exits(tmp_path, plot_fn, capsys):
-    src = write_zarr(make_forecast(n_step=3), tmp_path / "in.zarr")
+def test_heatmap_rows_columns_blank_panel_writes_png(tmp_path, plot_fn):
+    src = write_zarr(make_forecast(n_step=5), tmp_path / "in.zarr")
+    out = tmp_path / "grid.png"
+    run_skill(plot_fn, "-i", str(src), "-o", str(out), "--rows", "2", "--columns", "3")
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_heatmap_rows_columns_too_small_exits(tmp_path, plot_fn, capsys):
+    src = write_zarr(make_forecast(n_step=7), tmp_path / "in.zarr")
     out = tmp_path / "bad.png"
     with pytest.raises(SystemExit):
         run_skill(
@@ -491,7 +596,7 @@ def test_heatmap_rows_columns_mismatch_exits(tmp_path, plot_fn, capsys):
             "--columns",
             "3",
         )
-    assert "must match" in capsys.readouterr().err
+    assert "must hold at least" in capsys.readouterr().err
 
 
 def _make_wind(

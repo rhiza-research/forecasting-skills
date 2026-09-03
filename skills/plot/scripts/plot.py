@@ -810,7 +810,8 @@ def _panel_shape(n, rows=None, columns=None):
     """``(nrows, ncols)`` for ``n`` heatmap panels.
 
     Default: up to 4 columns, extra rows as needed (leftover cells stay blank).
-    When ``rows`` and/or ``columns`` are set, the grid must pack ``n`` exactly.
+    When ``rows`` and/or ``columns`` are set, leftover cells stay blank the
+    same way; both given must yield a grid large enough to hold ``n``.
     """
     if rows is not None and rows < 1:
         raise UsageError(f"--rows must be a positive integer; got {rows}")
@@ -822,27 +823,17 @@ def _panel_shape(n, rows=None, columns=None):
         return nrows, ncols
     if rows is not None and columns is not None:
         product = rows * columns
-        if product != n:
+        if product < n:
             raise UsageError(
                 f"--rows {rows} × --columns {columns} = {product} panels, "
-                f"but the data has {n}; they must match"
+                f"but the data has {n}; the grid must hold at least {n}"
             )
         return rows, columns
     if columns is not None:
-        if n % columns != 0:
-            raise UsageError(
-                f"--columns {columns} does not divide the data ({n} panels); "
-                f"choose a count that divides {n}, or pass --rows so that "
-                f"rows × columns equals {n}"
-            )
-        return n // columns, columns
-    if n % rows != 0:
-        raise UsageError(
-            f"--rows {rows} does not divide the data ({n} panels); "
-            f"choose a count that divides {n}, or pass --columns so that "
-            f"rows × columns equals {n}"
-        )
-    return rows, n // rows
+        nrows = (n + columns - 1) // columns if n else 1
+        return nrows, columns
+    ncols = (n + rows - 1) // rows if n else 1
+    return rows, ncols
 
 
 def _figsize_from_extent(lon_min, lon_max, lat_min, lat_max, base_height=5.0):
@@ -1184,23 +1175,78 @@ def _panel_title_fontsize(fontsize):
     return int(fontsize)
 
 
+# Horizontal colorbar as a fraction of figure width. Discrete precip classes
+# have ~15 labels; they need this span plus a wide enough figure (see
+# ``_colorbar_figure_width``) so the ticks do not collide.
+_MAP_CBAR_LEFT = 0.08
+_MAP_CBAR_WIDTH = 0.84
+_MAP_CBAR_HEIGHT = 0.055
+_MAP_CBAR_STACK_STEP = 0.09
+_MAP_CBAR_Y0 = 0.04
+_MAP_CBAR_MAPS_BOTTOM = 0.20
+# Cartopy GeoAxes xlabel default (y in display coords) lands on the colorbar;
+# keep lon/lat names in axes coords, just below/beside the gridline ticks.
+_GEO_XLABEL_AXES_Y = -0.06
+_GEO_YLABEL_AXES_X = -0.16
+# ~inches of colorbar per discrete tick so 3–4 digit class labels stay readable.
+_CBAR_INCHES_PER_TICK = 0.48
+
+
+def _colorbar_tick_count(norm):
+    from matplotlib.colors import BoundaryNorm
+
+    if not isinstance(norm, BoundaryNorm):
+        return 0
+    return len(list(norm.boundaries))
+
+
+def _colorbar_figure_width(fig_width, n_ticks):
+    """Widen the figure so discrete colorbar labels do not collide."""
+    if n_ticks < 8:
+        return fig_width
+    needed = (_CBAR_INCHES_PER_TICK * n_ticks) / _MAP_CBAR_WIDTH
+    return max(fig_width, needed)
+
+
 def _map_colorbar_axes(fig, *, title, nrows, index=0, n_cbars=1):
     """Axes for a horizontal colorbar with clear gap under the map row(s)."""
-    top = 0.92 if title else 0.98
-    # Leave room for lon tick labels, a gap, then one or more thicker colorbars.
-    stack_step = 0.07
-    bottom = 0.12 + stack_step * max(0, n_cbars - 1)
+    top = 0.90 if title else 0.96
+    # Room for lon tick labels + axis name, a gap, then one or more colorbars.
+    bottom = _MAP_CBAR_MAPS_BOTTOM + _MAP_CBAR_STACK_STEP * max(0, n_cbars - 1)
     if index == 0:
-        fig.tight_layout(rect=[0, bottom, 1, top])
-    height = 0.04
-    y = 0.03 + index * stack_step
-    return fig.add_axes([0.12, y, 0.76, height])
+        hspace = 0.42 if nrows > 1 else 0.12
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.98,
+            bottom=bottom,
+            top=top,
+            hspace=hspace,
+            wspace=0.18,
+        )
+    y = _MAP_CBAR_Y0 + index * _MAP_CBAR_STACK_STEP
+    return fig.add_axes([_MAP_CBAR_LEFT, y, _MAP_CBAR_WIDTH, _MAP_CBAR_HEIGHT])
+
+
+def _apply_geo_axis_labels(ax, xlabel, ylabel, fontsize, *, xlabel_on=True, ylabel_on=True):
+    """Lon/lat names in axes coordinates so they do not sit on the colorbar."""
+    xlab = _resolve_axis_label(xlabel, "Longitude")
+    ylab = _resolve_axis_label(ylabel, "Latitude")
+    if xlabel_on:
+        ax.set_xlabel(xlab, fontsize=fontsize)
+        ax.xaxis.set_label_coords(0.5, _GEO_XLABEL_AXES_Y)
+    else:
+        ax.set_xlabel("")
+    if ylabel_on:
+        ax.set_ylabel(ylab, fontsize=fontsize)
+        ax.yaxis.set_label_coords(_GEO_YLABEL_AXES_X, 0.5)
+    else:
+        ax.set_ylabel("")
 
 
 def _colorbar_text_sizes(fontsize):
     """Colorbar text is intentionally smaller than axis/title text."""
-    label_fs = max(9, int(round(fontsize * 0.72)))
-    tick_fs = max(8, int(round(fontsize * 0.55)))
+    label_fs = max(8, int(round(fontsize * 0.50)))
+    tick_fs = max(6, int(round(fontsize * 0.36)))
     return label_fs, tick_fs
 
 
@@ -1762,8 +1808,14 @@ def _quiver_map(
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
-        ax.set_xlabel(_resolve_axis_label(xlabel, "Longitude"))
-        ax.set_ylabel(_resolve_axis_label(ylabel, "Latitude"))
+        _apply_geo_axis_labels(
+            ax,
+            xlabel,
+            ylabel,
+            fontsize,
+            xlabel_on=(i // ncols == nrows - 1),
+            ylabel_on=(i % ncols == 0),
+        )
         for city, (lat, lon) in cities.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=ccrs.PlateCarree())
             ax.text(
@@ -2599,10 +2651,12 @@ def _plot_layers(
     num_steps = len(steps)
     nrows, ncols = _panel_shape(num_steps, rows=rows, columns=columns)
     sw, sh = _figsize_from_extent(*extent_vals)
+    n_ticks = max((_colorbar_tick_count(p.get("norm")) for p in prepared), default=0)
+    fig_w = _colorbar_figure_width(sw * ncols, n_ticks)
     fig, axes = plt.subplots(
         nrows,
         ncols,
-        figsize=(sw * ncols, sh * nrows),
+        figsize=(fig_w, sh * nrows),
         sharex=True,
         sharey=True,
         subplot_kw={"projection": ccrs.PlateCarree()},
@@ -2664,8 +2718,14 @@ def _plot_layers(
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
-        ax.set_xlabel(_resolve_axis_label(xlabel, "Longitude"))
-        ax.set_ylabel(_resolve_axis_label(ylabel, "Latitude"))
+        _apply_geo_axis_labels(
+            ax,
+            xlabel,
+            ylabel,
+            fontsize,
+            xlabel_on=(i // ncols == nrows - 1),
+            ylabel_on=(i % ncols == 0),
+        )
         for city, (lat, lon) in cities_map.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=transform, zorder=8)
             ax.text(
@@ -2809,10 +2869,11 @@ def _heatmap(
         vmin, vmax = None, None
 
     sw, sh = _figsize_from_extent(*extent)
+    fig_w = _colorbar_figure_width(sw * ncols, _colorbar_tick_count(norm))
     fig, axes = plt.subplots(
         nrows,
         ncols,
-        figsize=(sw * ncols, sh * nrows),
+        figsize=(fig_w, sh * nrows),
         sharex=True,
         sharey=True,
         subplot_kw={"projection": ccrs.PlateCarree()},
@@ -2874,8 +2935,14 @@ def _heatmap(
         gl = ax.gridlines(draw_labels=True, alpha=0)
         gl.top_labels = False
         gl.right_labels = False
-        ax.set_xlabel(_resolve_axis_label(xlabel, "Longitude"))
-        ax.set_ylabel(_resolve_axis_label(ylabel, "Latitude"))
+        _apply_geo_axis_labels(
+            ax,
+            xlabel,
+            ylabel,
+            fontsize,
+            xlabel_on=(i // ncols == nrows - 1),
+            ylabel_on=(i % ncols == 0),
+        )
         for city, (lat, lon) in cities.items():
             ax.plot(lon, lat, marker="o", color="k", markersize=6, transform=ccrs.PlateCarree())
             ax.text(
@@ -3035,7 +3102,7 @@ def _heatmap(
     type=int,
     default=None,
     help=(
-        "Heatmap/contour/quiver panel rows. Alone or with --columns, the grid must pack the data exactly."
+        "Heatmap/contour/quiver panel rows. Extra cells stay blank when the grid is larger than the data."
     ),
 )
 @weather_skill.argument(
@@ -3043,7 +3110,7 @@ def _heatmap(
     type=int,
     default=None,
     help=(
-        "Heatmap/contour/quiver panel columns. Alone or with --rows, the grid must pack the data exactly."
+        "Heatmap/contour/quiver panel columns. Extra cells stay blank when the grid is larger than the data."
     ),
 )
 @weather_skill.argument(

@@ -217,6 +217,29 @@ def _cbar_boundary_kwargs(norm, cmap=None):
     return kw
 
 
+_MAP_CBAR_LEFT = 0.08
+_MAP_CBAR_WIDTH = 0.84
+_MAP_CBAR_HEIGHT = 0.045
+_CBAR_INCHES_PER_TICK = 0.48
+
+
+def _colorbar_tick_count(norm):
+    from matplotlib.colors import BoundaryNorm
+
+    if not isinstance(norm, BoundaryNorm):
+        return 0
+    return len(list(norm.boundaries))
+
+
+def _colorbar_figure_width(ncols, n_ticks):
+    """Physical figure width so discrete colorbar labels do not collide."""
+    col_width = max(3.2 * ncols, 6.0)
+    if n_ticks < 8:
+        return col_width
+    needed = (_CBAR_INCHES_PER_TICK * n_ticks) / _MAP_CBAR_WIDTH
+    return max(col_width, needed)
+
+
 def _variable_label(da):
     return variable_label_for_display(da)
 
@@ -750,7 +773,10 @@ def plot_compare_forecasts(
     fig, axes = plt.subplots(
         nrows,
         ncols,
-        figsize=(max(3.2 * ncols, 6.0), max(2.8 * nrows, 4.0) + (0.6 if title else 0.0)),
+        figsize=(
+            _colorbar_figure_width(ncols, _colorbar_tick_count(norm)),
+            max(2.8 * nrows, 4.0) + (0.6 if title else 0.0),
+        ),
         sharex=True,
         sharey=True,
         subplot_kw={"projection": ccrs.PlateCarree()},
@@ -763,6 +789,8 @@ def plot_compare_forecasts(
     panel_title_fs = _scaled_fontsize(fontsize, 0.85)
     lead_fs = _scaled_fontsize(fontsize, 0.65)
     na_fs = _scaled_fontsize(fontsize, 0.9)
+    cbar_label_fs = _scaled_fontsize(fontsize, 0.50, floor=8)
+    cbar_tick_fs = _scaled_fontsize(fontsize, 0.36, floor=6)
 
     contour = None
     for row, da in enumerate(das):
@@ -831,16 +859,23 @@ def plot_compare_forecasts(
             ax.set_ylabel(_axis_label(labels[row]), fontsize=fontsize)
 
     if contour is not None:
-        fig.tight_layout(rect=[0, 0.06, 1, 0.94 if title else 0.98])
-        cbar_ax = fig.add_axes([0.15, 0.02, 0.7, 0.02])
+        fig.subplots_adjust(
+            left=0.08,
+            right=0.98,
+            bottom=0.20,
+            top=0.90 if title else 0.96,
+            hspace=0.42 if nrows > 1 else 0.12,
+            wspace=0.18,
+        )
+        cbar_ax = fig.add_axes([_MAP_CBAR_LEFT, 0.04, _MAP_CBAR_WIDTH, _MAP_CBAR_HEIGHT])
         cbar = fig.colorbar(
             contour,
             cax=cbar_ax,
             orientation="horizontal",
             **_cbar_boundary_kwargs(norm, cmap),
         )
-        cbar.set_label(_variable_label(das[0]), fontsize=fontsize)
-        cbar.ax.tick_params(labelsize=tick_fs)
+        cbar.set_label(_variable_label(das[0]), fontsize=cbar_label_fs)
+        cbar.ax.tick_params(labelsize=cbar_tick_fs)
     else:
         fig.tight_layout()
 

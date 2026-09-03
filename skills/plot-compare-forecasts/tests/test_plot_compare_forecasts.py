@@ -173,6 +173,16 @@ def test_precip_default_colormap_is_discrete_chirps_total_palette(plot_mod):
     assert norm_t is None
 
 
+def test_colorbar_figure_expands_for_precip_class_ticks(plot_mod):
+    n_ticks = len(plot_mod.PRECIP_BOUNDS)
+    one_col = plot_mod._colorbar_figure_width(1, n_ticks)
+    four_col = plot_mod._colorbar_figure_width(4, n_ticks)
+    assert one_col > 6.0
+    assert one_col * plot_mod._MAP_CBAR_WIDTH >= plot_mod._CBAR_INCHES_PER_TICK * n_ticks
+    assert four_col == max(3.2 * 4, one_col)
+    assert plot_mod._colorbar_figure_width(1, 0) == 6.0
+
+
 def test_precip_anomaly_colormap_is_chirps_palette(plot_mod):
     from matplotlib.colors import BoundaryNorm, ListedColormap
 

@@ -280,10 +280,10 @@ def _cbar_boundary_kwargs(norm, cmap=None):
 # Field colorbar as a fraction of figure width. Discrete precip classes have
 # ~15 labels; they need this span plus a wide enough figure (see
 # ``_colorbar_figure_width``) so the ticks do not collide.
-_FIELD_CBAR_WIDTH = 0.72
-_FIELD_CBAR_LEFT = 0.14
+_FIELD_CBAR_WIDTH = 0.80
+_FIELD_CBAR_LEFT = 0.10
 # ~inches of colorbar per discrete tick so 3–4 digit labels stay readable.
-_CBAR_INCHES_PER_TICK = 0.60
+_CBAR_INCHES_PER_TICK = 0.48
 
 
 def _colorbar_tick_count(norm):
@@ -310,9 +310,9 @@ def _colorbar_axes_boxes(*, title):
     stacking lets the field bar use ``_FIELD_CBAR_WIDTH`` of the figure.
     """
     top = 0.92 if title else 0.98
-    maps_bottom = 0.22
-    field = [_FIELD_CBAR_LEFT, 0.125, _FIELD_CBAR_WIDTH, 0.030]
-    verify = [0.26, 0.032, 0.48, 0.030]
+    maps_bottom = 0.30
+    field = [_FIELD_CBAR_LEFT, 0.155, _FIELD_CBAR_WIDTH, 0.045]
+    verify = [0.22, 0.040, 0.56, 0.040]
     return maps_bottom, top, field, verify
 
 
@@ -711,6 +711,8 @@ def plot_verify(
 
     tick_fs = _scaled_fontsize(fontsize, 0.7)
     panel_title_fs = _scaled_fontsize(fontsize, 0.85)
+    cbar_label_fs = _scaled_fontsize(fontsize, 0.50, floor=8)
+    cbar_tick_fs = _scaled_fontsize(fontsize, 0.36, floor=6)
 
     def _draw(
         ax,
@@ -814,7 +816,7 @@ def plot_verify(
         if verify_mesh is None:
             verify_mesh = mesh
 
-    fig.tight_layout(rect=[0.20, maps_bottom, 1, layout_top], h_pad=1.4)
+    fig.tight_layout(rect=[0.20, maps_bottom, 1, layout_top], h_pad=2.0)
     for row, row_label in enumerate(row_labels):
         pos = axes[row][0].get_position()
         fig.text(
@@ -834,8 +836,8 @@ def plot_verify(
             orientation="horizontal",
             **_cbar_boundary_kwargs(norm, cmap),
         )
-        cbar.set_label(_variable_label(obs_da), fontsize=fontsize)
-        cbar.ax.tick_params(labelsize=tick_fs)
+        cbar.set_label(_variable_label(obs_da), fontsize=cbar_label_fs)
+        cbar.ax.tick_params(labelsize=cbar_tick_fs)
     if verify_mesh is not None:
         verify_ax = fig.add_axes(verify_box)
         if metric == "hits":
@@ -843,13 +845,15 @@ def plot_verify(
                 verify_mesh, cax=verify_ax, orientation="horizontal", ticks=[-1, 0, 1]
             )
             verify_cbar.set_ticklabels(verify_labels)
-            verify_cbar.set_label("event", fontsize=fontsize)
+            verify_cbar.set_label("event", fontsize=cbar_label_fs)
         else:
             verify_cbar = fig.colorbar(verify_mesh, cax=verify_ax, orientation="horizontal")
             units = format_units_for_display(u_obs)
             label = _METRIC_ROW_LABELS[metric]
-            verify_cbar.set_label(f"{label} [{units}]" if units else label, fontsize=fontsize)
-        verify_cbar.ax.tick_params(labelsize=tick_fs)
+            verify_cbar.set_label(
+                f"{label} [{units}]" if units else label, fontsize=cbar_label_fs
+            )
+        verify_cbar.ax.tick_params(labelsize=cbar_tick_fs)
 
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

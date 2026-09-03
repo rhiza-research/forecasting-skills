@@ -496,7 +496,7 @@ def _place_legend_below(ax, handles, labels, fontsize: int):
         labels,
         fontsize=fontsize,
         loc="upper center",
-        bbox_to_anchor=(0.5, -0.14),
+        bbox_to_anchor=(0.5, -0.22),
         ncol=ncols,
         frameon=False,
     )
@@ -742,7 +742,7 @@ def plot_timeseries(
         _apply_day_of_year_ticks(ax)
     else:
         fig.autofmt_xdate()
-    fig.tight_layout(rect=(0, 0.08, 1, 1))
+    fig.tight_layout(rect=(0, 0.16, 1, 1))
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=150, bbox_inches="tight")

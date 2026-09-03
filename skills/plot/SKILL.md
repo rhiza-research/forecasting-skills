@@ -24,9 +24,10 @@ Source-agnostic visualization. Single-input styles (`-i`) plus layered maps
   for multi-day bins (from `aggregation_period` or time spacing), inclusive
   ranges (`YYYY-MM-DD to YYYY-MM-DD`); forecast lead panels keep
   `<start> until <end>`. Default layout is up to 4 columns (rows added as
-  needed). `--rows` and/or `--columns` override that and must pack the
-  panel count exactly (`rows × columns` equals the number of steps/times;
-  leftover blank cells are not allowed). Ensemble members
+  needed). `--rows` and/or `--columns` override that; leftover cells stay
+  blank when the grid is larger than the data (`--rows 2 --columns 3` with
+  5 steps leaves one empty panel). A grid smaller than the data is an
+  error. Ensemble members
   (`number` dim) are averaged before plotting. Use `--index` to override the
   default reduction for any other extra dim. Precipitation totals default to
   the CHIRPS-GEFS total-rainfall classes (white `<2` through green→blue→
@@ -225,15 +226,15 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py --style xy --output <out.png> \
 - `--fontsize` — base font size for titles (including panel date labels), axis
   labels, city labels, and colorbar text (default 18). Raise on user request
   (e.g. `--fontsize 22`).
-- `--rows` / `--columns` — heatmap/quiver panel grid. Pass either or both. When
-  either is set, the layout must pack the data exactly: both given →
-  `rows × columns` must equal the number of panels (steps/times after
-  `--index`); only `--columns` → that count must divide the panel count
-  (rows = n / columns); only `--rows` → that count must divide (columns
-  = n / rows). A mismatch is an error. When both are omitted, the default
-  is up to 4 columns with extra rows as needed (blank leftover cells
-  allowed). Heatmap and quiver — `--style timeseries` and `--style windrose`
-  ignore them with a stderr warning.
+- `--rows` / `--columns` — heatmap/quiver panel grid. Pass either or both.
+  Leftover cells stay blank when the grid is larger than the data: both
+  given → `rows × columns` must be ≥ the number of panels (steps/times
+  after `--index`); only `--columns` → rows = ceil(n / columns); only
+  `--rows` → columns = ceil(n / rows). A grid smaller than the data is an
+  error. When both are omitted, the default is up to 4 columns with extra
+  rows as needed (blank leftover cells allowed). Heatmap and quiver —
+  `--style timeseries` and `--style windrose` ignore them with a stderr
+  warning.
 - `--bbox` — optional `N/W/S/E` decimal degrees. Slices the gridded input to the
   bbox using `da.sel(...)` and sets the heatmap extent to that bbox. This is a
   rectangular slice (geographic overlays are decoration, not a mask). To
@@ -319,7 +320,7 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/ecmwf_namibia.zarr -o /tmp/ec
     --variable tp --style heatmap --colormap magma --title "S2S precip"
 ```
 
-Six weekly maps in two rows of three (`rows × columns` must equal the panel count):
+Six weekly maps in two rows of three (a 5-step cube on the same 2×3 grid leaves one panel blank):
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot.py -i /tmp/weekly.zarr -o /tmp/weekly.png \
     --variable tp --rows 2 --columns 3

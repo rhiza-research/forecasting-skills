@@ -810,7 +810,7 @@ def plot_compare(
     top, bottom = (side_b, side_a) if b_station and not a_station else (side_a, side_b)
 
     fig = plt.figure(figsize=(22, 10))
-    gs = GridSpec(2, n, figure=fig, wspace=0.08, hspace=0.15)
+    gs = GridSpec(2, n, figure=fig, wspace=0.08, hspace=0.32)
     top_axes = [fig.add_subplot(gs[0, i]) for i in range(n)]
     bottom_axes = [fig.add_subplot(gs[1, i]) for i in range(n)]
     if title:
@@ -901,26 +901,28 @@ def plot_compare(
         _ds, da, _td, label, var, _units, _scale = row
         return f"{label} {variable_label_for_display(da, fallback=var)}"
 
+    cbar_label_fs = _scaled_fontsize(fontsize, 0.50, floor=8)
+    cbar_tick_fs = _scaled_fontsize(fontsize, 0.36, floor=6)
     cbar_top = fig.colorbar(
         sc_top,
         ax=top_axes,
-        shrink=0.6,
-        fraction=0.02,
-        pad=0.02,
+        shrink=0.90,
+        fraction=0.045,
+        pad=0.08,
         **_cbar_kwargs(top[-1][1], top[-1][0]),
     )
-    cbar_top.set_label(_cbar_label(top), fontsize=fontsize)
-    cbar_top.ax.tick_params(labelsize=_scaled_fontsize(fontsize, 0.7))
+    cbar_top.set_label(_cbar_label(top), fontsize=cbar_label_fs)
+    cbar_top.ax.tick_params(labelsize=cbar_tick_fs)
     cbar_bottom = fig.colorbar(
         im_bottom,
         ax=bottom_axes,
-        shrink=0.6,
-        fraction=0.02,
-        pad=0.02,
+        shrink=0.90,
+        fraction=0.045,
+        pad=0.08,
         **_cbar_kwargs(bottom[-1][1], bottom[-1][0]),
     )
-    cbar_bottom.set_label(_cbar_label(bottom), fontsize=fontsize)
-    cbar_bottom.ax.tick_params(labelsize=_scaled_fontsize(fontsize, 0.7))
+    cbar_bottom.set_label(_cbar_label(bottom), fontsize=cbar_label_fs)
+    cbar_bottom.ax.tick_params(labelsize=cbar_tick_fs)
 
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
