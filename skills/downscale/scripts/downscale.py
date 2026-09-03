@@ -10,13 +10,11 @@
 # ///
 """Downscale onto a finer grid (linear or empirical q-q)."""
 
+import math
+
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.standard_dataset import detect_spatial_dims, detect_time_dim
-from weather_skills_core.standard_utils import (
-    ensure_normalized_longitude,
-    grid_spacing,
-    spacing_is_finer,
-)
+from weather_skills_core.standard_utils import ensure_normalized_longitude, grid_spacing
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
@@ -97,8 +95,10 @@ def downscale(
     if reference_grid is not None:
         ref = xr.open_zarr(reference_grid, consolidated=False)
         new_lat, new_lon = np.asarray(ref[lat_dim].values), np.asarray(ref[lon_dim].values)
-        if spacing_is_finer(in_lat, _spacing(ref, lat_dim)) or spacing_is_finer(
-            in_lon, _spacing(ref, lon_dim)
+        ref_lat, ref_lon = _spacing(ref, lat_dim), _spacing(ref, lon_dim)
+        # 1% rel_tol: float noise / half-cell shift is not a resolution change.
+        if (in_lat < ref_lat and not math.isclose(in_lat, ref_lat, rel_tol=1e-2)) or (
+            in_lon < ref_lon and not math.isclose(in_lon, ref_lon, rel_tol=1e-2)
         ):
             raise UsageError("--reference-grid is coarser than input; use coarsen")
     else:
@@ -107,9 +107,14 @@ def downscale(
                 raise UsageError("--factor must be >= 1")
             lat_sp, lon_sp = in_lat / factor, in_lon / factor
         else:
-            if target_resolution <= 0 or spacing_is_finer(
-                in_lat, target_resolution
-            ) or spacing_is_finer(in_lon, target_resolution):
+            too_coarse = (
+                in_lat < target_resolution
+                and not math.isclose(in_lat, target_resolution, rel_tol=1e-2)
+            ) or (
+                in_lon < target_resolution
+                and not math.isclose(in_lon, target_resolution, rel_tol=1e-2)
+            )
+            if target_resolution <= 0 or too_coarse:
                 raise UsageError("--target-resolution must be finer-or-equal to input")
             lat_sp = lon_sp = target_resolution
         new_lat = _target_coord(ds[lat_dim].values, lat_sp)

@@ -20,7 +20,7 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
-    normalize_longitude,
+    ensure_normalized_longitude,
     np_to_date,
     verify_cf_decode,
 )
@@ -182,7 +182,7 @@ def fetch(start_time, end_time, bbox, variable, **kwargs):
             file=sys.stderr,
         )
 
-    ds = normalize_longitude(ds)
+    ds = ensure_normalized_longitude(ds)
     if bbox:
         ds = bbox_subset(ds, bbox, lat_dim="latitude", lon_dim="longitude")
 

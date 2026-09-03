@@ -31,7 +31,6 @@ from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
 from weather_skills_core.standard_utils import (
     ensure_normalized_longitude,
-    normalize_longitude,
     require_env,
 )
 from weather_skills_core.units import (
@@ -363,7 +362,7 @@ def _concat_lon(datasets: list) -> object:
             break
     if lon_name is None:
         return datasets[0]
-    normed = [normalize_longitude(d, lon_dim=lon_name) for d in datasets]
+    normed = [ensure_normalized_longitude(d, lon_dim=lon_name) for d in datasets]
     combined = xr.concat(normed, dim=lon_name)
     _, unique_idx = np.unique(combined[lon_name].values, return_index=True)
     return combined.isel({lon_name: np.sort(unique_idx)}).sortby(lon_name)
