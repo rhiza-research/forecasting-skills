@@ -318,10 +318,14 @@ def test_parse_trace_selector_and_aliases():
         "zorder": 5.0,
     }
     assert str(spec) == "2026:color=black,lw=2.5,ms=7,zorder=5"
+    styled = mod.parse_trace("clim:style=line,ls=--,lw=2.5")
+    assert styled.options == {"style": "line", "linestyle": "--", "linewidth": 2.5}
     with pytest.raises(argparse.ArgumentTypeError, match="SELECTOR:k=v"):
         mod.parse_trace("black")
     with pytest.raises(argparse.ArgumentTypeError, match="unknown --trace option"):
         mod.parse_trace("1:colour=red")
+    with pytest.raises(argparse.ArgumentTypeError, match="must be line or bar"):
+        mod.parse_trace("1:style=scatter")
 
 
 def test_resolve_trace_styles_star_then_token():
@@ -433,6 +437,68 @@ def test_trace_bar_rejects_linewidth(tmp_path, plot_timeseries):
             "1:linewidth=3",
         )
     assert exc.value.code == 2
+
+
+def test_draw_mixed_bars_and_line():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    fig, ax = plt.subplots()
+    series = [
+        ([1.0, 2.0, 3.0], [1.0, 2.0, 1.5], "obs"),
+        ([1.0, 2.0, 3.0], [0.8, 1.1, 0.9], "clim"),
+    ]
+    styles = mod.resolve_trace_styles(
+        ["obs", "clim"],
+        [mod.parse_trace("clim:style=line,linestyle=--,linewidth=2.5,marker=none")],
+    )
+    mod._draw_traces(ax, series, styles, "bar")
+    assert len(ax.patches) == 3
+    assert len(ax.get_lines()) == 1
+    line = ax.get_lines()[0]
+    assert line.get_linestyle() == "--"
+    assert line.get_linewidth() == 2.5
+    handles, labels = mod._legend_handles(ax, series)
+    assert labels == ["obs", "clim"]
+    assert handles[1] is line
+    plt.close(fig)
+
+
+def test_trace_per_series_style_bar_plus_line(tmp_path, plot_timeseries):
+    obs = write_zarr(make_gridded(fill=1.0), tmp_path / "obs.zarr")
+    clim = write_zarr(make_gridded(fill=0.5), tmp_path / "clim.zarr")
+    out = tmp_path / "obs_vs_clim.png"
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(obs),
+        "-i",
+        str(clim),
+        "-o",
+        str(out),
+        "--style",
+        "bar",
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+        "--label",
+        "obs",
+        "--label",
+        "clim",
+        "--trace",
+        "clim:style=line,linestyle=--,linewidth=2.5,marker=none",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+    history = load_figure_history(out)
+    assert history[-1]["args"]["style"] == "bar"
+    assert history[-1]["args"]["trace"] == [
+        "clim:style=line,linestyle=--,linewidth=2.5,marker=none"
+    ]
 
 
 def test_trace_unmatched_selector_exits(tmp_path, plot_timeseries):

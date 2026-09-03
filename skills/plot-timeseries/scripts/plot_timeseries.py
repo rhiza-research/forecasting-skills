@@ -102,9 +102,11 @@ _TRACE_KEYS = {
     "ms": "markersize",
     "alpha": "alpha",
     "zorder": "zorder",
+    "style": "style",
 }
 _LINE_ONLY_KEYS = frozenset({"linewidth", "linestyle", "marker", "markersize"})
 _BAR_KEYS = frozenset({"color", "alpha", "zorder"})
+_TRACE_STYLES = frozenset({"line", "bar"})
 _TOKEN_SPLIT = re.compile(r"[^0-9A-Za-z]+")
 
 
@@ -150,7 +152,12 @@ def _parse_trace_options(blob: str) -> dict:
             raise ValueError(f"--trace option {key!r} has an empty value")
         if canon in options:
             raise ValueError(f"--trace option {key!r} is given more than once")
-        if canon in {"linewidth", "markersize", "alpha", "zorder"}:
+        if canon == "style":
+            kind = val.casefold()
+            if kind not in _TRACE_STYLES:
+                raise ValueError(f"--trace style={val!r} must be line or bar")
+            options[canon] = kind
+        elif canon in {"linewidth", "markersize", "alpha", "zorder"}:
             try:
                 num = float(val)
             except ValueError as exc:
@@ -239,13 +246,19 @@ def _validate_trace_colors(styles: list[dict]) -> None:
         color = style.get("color")
         if color is not None and not mcolors.is_color_like(color):
             raise UsageError(
-                f"--trace color={color!r} is not a matplotlib color "
-                "(name, hex, or grayscale 0-1)."
+                f"--trace color={color!r} is not a matplotlib color (name, hex, or grayscale 0-1)."
             )
 
 
+def _series_kind(style: dict, default: str) -> str:
+    kind = style.get("style", default)
+    if kind not in _TRACE_STYLES:
+        raise UsageError(f"--trace style={kind!r} must be line or bar")
+    return kind
+
+
 def _line_kwargs(style: dict) -> dict:
-    kw = {"marker": "o", "markersize": 5, **style}
+    kw = {"marker": "o", "markersize": 5, **{k: v for k, v in style.items() if k != "style"}}
     marker = kw.get("marker")
     if isinstance(marker, str) and marker.casefold() in {"none", "null"}:
         kw["marker"] = "None"
@@ -257,8 +270,8 @@ def _bar_kwargs(style: dict) -> dict:
     extra = [k for k in style if k in _LINE_ONLY_KEYS]
     if extra:
         raise UsageError(
-            f"--trace keys {sorted(extra)} apply to --style line, not --style bar. "
-            "Use color, alpha, or zorder."
+            f"--trace keys {sorted(extra)} apply to line traces, not bar traces. "
+            "Use color, alpha, or zorder, or set style=line on this series."
         )
     return {k: v for k, v in style.items() if k in _BAR_KEYS}
 
@@ -380,6 +393,55 @@ def _draw_bars(ax, series, styles):
         ax.xaxis_date()
 
 
+def _draw_mixed(ax, series, styles, kinds):
+    """Bars grouped among bar traces only; lines at the un-offset x."""
+    converted = []
+    any_dates = False
+    for (xvals, yvals, label), style, kind in zip(series, styles, kinds, strict=True):
+        xnum, is_dates = _numeric_x(xvals)
+        any_dates = any_dates or is_dates
+        converted.append((kind, xnum, yvals, label, style))
+    n_bars = sum(1 for kind, *_ in converted if kind == "bar")
+    bar_xs = [xnum for kind, xnum, *_ in converted if kind == "bar"]
+    group_span = 0.8 * min(_median_spacing(x) for x in bar_xs)
+    bar_w = group_span / n_bars
+    bar_i = 0
+    for kind, xnum, yvals, label, style in converted:
+        if kind == "bar":
+            offset = (bar_i - (n_bars - 1) / 2) * bar_w
+            ax.bar(
+                xnum + offset,
+                yvals,
+                width=bar_w * 0.9,
+                label=label,
+                align="center",
+                **_bar_kwargs(style),
+            )
+            bar_i += 1
+        else:
+            ax.plot(xnum, yvals, label=label, **_line_kwargs(style))
+    if any_dates:
+        ax.xaxis_date()
+
+
+def _draw_traces(ax, series, styles, default_style):
+    kinds = [_series_kind(style, default_style) for style in styles]
+    if all(kind == "bar" for kind in kinds):
+        _draw_bars(ax, series, styles)
+    elif all(kind == "line" for kind in kinds):
+        _draw_lines(ax, series, styles)
+    else:
+        _draw_mixed(ax, series, styles, kinds)
+
+
+def _legend_handles(ax, series):
+    """Legend entries in ``--input`` order (mixed bar/line artists are not)."""
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles, strict=True))
+    ordered_labels = [label for _, _, label in series]
+    return [by_label[label] for label in ordered_labels], ordered_labels
+
+
 @weather_skill(
     name="plot-timeseries",
     version=_SKILL_VERSION,
@@ -440,7 +502,8 @@ def _draw_bars(ax, series, styles):
         "Per-series style SELECTOR:k=v. Repeatable. Selector is a 1-based "
         "--input index (1..N), legend label, unique token in the label "
         "(e.g. 2026), or * for all. Keys: color, linewidth, linestyle, "
-        "marker, markersize, alpha, zorder."
+        "marker, markersize, alpha, zorder, style (line|bar, overrides "
+        "global --style for that series)."
     ),
 )
 def plot_timeseries(
@@ -569,14 +632,13 @@ def plot_timeseries(
 
     styles = resolve_trace_styles([label for _, _, label in series], trace)
     _validate_trace_colors(styles)
-    if style == "bar":
-        _draw_bars(ax, series, styles)
-    else:
-        _draw_lines(ax, series, styles)
+    _draw_traces(ax, series, styles, style)
 
     tick_fs = max(10, int(round(fontsize * 0.7)))
     legend_fs = max(10, int(round(fontsize * 0.85)))
-    ax.set_xlabel(_resolve_axis_label(xlabel, axis_label or first_tdim or "time"), fontsize=fontsize)
+    ax.set_xlabel(
+        _resolve_axis_label(xlabel, axis_label or first_tdim or "time"), fontsize=fontsize
+    )
     ax.set_ylabel(
         _resolve_axis_label(ylabel, _y_label(variable, datasets[0][variable])),
         fontsize=fontsize,
@@ -584,7 +646,8 @@ def plot_timeseries(
     if title:
         ax.set_title(title, fontsize=fontsize)
     ax.tick_params(labelsize=tick_fs)
-    ax.legend(fontsize=legend_fs)
+    handles, legend_labels = _legend_handles(ax, series)
+    ax.legend(handles, legend_labels, fontsize=legend_fs)
     ax.grid(True, linestyle="--", alpha=0.5)
 
     if align_day_of_year:

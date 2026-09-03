@@ -1,6 +1,6 @@
 ---
 name: plot-timeseries
-description: Render a single PNG with one 1D series per input Zarr overlaid on a shared time axis, as lines (default) or grouped bars. Repeatable --trace SELECTOR:k=v styles one series (color, linewidth, marker, zorder) by 1-based input index, legend label, or a unique token in the label (e.g. 2026). Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates. Use --fontsize to enlarge titles, axis labels, ticks, and legend (default 16).
+description: Render a single PNG with one 1D series per input Zarr overlaid on a shared time axis, as lines (default) or grouped bars. Repeatable --trace SELECTOR:k=v styles one series (color, linewidth, marker, zorder, style=line|bar) by 1-based input index, legend label, or a unique token in the label (e.g. 2026). Per-trace style=line|bar overrides global --style so one series can be bars and another a line. Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates. Use --fontsize to enlarge titles, axis labels, ticks, and legend (default 16).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py *)
@@ -15,7 +15,8 @@ Source-agnostic multi-input timeseries plotting. Takes one or more weather-skill
 standard dataset Zarrs and draws each as a 1D series on a single set of axes against
 its time/step coord. `--style line` (default) is a polyline with a marker at each
 time; `--style bar` is a grouped bar chart (one bar group per time, one bar per
-input). Each series is labeled in the legend by a size-1
+input). `--trace style=line|bar` overrides that global choice per series, so
+observed totals can be bars with a climatology drawn as a line. Each series is labeled in the legend by a size-1
 `station_id` / `point_id` (plus `name` when present), else the input
 filename stem, else `weather_skills_source`.
 
@@ -39,6 +40,8 @@ For a single-input quick-look, use the `plot` skill with
   observation, or two forecast models) as line traces or grouped bars on one
   figure.
 - Highlighting one input among analog years (`--trace 2026:color=black,linewidth=2.5`).
+- Overlaying a climatology line on observed period totals (`--style bar` plus
+  `--trace clim:style=line,linestyle=--,linewidth=2.5`).
 - Plotting a single dataset as a 1D timeseries when you want explicit
   control over which dims are reduced. Period totals (dekadal/monthly precip)
   often read better as `--style bar`.
@@ -75,9 +78,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   metadata. Passed text is used as-is.
 - `--fontsize` — base font size for titles, axis labels, ticks, and legend
   (default 16). Raise on user request (e.g. `--fontsize 22`).
-- `--style` — `line` (default) or `bar`. `bar` draws grouped bars (one group
-  per time step; one bar per `--input`, offset within the group). Bar width is
-  80% of the median time spacing, split across inputs. Single-input `bar` is
+- `--style` — `line` (default) or `bar`. Default for every series; a per-trace
+  `style=line|bar` on `--trace` overrides it. `bar` draws grouped bars (one
+  group per time step; one bar per bar-styled `--input`, offset within the
+  group). Bar width is 80% of the median time spacing, split across bar
+  series only (line overlays do not take a bar slot). Single-input `bar` is
   just one bar per time.
 - `--align-day-of-year` — opt-in (default off). Plot each trace against its
   day-of-year (1–366) instead of its absolute date, so inputs from different
@@ -106,14 +111,15 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   - a unique alphanumeric token in that label (`2026` matches `chirps_2026`)
   Keys: `color` (matplotlib name, hex, or grayscale `0-1`), `linewidth` /
   `lw`, `linestyle` / `ls`, `marker`, `markersize` / `ms`, `alpha`,
-  `zorder`. Line-only keys (`linewidth`, `linestyle`, `marker`, `markersize`)
-  error with `--style bar`. Quote hex colors (`--trace '2026:color=#222'`).
+  `zorder`, `style` (`line` or `bar`; overrides global `--style` for that
+  series). Line-only keys (`linewidth`, `linestyle`, `marker`, `markersize`)
+  error on a bar series. Quote hex colors (`--trace '2026:color=#222'`).
   An unmatched or ambiguous selector exits 2.
 
 ### Output
 
 A PNG at `--output`, single axes (`figsize=(10, 6)`), one series per input
-(line with markers, or bars), legend on the axes. The y-axis label is the variable `long_name` (then
+(line with markers, or bars; mixed `--trace style=` overlays a line on bars), legend on the axes. The y-axis label is the variable `long_name` (then
 `GRIB_name`, then the variable name) plus `[<units>]` when the variable
 carries a `units` attribute. Units are a short display form (`mm/day`,
 `°C`), not the on-disk CF string.
@@ -178,4 +184,16 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
     --trace '2026:color=black,linewidth=2.5,zorder=5,markersize=7' \
     --output /tmp/analogs.png \
     --title "Kenya OND analog rainfall"
+```
+
+Observed period totals as bars, climatology as a heavy dashed line:
+
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
+    -i /tmp/obs.zarr -i /tmp/clim.zarr \
+    --variable tp --style bar \
+    --reduce latitude --reduce longitude \
+    --trace 'clim:style=line,linestyle=--,linewidth=2.5,marker=none' \
+    --output /tmp/obs_vs_clim.png \
+    --title "30-day precip vs climatology"
 ```
