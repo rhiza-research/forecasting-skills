@@ -783,7 +783,7 @@ def plot_compare_forecasts(
         squeeze=False,
     )
     if title:
-        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1))
+        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1), y=0.99)
 
     tick_fs = _scaled_fontsize(fontsize, 0.7)
     panel_title_fs = _scaled_fontsize(fontsize, 0.85)
@@ -863,7 +863,7 @@ def plot_compare_forecasts(
             left=0.08,
             right=0.98,
             bottom=0.20,
-            top=0.90 if title else 0.96,
+            top=0.80 if title else 0.96,
             hspace=0.42 if nrows > 1 else 0.12,
             wspace=0.18,
         )

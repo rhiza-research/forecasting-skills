@@ -1175,6 +1175,15 @@ def _panel_title_fontsize(fontsize):
     return int(fontsize)
 
 
+def _set_figure_title(fig, title, fontsize):
+    if title:
+        fig.suptitle(title, fontsize=fontsize, y=_FIG_TITLE_Y)
+
+
+def _set_panel_title(ax, text, fontsize):
+    ax.set_title(text, fontsize=fontsize, pad=_PANEL_TITLE_PAD)
+
+
 # Horizontal colorbar as a fraction of figure width. Discrete precip classes
 # have ~15 labels; they need this span plus a wide enough figure (see
 # ``_colorbar_figure_width``) so the ticks do not collide.
@@ -1184,6 +1193,10 @@ _MAP_CBAR_HEIGHT = 0.055
 _MAP_CBAR_STACK_STEP = 0.09
 _MAP_CBAR_Y0 = 0.04
 _MAP_CBAR_MAPS_BOTTOM = 0.20
+_MAP_AXES_TOP_TITLED = 0.80
+_MAP_AXES_TOP = 0.96
+_FIG_TITLE_Y = 0.99
+_PANEL_TITLE_PAD = 28
 # Cartopy GeoAxes xlabel default (y in display coords) lands on the colorbar;
 # keep lon/lat names in axes coords, just below/beside the gridline ticks.
 _GEO_XLABEL_AXES_Y = -0.06
@@ -1210,7 +1223,7 @@ def _colorbar_figure_width(fig_width, n_ticks):
 
 def _map_colorbar_axes(fig, *, title, nrows, index=0, n_cbars=1):
     """Axes for a horizontal colorbar with clear gap under the map row(s)."""
-    top = 0.90 if title else 0.96
+    top = _MAP_AXES_TOP_TITLED if title else _MAP_AXES_TOP
     # Room for lon tick labels + axis name, a gap, then one or more colorbars.
     bottom = _MAP_CBAR_MAPS_BOTTOM + _MAP_CBAR_STACK_STEP * max(0, n_cbars - 1)
     if index == 0:
@@ -1828,9 +1841,10 @@ def _quiver_map(
         if boxes:
             _draw_boxes_on_ax(ax, boxes, ccrs.PlateCarree())
         if s is not None:
-            ax.set_title(
+            _set_panel_title(
+                ax,
                 _panel_title(speed, sdim, s, title_steps),
-                fontsize=_panel_title_fontsize(fontsize),
+                _panel_title_fontsize(fontsize),
             )
 
     for j in range(num_steps, len(axes)):
@@ -1852,7 +1866,7 @@ def _quiver_map(
         y_key -= 0.10
 
     if title:
-        fig.suptitle(title, fontsize=fontsize)
+        _set_figure_title(fig, title, fontsize)
     cbar_ax = _map_colorbar_axes(fig, title=title, nrows=nrows)
     cbar = fig.colorbar(mesh, cax=cbar_ax, orientation="horizontal", fraction=5)
     cbar_label_fs, cbar_tick_fs = _colorbar_text_sizes(fontsize)
@@ -2739,9 +2753,10 @@ def _plot_layers(
         if boxes:
             _draw_boxes_on_ax(ax, boxes, transform)
         if s is not None and title_da is not None:
-            ax.set_title(
+            _set_panel_title(
+                ax,
                 _panel_title(title_da, sdim, s, title_steps),
-                fontsize=_panel_title_fontsize(fontsize),
+                _panel_title_fontsize(fontsize),
             )
 
     for j in range(num_steps, len(axes)):
@@ -2765,7 +2780,7 @@ def _plot_layers(
             y_key -= 0.10
 
     if title:
-        fig.suptitle(title, fontsize=fontsize)
+        _set_figure_title(fig, title, fontsize)
 
     cbars = list(last_by_group.values())
     n_cbars = len(cbars)
@@ -2955,16 +2970,17 @@ def _heatmap(
         if boxes:
             _draw_boxes_on_ax(ax, boxes, ccrs.PlateCarree())
         if s is not None:
-            ax.set_title(
+            _set_panel_title(
+                ax,
                 _panel_title(da, sdim, s, title_steps),
-                fontsize=_panel_title_fontsize(fontsize),
+                _panel_title_fontsize(fontsize),
             )
 
     for j in range(num_steps, len(axes)):
         axes[j].set_visible(False)
 
     if title:
-        fig.suptitle(title, fontsize=fontsize)
+        _set_figure_title(fig, title, fontsize)
     cbar_ax = _map_colorbar_axes(fig, title=title, nrows=nrows)
     cbar = fig.colorbar(
         mappable,

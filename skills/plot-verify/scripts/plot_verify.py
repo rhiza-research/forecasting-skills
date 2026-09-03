@@ -309,7 +309,7 @@ def _colorbar_axes_boxes(*, title):
     Side-by-side bars squash the precip class labels on a 1-column figure;
     stacking lets the field bar use ``_FIELD_CBAR_WIDTH`` of the figure.
     """
-    top = 0.92 if title else 0.98
+    top = 0.86 if title else 0.98
     maps_bottom = 0.30
     field = [_FIELD_CBAR_LEFT, 0.155, _FIELD_CBAR_WIDTH, 0.045]
     verify = [0.22, 0.040, 0.56, 0.040]
@@ -707,7 +707,7 @@ def plot_verify(
         squeeze=False,
     )
     if title:
-        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1))
+        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1), y=0.99)
 
     tick_fs = _scaled_fontsize(fontsize, 0.7)
     panel_title_fs = _scaled_fontsize(fontsize, 0.85)

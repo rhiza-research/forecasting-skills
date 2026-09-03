@@ -814,7 +814,7 @@ def plot_compare(
     top_axes = [fig.add_subplot(gs[0, i]) for i in range(n)]
     bottom_axes = [fig.add_subplot(gs[1, i]) for i in range(n)]
     if title:
-        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1))
+        fig.suptitle(title, fontsize=_scaled_fontsize(fontsize, 1.1), y=0.99)
 
     if a_station and not b_station:
         gridded_ds, gridded_var = ds_b, var_b

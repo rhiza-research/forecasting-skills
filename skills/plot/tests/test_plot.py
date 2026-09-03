@@ -170,6 +170,34 @@ def test_heatmap_colorbar_sits_below_xaxis_label():
     plt.close(fig)
 
 
+def test_heatmap_figure_title_sits_above_axes():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plot_mod = load_skill("plot", "plot")
+    da = make_forecast(n_step=2, lats=(-4.0, 0.0, 4.0), lons=(35.0, 37.0, 39.0))["tp"]
+    fig = plot_mod._heatmap(
+        da,
+        "latitude",
+        "longitude",
+        "viridis",
+        extent=(34.0, 42.0, -5.0, 5.0),
+        cities={},
+        title="S2S precip",
+        fontsize=18,
+        wrap_lon=True,
+    )
+    fig.canvas.draw()
+    st = fig._suptitle
+    assert st is not None
+    maps = [ax for ax in fig.axes[:-1] if ax.get_visible()]
+    assert st.get_position()[1] == pytest.approx(plot_mod._FIG_TITLE_Y)
+    assert max(ax.get_position().y1 for ax in maps) == pytest.approx(plot_mod._MAP_AXES_TOP_TITLED)
+    plt.close(fig)
+
+
 def test_precip_heatmap_widens_for_class_ticks_and_shrinks_cbar_text():
     import matplotlib
 

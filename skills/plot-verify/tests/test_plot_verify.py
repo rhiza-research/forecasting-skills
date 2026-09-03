@@ -152,7 +152,7 @@ def test_colorbar_axes_stack_field_above_verify(plot_mod):
     # Room between bars for the field colorbar label.
     assert field[1] - (verify[1] + verify[3]) >= 0.05
     assert maps_bottom > field[1] + field[3]
-    assert top == 0.92
+    assert top == 0.86
 
 
 def test_row_labels_use_weather_skills_source(plot_mod):
