@@ -649,6 +649,23 @@ def test_draw_mixed_bars_and_line():
     plt.close(fig)
 
 
+def test_place_legend_below_axis():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    fig, ax = plt.subplots()
+    ax.plot([1, 2], [1, 2], label="a")
+    ax.plot([1, 2], [2, 3], label="b")
+    handles, labels = mod._legend_handles(ax, [([1, 2], [1, 2], "a"), ([1, 2], [2, 3], "b")])
+    legend = mod._place_legend_below(ax, handles, labels, fontsize=12)
+    anchor = legend.get_bbox_to_anchor()._bbox
+    assert anchor.y0 < 0
+    plt.close(fig)
+
+
 def test_trace_per_series_style_bar_plus_line(tmp_path, plot_timeseries):
     obs = write_zarr(make_gridded(fill=1.0), tmp_path / "obs.zarr")
     clim = write_zarr(make_gridded(fill=0.5), tmp_path / "clim.zarr")

@@ -488,6 +488,20 @@ def _legend_handles(ax, series):
     return [by_label[label] for label in ordered_labels], ordered_labels
 
 
+def _place_legend_below(ax, handles, labels, fontsize: int):
+    """Place legend centered below the plotting area."""
+    ncols = max(1, min(len(labels), 4))
+    return ax.legend(
+        handles,
+        labels,
+        fontsize=fontsize,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.14),
+        ncol=ncols,
+        frameon=False,
+    )
+
+
 @weather_skill(
     name="plot-timeseries",
     version=_SKILL_VERSION,
@@ -721,14 +735,14 @@ def plot_timeseries(
         ax.set_title(title, fontsize=fontsize)
     ax.tick_params(labelsize=tick_fs)
     handles, legend_labels = _legend_handles(ax, series)
-    ax.legend(handles, legend_labels, fontsize=legend_fs)
+    _place_legend_below(ax, handles, legend_labels, legend_fs)
     ax.grid(True, linestyle="--", alpha=0.5)
 
     if align_day_of_year:
         _apply_day_of_year_ticks(ax)
     else:
         fig.autofmt_xdate()
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=150, bbox_inches="tight")

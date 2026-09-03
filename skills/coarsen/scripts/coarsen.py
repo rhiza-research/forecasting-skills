@@ -125,9 +125,7 @@ def coarsen(ds, variable, reference_grid, target_resolution, offset, **kwargs):
         if (ref_lat_sp < in_lat and not math.isclose(ref_lat_sp, in_lat, rel_tol=1e-2)) or (
             ref_lon_sp < in_lon and not math.isclose(ref_lon_sp, in_lon, rel_tol=1e-2)
         ):
-            raise UsageError(
-                "--reference-grid is finer than input; use downscale --reference-grid"
-            )
+            raise UsageError("--reference-grid is finer than input; use downscale --reference-grid")
         new_lat = _clip_reference_axis(ds[lat_dim].values, ref[ref_lat_dim].values)
         new_lon = _clip_reference_axis(ds[lon_dim].values, ref[ref_lon_dim].values)
         lat_attrs = dict(ref[ref_lat_dim].attrs) or dict(ds[lat_dim].attrs)
