@@ -76,6 +76,25 @@ def test_clip_geojson_polygon(tmp_path, clip_region):
     assert list(ds.longitude.values) == [11.0, 12.0]
 
 
+def test_clip_geojson_keeps_cells_with_any_overlap(tmp_path, clip_region):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    geo = tmp_path / "sliver.geojson"
+    # Intersects the lon=11, lat=1 cell footprint but excludes its center point.
+    geo.write_text(
+        json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[10.6, 0.6], [10.9, 0.6], [10.9, 1.4], [10.6, 1.4], [10.6, 0.6]]],
+            }
+        )
+    )
+    out = tmp_path / "out.zarr"
+    run_skill(clip_region, "-i", str(src), "-o", str(out), "--geojson", str(geo))
+    ds = xr.open_zarr(out, consolidated=True)
+    assert list(ds.latitude.values) == [1.0]
+    assert list(ds.longitude.values) == [11.0]
+
+
 def test_clip_accepts_precip_totals(tmp_path, clip_region):
     ds = make_gridded()
     ds["precip"].attrs.update(
