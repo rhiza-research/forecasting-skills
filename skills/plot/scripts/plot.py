@@ -1187,13 +1187,21 @@ def _panel_title_fontsize(fontsize):
 def _map_colorbar_axes(fig, *, title, nrows, index=0, n_cbars=1):
     """Axes for a horizontal colorbar with clear gap under the map row(s)."""
     top = 0.92 if title else 0.98
-    # Leave room for lon tick labels, a gap, then one or more colorbars.
-    bottom = 0.10 + 0.06 * max(0, n_cbars - 1)
+    # Leave room for lon tick labels, a gap, then one or more thicker colorbars.
+    stack_step = 0.07
+    bottom = 0.12 + stack_step * max(0, n_cbars - 1)
     if index == 0:
         fig.tight_layout(rect=[0, bottom, 1, top])
-    height = 0.028
-    y = 0.035 + index * 0.055
-    return fig.add_axes([0.15, y, 0.7, height])
+    height = 0.04
+    y = 0.03 + index * stack_step
+    return fig.add_axes([0.12, y, 0.76, height])
+
+
+def _colorbar_text_sizes(fontsize):
+    """Colorbar text is intentionally smaller than axis/title text."""
+    label_fs = max(9, int(round(fontsize * 0.72)))
+    tick_fs = max(8, int(round(fontsize * 0.55)))
+    return label_fs, tick_fs
 
 
 def _wind_component_role(da):
@@ -1795,8 +1803,9 @@ def _quiver_map(
         fig.suptitle(title, fontsize=fontsize)
     cbar_ax = _map_colorbar_axes(fig, title=title, nrows=nrows)
     cbar = fig.colorbar(mesh, cax=cbar_ax, orientation="horizontal", fraction=5)
-    cbar.set_label(cbar_label or _wind_speed_cbar_label(u_da), fontsize=fontsize)
-    cbar.ax.tick_params(labelsize=max(10, int(round(fontsize * 0.7))))
+    cbar_label_fs, cbar_tick_fs = _colorbar_text_sizes(fontsize)
+    cbar.set_label(cbar_label or _wind_speed_cbar_label(u_da), fontsize=cbar_label_fs)
+    cbar.ax.tick_params(labelsize=cbar_tick_fs)
     return fig
 
 
@@ -2713,8 +2722,12 @@ def _plot_layers(
             cbar.set_ticks(p["flag_ticks"])
             if p.get("flag_labels") is not None:
                 cbar.set_ticklabels(p["flag_labels"])
-        cbar.set_label(p.get("cbar_label") or _variable_label(p.get("da")), fontsize=fontsize)
-        cbar.ax.tick_params(labelsize=max(10, int(round(fontsize * 0.7))))
+        cbar_label_fs, cbar_tick_fs = _colorbar_text_sizes(fontsize)
+        cbar.set_label(
+            p.get("cbar_label") or _variable_label(p.get("da")),
+            fontsize=cbar_label_fs,
+        )
+        cbar.ax.tick_params(labelsize=cbar_tick_fs)
     return fig
 
 
@@ -2897,8 +2910,9 @@ def _heatmap(
         cbar.set_ticks(flag_ticks)
         if flag_labels is not None:
             cbar.set_ticklabels(flag_labels)
-    cbar.set_label(_variable_label(da), fontsize=fontsize)
-    cbar.ax.tick_params(labelsize=max(10, int(round(fontsize * 0.7))))
+    cbar_label_fs, cbar_tick_fs = _colorbar_text_sizes(fontsize)
+    cbar.set_label(_variable_label(da), fontsize=cbar_label_fs)
+    cbar.ax.tick_params(labelsize=cbar_tick_fs)
     return fig
 
 

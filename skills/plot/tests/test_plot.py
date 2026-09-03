@@ -100,6 +100,13 @@ def test_axis_label_capitalizes():
     assert plot_mod._axis_label("Latitude") == "Latitude"
 
 
+def test_colorbar_text_sizes_are_smaller_than_base_fontsize():
+    plot_mod = load_skill("plot", "plot")
+    label_fs, tick_fs = plot_mod._colorbar_text_sizes(18)
+    assert label_fs < 18
+    assert tick_fs < label_fs
+
+
 def test_resolve_axis_label_override_is_verbatim():
     plot_mod = load_skill("plot", "plot")
     assert plot_mod._resolve_axis_label("lon (E)", "Longitude") == "lon (E)"
