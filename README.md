@@ -30,6 +30,7 @@ credentialed or source-specific fetcher only when it does not.
 | `ecmwf-fetch` | ECMWF **S2S** ensemble (cf + pf; default `tp`, also `t2m`, `sst`, ocean, pressure levels) over a `--bbox` via ECDS → Zarr. Prefer `dynamical-fetch` for medium-range IFS-ENS / AIFS. |
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
 | `imerg-fetch` | Earthdata **daily** IMERG Late/Final fallback (`GPM_3IMERGDL` / `GPM_3IMERGDF`) → Zarr. Default IMERG is `dynamical-fetch`, not this skill. |
+| `clim-fetch` | Climatology (mean + std) for a `--dataset` (`imerg_final`, `era5`, `chirps`, …) via Sheerwater's public GCS mirror, at a selected `--prediction-timedelta` lead and `--window` (days; correctly rolled up, centered, with circular padding if not pre-mirrored), expanded to a `--start-time`/`--end-time` window → Zarr |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
 | `kenya-forecast-fetch` | Kenya forecasts archive grids (`gs://kenya-forecasting-data/<date>/data/`) — native S2S Zarr or CHIRPS-resolution weekly downscaled precip → standard dataset (compose with `plot` for figures) |
 
@@ -52,6 +53,7 @@ credentialed or source-specific fetcher only when it does not.
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
 | `summarize-dim` | Summarize named dims with a statistic (mean/std/min/max/sum/median) — e.g. ensemble spread as the std across `number`, or a time-mean baseline |
 | `difference` | Subtract one dataset from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
+| `standardize-anomaly` | Standardized anomaly aka z-score: `(field − clim_avg) / clim_std` against a climatology (e.g. `clim-fetch`) — dimensionless output, errors on units mismatch. For a plain physical-unit anomaly, use `difference` instead. |
 | `zonal-moisture-transport` | Eastward moisture flux `q·u`, default column-integrated to IVT (`viwve`, kg m-1 s-1). Compose after `ecmwf-fetch -v q -v u` |
 | `verify` | Forecast vs obs verification: `--metric hits|bias|mae` (hits = event classification). Plot the output with `plot`. |
 | `indicator` | Daily boolean indicator from one `--rule` (aliases `icpac-onset` / `chc-onset`, or clauses like `precip sum 8d >= 25`); optional `--probability`, `--detect first` / `any`, `--cumulative` |
