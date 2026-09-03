@@ -218,6 +218,11 @@ def fetch(dataset, start_time, end_time, variable, prediction_timedelta, window,
     clim = clim.rename(
         {"avg": mean_name, "std": std_name, lat_name: "latitude", lon_name: "longitude"}
     )
+    # use global units if available, otherwise infer from the data.
+    global_units = clim.attrs.get("units")
+    if global_units is not None:
+        for name in (mean_name, std_name):
+            clim[name].attrs.setdefault("units", global_units)
     clim = to_standard_units(clim, variables=[mean_name, std_name])
 
     if bbox is not None:
