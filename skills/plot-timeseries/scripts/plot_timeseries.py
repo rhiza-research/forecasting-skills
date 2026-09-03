@@ -23,6 +23,7 @@ from pathlib import Path
 from weather_skills_core import Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable
 from weather_skills_core.display_labels import dataset_display_label, resolve_input_labels
+from weather_skills_core.standard_dataset import ALIASES, names_for
 from weather_skills_core.standard_utils import pick_time_dim
 from weather_skills_core.units import (
     precip_for_display,
@@ -250,20 +251,62 @@ def _validate_trace_colors(styles: list[dict]) -> None:
             )
 
 
-def _series_kind(style: dict, default: str) -> str:
+def _series_kind(style: dict, default: str, yvals=None) -> str:
+    import numpy as np
+
+    if yvals is not None and np.asarray(yvals).ndim == 2:
+        if style.get("style") == "bar":
+            raise UsageError(
+                "--along traces are drawn as lines; do not set style=bar on an --along series."
+            )
+        return "line"
     kind = style.get("style", default)
     if kind not in _TRACE_STYLES:
         raise UsageError(f"--trace style={kind!r} must be line or bar")
     return kind
 
 
-def _line_kwargs(style: dict) -> dict:
-    kw = {"marker": "o", "markersize": 5, **{k: v for k, v in style.items() if k != "style"}}
+def _line_kwargs(style: dict, *, ensemble: bool = False) -> dict:
+    defaults = (
+        {"marker": "None", "linewidth": 0.8, "alpha": 0.4}
+        if ensemble
+        else {"marker": "o", "markersize": 5}
+    )
+    kw = {**defaults, **{k: v for k, v in style.items() if k != "style"}}
     marker = kw.get("marker")
     if isinstance(marker, str) and marker.casefold() in {"none", "null"}:
         kw["marker"] = "None"
         kw.pop("markersize", None)
     return kw
+
+
+def _along_dim(da, along: str | None) -> str | None:
+    """Resolve ``--along`` to a dim on ``da``, including ontology aliases (member/number)."""
+    if not along:
+        return None
+    if along in da.dims:
+        return along
+    preferred = ALIASES.get(along, along)
+    return next((name for name in names_for(preferred) if name in da.dims), None)
+
+
+def _plot_line(ax, xvals, yvals, label, style):
+    """Draw one series. 2D ``yvals`` (time × along) is one matplotlib call, one legend entry."""
+    import numpy as np
+
+    y = np.asarray(yvals)
+    if y.ndim > 2:
+        raise UsageError("timeseries y-values have more than 2 dims after reduce/--along")
+    ensemble = y.ndim == 2
+    kw = _line_kwargs(style, ensemble=ensemble)
+    if not ensemble:
+        ax.plot(xvals, y, label=label, **kw)
+        return
+    if "color" not in kw:
+        kw["color"] = ax._get_lines.get_next_color()
+    lines = ax.plot(xvals, y, **kw)
+    if lines:
+        lines[0].set_label(label)
 
 
 def _bar_kwargs(style: dict) -> dict:
@@ -278,7 +321,7 @@ def _bar_kwargs(style: dict) -> dict:
 
 def _draw_lines(ax, series, styles):
     for (xvals, yvals, label), style in zip(series, styles, strict=True):
-        ax.plot(xvals, yvals, label=label, **_line_kwargs(style))
+        _plot_line(ax, xvals, yvals, label, style)
 
 
 def _trace_label(ds, idx: int, override: str | None = None) -> str:
@@ -419,13 +462,16 @@ def _draw_mixed(ax, series, styles, kinds):
             )
             bar_i += 1
         else:
-            ax.plot(xnum, yvals, label=label, **_line_kwargs(style))
+            _plot_line(ax, xnum, yvals, label, style)
     if any_dates:
         ax.xaxis_date()
 
 
 def _draw_traces(ax, series, styles, default_style):
-    kinds = [_series_kind(style, default_style) for style in styles]
+    kinds = [
+        _series_kind(style, default_style, yvals)
+        for (_, yvals, _), style in zip(series, styles, strict=True)
+    ]
     if all(kind == "bar" for kind in kinds):
         _draw_bars(ax, series, styles)
     elif all(kind == "line" for kind in kinds):
@@ -458,6 +504,14 @@ def _legend_handles(ax, series):
     action="append",
     default=[],
     help="Non-time dim to mean-reduce before plotting. Repeatable.",
+)
+@weather_skill.argument(
+    "--along",
+    default=None,
+    help=(
+        "Non-time dim to fan into traces (e.g. number/member). One input, "
+        "one legend entry; not one --input per member."
+    ),
 )
 @weather_skill.argument("--title", default=None, help="Optional figure title.")
 @weather_skill.argument(
@@ -511,6 +565,7 @@ def plot_timeseries(
     variable,
     time_dim,
     reduce,
+    along,
     title,
     xlabel,
     ylabel,
@@ -586,10 +641,27 @@ def plot_timeseries(
             da = da.mean(applicable, keep_attrs=True)
 
         extras = [d for d in da.dims if d != tdim]
+        along_dim = _along_dim(da, along)
+        if along_dim == tdim:
+            raise UsageError(
+                f"Error (input {idx + 1}): --along {along!r} is the time axis "
+                f"('{tdim}'); pass a non-time dim such as number.",
+                prefix=False,
+            )
+        if along and along_dim is None and extras:
+            raise UsageError(
+                f"Error (input {idx + 1}): --along {along!r} is not a dim of "
+                f"variable '{variable}' (dims: {list(da.dims)}).",
+                prefix=False,
+            )
+        if along_dim:
+            extras = [d for d in extras if d != along_dim]
         if extras:
+            hint = extras[0]
             raise UsageError(
                 f"Error (input {idx + 1}): variable '{variable}' still has non-time dims "
-                f"{extras} after --reduce. Pass --reduce <dim> for each.",
+                f"{extras} after --reduce. Pass --reduce <dim> for each, or "
+                f"--along {hint} to draw one line per {hint} value.",
                 prefix=False,
             )
 
@@ -623,7 +695,9 @@ def plot_timeseries(
             ):
                 xvals = (np.asarray(ds["time"].values) + np.asarray(xvals)).astype("datetime64[ns]")
                 xlabel = "valid time"
-        series.append((xvals, da.values, label))
+        if along_dim:
+            da = da.transpose(tdim, along_dim)
+        series.append((xvals, np.asarray(da.values), label))
 
         if first_tdim is None:
             first_tdim = tdim

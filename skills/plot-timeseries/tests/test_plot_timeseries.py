@@ -364,6 +364,188 @@ def test_resolve_trace_styles_index_and_unmatched():
         )
 
 
+def test_along_dim_resolves_member_alias():
+    import numpy as np
+    import xarray as xr
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    da = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("number", "step"),
+        coords={"number": [0, 1, 2], "step": np.arange(4)},
+    )
+    assert mod._along_dim(da, "number") == "number"
+    assert mod._along_dim(da, "member") == "number"
+    assert mod._along_dim(da, "realization") == "number"
+    assert mod._along_dim(da, "time") is None
+
+
+def test_draw_lines_along_is_one_call_one_legend_entry():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    mod = load_skill("plot-timeseries", "plot_timeseries")
+    fig, ax = plt.subplots()
+    y = np.column_stack([np.arange(4.0), np.arange(4.0) + 1.0, np.arange(4.0) + 2.0])
+    series = [([1, 2, 3, 4], y, "ens")]
+    mod._draw_lines(ax, series, [{}])
+    assert len(ax.get_lines()) == 3
+    colors = {line.get_color() for line in ax.get_lines()}
+    assert len(colors) == 1
+    handles, labels = mod._legend_handles(ax, series)
+    assert labels == ["ens"]
+    assert len(handles) == 1
+    plt.close(fig)
+
+
+def test_along_number_writes_png(tmp_path, plot_timeseries):
+    ds = make_forecast(members=5)
+    ds["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    src = write_zarr(ds, tmp_path / "ens.zarr")
+    out = tmp_path / "spaghetti.png"
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+        "--along",
+        "number",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+    history = load_figure_history(out)
+    assert history[-1]["args"]["along"] == "number"
+
+
+def test_along_member_alias_and_1d_overlay(tmp_path, plot_timeseries):
+    ens = make_forecast(members=4, fill=1.0)
+    ens["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    obs = make_gridded(n_time=3, fill=2.0, name="tp")
+    obs["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    ens_path = write_zarr(ens, tmp_path / "ens.zarr")
+    obs_path = write_zarr(obs, tmp_path / "obs.zarr")
+    out = tmp_path / "overlay.png"
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(ens_path),
+        "-i",
+        str(obs_path),
+        "-o",
+        str(out),
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+        "--along",
+        "member",
+        "--label",
+        "ens",
+        "--label",
+        "obs",
+        "--trace",
+        "obs:color=black,linewidth=2.5,alpha=1",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_along_101_members_is_one_input(tmp_path, plot_timeseries):
+    ds = make_forecast(n_step=6, lats=(1.0,), lons=(10.0,), members=101, fill=0.5)
+    ds["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    src = write_zarr(ds, tmp_path / "ens101.zarr")
+    out = tmp_path / "ens101.png"
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+        "--along",
+        "number",
+    )
+    assert Path(out).exists()
+    assert out.stat().st_size > 0
+
+
+def test_leftover_member_dim_suggests_along(tmp_path, plot_timeseries):
+    ds = make_forecast(members=3)
+    ds["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    src = write_zarr(ds, tmp_path / "ens.zarr")
+    with pytest.raises(SystemExit) as exc:
+        run_skill(
+            plot_timeseries,
+            "-i",
+            str(src),
+            "-o",
+            str(tmp_path / "ts.png"),
+            "--reduce",
+            "latitude",
+            "--reduce",
+            "longitude",
+        )
+    assert exc.value.code == 2
+
+
+def test_along_missing_dim_with_other_extras_exits(tmp_path, plot_timeseries):
+    src = write_zarr(make_gridded(), tmp_path / "in.zarr")
+    with pytest.raises(SystemExit) as exc:
+        run_skill(
+            plot_timeseries,
+            "-i",
+            str(src),
+            "-o",
+            str(tmp_path / "ts.png"),
+            "--along",
+            "number",
+        )
+    assert exc.value.code == 2
+
+
+def test_along_bar_overlay_writes_png(tmp_path, plot_timeseries):
+    ens = make_forecast(members=3, fill=1.0)
+    ens["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    obs = make_gridded(n_time=3, fill=2.0, name="tp")
+    obs["tp"].attrs.update(units="mm day-1", standard_name="lwe_precipitation_rate")
+    obs_path = write_zarr(obs, tmp_path / "obs.zarr")
+    ens_path = write_zarr(ens, tmp_path / "ens.zarr")
+    out = tmp_path / "bars_plus_ens.png"
+    run_skill(
+        plot_timeseries,
+        "-i",
+        str(obs_path),
+        "-i",
+        str(ens_path),
+        "-o",
+        str(out),
+        "--style",
+        "bar",
+        "--reduce",
+        "latitude",
+        "--reduce",
+        "longitude",
+        "--along",
+        "number",
+        "--label",
+        "obs",
+        "--label",
+        "ens",
+    )
+    assert Path(out).exists()
+
+
 def test_draw_lines_applies_color_and_width():
     import matplotlib
 

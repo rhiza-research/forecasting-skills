@@ -1,6 +1,6 @@
 ---
 name: plot-timeseries
-description: Render a single PNG with one 1D series per input Zarr overlaid on a shared time axis, as lines (default) or grouped bars. Repeatable --trace SELECTOR:k=v styles one series (color, linewidth, marker, zorder, style=line|bar) by 1-based input index, legend label, or a unique token in the label (e.g. 2026). Per-trace style=line|bar overrides global --style so one series can be bars and another a line. Use when you want to compare a variable across multiple weather-skills standard dataset Zarrs. Inputs whose variable still has non-time dims after selection must list those dims via repeated --reduce flags; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates. Use --fontsize to enlarge titles, axis labels, ticks, and legend (default 16).
+description: Render a single PNG with traces overlaid on a shared time axis, as lines (default) or grouped bars. Each --input can be 1D already, reduced to 1D via --reduce, or fanned along one leftover dim with --along (e.g. --along number for 101 ensemble members as one spaghetti group — one Zarr, one legend entry, not 101 --input files). Repeatable --trace SELECTOR:k=v styles a series (color, linewidth, marker, zorder, style=line|bar) by 1-based input index, legend label, or a unique token in the label (e.g. 2026). Per-trace style=line|bar overrides global --style so one series can be bars and another a line. Use when you want to compare a variable across datasets or plot ensemble-member traces. Inputs whose variable still has non-time dims after selection must --reduce or --along them; no silent averaging. For precipitation, run aggregate-temporal then convert-to-totals first — plot totals (`mm`), not rates. Use --fontsize to enlarge titles, axis labels, ticks, and legend (default 16).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py *)
@@ -12,18 +12,24 @@ metadata:
 # plot-timeseries
 
 Source-agnostic multi-input timeseries plotting. Takes one or more weather-skills
-standard dataset Zarrs and draws each as a 1D series on a single set of axes against
-its time/step coord. `--style line` (default) is a polyline with a marker at each
+standard dataset Zarrs and draws them on a single set of axes against the
+time/step coord. `--style line` (default) is a polyline with a marker at each
 time; `--style bar` is a grouped bar chart (one bar group per time, one bar per
-input). `--trace style=line|bar` overrides that global choice per series, so
-observed totals can be bars with a climatology drawn as a line. Each series is labeled in the legend by a size-1
-`station_id` / `point_id` (plus `name` when present), else the input
-filename stem, else `weather_skills_source`.
+bar-styled input). `--trace style=line|bar` overrides that global choice per
+series, so observed totals can be bars with a climatology drawn as a line.
 
-It plots data that is already 1D (only a time-like dim left after picking
-`--variable`) or data the caller has explicitly told it how to reduce to 1D
-via repeated `--reduce DIM` flags. There is no silent averaging of
-unspecified dims, and no reference / climatology overlay support.
+Each `--input` is one legend series. A leftover non-time dim can be fanned
+with `--along DIM` (typically `number` / `member`): every value along that dim
+becomes a line, drawn in one matplotlib call, sharing color and one legend
+entry. That is how to plot 101 ensemble-member difference traces from a
+single Zarr — do not split members into 101 `--input` files (capped at 26
+inputs). `--along` traces are always lines (thin, translucent, no markers
+unless `--trace` says otherwise) and may overlay bar-styled inputs.
+
+1D inputs (only a time-like dim left after `--variable`) plot as-is. Any other
+non-time dim must be named in `--reduce` (mean) or `--along` (one line per
+value). There is no silent averaging, and no reference / climatology overlay
+beyond passing a second `--input`.
 
 A forecast input whose axis is `step` (timedelta lead times) plus a scalar
 init `time` is plotted against **valid time** (`init + step`) so the x-axis
@@ -39,6 +45,8 @@ For a single-input quick-look, use the `plot` skill with
 - Comparing the same variable across two or more datasets (e.g. forecast vs.
   observation, or two forecast models) as line traces or grouped bars on one
   figure.
+- Plotting every ensemble member as a spaghetti / difference trace from one
+  forecast Zarr (`--along number`), optionally with a 1D overlay (mean, obs).
 - Highlighting one input among analog years (`--trace 2026:color=black,linewidth=2.5`).
 - Overlaying a climatology line on observed period totals (`--style bar` plus
   `--trace clim:style=line,linestyle=--,linewidth=2.5`).
@@ -53,7 +61,7 @@ For maps of N forecasts (or forecasts vs gridded obs) over time, use
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> ...] --output <out.png> \
-    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--title TEXT] \
+    [--variable NAME] [--time-dim DIM] [--reduce DIM ...] [--along DIM] [--title TEXT] \
     [--xlabel TEXT] [--ylabel TEXT] [--fontsize N] \
     [--style line|bar] [--align-day-of-year] [--trace SELECTOR:k=v ...]
 ```
@@ -70,8 +78,14 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
   present, else `step`, else the cf-xarray-identified time axis.
 - `--reduce` — name of a non-time dim to average out before plotting.
   Repeatable: pass once per dim to reduce. Required when an input's variable
-  has any non-time dims after variable selection; the skill exits with an
-  error rather than silently averaging.
+  has any non-time dims after variable selection (unless that dim is named
+  in `--along`); the skill exits with an error rather than silently averaging.
+- `--along` — name of one leftover non-time dim to fan into traces (e.g.
+  `number`, `member`, `realization`). One `--input` yields many lines, one
+  legend entry, shared color. Inputs that lack the dim are unchanged (so an
+  ensemble Zarr and a 1D obs Zarr can share the same `--along number`).
+  `--along` traces are lines even when `--style bar`. `--trace` selectors
+  refer to the `--input` (1-based index / label), not to individual members.
 - `--title` — optional figure title.
 - `--xlabel` / `--ylabel` — optional axis-label overrides. When omitted, x is
   `Time` / `Valid time` / `Calendar day` and y comes from the variable
@@ -118,8 +132,8 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py -i <a.zarr> [-i <b.zarr> .
 
 ### Output
 
-A PNG at `--output`, single axes (`figsize=(10, 6)`), one series per input
-(line with markers, or bars; mixed `--trace style=` overlays a line on bars), legend on the axes. The y-axis label is the variable `long_name` (then
+A PNG at `--output`, single axes (`figsize=(10, 6)`), one series per `--input`
+(line with markers, `--along` spaghetti, or bars; mixed `--trace style=` overlays a line on bars), legend on the axes. The y-axis label is the variable `long_name` (then
 `GRIB_name`, then the variable name) plus `[<units>]` when the variable
 carries a `units` attribute. Units are a short display form (`mm/day`,
 `°C`), not the on-disk CF string.
@@ -161,6 +175,19 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
     --variable tp \
     --reduce number --reduce latitude --reduce longitude \
     --output /tmp/precip_ts.png
+```
+
+101-member ensemble difference traces from one Zarr (plus a 1D overlay):
+
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/plot_timeseries.py \
+    -i /tmp/ens_diff.zarr -i /tmp/obs_diff.zarr \
+    --variable tp \
+    --reduce latitude --reduce longitude --along number \
+    --trace '*:alpha=0.35,linewidth=0.8,marker=none' \
+    --trace 'obs:color=black,linewidth=2,alpha=1,marker=o' \
+    --output /tmp/ens_traces.png \
+    --title "Ensemble difference traces"
 ```
 
 Period totals as grouped bars (forecast vs observations):
