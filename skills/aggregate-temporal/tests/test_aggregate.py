@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-from conftest import load_skill, make_gridded, run_skill, write_zarr
+from conftest import load_skill, make_forecast, make_gridded, run_skill, write_zarr
 from weather_skills_core.provenance import load_history
 
 
@@ -72,7 +72,7 @@ def test_aggregate_keeps_incomplete_trailing_month(tmp_path, aggregate):
 
 
 def test_aggregate_end_time_weekly_two_bins(tmp_path, aggregate):
-    """15 days ending 2026-08-30 → bins labeled 2026-08-23 and 2026-08-30."""
+    """15 days through 2026-08-30 → [Aug 16, Aug 23) and [Aug 23, Aug 30), left-labeled."""
     src = write_zarr(
         make_gridded(n_time=15, fill=2.0, start="2026-08-16"),
         tmp_path / "in.zarr",
@@ -94,12 +94,14 @@ def test_aggregate_end_time_weekly_two_bins(tmp_path, aggregate):
     ds = xr.open_zarr(out, consolidated=True)
     assert ds.sizes["time"] == 2
     labels = [str(t)[:10] for t in ds.time.values]
-    assert labels == ["2026-08-23", "2026-08-30"]
+    assert labels == ["2026-08-16", "2026-08-23"]
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(1.0)
+    assert float(ds["aggregation_coverage"].values[1]) == pytest.approx(1.0)
 
 
 def test_aggregate_end_time_keeps_incomplete_leading(tmp_path, aggregate, capsys):
     """Series starting mid-bin: leading short week is kept and stamped coverage < 1."""
-    # 2026-08-20 .. 2026-08-30 (11 days): full week ending 30, partial week ending 23.
+    # 2026-08-20 .. 2026-08-30 (11 days): full [Aug 23, Aug 30), partial [Aug 16, Aug 23).
     src = write_zarr(
         make_gridded(n_time=11, fill=1.0, start="2026-08-20"),
         tmp_path / "in.zarr",
@@ -120,10 +122,34 @@ def test_aggregate_end_time_keeps_incomplete_leading(tmp_path, aggregate, capsys
 
     ds = xr.open_zarr(out, consolidated=True)
     labels = [str(t)[:10] for t in ds.time.values]
-    assert labels == ["2026-08-23", "2026-08-30"]
+    assert labels == ["2026-08-16", "2026-08-23"]
     assert float(ds["aggregation_coverage"].values[0]) < 1.0
     assert float(ds["aggregation_coverage"].values[1]) == pytest.approx(1.0)
     assert "dropped" not in capsys.readouterr().err
+
+
+def test_end_time_weekly_left_edge_matches_forecast_week(tmp_path, aggregate):
+    """Obs week [Aug 24, Aug 31) is labeled Aug 24, same as forecast step 0 after step-to-time."""
+    src = write_zarr(
+        make_gridded(n_time=7, fill=1.0, start="2026-08-24"),
+        tmp_path / "obs.zarr",
+    )
+    out = tmp_path / "obs_weekly.zarr"
+    run_skill(
+        aggregate,
+        "-i",
+        str(src),
+        "-o",
+        str(out),
+        "--period",
+        "weekly",
+        "--end-time",
+        "2026-08-31",
+    )
+    ds = xr.open_zarr(out, consolidated=True)
+    assert ds.sizes["time"] == 1
+    assert str(ds.time.values[0])[:10] == "2026-08-24"
+    assert float(ds["aggregation_coverage"].values[0]) == pytest.approx(1.0)
 
 
 def test_aggregate_duration_21_day(tmp_path, aggregate):
@@ -225,8 +251,8 @@ def test_irregular_weekly_totals_match_tp_differences(tmp_path, aggregate):
         int(np.asarray(s).astype("timedelta64[D]").astype(int)): i
         for i, s in enumerate(weekly_ds.step.values)
     }
-    assert 21 in weekly_idx
-    assert float(weekly_ds["aggregation_coverage"].values[weekly_idx[21]]) == pytest.approx(1.0)
+    assert 14 in weekly_idx
+    assert float(weekly_ds["aggregation_coverage"].values[weekly_idx[14]]) == pytest.approx(1.0)
 
     out = xr.open_zarr(totals, consolidated=True)
     # convert-to-totals --min-coverage 1.0 may drop incomplete weeks, so index the output.
@@ -234,9 +260,9 @@ def test_irregular_weekly_totals_match_tp_differences(tmp_path, aggregate):
         int(np.asarray(s).astype("timedelta64[D]").astype(int)): i
         for i, s in enumerate(out.step.values)
     }
-    assert 21 in out_idx
-    # Week 3 is (14d, 21d] = tp[21] - tp[14]
-    assert float(out["tp"].values[out_idx[21]].flat[0]) == pytest.approx(
+    assert 14 in out_idx
+    # Week starting 14d is [14d, 21d) = tp[21] - tp[14]
+    assert float(out["tp"].values[out_idx[14]].flat[0]) == pytest.approx(
         accum[days.index(21)] - accum[days.index(14)]
     )
 
@@ -337,10 +363,81 @@ def test_gefs_like_mixed_step_weekly_then_totals(tmp_path, aggregate):
 
     run_skill(step_to_time, "-i", str(src), "-o", str(as_time))
     run_skill(aggregate, "-i", str(as_time), "-o", str(weekly), "--period", "weekly")
-    run_skill(convert, "-i", str(weekly), "-o", str(totals))
+    run_skill(convert, "-i", str(weekly), "-o", str(totals), "--min-coverage", "0.5")
 
     weekly_ds = xr.open_zarr(weekly, consolidated=True)
     out = xr.open_zarr(totals, consolidated=True)
     assert weekly_ds.sizes["time"] >= out.sizes["time"] >= 1
     assert "aggregation_coverage" in weekly_ds.coords
     assert out["precipitation_surface"].attrs["units"] == "mm"
+
+
+def test_gefs_unfilled_long_leads_stay_nan(tmp_path, aggregate):
+    """Unpublished GEFS leads are NaN; duration-weighted mean must not turn them into 0."""
+    ds = _gefs_like_mixed_step()
+    ds["precipitation_surface"].attrs.pop("data_interval", None)
+    ds["precipitation_surface"] = ds["precipitation_surface"].where(
+        ds["step"] <= np.timedelta64(21, "D")
+    )
+    src = write_zarr(ds, tmp_path / "gefs_partial.zarr")
+    weekly = tmp_path / "gefs_partial_weekly.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(weekly), "--period", "weekly")
+
+    out = xr.open_zarr(weekly, consolidated=True)
+    days = np.asarray(out["step"].values).astype("timedelta64[D]").astype(int)
+    vals = np.asarray(out["precipitation_surface"].values).reshape(days.size)
+    filled = {int(d): v for d, v in zip(days, vals, strict=True)}
+    assert filled[0] == pytest.approx(1.0)
+    assert filled[7] == pytest.approx(1.0)
+    assert filled[14] == pytest.approx(1.0)
+    assert np.isnan(filled[21])
+    assert np.isnan(filled[28])
+    assert 35 not in filled
+    cov = {int(d): c for d, c in zip(days, out["aggregation_coverage"].values, strict=True)}
+    assert cov[0] == pytest.approx(1.0)
+    assert cov[7] == pytest.approx(1.0)
+    assert cov[14] == pytest.approx(1.0)
+    assert cov[21] == pytest.approx(0.0)
+    assert cov[28] == pytest.approx(0.0)
+
+
+def test_nan_days_do_not_count_as_coverage(tmp_path, aggregate):
+    """A missing day inside an otherwise complete week stamps coverage 6/7."""
+    ds = make_gridded(n_time=7, fill=2.0)
+    ds["precip"].values[3] = np.nan
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
+    weekly = xr.open_zarr(out, consolidated=True)
+    assert weekly.sizes["time"] == 1
+    assert float(weekly["aggregation_coverage"].values[0]) == pytest.approx(6 / 7)
+    assert float(weekly["precip"].values.flat[0]) == pytest.approx(2.0)
+
+
+def test_spatial_nan_hole_does_not_reduce_coverage(tmp_path, aggregate):
+    """A persistent spatial hole is not a missing time sample."""
+    ds = make_gridded(n_time=7, fill=2.0)
+    ds["precip"].values[:, 0, 0] = np.nan
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
+    weekly = xr.open_zarr(out, consolidated=True)
+    assert float(weekly["aggregation_coverage"].values[0]) == pytest.approx(1.0)
+
+
+def test_weekly_period_on_weekly_step_keeps_values(tmp_path, aggregate):
+    """Already-weekly step cubes must not be re-binned (6 weeks must stay 6)."""
+    ds = make_forecast(name="tp", n_step=6, fill=1.0)
+    steps = np.array([np.timedelta64(7 * i, "D") for i in range(6)])
+    ds = ds.assign_coords(step=("step", steps))
+    for i, value in enumerate((1.0, 4.0, 9.0, 16.0, 25.0, 36.0)):
+        ds["tp"].values[i] = value
+    ds["tp"].attrs.update(units="mm day-1", data_interval="7 day")
+    src = write_zarr(ds, tmp_path / "in.zarr")
+    out = tmp_path / "out.zarr"
+    run_skill(aggregate, "-i", str(src), "-o", str(out), "--period", "weekly")
+    weekly = xr.open_zarr(out, consolidated=True)
+    assert weekly.sizes["step"] == 6
+    np.testing.assert_allclose(weekly["tp"].values[:, 0, 0], [1, 4, 9, 16, 25, 36])
+    assert weekly["tp"].attrs.get("aggregation_period") == "7 day"
+    assert weekly["tp"].attrs.get("data_interval") == "7 day"

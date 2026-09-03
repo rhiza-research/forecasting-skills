@@ -26,19 +26,21 @@ credentialed or source-specific fetcher only when it does not.
 
 | Skill | What it does |
 |---|---|
-| `dynamical-fetch` | **Preferred when the catalog has it.** dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses) via `--dataset`, credential-free → Zarr |
+| `dynamical-fetch` | **Preferred when the catalog has it.** dynamical.org open catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, analyses, **IMERG**) via `--dataset`, credential-free → Zarr. Default IMERG source: `nasa-imerg-analysis-late` / `nasa-imerg-analysis-early`. |
 | `ecmwf-fetch` | ECMWF **S2S** ensemble (cf + pf; default `tp`, also `t2m`, `sst`, ocean, pressure levels) over a `--bbox` via ECDS → Zarr. Prefer `dynamical-fetch` for medium-range IFS-ENS / AIFS. |
 | `chirps-fetch` | CHIRPS live precipitation observations → Zarr |
-| `imerg-fetch` | IMERG daily satellite precipitation (late/final) → Zarr. Prefer `dynamical-fetch` `nasa-imerg-analysis-*` for half-hourly. |
+| `imerg-fetch` | Earthdata **daily** IMERG Late/Final fallback (`GPM_3IMERGDL` / `GPM_3IMERGDF`) → Zarr. Default IMERG is `dynamical-fetch`, not this skill. |
+| `clim-fetch` | Climatology (mean + std) for a `--dataset` (`imerg_final`, `era5`, `chirps`, …) via Sheerwater's public GCS mirror, at a selected `--prediction-timedelta` lead and `--window` (days; correctly rolled up, centered, with circular padding if not pre-mirrored), expanded to a `--start-time`/`--end-time` window → Zarr |
 | `tahmo-fetch` | TAHMO station observations (daily-aggregated) → Zarr |
-| `kenya-forecast-fetch` | Kenya forecasts archive raw Zarr grids (`gs://kenya-forecasting-data/<date>/data/`) → standard dataset (compose with `plot` for figures) |
+| `kenya-forecast-fetch` | Kenya forecasts archive grids (`gs://kenya-forecasting-data/<date>/data/`) — native S2S Zarr or CHIRPS-resolution weekly downscaled precip → standard dataset (compose with `plot` for figures) |
 
 ### Generic middle (operate on any standard dataset)
 | Skill | What it does |
 |---|---|
 | `resolve-region` | Resolve an ISO 3166-1 alpha-3 country code or sub-national region to a `--bbox N/W/S/E` (and optional boundary polygon GeoJSON) |
 | `resolve-time` | Resolve relative calendar dates ("the last two weeks", `latest`, `now-3d`) to `--start-time`/`--end-time` or `--date`. Latest published day is the fetcher's `--probe-latest`, not this skill. |
-| `inspect-zarr` | Print dimension sizes, coordinate values, and a data-variable summary of a Zarr (stdout only) |
+| `inspect-zarr` | Print dimension sizes, coordinate values, and a bounded data-variable summary (min/max/mean, finite/NaN, truncated sample) of a Zarr (stdout only; never dumps full arrays) |
+| `inspect-figure` | Print size, blank/uniform flags, a color preview, and the last provenance step of a plot PNG (stdout only) |
 | `clip-region` | Subset a gridded Zarr to a `--bbox N/W/S/E` (use `resolve-region` for a country's bbox) |
 | `aggregate-temporal` | Resample rates along `time`/`step` (mean/min/max); duration-weights CF bounds; keeps `data_interval` when uniform; stamps `aggregation_period` + `aggregation_coverage` + `cell_methods` |
 | `convert-to-totals` | Terminal: rate × stamped `aggregation_period` → amount (100% coverage default; refuses overlapping Δt < period — `select` first) |
@@ -51,9 +53,14 @@ credentialed or source-specific fetcher only when it does not.
 | `concat` | Join Zarr stores along a named dim (incl. new dims with coord values) |
 | `summarize-dim` | Summarize named dims with a statistic (mean/std/min/max/sum/median) — e.g. ensemble spread as the std across `number`, or a time-mean baseline |
 | `difference` | Subtract one dataset from another (A − B) with inner-join alignment and broadcasting — anomalies vs a baseline, scenario-minus-historical change maps |
-| `plot` | Heatmap (optionally restricted to a `--bbox` and/or masked to a `--mask-geojson` polygon) or timeseries PNG from one dataset |
+| `standardize-anomaly` | Standardized anomaly aka z-score: `(field − clim_avg) / clim_std` against a climatology (e.g. `clim-fetch`) — dimensionless output, errors on units mismatch. For a plain physical-unit anomaly, use `difference` instead. |
+| `zonal-moisture-transport` | Eastward moisture flux `q·u`, default column-integrated to IVT (`viwve`, kg m-1 s-1). Compose after `ecmwf-fetch -v q -v u` |
+| `verify` | Forecast vs obs verification: `--metric hits|bias|mae` (hits = event classification). Plot the output with `plot`. |
+| `indicator` | Daily boolean indicator from one `--rule` (aliases `icpac-onset` / `chc-onset`, or clauses like `precip sum 8d >= 25`); optional `--probability`, `--detect first` / `any`, `--cumulative` |
+| `plot` | Heatmap, filled-contour, timeseries, **xy scatter**, wind-rose, quiver, or **layered** map (repeatable `--layer heatmap:…` / `scatter:…` / `outline:…`) from one or more datasets |
 | `plot-compare` | Side-by-side multi-panel comparison of two datasets (incl. station-vs-grid), optionally clipped to a `--bbox` and masked to a `--mask-geojson` polygon |
 | `plot-compare-forecasts` | N-dataset comparison grid (rows = forecasts and/or gridded obs; columns = union of times); missing times are blank `n/a` cells |
+| `plot-verify` | Lead-week verification **map** grid from pre-computed `verify` Zarrs (one `--verify` per `--forecast`) |
 | `plot-mediogram` | ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate ensemble at a single lat/lon |
 | `kenya-forecast-png` | Pre-rendered KMSA / Sheerwater Kenya forecast product PNGs from the public kenya-forecasts archive (credential-free) |
 
@@ -64,7 +71,8 @@ dataset output.
 | Skill | What it does |
 |---|---|
 | `resolve-time` | Resolve relative calendar dates to absolute `--start-time`/`--end-time` or `--date`. |
-| `inspect-zarr` | Print dims, coordinate values, and data-variable summary of a Zarr (stdout; no write). |
+| `inspect-zarr` | Print dims, coordinate values, and a bounded data-variable summary of a Zarr (stdout; no write). Data arrays can be huge — this skill never dumps them in full. |
+| `inspect-figure` | Print size, blank/uniform flags, a coarse color preview, and the last plot skill of a PNG (stdout; no write). Look at the PNG too when debugging a figure. |
 | `provenance` | Inspect `weather_skills_history` on a Zarr or plot PNG (lineage, JSON, or reproduction script). |
 | `submit-feedback` | Build a length-checked prefilled GitHub new-issue URL the user clicks to file feedback under their own account. Holds no token, makes no network call, creates no issue itself. |
 
@@ -201,32 +209,37 @@ forecasting-skills plot \
     --variable tp \
     --output /tmp/weekly.png
 
-forecasting-skills imerg-fetch \
+forecasting-skills dynamical-fetch \
+    --dataset nasa-imerg-analysis-late \
     --start-time 2025-12-24 \
     --end-time 2026-02-13 \
-    --output /tmp/imerg.zarr
-forecasting-skills clip-region \
-    --input /tmp/imerg.zarr \
     --bbox 5/34/-5/42 \
-    --output /tmp/imerg_kenya.zarr
+    -v precipitation_surface \
+    --output /tmp/imerg.zarr
 forecasting-skills aggregate-temporal \
-    --input /tmp/imerg_kenya.zarr \
+    --input /tmp/imerg.zarr \
     --period dekadal \
     --method mean \
     --output /tmp/imerg_dekadal.zarr
 forecasting-skills convert-to-totals \
     --input /tmp/imerg_dekadal.zarr \
     --output /tmp/imerg_dekadal_totals.zarr
+forecasting-skills rename \
+    --input /tmp/imerg_dekadal_totals.zarr \
+    --variable precipitation_surface \
+    --to-name precip \
+    --output /tmp/imerg_dekadal_precip.zarr
 
+forecasting-skills tahmo-fetch --list-stations --bbox 5/34/-5/42
 forecasting-skills tahmo-fetch \
-    --country Kenya \
+    --station TA00025 \
     --start-time 2025-12-24 \
     --end-time 2026-02-13 \
     --output /tmp/tahmo.zarr
 
 forecasting-skills plot-compare \
     -i /tmp/tahmo.zarr \
-    -i /tmp/imerg_dekadal_totals.zarr \
+    -i /tmp/imerg_dekadal_precip.zarr \
     --variable precip \
     --output /tmp/sat_vs_stations.png
 ```
@@ -269,7 +282,7 @@ implementations are the right trade at this scale.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the publishing model (`main` is the
 consumer-facing branch — every merge is a release), the PR workflow, and the
-version-bump conventions (per-skill `_SKILL_VERSION` in scripts, driven by `release: major`
+version-bump conventions (per-skill `metadata.version` in SKILL.md, driven by `release: major`
 / `release: minor` PR labels, with patch as the default).
 
 ## License

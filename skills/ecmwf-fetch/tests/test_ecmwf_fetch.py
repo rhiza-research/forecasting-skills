@@ -76,6 +76,36 @@ def test_resolve_variables_default_and_aliases(mod):
         mod._resolve_variables(["2m_temperature"])
 
 
+def test_resolve_variables_space_comma_and_repeated_flags(mod):
+    """One call can take `-v tp t2m`, `-v tp -v t2m`, or `-v tp,t2m`."""
+    assert mod._resolve_variables([["tp", "t2m"]]) == ["tp", "t2m"]
+    assert mod._resolve_variables([["tp"], ["t2m"]]) == ["tp", "t2m"]
+    assert mod._resolve_variables(["tp,t2m"]) == ["tp", "t2m"]
+    assert mod._resolve_variables([["tp,t2m", "sst"]]) == ["tp", "t2m", "sst"]
+
+
+def test_parser_accepts_space_separated_variables(fetch):
+    args = fetch.parser.parse_args(
+        ["--date", "2026-01-01", "--bbox", "3/10/0/13", "-v", "tp", "t2m", "-o", "out.zarr"]
+    )
+    assert args.variable == [["tp", "t2m"]]
+    args = fetch.parser.parse_args(
+        [
+            "--date",
+            "2026-01-01",
+            "--bbox",
+            "3/10/0/13",
+            "-v",
+            "tp",
+            "-v",
+            "t2m",
+            "-o",
+            "out.zarr",
+        ]
+    )
+    assert args.variable == [["tp"], ["t2m"]]
+
+
 def test_variables_most_used_first(mod):
     names = list(mod.VARIABLES)
     assert names[:3] == ["tp", "t2m", "sst"]
@@ -150,6 +180,23 @@ def test_group_pressure_separate_from_surface(mod):
     assert len(groups) == 3
 
 
+def test_group_same_family_stays_one_request(mod):
+    groups = dict(mod._group_for_request(["t2m", "sst", "tp"]))
+    assert len(groups) == 2
+    daily = next(names for key, names in groups.items() if key[0] == "daily")
+    instant = next(names for key, names in groups.items() if key[0] == "instant")
+    assert daily == ["t2m", "sst"]
+    assert instant == ["tp"]
+
+
+def test_build_request_multiple_daily_variables(mod):
+    req = mod._build_request(
+        "2026-01-15", [3.0, 10.0, 0.0, 13.0], "control_forecast", ["t2m", "sst"]
+    )
+    assert req["variable"] == ["2_m_temperature", "sea_surface_temperature"]
+    assert req["leadtime_hour"][0] == "0_24"
+
+
 def test_promote_vertical_isobaric(mod):
     ds = xr.Dataset(
         {"t": (("isobaricInhPa", "latitude"), [[1.0, 2.0], [3.0, 4.0]])},
@@ -180,10 +227,10 @@ def test_split_wrapped_area(mod):
 
 
 def test_standardize_mixed_tp_and_t2m(mod):
-    steps = np.array([np.timedelta64(d, "D") for d in (1, 2, 3)])
+    steps = np.array([np.timedelta64(d, "D") for d in (0, 1, 2)])
     ds = xr.Dataset(
         {
-            "tp": (("step", "latitude"), np.array([[1.0, 1.0], [3.0, 3.0], [6.0, 6.0]])),
+            "tp": (("step", "latitude"), np.array([[0.0, 0.0], [2.0, 2.0], [5.0, 5.0]])),
             "t2m": (
                 ("step", "latitude"),
                 np.array([[280.0, 281.0], [282.0, 283.0], [284.0, 285.0]]),
@@ -199,12 +246,16 @@ def test_standardize_mixed_tp_and_t2m(mod):
     ds["t2m"].attrs.update(units="K")
     out = mod._standardize(ds)
     assert out.sizes["step"] == 2
+    np.testing.assert_array_equal(
+        np.asarray(out["step"].values).astype("timedelta64[D]"),
+        np.array([0, 1], dtype="timedelta64[D]"),
+    )
     assert out["tp"].attrs["units"] == "mm day-1"
     np.testing.assert_allclose(out["tp"].values, [[2.0, 2.0], [3.0, 3.0]])
     assert out["t2m"].attrs["units"] == "degree_Celsius"
     np.testing.assert_allclose(
         out["t2m"].values,
-        np.array([[282.0, 283.0], [284.0, 285.0]]) - 273.15,
+        np.array([[280.0, 281.0], [282.0, 283.0]]) - 273.15,
         rtol=1e-5,
     )
 

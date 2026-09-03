@@ -32,11 +32,12 @@ dev = [
     "cartopy",
     "nc-time-axis",
     "pillow",
+    "scipy",
 ]
 
 [tool.uv.sources]
 skills-runner = { git = "https://github.com/tescalada/skills-runner" }
-weather-skills-core = { git = "https://github.com/rhiza-research/weather-skills-core", branch = "main" }
+weather-skills-core = { git = "https://github.com/rhiza-research/weather-skills-core", branch = "dev" }
 
 [tool.pytest.ini_options]
 testpaths = ["skills"]

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 #   "xarray",
 #   "zarr",
 #   "gcsfs",
@@ -27,7 +27,7 @@ from weather_skills_core.cf import stamp_cf_attrs, udunits_error
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
-    normalize_longitude,
+    ensure_normalized_longitude,
     verify_cf_decode,
 )
 from weather_skills_core.units import (
@@ -202,7 +202,7 @@ def fetch(start_time, end_time, bbox, model, experiment, variable, member, table
     ds = ds[[variable]]
     ds = ds.rename({"lat": "latitude", "lon": "longitude"})
     ds = _drop_bounds(ds)
-    ds = normalize_longitude(ds)
+    ds = ensure_normalized_longitude(ds)
     if bbox:
         ds = bbox_subset(ds, bbox, lat_dim="latitude", lon_dim="longitude")
 

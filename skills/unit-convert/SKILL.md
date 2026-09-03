@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/unit-convert.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: transforms
 ---
 

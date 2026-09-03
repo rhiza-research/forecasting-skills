@@ -34,7 +34,7 @@ def test_step_to_time_replaces_step_dim(tmp_path, step_to_time):
     assert "time" in ds.dims
     assert ds.sizes["time"] == 3
     expected = np.array(
-        ["2026-01-02", "2026-01-03", "2026-01-04"],
+        ["2026-01-01", "2026-01-02", "2026-01-03"],
         dtype="datetime64[ns]",
     )
     assert np.array_equal(

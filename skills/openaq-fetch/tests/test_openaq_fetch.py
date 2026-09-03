@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 import xarray as xr
 from conftest import load_skill, run_skill
 from weather_skills_core.provenance import load_history
@@ -38,6 +39,22 @@ def test_missing_openaq_key_exits_2(tmp_path, fetch):
                 str(out),
             )
     assert exc.value.code == 2
+
+
+def test_probe_401_is_data_error(mod, fetch):
+    resp = MagicMock()
+    resp.status_code = 401
+    resp.raise_for_status.side_effect = requests.HTTPError("401", response=resp)
+    session = MagicMock()
+    session.get.return_value = resp
+
+    with (
+        patch.dict(os.environ, {"OPENAQ_API_KEY": "bad-key"}),
+        patch.object(mod.requests, "Session", return_value=session),
+        pytest.raises(SystemExit) as exc,
+    ):
+        run_skill(fetch, "--probe-latest")
+    assert exc.value.code != 0
 
 
 def test_fetch_writes_point_obs_zarr(tmp_path, mod, fetch):

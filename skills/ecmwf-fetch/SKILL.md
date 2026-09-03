@@ -1,10 +1,11 @@
 ---
 name: ecmwf-fetch
-description: "On the first call, inject secrets ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY as environment variables — do not run once without them and retry. Prefer dynamical-fetch for medium-range ECMWF IFS-ENS / AIFS (credential-free). This skill fetches an ECMWF S2S ensemble forecast (control + perturbed) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills standard dataset Zarr. Default `-v tp`. Most used: `tp`, `t2m`, `sst` (then `d2m`, winds). Pressure-level: `-v t` / `-v gh` (control only, all native levels). `-v` is the short name (`t2m`, `sst`, `t`), not ARCO `2m_temperature`. Real-time S2S has a 2-day embargo — request an init at least 2 days old. Fetch writes `tp` as a per-step rate (`mm day-1`) and temperatures as `degree_Celsius` — do not run deaccumulate after this skill. To fetch over a country, get its bbox from the resolve-region skill first."
+description: "On the first call, inject secrets ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY as environment variables — do not run once without them and retry. Prefer dynamical-fetch for medium-range ECMWF IFS-ENS / AIFS (credential-free). This skill fetches an ECMWF S2S ensemble forecast (control + perturbed) for a date and bbox from the ECMWF Data Stores (ECDS), writing a weather-skills standard dataset Zarr. Default `-v tp`. Pass several fields in one call (`-v tp t2m` or `-v tp -v t2m`). Most used: `tp`, `t2m`, `sst` (then `d2m`, winds). Pressure-level: `-v t` / `-v gh` (control only, all native levels). `-v` is the short name (`t2m`, `sst`, `t`), not ARCO `2m_temperature`. Real-time S2S has a 2-day embargo — request an init at least 2 days old. Fetch writes `tp` as a per-step rate (`mm day-1`) and temperatures as `degree_Celsius` — do not run deaccumulate after this skill. To fetch over a country, get its bbox from the resolve-region skill first."
 license: MIT
 compatibility: Requires Python 3.12 and uv. Requires the eccodes system library for cfgrib (`brew install eccodes` or `apt install libeccodes0`). Requires ECMWF_DATASTORES_URL and ECMWF_DATASTORES_KEY in the environment (or a `~/.ecmwfdatastoresrc` file). The URL is `https://ecds.ecmwf.int/api`; the key is the personal token from your ECDS account.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: fetchers
   variables:
     - tp
@@ -85,11 +86,13 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --probe-latest
   surfaced as clear errors — not raw tracebacks.
 - `--probe-latest` — print the latest init expected off embargo (`YYYY-MM-DD`) on stdout and exit. No `-o`.
 - `--bbox` — required; `N/W/S/E` decimal degrees. The retrieval area (smaller bbox = faster retrieval). To fetch over a country, get its bbox from the `resolve-region` skill and pass the value here.
-- `--variable`, `-v` — S2S field to retrieve (repeatable). Default `tp`.
-  Unknown names exit non-zero and print `Available (most used first):`. Use
-  the short names (`sst`, `t2m`) — not ARCO `2m_temperature` /
-  `total_precipitation`. ECDS form names (`sea_surface_temperature`,
-  `2_m_temperature`) are also accepted.
+- `--variable`, `-v` — S2S fields to retrieve. Default `tp`. Pass several in
+  one call: `-v tp t2m`, `-v tp -v t2m`, or `-v tp,t2m`. Compatible fields
+  share one ECDS request; mixed families (instant vs daily, or pressure-level)
+  submit extra legs. Unknown names exit non-zero and print
+  `Available (most used first):`. Use the short names (`sst`, `t2m`) — not
+  ARCO `2m_temperature` / `total_precipitation`. ECDS form names
+  (`sea_surface_temperature`, `2_m_temperature`) are also accepted.
 - `--output`, `-o` — output Zarr path (overwritten if it exists).
 
 ### Variables (most used first)
@@ -127,7 +130,7 @@ with the **control forecast only** (`number=0`).
 
 ### Output
 
-A Zarr store with the selected data variables and dims `(number, step, latitude, longitude)` — plus `vertical` when a pressure-level or `pv` field is selected. `number=0` is the control; `number=1..100` are perturbed members. Pressure-level fields have only the control member. `step` is daily (00Z). `tp` is a precipitation **rate** (`mm day-1`); known temperature fields (`t2m`, `sst`, `t`, …) are `degree_Celsius`. Stamped with `weather_skills_source=ecmwf-s2s`.
+A Zarr store with the selected data variables and dims `(number, step, latitude, longitude)` — plus `vertical` when a pressure-level or `pv` field is selected. `number=0` is the control; `number=1..100` are perturbed members. Pressure-level fields have only the control member. `step` is daily (00Z). `tp` is a precipitation **rate** (`mm day-1`) left-labeled so `step = 0` is the first 24h (`[init, init+1d)`); known temperature fields (`t2m`, `sst`, `t`, …) are `degree_Celsius`. Stamped with `weather_skills_source=ecmwf-s2s`.
 
 ### Provenance
 
@@ -146,6 +149,12 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 23/-20/-37/
 ```
 
 ```bash
+# Several surface fields in one call (instant `tp` and daily `t2m` are two ECDS legs)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 \
+    -v tp t2m --output /tmp/ecmwf_tp_t2m.zarr
+```
+
+```bash
 # 2 m temperature (the other most-used S2S field)
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 -v t2m --output /tmp/ecmwf_t2m.zarr
 ```
@@ -158,6 +167,13 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 
 ```bash
 # Temperature on all native pressure levels (control forecast)
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 -v t --output /tmp/ecmwf_t.zarr
+```
+
+```bash
+# Specific humidity + zonal wind (two ECDS legs: q is 7 levels, u is 10).
+# Compose with zonal-moisture-transport for eastward IVT (`viwve`).
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --date 2026-02-15 --bbox 5/34/-5/42 \
+    -v q -v u --output /tmp/ecmwf_q_u.zarr
 ```
 
 ```bash

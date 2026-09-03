@@ -1,10 +1,11 @@
 ---
 name: dynamical-fetch
-description: Prefer this over credentialed fetchers when the dynamical.org catalog has the dataset. Fetch a dataset from the open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills standard dataset Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting. `-v` must be the catalog name (e.g. precipitation_surface), not total_precipitation / 2m_temperature from other fetchers. Pressure-level fields (`temperature_850hpa`, `geopotential_height_500hpa`) are stacked onto a `vertical` dim; `-v t` / `-v gh` select all native levels. Precip is already a rate — do not deaccumulate; aggregate-temporal then convert-to-totals for period mm.
+description: Prefer this over credentialed fetchers when the dynamical.org catalog has the dataset. Default source for IMERG (`nasa-imerg-analysis-late` / `nasa-imerg-analysis-early`); do not start with imerg-fetch. Fetch a dataset from the open weather catalog (GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses, and the IMERG precipitation analyses) and write a weather-skills standard dataset Zarr. Use when a task needs credential-free forecast or analysis grids for downstream clipping, aggregation, comparison, or plotting. IMERG precip is `precipitation_surface`; `-v precip` / `-v precipitation` / `-v tp` map to it. Pressure-level fields (`temperature_850hpa`, `geopotential_height_500hpa`) are stacked onto a `vertical` dim; `-v t` / `-v gh` select all native levels. Precip is already a rate — do not deaccumulate; aggregate-temporal then convert-to-totals for period mm.
 license: MIT
 compatibility: Requires Python 3.12 and uv. Reads public Zarr from the dynamical.org open catalog (AWS Open Data) over HTTPS via the dynamical-catalog library; no credentials required.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: fetchers
   variables:
     - precipitation_surface
@@ -28,6 +29,11 @@ Prefer this fetcher whenever the [dynamical.org catalog](https://dynamical.org/c
 has the dataset — GFS, GEFS, ECMWF IFS-ENS, AIFS, ICON-EU, MRMS, their analyses,
 and IMERG early/late. It is credential-free and has no API queue.
 
+**IMERG:** this is the default source (`--dataset nasa-imerg-analysis-late`
+or `nasa-imerg-analysis-early`, `-v precipitation_surface`). Do not start
+with `imerg-fetch`. That skill is the Earthdata daily Late/Final fallback
+only (GES DISC granules, no bbox, credentials).
+
 - A task needs a forecast ensemble, deterministic forecast, or gridded analysis
   from that catalog.
 - A downstream skill will clip, aggregate, compare, or plot the result as a
@@ -38,8 +44,9 @@ and IMERG early/late. It is credential-free and has no API queue.
 
 Use `ecmwf-fetch` only for ECMWF **S2S** (subseasonal, ECDS credentials, 2-day
 embargo, fuller pressure/ocean fields). Use source-specific fetchers (CHIRPS,
-TAHMO, OISST, ARCO-ERA5, daily IMERG, CMIP6, …) when the catalog does not
-carry that product.
+TAHMO, OISST, ARCO-ERA5, CMIP6, …) when the catalog does not carry that
+product. For IMERG, use `imerg-fetch` only when you need GES DISC **daily**
+Late or Final, not as the first choice.
 
 ## Usage
 
@@ -86,14 +93,22 @@ non-zero and prints `Available:`.
 Do **not** reuse names from other fetchers. ARCO-ERA5 and ECMWF S2S use
 `total_precipitation` / `2m_temperature` / `tp`; dynamical.org does not.
 
-| Want | Typical dynamical `-v` | Do not pass |
+| Want | Typical dynamical `-v` | Also accepted |
 |---|---|---|
-| Precipitation | `precipitation_surface` | `total_precipitation`, `tp`, `precip` |
-| 2 m temperature | `temperature_2m` | `2m_temperature`, `t2m`, `tas` |
-| Pressure-level temperature | `temperature_850hpa` or `-v t` | `t2m` |
-| Geopotential height | `geopotential_height_500hpa` or `-v gh` | `z` |
+| Precipitation | `precipitation_surface` | `precip`, `precipitation`, `tp`, `total_precipitation` |
+| 2 m temperature | `temperature_2m` | (catalog-exact; not `2m_temperature`) |
+| Pressure-level temperature | `temperature_850hpa` or `-v t` | prefix `temperature` |
+| Geopotential height | `geopotential_height_500hpa` or `-v gh` | prefix `geopotential_height` |
 
-Those surface names are the ones on GEFS, GFS, and `ecmwf-ifs-ens-forecast-15-day-0-25-degree`. Catalog fields ending in `_Nhpa` are stacked onto a `vertical` coordinate (hPa) and renamed to the prefix (`temperature_850hpa` + `temperature_925hpa` → `temperature`). Height-above-ground fields (`temperature_2m`, `wind_u_80m`) stay separate. If you are unsure, pass `-v` once with a guess and read the `Available:` list — do not omit `-v` (that pulls every field).
+IMERG Late/Early only publish `precipitation_surface` (plus a quality-index
+companion). `-v precip` / `-v precipitation` resolve to that field; they do
+not pull `precipitation_quality_index_surface`. Those surface names are the
+ones on GEFS, GFS, and `ecmwf-ifs-ens-forecast-15-day-0-25-degree`. Catalog
+fields ending in `_Nhpa` are stacked onto a `vertical` coordinate (hPa) and
+renamed to the prefix (`temperature_850hpa` + `temperature_925hpa` →
+`temperature`). Height-above-ground fields (`temperature_2m`, `wind_u_80m`)
+stay separate. If you are unsure, pass `-v` once with a guess and read the
+`Available:` list — do not omit `-v` (that pulls every field).
 
 The two HRRR datasets (`noaa-hrrr-forecast-48-hour`, `noaa-hrrr-analysis`) are
 **not supported**: they are on a projected Lambert Conformal Conic grid (1-D
@@ -114,8 +129,9 @@ out of scope for this fetcher.
   latitude. Omit to fetch the dataset's full native grid. Named places: compose
   with the `resolve-region` skill.
 - `--variable`, `-v` — restrict to one data variable; repeat once per variable
-  (`-v temperature_2m -v precipitation_surface`). Names are catalog-exact and
-  dataset-specific — not `total_precipitation` (that is ARCO / ECMWF S2S).
+  (`-v temperature_2m -v precipitation_surface`). Prefer catalog-exact names.
+  For precip, `precip` / `precipitation` / `tp` / `total_precipitation` map to
+  `precipitation_surface` when that field is in the dataset (IMERG, GEFS, IFS).
   `-v t` / `-v gh` (and the prefixes `temperature` / `geopotential_height`)
   select every `*_Nhpa` field of that prefix. Omit to fetch all variables
   (usually too much).
@@ -126,7 +142,8 @@ out of scope for this fetcher.
 A consolidated weather-skills standard dataset Zarr. Forecast datasets carry a scalar `time`
 coord (the init date), `step` (forecast lead time, `timedelta64`), and — for
 ensembles — `number` (member 0 is the control). Analysis datasets carry a
-`time` dimension. Pressure-level fields add `vertical` (hPa). Known precip is converted to `mm day-1` and known air
+`time` dimension. Pressure-level fields add `vertical` (hPa). Longitude is
+normalized to `[-180, 180)` even when `--bbox` is omitted. Known precip is converted to `mm day-1` and known air
 temperature to `degree_Celsius`; other variables keep source units. Skip
 `deaccumulate` — precip is already a rate. Stamped with `weather_skills_source=dynamical:<id>`.
 
@@ -165,6 +182,11 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-forecast --date 2
 # GFS analysis over a date range
 uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset noaa-gfs-analysis --start-time 2026-05-10 --end-time 2026-05-30 \
   --bbox 5/34/-5/42 -o /tmp/gfs_analysis.zarr
+
+# IMERG Late (default IMERG source; do not start with imerg-fetch)
+uv run ${CLAUDE_SKILL_DIR}/scripts/fetch.py --dataset nasa-imerg-analysis-late \
+  --start-time 2026-07-21 --end-time 2026-08-19 --bbox 5/34/-5/42 \
+  -v precipitation_surface -o /tmp/imerg.zarr
 ```
 
 See [references/REFERENCE.md](${CLAUDE_SKILL_DIR}/references/REFERENCE.md) for the full per-dataset

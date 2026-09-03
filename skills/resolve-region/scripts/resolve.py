@@ -1,10 +1,10 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 # ]
 # ///
-"""Resolve a country, named region, admin unit, or Nominatim landmark to a bbox and optional polygon."""
+"""Resolve a country, named region, custom box, admin unit, or Nominatim landmark to a bbox and optional polygon."""
 
 import json
 import sys
@@ -31,6 +31,7 @@ _SKILL_VERSION = "0.0.2"
     "code",
     help=(
         "ISO3 country code (uppercase, e.g. KEN), named region (East Africa), "
+        "custom forecast box (Kenya OND region, Indian Ocean basin), "
         "sub-national region (kenya-nairobi), or leftover place name "
         "(Mount Kenya, Kenya)"
     ),
@@ -40,11 +41,12 @@ _SKILL_VERSION = "0.0.2"
     help="Optional path: write the boundary polygon as GeoJSON",
 )
 def resolve_region(code, geojson, **kwargs):
-    """Resolve a country, named region, admin unit, or Nominatim landmark to a bbox and optional polygon."""
+    """Resolve a country, named region, custom box, admin unit, or Nominatim landmark to a bbox and optional polygon."""
     text = code.strip()
     if not text:
         raise UsageError(
             "pass an ISO3 code (e.g. KEN), a named region (e.g. East Africa), "
+            "a custom forecast box (e.g. 'Kenya OND region', 'Indian Ocean'), "
             "a sub-national region (e.g. kenya-nairobi), "
             "or a landmark (e.g. 'Mount Kenya, Kenya')."
         )

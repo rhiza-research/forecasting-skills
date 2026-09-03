@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -73,6 +73,16 @@ def _resolve_period(period: str) -> dict:
     }
 
 
+def _durations_equal(left: str | None, right: str | None) -> bool:
+    """True when two pint duration strings are the same length."""
+    if not left or not right:
+        return False
+    try:
+        return parse_aggregation_period(left) == parse_aggregation_period(right)
+    except UsageError:
+        return False
+
+
 def _native_interval(ds, dim) -> str | None:
     stamped = data_interval_of(ds)
     if stamped:
@@ -118,6 +128,36 @@ def _as_ns(val):
     raise UsageError(f"cannot convert {arr.dtype} to a duration for CF bounds")
 
 
+def _finite_along(ds, dim):
+    """True at each ``dim`` index that is not all-NaN across other dims.
+
+    A persistent spatial hole (land mask) does not mark the time as missing.
+    An unpublished forecast lead that is NaN everywhere does. Every data
+    variable must have some finite value at that index.
+    """
+    import numpy as np
+
+    n = ds.sizes.get(dim, 0)
+    if n == 0 or not list(ds.data_vars):
+        return np.ones(n, dtype=bool)
+    flags = []
+    for name in ds.data_vars:
+        da = ds[name]
+        if getattr(da, "pint", None) is not None and da.pint.units is not None:
+            da = da.pint.dequantify()
+        if dim not in da.dims:
+            continue
+        values = np.asarray(da.values)
+        axis = da.dims.index(dim)
+        other = tuple(i for i in range(values.ndim) if i != axis)
+        finite = np.isfinite(values)
+        present = np.any(finite, axis=other) if other else finite
+        flags.append(np.asarray(present, dtype=bool).reshape(n))
+    if not flags:
+        return np.ones(n, dtype=bool)
+    return np.all(np.stack(flags, axis=0), axis=0)
+
+
 def _drop_bounds(ds, dim):
     name = ds[dim].attrs.get("bounds") if dim in ds.coords or dim in ds.dims else None
     names = []
@@ -146,7 +186,11 @@ def _weighted_mean(ds, dim, indices, weights):
         if getattr(da, "pint", None) is not None and da.pint.units is not None:
             sub[name] = da.pint.dequantify()
     wda = xr.DataArray(w, dims=[dim], coords={dim: sub[dim].values})
-    return (sub * wda).sum(dim=dim, skipna=True, keep_attrs=True) / wda.sum()
+    # Weight only finite samples. Dividing by sum(weights) treats NaN as 0, which
+    # turns unpublished GEFS long leads (all-NaN weeks 4–5) into fake dry zeros.
+    numer = (sub * wda).sum(dim=dim, skipna=True, keep_attrs=True)
+    denom = (sub.notnull() * wda).sum(dim=dim)
+    return numer / denom
 
 
 def _empty_bins_message(spec, dim):
@@ -162,6 +206,7 @@ def _aggregate_from_bounds(ds, dim, spec, method, bins):
     starts = _as_ns(bounds[:, 0])
     ends = _as_ns(bounds[:, 1])
     work = _drop_bounds(ds, dim)
+    present = _finite_along(work, dim)
     chunks, labels, coverages = [], [], []
     for left, right, label in bins:
         left_ns = int(np.asarray(_as_ns(left)).reshape(-1)[0])
@@ -174,7 +219,7 @@ def _aggregate_from_bounds(ds, dim, spec, method, bins):
         idx = np.flatnonzero(overlap > 0)
         if idx.size == 0:
             continue
-        covered = float(overlap[idx].sum())
+        covered = float((overlap * present)[idx].sum())
         coverage = min(1.0, covered / period_ns)
         if method == "mean":
             chunks.append(_weighted_mean(work, dim, idx, overlap[idx]))
@@ -202,7 +247,7 @@ def _assign_coverage(out, dim, coverages):
     values = np.asarray(coverages, dtype=float)
     out = out.assign_coords({AGGREGATION_COVERAGE_COORD: (dim, values)})
     out[AGGREGATION_COVERAGE_COORD].attrs.update(
-        long_name="fraction of native samples present in the interval",
+        long_name="fraction of native samples with finite data in the interval",
         units="1",
         valid_min=0.0,
         valid_max=1.0,
@@ -287,6 +332,7 @@ def _aggregate_time_resample(ds, dim, spec, method):
 
     timestep_days = _timestep_days(ds, dim)
     native_interval = _coverage_cell(ds)
+    present = _finite_along(ds, dim)
     resampler = ds.resample({dim: freq})
     n = ds.sizes[dim]
     chunks, labels, coverages = [], [], []
@@ -297,7 +343,7 @@ def _aggregate_time_resample(ds, dim, spec, method):
         expected = _expected_from_interval(spec, label, native_interval, timestep_days)
         chunks.append(_reduce(ds.isel({dim: indices}), method=method, dim=dim))
         labels.append(np.datetime64(label) if not hasattr(label, "calendar") else label)
-        coverages.append(_coverage_fraction(len(indices), expected))
+        coverages.append(_coverage_fraction(int(present[indices].sum()), expected))
     if not chunks:
         raise UsageError(_empty_bins_message(spec, dim))
     out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
@@ -305,11 +351,13 @@ def _aggregate_time_resample(ds, dim, spec, method):
 
 
 def _aggregate_time_anchored(ds, dim, spec, method, end_time, *, start_time=None):
-    """Backward fixed-width bins ending at ``end_time``.
+    """Backward fixed-width bins whose last right edge is ``end_time``.
 
-    Walks while the bin's right edge is still after the effective data start,
-    then keeps bins that contain samples and stamps ``aggregation_coverage``.
-    Optional ``start_time`` raises the earliest coverage floor.
+    Same geometry as forecast ``step`` buckets: half-open ``[left, right)``,
+    labeled at the left edge. Walks while the bin's right edge is still after
+    the effective data start, then keeps bins that contain samples and stamps
+    ``aggregation_coverage``. Optional ``start_time`` raises the earliest
+    coverage floor.
     """
     import numpy as np
     import xarray as xr
@@ -354,6 +402,7 @@ def _aggregate_time_anchored(ds, dim, spec, method, end_time, *, start_time=None
 
     timestep_days = _timestep_days(ds, dim)
     native_interval = _coverage_cell(ds)
+    present = _finite_along(ds, dim)
     bins, r = [], right
     # Stop once the right edge is at/before the first sample — do not require
     # left >= data_min, or a bin that still holds data is never created.
@@ -363,17 +412,17 @@ def _aggregate_time_anchored(ds, dim, spec, method, end_time, *, start_time=None
         r = left
     bins.reverse()
     if _cf_bounds(ds, dim) is not None:
-        bound_bins = [(left, right, label(right)) for left, right in bins]
+        bound_bins = [(left, right, label(left)) for left, right in bins]
         return _aggregate_from_bounds(ds, dim, spec, method, bound_bins)
     chunks, labels, coverages = [], [], []
     for left, right in bins:
-        keep = np.nonzero((raw > left) & (raw <= right))[0]
+        keep = np.nonzero((raw >= left) & (raw < right))[0]
         if keep.size == 0:
             continue
-        expected = _expected_from_interval(spec, right, native_interval, timestep_days)
+        expected = _expected_from_interval(spec, left, native_interval, timestep_days)
         chunks.append(_reduce(ds.isel({dim: keep}), method=method, dim=dim))
-        labels.append(label(right))
-        coverages.append(_coverage_fraction(keep.size, expected))
+        labels.append(label(left))
+        coverages.append(_coverage_fraction(int(present[keep].sum()), expected))
     if not chunks:
         raise UsageError(_empty_bins_message(spec, dim))
     out = xr.concat(chunks, dim=dim).assign_coords({dim: labels})
@@ -396,20 +445,21 @@ def _aggregate_step(ds, spec, method):
         bins = []
         for left in edges[:-1]:
             right = left + window
-            bins.append((left, right, left + window))
+            bins.append((left, right, left))
         return _aggregate_from_bounds(ds, "step", spec, method, bins)
     native_interval = _coverage_cell(ds)
     timestep_days = _timestep_days(ds, "step")
+    present = _finite_along(ds, "step")
     chunks, labels, coverages = [], [], []
     for left in edges[:-1]:
         right = left + window
-        mask = (steps > left) & (steps <= right)
+        mask = (steps >= left) & (steps < right)
         if not mask.any():
             continue
-        n_present = int(mask.sum())
+        n_present = int(present[mask].sum())
         expected = _expected_from_interval(spec, right, native_interval, timestep_days)
         chunks.append(_reduce(ds.isel(step=np.where(mask)[0]), method=method, dim="step"))
-        labels.append(left + window)
+        labels.append(left)
         coverages.append(_coverage_fraction(n_present, expected))
     if not chunks:
         raise UsageError(_empty_bins_message(spec, "step"))
@@ -478,7 +528,10 @@ def _rolling_aggregation_period(ds, dim, window, interval):
 @weather_skill.argument(
     "--end-time",
     default=None,
-    help="With --period: date the final bin ends on (bins walk backward).",
+    help=(
+        "With --period: exclusive right edge of the final bin (bins walk "
+        "backward; labeled at the left edge, same as forecast step buckets)."
+    ),
 )
 @weather_skill.argument(
     "--start-time",
@@ -561,11 +614,40 @@ def aggregate(
         out = roll_and_agg(ds, window, dim, method, align=align, stride=stride_val)
         n = out.sizes.get(dim, 0)
         if n:
-            out = _assign_coverage(out, dim, [1.0] * n)
+            import numpy as np
+            import xarray as xr
+
+            present = xr.DataArray(
+                _finite_along(ds, dim).astype("float64"),
+                dims=[dim],
+                coords={dim: ds[dim]},
+            )
+            if window == 1 and stride is None:
+                cov = present
+            else:
+                cov = roll_and_agg(
+                    present.to_dataset(name="_c"),
+                    window,
+                    dim,
+                    "mean",
+                    align=align,
+                    stride=stride_val,
+                )["_c"]
+            out = _assign_coverage(out, dim, np.asarray(cov.values, dtype=float))
         agg_period = _rolling_aggregation_period(ds, dim, window, interval)
         return _stamp_attrs(out, dim, agg_period, method, interval, data_interval=native_interval)
 
     spec = _resolve_period(period)
+    if native_interval and _durations_equal(spec["agg"], native_interval):
+        import numpy as np
+
+        out = ds
+        n = out.sizes.get(dim, 0)
+        if n:
+            out = _assign_coverage(out, dim, np.ones(n, dtype=float))
+        return _stamp_attrs(
+            out, dim, spec["agg"], method, interval, data_interval=native_interval
+        )
     if dim == "step":
         out = _aggregate_step(ds, spec, method)
         if end_time is not None or start_time is not None:

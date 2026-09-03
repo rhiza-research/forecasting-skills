@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: transforms
 ---
 
@@ -68,4 +69,8 @@ translate underscore → hyphen.
 ```bash
 # Named places: run resolve-region first, then pass the printed N/W/S/E:
 uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/ecmwf.zarr -o /tmp/ecmwf_kenya.zarr --bbox 5/34/-5/42
+
+# Station / TAHMO point_obs: keeps stations whose lat/lon coords fall in the box
+uv run ${CLAUDE_SKILL_DIR}/scripts/clip.py -i /tmp/tahmo.zarr -o /tmp/tahmo_mombasa.zarr \
+    --bbox -3.92/39.57/-4.16/39.76
 ```

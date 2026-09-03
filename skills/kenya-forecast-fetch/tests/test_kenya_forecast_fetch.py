@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 import xarray as xr
 from conftest import load_skill, make_forecast, run_skill
@@ -104,3 +105,197 @@ def test_probe_latest(capsys, fetch_mod, monkeypatch):
     monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: "2026-08-04" in key)
     run_skill(fetch_mod.fetch, "--probe-latest")
     assert capsys.readouterr().out.strip() == "2026-08-04"
+
+
+def test_fetch_gefs_already_daily_shifts_to_lead_zero(tmp_path, fetch_mod, monkeypatch):
+    """GEFS archive tp is per-step mm starting at 1d — do not deaccumulate."""
+    out = tmp_path / "gefs.zarr"
+    remote = make_forecast(name="tp", n_step=3)
+    remote = remote.assign_coords(
+        step=("step", np.array([np.timedelta64(d, "D") for d in (1, 2, 3)]))
+    )
+    remote["tp"].values[:] = np.array(
+        [[[5.0, 5.0], [5.0, 5.0]], [[2.0, 2.0], [2.0, 2.0]], [[0.0, 0.0], [0.0, 0.0]]]
+    )
+    remote["tp"].attrs.update(units="mm")
+
+    monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: True)
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: remote.copy(deep=True))
+
+    run_skill(fetch_mod.fetch, "--dataset", "gefs", "--date", "2026-08-24", "-o", str(out))
+
+    with xr.open_zarr(out, consolidated=True) as ds:
+        days = np.asarray(ds["step"].values).astype("timedelta64[D]").astype(int)
+        assert list(days) == [0, 1, 2]
+        np.testing.assert_allclose(ds["tp"].values[:, 0, 0], [5.0, 2.0, 0.0])
+        assert ds["tp"].attrs["units"] == "mm day-1"
+        assert ds.sizes["step"] == 3
+
+
+def test_fetch_daily_vars_shifts_step_to_lead_zero(tmp_path, fetch_mod, monkeypatch):
+    out = tmp_path / "daily_vars.zarr"
+    remote = make_forecast(name="t2m", n_step=3, fill=290.0)
+    remote = remote.assign_coords(
+        step=("step", np.array([np.timedelta64(d, "D") for d in (1, 2, 3)]))
+    )
+    remote["t2m"].attrs.update(units="K", standard_name="air_temperature")
+
+    monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: True)
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: remote.copy(deep=True))
+
+    run_skill(
+        fetch_mod.fetch,
+        "--dataset",
+        "daily_vars",
+        "--date",
+        "2026-08-24",
+        "-v",
+        "t2m",
+        "-o",
+        str(out),
+    )
+
+    with xr.open_zarr(out, consolidated=True) as ds:
+        days = np.asarray(ds["step"].values).astype("timedelta64[D]").astype(int)
+        assert list(days) == [0, 1, 2]
+        assert ds.sizes["step"] == 3
+
+
+def test_fetch_medium_range_weekly_totals_left_labeled(tmp_path, fetch_mod, monkeypatch):
+    out = tmp_path / "medium.zarr"
+    remote = make_forecast(name="tp", n_step=2)
+    remote = remote.assign_coords(
+        step=("step", np.array([np.timedelta64(d, "D") for d in (7, 14)]))
+    )
+    remote["tp"].values[:] = np.array([[[7.0, 7.0], [7.0, 7.0]], [[14.0, 14.0], [14.0, 14.0]]])
+    remote["tp"].attrs.update(units="mm")
+
+    monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: True)
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: remote.copy(deep=True))
+
+    run_skill(
+        fetch_mod.fetch,
+        "--dataset",
+        "medium_range_precip",
+        "--date",
+        "2026-08-24",
+        "-o",
+        str(out),
+    )
+
+    with xr.open_zarr(out, consolidated=True) as ds:
+        days = np.asarray(ds["step"].values).astype("timedelta64[D]").astype(int)
+        assert list(days) == [0, 7]
+        np.testing.assert_allclose(ds["tp"].values[:, 0, 0], [1.0, 2.0])
+        assert ds["tp"].attrs["units"] == "mm day-1"
+        assert ds["tp"].attrs.get("aggregation_period") == "7 day"
+
+
+def test_fetch_winds_do_not_shift_step(tmp_path, fetch_mod, monkeypatch):
+    out = tmp_path / "wind.zarr"
+    remote = make_forecast(name="u10", n_step=3, fill=3.0)
+    remote = remote.assign_coords(
+        step=("step", np.array([np.timedelta64(d, "D") for d in (0, 1, 2)]))
+    )
+    remote["u10"].attrs.update(units="m s-1")
+
+    monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: True)
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: remote.copy(deep=True))
+
+    run_skill(
+        fetch_mod.fetch,
+        "--dataset",
+        "10wind",
+        "--date",
+        "2026-08-04",
+        "-v",
+        "u10",
+        "-o",
+        str(out),
+    )
+
+    with xr.open_zarr(out, consolidated=True) as ds:
+        days = np.asarray(ds["step"].values).astype("timedelta64[D]").astype(int)
+        assert list(days) == [0, 1, 2]
+        assert ds.sizes["step"] == 3
+
+
+def _downscaled_weekly():
+    """Lon-first weekly totals matching data_weekly_Kenya_downscaled.nc."""
+    lons = np.linspace(33.0, 34.0, 3)
+    lats = np.array([2.0, 1.0, 0.0])
+    steps = np.array([np.timedelta64(d, "D") for d in (7, 14)])
+    tp = np.full((3, 3, 2), 7.0, dtype=np.float32)
+    ds = xr.Dataset(
+        {"tp": (("longitude", "latitude", "step"), tp)},
+        coords={
+            "longitude": lons,
+            "latitude": lats,
+            "step": steps,
+            "time": np.datetime64("2026-08-30", "ns"),
+            "rank": (("longitude", "latitude", "step"), np.zeros((3, 3, 2), dtype=np.int64)),
+            "year": 2026,
+        },
+    )
+    ds["tp"].attrs.update(units="kg m-2", long_name="Total Precipitation")
+    return ds
+
+
+def test_fetch_precip_downscaled_opens_nc_and_writes_weekly_rates(tmp_path, fetch_mod, monkeypatch):
+    out = tmp_path / "downscaled.zarr"
+    seen = {}
+
+    monkeypatch.setattr(
+        fetch_mod,
+        "_store_exists",
+        lambda key: seen.setdefault("key", key) or True,
+    )
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: _downscaled_weekly())
+
+    run_skill(
+        fetch_mod.fetch,
+        "--dataset",
+        "precip_downscaled",
+        "--date",
+        "2026-08-30",
+        "-o",
+        str(out),
+    )
+
+    assert seen["key"] == "2026-08-30/data/data_weekly_Kenya_downscaled.nc"
+    with xr.open_zarr(out, consolidated=True) as ds:
+        assert list(ds["tp"].dims) == ["step", "latitude", "longitude"]
+        assert "rank" not in ds.variables
+        days = np.asarray(ds["step"].values).astype("timedelta64[D]").astype(int)
+        assert list(days) == [0, 7]
+        np.testing.assert_allclose(ds["tp"].values[:, 0, 0], [1.0, 1.0])
+        assert ds["tp"].attrs["units"] == "mm day-1"
+        assert ds["tp"].attrs.get("data_interval") == "7 day"
+        assert ds["tp"].attrs.get("aggregation_period") == "7 day"
+
+
+def test_fetch_precip_downscaled_converts_to_weekly_totals(tmp_path, fetch_mod, monkeypatch):
+    fetched = tmp_path / "downscaled.zarr"
+    totals = tmp_path / "downscaled_mm.zarr"
+    monkeypatch.setattr(fetch_mod, "_store_exists", lambda key: True)
+    monkeypatch.setattr(fetch_mod, "_open_remote", lambda key: _downscaled_weekly())
+    run_skill(
+        fetch_mod.fetch,
+        "--dataset",
+        "precip_downscaled",
+        "--date",
+        "2026-08-30",
+        "-o",
+        str(fetched),
+    )
+    convert = load_skill("convert-to-totals", "convert_to_totals").convert_to_totals
+    run_skill(convert, "-i", str(fetched), "-o", str(totals))
+    with xr.open_zarr(totals, consolidated=True) as ds:
+        assert ds["tp"].attrs["units"] == "mm"
+        np.testing.assert_allclose(ds["tp"].values[:, 0, 0], [7.0, 7.0])
+        assert ds.sizes["step"] == 2
+
+
+def test_store_key_precip_downscaled_is_weekly_netcdf(fetch_mod):
+    key = fetch_mod._store_key("precip_downscaled", "2026-08-30")
+    assert key == "2026-08-30/data/data_weekly_Kenya_downscaled.nc"

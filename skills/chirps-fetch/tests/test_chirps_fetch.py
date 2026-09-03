@@ -72,13 +72,77 @@ def test_missing_days_exits_2(tmp_path, mod, fetch):
     assert exc.value.code == 2
 
 
-def test_probe_latest_lists_directory(capsys, fetch, monkeypatch):
-    import requests
+def test_probe_latest_lists_directory(capsys, fetch, monkeypatch, mod):
+    def fake_list(prefix: str):
+        year = prefix.rstrip("/").rsplit("/", 1)[-1]
+        if "prelim" in prefix:
+            return [f"{prefix}chirps-v3.0.prelim.{year}.08.15.tif"]
+        return []
 
-    class _Resp:
-        status_code = 200
-        text = '<a href="chirps-v3.0.prelim.2026.08.15.tif">x</a>'
-
-    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp())
+    monkeypatch.setattr(mod, "_list_object_names", fake_list)
     run_skill(fetch, "--probe-latest")
-    assert capsys.readouterr().out.strip() == "2026-08-15"
+    assert capsys.readouterr().out.strip() == f"{date.today().year}-08-15"
+
+
+def test_day_urls_use_chc_mirror(mod):
+    day = date(2024, 1, 2)
+    final = mod._object_url(
+        f"{mod._CHIRPS_FINAL_PREFIX}/{day.year:04d}/chirps-v3.0.sat.2024.01.02.tif"
+    )
+    assert "sheerwater-public-datalake/chc-mirror/products/CHIRPS/" in final
+    assert "storage.googleapis.com" in final
+
+
+def test_fetch_bbox_subsets_space(tmp_path, mod, fetch):
+    out = tmp_path / "out.zarr"
+
+    def fake_download(_session, day, dest_dir):
+        return dest_dir / f"{day.isoformat()}.tif"
+
+    with (
+        patch.object(mod, "_download_day_tif", side_effect=fake_download),
+        patch.object(mod, "_open_day", side_effect=_fake_open_day),
+    ):
+        run_skill(
+            fetch,
+            "--start-time",
+            "2026-01-01",
+            "--end-time",
+            "2026-01-01",
+            "--bbox",
+            "2.5/10.5/1.5/12.5",
+            "-o",
+            str(out),
+        )
+
+    ds = xr.open_zarr(out, consolidated=True)
+    assert float(ds.latitude.min()) >= 1.5
+    assert float(ds.latitude.max()) <= 2.5
+    assert float(ds.longitude.min()) >= 10.5
+    assert float(ds.longitude.max()) <= 12.5
+    assert ds.sizes["time"] == 1
+
+
+def test_empty_bbox_exits(tmp_path, mod, fetch):
+    out = tmp_path / "out.zarr"
+
+    def fake_download(_session, day, dest_dir):
+        return dest_dir / f"{day.isoformat()}.tif"
+
+    with (
+        patch.object(mod, "_download_day_tif", side_effect=fake_download),
+        patch.object(mod, "_open_day", side_effect=_fake_open_day),
+    ):
+        with pytest.raises(SystemExit) as exc:
+            run_skill(
+                fetch,
+                "--start-time",
+                "2026-01-01",
+                "--end-time",
+                "2026-01-01",
+                "--bbox",
+                "50/10/40/12",
+                "-o",
+                str(out),
+            )
+    assert exc.value.code == 1

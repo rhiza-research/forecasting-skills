@@ -1,10 +1,11 @@
 ---
 name: plot-mediogram
-description: Render an ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate (historical) ensemble at a single lat/lon. Two-layer boxplots per time step show an extremes box underneath (p0–p100 whiskers, p10–p90 box, p50 median) with a wider p25–p75 IQR box overlaid on top, whose visible black caps mark the IQR edges. For precipitation, run convert-to-totals after aggregate-temporal before plotting.
+description: Render an ECMWF-style mediogram PNG comparing a forecast ensemble against an m-climate (historical) ensemble at a single lat/lon. Two-layer boxplots per time step show an extremes box underneath (p0–p100 whiskers, p10–p90 box, p50 median) with a wider p25–p75 IQR box overlaid on top, whose visible black caps mark the IQR edges. For precipitation, run convert-to-totals after aggregate-temporal before plotting. Use --fontsize to enlarge titles, axis labels, ticks, and legend (default 16).
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: figure
 ---
 
@@ -32,7 +33,7 @@ Lat/lon selection is nearest-neighbor.
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py -i <forecast.zarr> -i <mclimate.zarr> \
     --lat <lat> --lon <lon> --output <out.png> \
-    [--variable NAME] [--title TEXT]
+    [--variable NAME] [--title TEXT] [--xlabel TEXT] [--ylabel TEXT] [--fontsize N]
 ```
 
 ### Arguments
@@ -41,10 +42,14 @@ uv run ${CLAUDE_SKILL_DIR}/scripts/plot_mediogram.py -i <forecast.zarr> -i <mcli
 - `--output`, `-o` — PNG output path.
 - `--variable`, `-v` — variable name. Defaults to the first data variable in the forecast input.
 - `--title` — optional plot title.
+- `--xlabel` / `--ylabel` — optional axis-label overrides (defaults: `Forecast step`
+  and the variable label). Passed text is used as-is.
+- `--fontsize` — base font size for titles, axis labels, ticks, and legend
+  (default 16). Raise on user request (e.g. `--fontsize 22`).
 
 ### Output
 
-A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on the x-axis labeled with actual leads (`+7d`, `+10d`, …).
+A PNG at `--output`, single axes, figsize `(10, 5)`, up to 6 forecast steps on the x-axis labeled with actual leads (`+7d`, `+10d`, …). The y-axis (and default title) use the variable `long_name`.
 
 ### Provenance
 

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 #   "cf-xarray",
 #   "cftime>=1.6",
 #   "pint-xarray>=0.6",
@@ -32,6 +32,8 @@ def _resolve_dim(ds, time_dim):
     import cf_xarray  # noqa: F401
 
     if time_dim:
+        if time_dim not in ds.dims:
+            raise UsageError(f"--time-dim {time_dim!r} not in dataset (have {list(ds.dims)})")
         return time_dim
     try:
         cf_time = ds.cf["time"].name
@@ -43,7 +45,19 @@ def _resolve_dim(ds, time_dim):
         return cf_time
     if "step" in ds.dims:
         return "step"
-    raise UsageError(f"no time/step dim in {list(ds.dims)}; pass --time-dim")
+    return None
+
+
+def _sum_cell_methods_dim(da, dim: str | None) -> str:
+    """Dim name for ``cell_methods: …: sum`` after conversion."""
+    if dim:
+        return dim
+    methods = da.attrs.get("cell_methods")
+    if isinstance(methods, str):
+        for token in ("time", "step"):
+            if f"{token}:" in methods:
+                return token
+    return "time"
 
 
 @weather_skill(
@@ -67,7 +81,11 @@ def convert_to_totals(ds, variable, min_coverage, time_dim, **kwargs):
         if name not in ds.data_vars:
             raise UsageError(f"variable {name!r} not in dataset (have {list(ds.data_vars)})")
 
-    ds = filter_min_coverage(ds, dim, min_coverage)
+    # After select collapses the only time/step sample, dims are spatial-only.
+    # aggregation_period on the variable is enough for the multiply; skip the
+    # coverage/overlap gates that need a time axis.
+    if dim is not None:
+        ds = filter_min_coverage(ds, dim, min_coverage)
     out = ds.copy(deep=False)
     for name in names:
         da = ds[name]
@@ -77,7 +95,8 @@ def convert_to_totals(ds, variable, min_coverage, time_dim, **kwargs):
                 f"variable {name!r} has no {AGGREGATION_PERIOD_ATTR!r}; "
                 "run aggregate-temporal first"
             )
-        assert_nonoverlapping_intervals(ds, dim, period)
+        if dim is not None:
+            assert_nonoverlapping_intervals(ds, dim, period)
         total = rate_to_total(da, period)
         plain = total.pint.dequantify() if total.pint.units is not None else total
         attrs = {**da.attrs, **plain.attrs}
@@ -89,12 +108,11 @@ def convert_to_totals(ds, variable, min_coverage, time_dim, **kwargs):
         ):
             attrs["units"] = STANDARD["precip_amount"]["units"]
             attrs["standard_name"] = STANDARD["precip_amount"]["standard_name"]
-            if not attrs.get("long_name") or looks_like_rate_display_name(attrs.get("long_name")):
-                attrs["long_name"] = PRECIP_AMOUNT_LONG_NAME
+            attrs["long_name"] = PRECIP_AMOUNT_LONG_NAME
             if looks_like_rate_display_name(attrs.get("GRIB_name")):
                 attrs["GRIB_name"] = PRECIP_AMOUNT_LONG_NAME
-        attrs["cell_methods"] = format_cell_methods(dim, "sum")
-        attrs.pop(AGGREGATION_PERIOD_ATTR, None)
+        attrs["cell_methods"] = format_cell_methods(_sum_cell_methods_dim(da, dim), "sum")
+        # Keep aggregation_period so plotters can pick a period-aware precip palette.
         out[name] = plain
         out[name].attrs = attrs
     if AGGREGATION_COVERAGE_COORD in out.coords:

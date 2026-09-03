@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 #   "xarray",
 #   "zarr",
 #   "numpy",
@@ -22,7 +22,7 @@ from weather_skills_core.cf import stamp_cf_coords
 from weather_skills_core.standard_utils import (
     apply_write_encoding,
     bbox_subset,
-    normalize_longitude,
+    ensure_normalized_longitude,
     np_to_date,
     verify_cf_decode,
 )
@@ -205,7 +205,7 @@ def fetch(start_time, end_time, bbox, **kwargs):
         try:
             with dy:
                 piece = dy[["sst"]].rename({"lat": "latitude", "lon": "longitude"})
-                piece = normalize_longitude(piece)
+                piece = ensure_normalized_longitude(piece)
                 piece = piece.sel(time=time_slice)
                 if bbox is not None:
                     piece = bbox_subset(piece, bbox, lat_dim="latitude", lon_dim="longitude")

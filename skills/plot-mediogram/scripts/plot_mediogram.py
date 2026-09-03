@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 #   "cf-xarray",
 #   "cftime",
 #   "xarray",
@@ -18,10 +18,47 @@ from pathlib import Path
 
 from weather_skills_core import DataError, Dataset, UsageError, weather_skill
 from weather_skills_core.cf import auto_variable, cf_dim
-from weather_skills_core.units import precip_for_display, to_standard_units
+from weather_skills_core.units import (
+    precip_for_display,
+    to_standard_units,
+    variable_label_for_display,
+)
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
+
+
+def _axis_label(text):
+    """Sentence-case an axis label; map lon/lat shorthand to Longitude/Latitude."""
+    if text is None:
+        return text
+    s = str(text).strip()
+    if not s:
+        return s
+    known = {
+        "lon": "Longitude",
+        "lat": "Latitude",
+        "longitude": "Longitude",
+        "latitude": "Latitude",
+        "valid time": "Valid time",
+        "calendar day": "Calendar day",
+        "time": "Time",
+        "step": "Step",
+        "forecast step": "Forecast step",
+    }
+    key = s.lower()
+    if key in known:
+        return known[key]
+    if s[:1].islower():
+        return s[:1].upper() + s[1:]
+    return s
+
+
+def _resolve_axis_label(override, default):
+    """Use ``override`` verbatim when set; otherwise sentence-case ``default``."""
+    if override is not None and str(override).strip() != "":
+        return str(override)
+    return _axis_label(default)
 
 
 def _select_point(da, lat, lon):
@@ -72,7 +109,23 @@ def _draw_bxp(ax, stats, positions, width, facecolor, whisker_lw, cap_alpha=1):
 @weather_skill.argument("--lat", type=float, required=True, help="Point latitude.")
 @weather_skill.argument("--lon", type=float, required=True, help="Point longitude.")
 @weather_skill.argument("--title", default=None, help="Optional plot title.")
-def plot_mediogram(ds, variable, lat, lon, title, output, **kwargs):
+@weather_skill.argument(
+    "--xlabel",
+    default=None,
+    help="Override the x-axis label (default: Forecast step).",
+)
+@weather_skill.argument(
+    "--ylabel",
+    default=None,
+    help="Override the y-axis label (default: from variable metadata).",
+)
+@weather_skill.argument(
+    "--fontsize",
+    type=int,
+    default=16,
+    help="Base font size for titles, axis labels, ticks, and legend (default 16).",
+)
+def plot_mediogram(ds, variable, lat, lon, title, xlabel, ylabel, fontsize, output, **kwargs):
     """ECMWF-style mediogram: forecast vs m-climate ensemble distributions at a point."""
     if len(ds) != 2:
         raise UsageError(f"expected exactly two --input paths, got {len(ds)}")
@@ -145,16 +198,27 @@ def plot_mediogram(ds, variable, lat, lon, title, output, **kwargs):
             tick_labels.append(f"+{int(arr.astype('timedelta64[D]').astype(int))}d")
         else:
             tick_labels.append(str(value))
-    ax.set_xticklabels(tick_labels)
-    ax.set_xlabel("Forecast step")
-    ax.set_ylabel(variable)
-    ax.set_title(title or f"Mediogram: {variable} at lat={snapped_lat:g}, lon={snapped_lon:g}")
+    tick_fs = max(10, int(round(fontsize * 0.7)))
+    legend_fs = max(10, int(round(fontsize * 0.85)))
+    ax.set_xticklabels(tick_labels, fontsize=tick_fs)
+    ax.set_xlabel(_resolve_axis_label(xlabel, "Forecast step"), fontsize=fontsize)
+    ax.set_ylabel(
+        _resolve_axis_label(ylabel, variable_label_for_display(pt_fc, fallback=variable)),
+        fontsize=fontsize,
+    )
+    qty = variable_label_for_display(pt_fc, fallback=variable, include_units=False)
+    ax.set_title(
+        title or f"Mediogram: {qty} at lat={snapped_lat:g}, lon={snapped_lon:g}",
+        fontsize=fontsize,
+    )
+    ax.tick_params(labelsize=tick_fs)
     ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend(
         handles=[
             Patch(facecolor="cyan", edgecolor="black", label="forecast"),
             Patch(facecolor="red", edgecolor="black", label="m-climate"),
-        ]
+        ],
+        fontsize=legend_fs,
     )
 
     fig.tight_layout()

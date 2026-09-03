@@ -60,6 +60,29 @@ def test_forecast_fetch_writes_zarr(tmp_path, mod, fetch):
     assert load_history(out)[-1]["skill"] == "dynamical-fetch"
 
 
+def test_forecast_fetch_wraps_0_360_longitude(tmp_path, mod, fetch):
+    out = tmp_path / "out.zarr"
+    ds = _forecast_catalog_ds()
+    ds = ds.assign_coords(longitude=[0.0, 270.0])
+    ds["tp"].values[..., 1] = 7.0
+    state = {"ds": ds, "shape": "forecast"}
+
+    with patch.object(mod, "_open_dataset", return_value=state):
+        run_skill(
+            fetch,
+            "--dataset",
+            "test-forecast",
+            "--date",
+            "2026-01-01",
+            "-o",
+            str(out),
+        )
+
+    written = xr.open_zarr(out, consolidated=True)
+    assert list(written["longitude"].values) == [-90.0, 0.0]
+    assert float(written["tp"].isel(step=0, latitude=0).sel(longitude=-90.0)) == 7.0
+
+
 def _imerg_like_analysis_ds():
     times = np.array([np.datetime64("2026-01-01T00:00"), np.datetime64("2026-01-01T00:30")])
     lats = [1.0, 2.0]
@@ -168,6 +191,17 @@ def test_resolve_t_alias_expands_hpa_only(mod):
     ]
     assert mod._resolve_variables(["gh"], names, "ifs") == ["geopotential_height_500hpa"]
     assert mod._resolve_variables(["temperature_850hpa"], names, "ifs") == ["temperature_850hpa"]
+
+
+def test_resolve_precip_aliases_to_surface(mod):
+    names = ["precipitation_surface", "precipitation_quality_index_surface"]
+    for token in ("precip", "precipitation", "tp", "total_precipitation", "pr"):
+        assert mod._resolve_variables([token], names, "nasa-imerg-analysis-late") == [
+            "precipitation_surface"
+        ]
+    assert mod._resolve_variables(["precipitation_surface"], names, "nasa-imerg-analysis-late") == [
+        "precipitation_surface"
+    ]
 
 
 def test_resolve_unknown_lists_available(mod):

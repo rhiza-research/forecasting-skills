@@ -55,7 +55,7 @@ def make_forecast(
     members=None,
 ):
     """Classic forecast: scalar ``time`` init + ``step`` lead dim (+ optional ``number``)."""
-    steps = np.array([np.timedelta64(d, "D") for d in range(1, n_step + 1)])
+    steps = np.array([np.timedelta64(d, "D") for d in range(n_step)])
     dims = ["step", "latitude", "longitude"]
     shape = [n_step, len(lats), len(lons)]
     coords = {

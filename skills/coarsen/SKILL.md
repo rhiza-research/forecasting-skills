@@ -1,35 +1,45 @@
 ---
 name: coarsen
-description: Coarsen or align a weather-skills standard dataset Zarr by linearly interpolating it onto a target grid defined by a resolution and an offset (target points at offset + k*resolution). Geometry-only — it changes grid spacing/alignment and adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
+description: Coarsen or align a weather-skills standard dataset Zarr by linearly interpolating it onto a target grid. Prefer --reference-grid PATH to copy another Zarr's exact lat/lon (avoids float mismatch on difference/verify). Or pass --target-resolution and --offset for a synthetic grid (points at offset + k*resolution). Equal or near-equal resolution is a lateral realign (same spacing, different offset — including a half-cell shift). Geometry-only — changes spacing/alignment, adds no information. Use to make a grid coarser or to put two datasets on the same grid for comparison.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: transforms
 ---
 
 # coarsen
 
 Source-agnostic spatial coarsening and alignment: linearly interpolates the
-input onto a uniform target grid whose points fall at `offset + k * resolution`
-for integer k, clipped to the input's lon/lat range. This changes grid geometry
-only — it adds no information — and is used to coarsen a grid or to align two
-grids for comparison. The target resolution must be coarser-or-equal to the
-input on each axis; equal resolution is accepted as a no-op/realign. A
-strictly-finer target is rejected with a pointer to the `downscale` skill, since
-gaining resolution with added information is that skill's job.
+input onto a target lat/lon grid. This changes grid geometry only — it adds
+no information — and is used to coarsen a grid or to align two grids for
+comparison. The target must be coarser-or-equal to the input on each axis;
+equal (or near-equal) resolution is accepted as a lateral realign — same
+spacing, different cell-center offset, including a half-cell shift. A
+meaningfully-finer target is rejected with a pointer to the `downscale`
+skill. Near-equal spacings (within 1%, including float rounding or a
+slightly irregular CHIRPS axis vs a regular 0.05° forecast) are not treated
+as finer, so this skill and `downscale` do not ping-pong.
 
-`(--target-resolution 0.25, --offset 0.0)` aligns with sheerwater's
-`global0_25`; `(0.1, 0.05)` with `global0_1`; `(0.05, 0.025)` with `global0_05`.
+**Matching another dataset.** Prefer `--reference-grid other.zarr`. That
+copies the other store's lat/lon values bit-for-bit (clipped to the input
+extent), so `difference` / `verify` inner-joins do not collapse from
+floating-point mismatch. Rebuilding `offset + k * resolution` in float64
+often lands *near* IMERG/CHIRPS/ECMWF points without matching them exactly.
+
+**Synthetic sheerwater-style grids.** When you have no reference Zarr,
+`(--target-resolution 0.25, --offset 0.0)` aligns with `global0_25`;
+`(0.1, 0.05)` with `global0_1`; `(0.05, 0.025)` with `global0_05`.
 
 ## When to use
 
-- Coarsening a dataset to a larger grid spacing before plotting, comparison, or
-  ensemble aggregation.
-- Aligning a dataset to another dataset's grid alignment for comparison (CHIRPS
-  0.05° onto the IMERG 0.1° grid, ECMWF 1.5° onto a 0.25° analysis grid, etc.).
-- Producing output on a named sheerwater grid by passing the matching
-  `(resolution, offset)` pair.
+- Putting obs onto a forecast grid (or the reverse) before `difference` /
+  `verify` — use `--reference-grid` on the dataset you want to match.
+  This includes a same-resolution lateral shift (CHIRPS 0.05° onto the
+  Kenya weekly downscale, or the reverse).
+- Coarsening to a larger spacing before plotting or ensemble aggregation.
+- Producing output on a named sheerwater grid via `(resolution, offset)`.
 
 Not for: making a grid finer / adding information — that is the `downscale`
 skill. Not for choosing a non-linear method (nearest, cubic, conservative,
@@ -39,20 +49,31 @@ most_common); this skill is linear-only.
 
 ```
 uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py --input <in.zarr> --output <out.zarr> \
-    --target-resolution DEG --offset DEG \
+    (--reference-grid REF.zarr | --target-resolution DEG --offset DEG) \
     [--variable NAME]
 ```
 
 ### Arguments
 - `--input`, `-i` — input Zarr (any gridded dataset).
 - `--output`, `-o` — output Zarr.
-- `--target-resolution` — target grid spacing in degrees.
-- `--offset` — grid offset in degrees; target points fall at `offset + k*resolution`.
+- `--reference-grid` — Zarr whose lat/lon define the target (exact values,
+  clipped to the input extent). Preferred when matching another product.
+  Mutually exclusive with `--target-resolution` / `--offset`. The reference
+  must be coarser-or-equal to the input (near-equal counts as equal, so a
+  half-cell offset at the same nominal resolution is allowed). If it is
+  meaningfully finer, use `downscale --reference-grid` instead.
+- `--target-resolution` — target grid spacing in degrees (with `--offset`).
+- `--offset` — grid offset in degrees; target points fall at
+  `offset + k*resolution` (with `--target-resolution`).
 - `--variable`, `-v` — restrict to a single data variable. Default: process all.
 
 ### Longitude convention
 
-Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before the target axis is built, so a global grid stored in the `[0, 360]` convention does not produce a target axis spanning the entire globe when only a sub-region is wanted. Inputs already in `[-180, 180]` pass through unchanged.
+Longitudes in `[0, 360]` are auto-wrapped to `[-180, 180]` before the target
+axis is built (input and `--reference-grid`), so a global grid stored in the
+`[0, 360]` convention does not produce a target axis spanning the entire
+globe when only a sub-region is wanted. Inputs already in `[-180, 180]` pass
+through unchanged.
 
 ### Output
 
@@ -79,21 +100,33 @@ cache decision (so a same-named input whose content changed in place still
 hits on basename).
 
 The `args` dict stores argparse dest names (underscored, e.g.
-`target_resolution`, `offset`), not the hyphenated CLI flag names
-(`--target-resolution`, `--offset`). A consumer reconstructing a
+`target_resolution`, `offset`, `reference_grid`), not the hyphenated CLI flag
+names. A consumer reconstructing a
 `uv run ${CLAUDE_SKILL_DIR}/scripts/<skill>.py <args>` invocation must translate
 underscore → hyphen.
 
 ## Examples
 
 ```bash
-# Onto sheerwater's global0_25 alignment.
+# Match IMERG's exact 0.1° coordinates (avoids float mismatch on difference).
+uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/forecast.zarr -o /tmp/forecast_on_imerg.zarr \
+    --reference-grid /tmp/imerg.zarr
+```
+
+```bash
+# Obs onto the forecast grid before verify (forecast is coarser-or-equal).
+uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/chirps.zarr -o /tmp/chirps_on_s2s.zarr \
+    --reference-grid /tmp/s2s.zarr
+```
+
+```bash
+# Onto sheerwater's global0_25 alignment (no reference Zarr).
 uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/imerg.zarr -o /tmp/imerg_p25.zarr \
     --target-resolution 0.25 --offset 0.0
 ```
 
 ```bash
-# Onto sheerwater's global0_1 alignment.
+# Onto sheerwater's global0_1 alignment (no reference Zarr).
 uv run ${CLAUDE_SKILL_DIR}/scripts/coarsen.py -i /tmp/chirps.zarr -o /tmp/chirps_p1.zarr \
     --target-resolution 0.1 --offset 0.05
 ```

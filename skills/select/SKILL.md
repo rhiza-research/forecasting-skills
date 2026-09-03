@@ -5,6 +5,7 @@ license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/select_dim.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: transforms
 ---
 
@@ -69,7 +70,7 @@ position, the dim, and its size.
 | `datetime64` | naive ISO datetime string (no timezone suffix, no `now`/`today`) | `2026-06-01`, `2026-06-01T06:00` |
 | `timedelta64` | pandas-style timedelta string | `7D`, `168h` |
 | numeric | int or float literal (no underscores, `nan`, or `inf`) | `0`, `1.5` |
-| string | verbatim | `TA00001` |
+| string | verbatim, including NumPy `StringDType` (Zarr v3 station ids) | `TA00001` |
 
 Matching is exact (no nearest-neighbor lookup). A value absent from the coord
 errors with a sample of the available values; a value matching more than one
@@ -81,11 +82,10 @@ rejects `--value` with an error directing to `--index`.
 ### Output
 
 A single selection (one `--index` or one `--value`) collapses the dim — it
-disappears from the output — AND drops every coordinate variable the
-selection leaves scalar: the dim's own coord and any auxiliary coord on the
-collapsed dim (e.g. a `valid_time(step)` coord goes with `step`). Coordinates
-that were already scalar on the input pass through. The output is therefore
-ready to `concat` along a new dim. Multiple selections keep the dim with
+disappears from the output — AND drops leftover scalar coordinates on that dim
+(e.g. `step`, `valid_time`). Point identity is kept as scalar coords:
+`station_id` / `point_id`, `name`, `latitude` / `longitude`, `country`. Other
+coordinates that were already scalar on the input pass through. Multiple selections keep the dim with
 exactly those entries, in the order the flags were given (args order = output
 order; `--index 2 --index 0` reverses those two entries). Selecting by
 `--value` produces the same data as selecting the corresponding positions by

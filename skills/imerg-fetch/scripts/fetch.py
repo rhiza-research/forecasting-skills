@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 #   "cftime",
 #   "earthaccess",
 #   "h5netcdf",
@@ -22,6 +22,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
+from weather_skills_core.standard_utils import ensure_normalized_longitude
 from weather_skills_core.units import stamp_data_interval, to_standard_units
 
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
@@ -159,6 +160,7 @@ def fetch(start_time, end_time, version, **kwargs):
             long_name="IMERG daily precipitation",
         )
         stamp_cf_attrs(ds)
+        ds = ensure_normalized_longitude(ds, lon_dim="longitude")
         ds = to_standard_units(ds, variables=["precip"])
         return stamp_data_interval(ds, period="1 day")
 

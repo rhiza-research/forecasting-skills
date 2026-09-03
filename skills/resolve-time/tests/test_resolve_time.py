@@ -67,6 +67,11 @@ def test_this_month_so_far(capsys, resolve_time):
     assert out == "--start-time 2026-08-01 --end-time 2026-08-20"
 
 
+def test_last_30d_is_rolling(capsys, resolve_time):
+    out, _ = _flags(capsys, resolve_time, "last-30d", "--as-of", AS_OF)
+    assert out == "--start-time 2026-07-22 --end-time 2026-08-20"
+
+
 def test_last_month_full_calendar(capsys, resolve_time):
     out, _ = _flags(capsys, resolve_time, "last-month", "--as-of", AS_OF)
     assert out == "--start-time 2026-07-01 --end-time 2026-07-31"

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 #   "cftime",
 #   "ecmwf-datastores-client==0.4.2",
 #   "requests",
@@ -29,7 +29,10 @@ from typing import NamedTuple
 
 from weather_skills_core import DataError, UsageError, weather_skill
 from weather_skills_core.cf import stamp_cf_attrs
-from weather_skills_core.standard_utils import require_env
+from weather_skills_core.standard_utils import (
+    ensure_normalized_longitude,
+    require_env,
+)
 from weather_skills_core.units import (
     convert_dataarray,
     precip_amounts_to_rates,
@@ -211,8 +214,23 @@ def _canonical_name(token: str) -> str | None:
     return None
 
 
-def _resolve_variables(raw: list[str] | None) -> list[str]:
-    tokens = raw or list(DEFAULT_VARIABLES)
+def _flatten_variable_tokens(raw) -> list[str]:
+    """Accept ``-v tp t2m``, ``-v tp -v t2m``, and ``-v tp,t2m`` alike."""
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, (list, tuple)) else [raw]
+    tokens: list[str] = []
+    for item in items:
+        parts = item if isinstance(item, (list, tuple)) else [item]
+        for part in parts:
+            for token in str(part).replace(",", " ").split():
+                if token:
+                    tokens.append(token)
+    return tokens
+
+
+def _resolve_variables(raw: list | None) -> list[str]:
+    tokens = _flatten_variable_tokens(raw) or list(DEFAULT_VARIABLES)
     unknown = [token for token in tokens if _canonical_name(token) is None]
     if unknown:
         raise UsageError(
@@ -344,9 +362,7 @@ def _concat_lon(datasets: list) -> object:
             break
     if lon_name is None:
         return datasets[0]
-    normed = [
-        d.assign_coords({lon_name: ((d[lon_name] + 180.0) % 360.0) - 180.0}) for d in datasets
-    ]
+    normed = [ensure_normalized_longitude(d, lon_dim=lon_name) for d in datasets]
     combined = xr.concat(normed, dim=lon_name)
     _, unique_idx = np.unique(combined[lon_name].values, return_index=True)
     return combined.isel({lon_name: np.sort(unique_idx)}).sortby(lon_name)
@@ -431,6 +447,7 @@ def _standardize(ds):
         ds["tp"].attrs["standard_name"] = "precipitation_amount"
         ds["tp"].attrs["units"] = "kg m-2"
         ds["tp"].attrs["long_name"] = "Total precipitation"
+    ds = ensure_normalized_longitude(ds)
     ds = to_standard_units(ds)
     for name in _KELVIN_TEMPS:
         if name in ds.data_vars:
@@ -463,10 +480,12 @@ def _is_s2s_embargo_error(exc: BaseException) -> bool:
     "--variable",
     "-v",
     action="append",
+    nargs="+",
     help=(
-        "S2S field to retrieve (repeatable). Most used first: tp, t2m, sst. "
-        "Pressure-level: gh, t, u, v, w, q. Default tp. Names are cfgrib short "
-        "names (sst, t, not ARCO 2m_temperature)."
+        "S2S fields to retrieve. Pass several names in one flag (`-v tp t2m`), "
+        "repeat `-v`, or comma-separate (`-v tp,t2m`). Most used first: tp, "
+        "t2m, sst. Pressure-level: gh, t, u, v, w, q. Default tp. Names are "
+        "cfgrib short names (sst, t, not ARCO 2m_temperature)."
     ),
 )
 @weather_skill.argument(

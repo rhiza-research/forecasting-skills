@@ -1,10 +1,11 @@
 ---
 name: resolve-time
-description: Resolve a relative date query (the last two weeks, today, latest, last month, now-3d) to absolute `--start-time`/`--end-time` or `--date` values from the current UTC date. Use before any fetch when the user said a relative window rather than YYYY-MM-DD. Does not know product lag — for the latest published day, run that fetcher with `--probe-latest`.
+description: Resolve a relative date query (the last two weeks, today, latest, last 30 days, now-3d) to absolute `--start-time`/`--end-time` or `--date` values from the current UTC date. Use before any fetch when the user said a relative window rather than YYYY-MM-DD. Does not know product lag — for the latest published day, run that fetcher with `--probe-latest`.
 license: MIT
 compatibility: Requires Python 3.12 and uv.
 allowed-tools: Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/resolve.py *)
 metadata:
+  version: "0.0.2"
   catalog-group: agent-tooling
 ---
 
@@ -40,12 +41,15 @@ deterministic calendar math and the UTC clock.
 |---|---|
 | the last two weeks / last 14 days | `last-2w` (same window as `last-14d`) |
 | last 7 days / the past week (rolling) | `last-7d` |
+| the last month / last 30 days / the past month (rolling) | `last-30d` |
 | today / now / latest calendar day | `latest` |
 | yesterday | `yesterday` |
 | 3 days ago | `now-3d` |
 | this week (ISO, Mon–Sun, so far) | `this-week` |
 | last week (previous complete ISO week) | `last-week` |
-| this month so far / last month / this year | `this-month` / `last-month` / `this-year` |
+| this month so far | `this-month` |
+| previous calendar month | `last-month` |
+| this year so far / previous calendar year | `this-year` / `last-year` |
 | March 2026 / calendar 2024 | `2026-03` / `2024` |
 | an already-absolute day or span | `2026-08-01` or `2026-08-01/2026-08-14` |
 
@@ -97,6 +101,9 @@ Unknown tokens and English phrases exit 2 with an explanation.
   `last-week` is the previous complete ISO week.
 - `last-<N>d|w|m|y` is a rolling inclusive window ending on `as_of`.
   Months/years clamp the day (31 Jan − 1 month → 28/29 Feb).
+  "The last month of data" is `last-30d`, not `last-month`.
+- `last-week` / `last-month` / `last-year` are the previous complete
+  calendar period (ISO week, named month, calendar year).
 - `this-month` / `this-year` are "so far". `YYYY-MM` / `YYYY` are the full
   calendar period (not clipped to today).
 - `now-<N>d|w|m|y` is a single date offset from `as_of`.

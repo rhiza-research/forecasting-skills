@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
 # dependencies = [
-#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@main",
+#   "weather-skills-core @ git+https://github.com/rhiza-research/weather-skills-core@dev",
 #   "cftime>=1.6",
 #   "numpy>=2.4",
 #   "pandas",
@@ -16,9 +16,28 @@ from weather_skills_core import Dataset, UsageError, weather_skill
 # Auto-populated by the version-bump CI workflow. Do not edit manually.
 _SKILL_VERSION = "0.0.2"
 
+_KEEP_SCALAR_COORDS = frozenset(
+    {
+        "station_id",
+        "point_id",
+        "name",
+        "latitude",
+        "lat",
+        "longitude",
+        "lon",
+        "country",
+    }
+)
 _INDEX_RE = re.compile(r"-?[0-9]+")
 _NUM_INT_RE = re.compile(r"-?[0-9]+")
 _NUM_FLOAT_RE = re.compile(r"-?([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)([eE][+-]?[0-9]+)?")
+
+
+def _is_string_coord(dtype, coord_vals) -> bool:
+    """True for unicode, bytes, NumPy 2 StringDType (kind 'T'), or object-of-str."""
+    if dtype.kind in "UST":
+        return True
+    return dtype.kind == "O" and coord_vals.size and isinstance(coord_vals.flat[0], str)
 
 
 def _parse_value(raw, coord_vals, dim):
@@ -42,9 +61,7 @@ def _parse_value(raw, coord_vals, dim):
         if _NUM_FLOAT_RE.fullmatch(raw):
             return float(raw)
         raise UsageError(f"--value '{raw}' not a number literal")
-    if dtype.kind in "US" or (
-        dtype.kind == "O" and coord_vals.size and isinstance(coord_vals.flat[0], str)
-    ):
+    if _is_string_coord(dtype, coord_vals):
         return raw.encode() if dtype.kind == "S" else raw
     raise UsageError(f"coord '{dim}' dtype {dtype} needs --index, not --value")
 
@@ -92,7 +109,12 @@ def select(ds, dim, index, value, **kwargs):
     if len(positions) == 1:
         pre_scalar = {c for c in ds.coords if ds[c].ndim == 0}
         out = ds.isel({dim: positions[0]})
-        return out.drop_vars([c for c in out.coords if out[c].ndim == 0 and c not in pre_scalar])
+        drop = [
+            c
+            for c in out.coords
+            if out[c].ndim == 0 and c not in pre_scalar and c not in _KEEP_SCALAR_COORDS
+        ]
+        return out.drop_vars(drop)
     return ds.isel({dim: positions})
 
 

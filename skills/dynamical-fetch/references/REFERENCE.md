@@ -1,7 +1,9 @@
 # dynamical-fetch reference
 
 Default forecast/analysis fetcher when the catalog has the product. Use
-`ecmwf-fetch` only for ECMWF S2S.
+`ecmwf-fetch` only for ECMWF S2S. Default IMERG source:
+`nasa-imerg-analysis-late` / `nasa-imerg-analysis-early` — do not start
+with `imerg-fetch`.
 
 ## Library
 
